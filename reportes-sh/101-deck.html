@@ -1,0 +1,369 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Reportes SH 101 — Presentación</title>
+<style>
+:root{
+  --ground:#f7f9fb;--paper:#ffffff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;
+  --hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;
+  --ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;
+  --warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7;
+  --shadow:0 1px 2px rgba(24,34,49,.05),0 10px 34px -12px rgba(24,34,49,.22);
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){:root{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512;--shadow:0 1px 2px rgba(0,0,0,.3),0 12px 34px -12px rgba(0,0,0,.6)}}
+:root[data-theme="light"]{--ground:#f7f9fb;--paper:#fff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;--hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;--ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7}
+:root[data-theme="dark"]{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--ground);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased}
+.deck{scroll-snap-type:y mandatory;height:100vh;overflow-y:auto;scroll-behavior:smooth}
+.slide{scroll-snap-align:start;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:56px 24px 96px}
+.card{background:var(--paper);border:1px solid var(--hair);border-radius:18px;box-shadow:var(--shadow);width:100%;max-width:900px;padding:44px 48px;position:relative}
+@media (max-width:640px){.card{padding:30px 24px}}
+.snum{position:absolute;top:20px;right:26px;font-family:var(--mono);font-size:.78rem;color:var(--faint);font-weight:700;letter-spacing:.05em}
+.kick{font-size:.72rem;text-transform:uppercase;letter-spacing:.14em;font-weight:800;color:var(--accent-ink);margin:0 0 14px}
+.kick.ti{color:var(--ti)} .kick.ku{color:var(--ku)}
+.card h2{font-size:clamp(1.6rem,3.4vw,2.3rem);line-height:1.1;letter-spacing:-.02em;margin:0 0 18px;font-weight:800;text-wrap:balance}
+.card p.lede{font-size:1.12rem;color:var(--muted);margin:0 0 20px;max-width:60ch}
+.blist{list-style:none;padding:0;margin:18px 0 0;display:flex;flex-direction:column;gap:12px}
+.blist li{display:grid;grid-template-columns:26px 1fr;gap:12px;align-items:start;font-size:1.05rem}
+.blist .b{width:20px;height:20px;border-radius:6px;background:var(--accent-wash);color:var(--accent-ink);display:grid;place-items:center;font-weight:800;font-size:.8rem;margin-top:4px}
+.blist.ti .b{background:var(--ti-wash);color:var(--ti)} .blist.ku .b{background:var(--ku-wash);color:var(--ku)}
+.blist strong{font-weight:700}
+code{font-family:var(--mono);font-size:.85em;background:var(--hair);padding:1px 6px;border-radius:5px}
+.note{margin-top:22px;font-size:.9rem;color:var(--faint);border-top:1px dashed var(--hair-2);padding-top:14px}
+.note b{color:var(--muted)}
+/* portada */
+.cover{text-align:center}
+.cover .bm{width:74px;height:74px;border-radius:16px;background:var(--steel);display:inline-grid;place-items:center;margin-bottom:22px}
+.cover .bm span{color:#fff;font-weight:800;font-family:var(--mono);font-size:1.1rem;letter-spacing:.03em}
+.cover h1{font-size:clamp(2.4rem,6vw,3.6rem);letter-spacing:-.03em;margin:0 0 12px;font-weight:800;line-height:1.02}
+.cover .sub{font-size:1.25rem;color:var(--muted);margin:0 auto 26px;max-width:44ch}
+.cover .wm{background:#fff;border:1px solid #dbe1e8;border-radius:10px;padding:8px 16px;display:inline-flex;box-shadow:0 1px 3px rgba(24,34,49,.12)}
+.cover .wm img{height:44px;width:auto;display:block}
+.cover .meta{margin-top:24px;font-size:.86rem;color:var(--faint)}
+/* diagrama */
+.dia{margin:6px 0 0;background:var(--ground);border:1px solid var(--hair);border-radius:12px;padding:16px;overflow-x:auto}
+.dia svg{display:block;width:100%;height:auto;min-width:520px;max-width:820px;margin:0 auto}
+.svg-t{font-family:var(--sans);fill:var(--ink)} .svg-mut{fill:var(--muted)} .svg-m{font-family:var(--mono)}
+/* placa breakdown */
+.plate{font-family:var(--mono);font-size:clamp(1.3rem,4vw,2rem);font-weight:800;display:flex;gap:8px;flex-wrap:wrap;align-items:center;justify-content:center;margin:8px 0 20px}
+.plate .seg{padding:6px 12px;border-radius:9px}
+.plate .s1{background:var(--hair);color:var(--muted)} .plate .s2{background:var(--ku-wash);color:var(--ku)} .plate .s3{background:var(--ti-wash);color:var(--ti)} .plate .s4{background:var(--accent-wash);color:var(--accent-ink)}
+.plate .sep{color:var(--faint);font-weight:400}
+.pgrid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;text-align:center}
+@media (max-width:640px){.pgrid{grid-template-columns:repeat(2,1fr)}}
+.pgrid div{border:1px solid var(--hair);border-radius:10px;padding:12px 8px;font-size:.86rem}
+.pgrid .t{font-family:var(--mono);font-weight:800;display:block;margin-bottom:4px}
+/* twocol */
+.two{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:14px}
+@media (max-width:640px){.two{grid-template-columns:1fr}}
+.rolebox{border:1px solid var(--hair);border-radius:12px;padding:18px}
+.rolebox.ku{border-top:4px solid var(--ku)} .rolebox.ti{border-top:4px solid var(--ti)}
+.rolebox .who{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;margin-bottom:8px}
+.rolebox.ku .who{color:var(--ku)} .rolebox.ti .who{color:var(--ti)}
+.rolebox ol{margin:0;padding-left:1.2em;font-size:.95rem} .rolebox li{margin:.3rem 0}
+/* mosaico depts */
+.mos{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-top:12px}
+@media (max-width:640px){.mos{grid-template-columns:repeat(2,1fr)}}
+.mos div{background:var(--ground);border:1px solid var(--hair);border-radius:10px;padding:12px;text-align:center}
+.mos .n{font-family:var(--mono);font-size:1.3rem;font-weight:800;color:var(--accent-ink);display:block}
+.mos .l{font-size:.78rem;color:var(--muted);margin-top:2px;display:block}
+/* ideas cierre */
+.ideas{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px}
+@media (max-width:640px){.ideas{grid-template-columns:1fr}}
+.idea{border:1px solid var(--hair);border-left:4px solid var(--accent);border-radius:10px;padding:16px 18px}
+.idea .n{font-family:var(--mono);font-weight:800;color:var(--accent-ink);font-size:.9rem}
+.idea h4{margin:4px 0 4px;font-size:1.05rem}
+.idea p{margin:0;font-size:.9rem;color:var(--muted)}
+/* nav */
+.nav{position:fixed;bottom:16px;left:50%;transform:translateX(-50%);display:flex;align-items:center;gap:6px;background:var(--paper);border:1px solid var(--hair-2);border-radius:999px;box-shadow:var(--shadow);padding:6px 8px;z-index:20}
+.nav button{border:none;background:none;color:var(--ink);font-size:1rem;cursor:pointer;padding:6px 12px;border-radius:999px;font-weight:700;font-family:var(--sans)}
+.nav button:hover{background:var(--ground)}
+.nav .ct{font-family:var(--mono);font-size:.82rem;color:var(--muted);min-width:58px;text-align:center}
+.tophint{position:fixed;top:12px;left:16px;font-size:.74rem;color:var(--faint);z-index:20;background:var(--paper);border:1px solid var(--hair);border-radius:999px;padding:4px 12px}
+.tophint a{color:var(--faint);text-decoration:none}
+@media print{
+  .deck{height:auto;overflow:visible;scroll-snap-type:none;display:block}
+  .slide{min-height:0;page-break-after:always;padding:0 0 20px;display:block}
+  .card{box-shadow:none;border:1px solid #ccc;max-width:none;break-inside:avoid}
+  .nav,.tophint{display:none!important}
+  .dia svg{min-width:0}
+}
+</style>
+</head>
+<body>
+<div class="tophint noprint"><a href="00-mapa-empieza-aqui.html">← Índice del paquete</a> · usa ← → o los botones</div>
+<div class="deck" id="deck">
+
+  <!-- 1 PORTADA -->
+  <section class="slide"><div class="card cover">
+    <span class="snum">01 / 14</span>
+    <div class="bm"><span>RSH</span></div>
+    <h1>Reportes SH 101</h1>
+    <p class="sub">Cómo nacen, corren y se publican los reportes de Steelhead.</p>
+    <a class="wm" href="https://capazconsultoria.com" target="_blank" rel="noopener" aria-label="Capaz Consultoría"><img src="assets/capaz-wordmark.png" alt="Capaz Consultoría"></a>
+    <div class="meta">Paquete de capacitación · Ecoplating · sesión 30–40 min</div>
+    <div class="meta" style="margin-top:8px">Documento elaborado por <a href="mailto:oviazcan@capazconsultoria.com" style="color:var(--accent-ink);text-decoration:none;font-weight:600">Omar Viazcán</a> · <a href="https://capazconsultoria.com" target="_blank" rel="noopener" style="color:var(--accent-ink);text-decoration:none">Capaz Consultoría</a></div>
+  </div></section>
+
+  <!-- 2 EL PROBLEMA -->
+  <section class="slide"><div class="card">
+    <span class="snum">02 / 14</span>
+    <p class="kick ku">El problema</p>
+    <h2>El dolor: los datos están, pero encerrados</h2>
+    <p class="lede">Todo lo que pasa en la planta ya vive en Steelhead. La dificultad no es capturarlo: es <em>cruzarlo</em> para decidir.</p>
+    <ul class="blist ku">
+      <li><span class="b">·</span><div>Producción, ventas, calidad, inventario… cada área guarda su parte del rompecabezas.</div></li>
+      <li><span class="b">·</span><div>Una sola pregunta que cruza dos áreas obliga a exportar, pegar en Excel y cuadrar a mano.</div></li>
+      <li><span class="b">·</span><div>Cada quien arma su propio número — y no siempre coinciden.</div></li>
+    </ul>
+    <p class="note"><b>Ejemplo real:</b> “¿cuánto facturamos de lo que produjo la línea 3 el mes pasado?” cruza producción, inventario y facturación.</p>
+  </div></section>
+
+  <!-- 3 QUÉ ES -->
+  <section class="slide"><div class="card">
+    <span class="snum">03 / 14</span>
+    <p class="kick">Qué es</p>
+    <h2>Qué es Reportes SH</h2>
+    <p class="lede">La capa de reportería <strong>a la medida</strong> de Steelhead: preguntas de negocio ya resueltas, listas para abrir.</p>
+    <ul class="blist">
+      <li><span class="b">·</span><div><strong>~102 reportes</strong> escritos sobre los datos del ERP, cada uno para una pregunta concreta.</div></li>
+      <li><span class="b">·</span><div>Se abren <strong>dentro de Steelhead</strong> — no es otro sistema que aprender.</div></li>
+      <li><span class="b">·</span><div>Con sus propios filtros: fechas, cliente, línea, turno, departamento…</div></li>
+    </ul>
+    <p class="note"><b>La idea:</b> el puente único que conecta las islas de datos, en lugar de un puente de Excel improvisado por cada quien.</p>
+  </div></section>
+
+  <!-- 4 LA GRAN IDEA -->
+  <section class="slide"><div class="card">
+    <span class="snum">04 / 14</span>
+    <p class="kick">La idea clave ⭐</p>
+    <h2>La fotografía semanal</h2>
+    <p class="lede">Los reportes <strong>no</strong> corren sobre el ERP en vivo. Corren sobre una copia congelada que se baja cada semana.</p>
+    <div class="dia">
+      <svg viewBox="0 0 760 210" role="img" aria-label="El ERP en vivo genera una fotografía semanal sobre la que corren los reportes">
+        <defs><marker id="a4" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--accent-ink)"/></marker></defs>
+        <rect x="20" y="70" width="180" height="70" rx="12" fill="var(--ti-wash)" stroke="var(--ti)"/>
+        <text x="110" y="100" class="svg-t" font-size="14" font-weight="700" text-anchor="middle">ERP Steelhead</text>
+        <text x="110" y="120" class="svg-mut" font-size="12" text-anchor="middle">en vivo</text>
+        <line x1="200" y1="105" x2="300" y2="105" stroke="var(--accent-ink)" stroke-width="2.5" marker-end="url(#a4)"/>
+        <text x="250" y="94" class="svg-t" font-size="11" text-anchor="middle" font-weight="700">1 · foto</text>
+        <text x="250" y="126" class="svg-mut" font-size="10.5" text-anchor="middle">semanal</text>
+        <rect x="300" y="60" width="180" height="90" rx="12" fill="var(--accent-wash)" stroke="var(--accent)"/>
+        <text x="390" y="92" class="svg-t" font-size="14" font-weight="700" text-anchor="middle">Copia congelada</text>
+        <text x="390" y="112" class="svg-mut" font-size="12" text-anchor="middle">un solo archivo</text>
+        <text x="390" y="132" class="svg-mut" font-size="11" text-anchor="middle">🔒 solo lectura</text>
+        <line x1="480" y1="105" x2="580" y2="105" stroke="var(--accent-ink)" stroke-width="2.5" marker-end="url(#a4)"/>
+        <text x="530" y="94" class="svg-t" font-size="11" text-anchor="middle" font-weight="700">2 · corren</text>
+        <rect x="580" y="70" width="160" height="70" rx="12" fill="var(--paper)" stroke="var(--hair-2)"/>
+        <text x="660" y="100" class="svg-t" font-size="14" font-weight="700" text-anchor="middle">~102</text>
+        <text x="660" y="120" class="svg-mut" font-size="12" text-anchor="middle">reportes</text>
+      </svg>
+    </div>
+    <p class="note"><b>Metáfora:</b> el supervisor toma una <strong>foto del estado de las tinas</strong> al cierre de turno y la analiza con calma, sin parar la línea. <b>Consecuencia:</b> un dato “de hoy” aparece hasta la próxima foto — es un intercambio a propósito.</p>
+  </div></section>
+
+  <!-- 5 POR QUÉ ASÍ -->
+  <section class="slide"><div class="card">
+    <span class="snum">05 / 14</span>
+    <p class="kick">Por qué así</p>
+    <h2>Por qué sobre una copia y no en vivo</h2>
+    <ul class="blist">
+      <li><span class="b">·</span><div><strong>Consultas pesadas</strong> sin frenar la operación: la foto aguanta cálculos que en vivo estorbarían.</div></li>
+      <li><span class="b">·</span><div><strong>Solo lectura:</strong> es imposible alterar un dato del ERP por accidente desde un reporte.</div></li>
+      <li><span class="b">·</span><div><strong>Todos ven la misma foto:</strong> los números coinciden entre áreas, no hay “tu Excel contra el mío”.</div></li>
+    </ul>
+    <p class="note"><b>Contraste:</b> exportar a Excel cada quien por su lado hace que cada copia envejezca distinto. La foto es una sola, fechada y compartida.</p>
+  </div></section>
+
+  <!-- 6 EL CICLO -->
+  <section class="slide"><div class="card">
+    <span class="snum">06 / 14</span>
+    <p class="kick ti">El ciclo</p>
+    <h2>De la foto al reporte publicado</h2>
+    <p class="lede">Un reporte nace en tres pasos. El consumidor no ve ninguno: solo abre el resultado y filtra.</p>
+    <div class="dia">
+      <svg viewBox="0 0 760 150" role="img" aria-label="Ciclo: bajar la foto, escribir la consulta, publicar en Steelhead">
+        <defs><marker id="a6" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--ti)"/></marker></defs>
+        <rect x="20" y="45" width="200" height="62" rx="12" fill="var(--ti-wash)" stroke="var(--ti)"/>
+        <text x="120" y="72" class="svg-t" font-size="13.5" font-weight="700" text-anchor="middle">1 · Bajar la foto</text>
+        <text x="120" y="92" class="svg-mut" font-size="11.5" text-anchor="middle">(pull)</text>
+        <line x1="220" y1="76" x2="278" y2="76" stroke="var(--ti)" stroke-width="2.5" marker-end="url(#a6)"/>
+        <rect x="280" y="45" width="200" height="62" rx="12" fill="var(--paper)" stroke="var(--hair-2)"/>
+        <text x="380" y="72" class="svg-t" font-size="13.5" font-weight="700" text-anchor="middle">2 · Escribir/afinar</text>
+        <text x="380" y="92" class="svg-mut" font-size="11.5" text-anchor="middle">verificar que dé lo correcto</text>
+        <line x1="480" y1="76" x2="538" y2="76" stroke="var(--ti)" stroke-width="2.5" marker-end="url(#a6)"/>
+        <rect x="540" y="45" width="200" height="62" rx="12" fill="var(--accent-wash)" stroke="var(--accent)"/>
+        <text x="640" y="72" class="svg-t" font-size="13.5" font-weight="700" text-anchor="middle">3 · Publicar</text>
+        <text x="640" y="92" class="svg-mut" font-size="11.5" text-anchor="middle">(push) → Steelhead</text>
+      </svg>
+    </div>
+    <p class="note"><b>Metáfora:</b> <em>pull</em> = recoger las fotos reveladas del laboratorio; <em>push</em> = colgar el reporte terminado en el tablero de la línea, para que todos lo consulten.</p>
+  </div></section>
+
+  <!-- 7 LA PLACA -->
+  <section class="slide"><div class="card">
+    <span class="snum">07 / 14</span>
+    <p class="kick ku">Cómo se nombra</p>
+    <h2>La placa del reporte</h2>
+    <div class="plate">
+      <span class="seg s1">RPT</span><span class="sep">-</span><span class="seg s2">PRD</span><span class="sep">-</span><span class="seg s3">ANL</span><span class="sep">-</span><span class="seg s4">17</span>
+    </div>
+    <div class="pgrid">
+      <div><span class="t" style="color:var(--muted)">RPT</span>Reporte oficial</div>
+      <div><span class="t" style="color:var(--ku)">PRD</span>Departamento dueño</div>
+      <div><span class="t" style="color:var(--ti)">ANL</span>Tipo de reporte</div>
+      <div><span class="t" style="color:var(--accent-ink)">17</span>Consecutivo</div>
+    </div>
+    <p class="note"><b>Los tres tipos:</b> <strong>Catálogo</strong> (una lista) · <strong>Analítica</strong> (un cubo por fechas) · <strong>Control</strong> (cumple / no cumple). <b>Metáfora:</b> la <strong>placa/matrícula</strong> — igual que una tina lleva su placa <code>T203-TI00-011</code>, cada reporte lleva la suya y se ubica sin abrirlo.</p>
+  </div></section>
+
+  <!-- 8 REPORTE VISTA DASHBOARD -->
+  <section class="slide"><div class="card">
+    <span class="snum">08 / 14</span>
+    <p class="kick">De qué está hecho</p>
+    <h2>Reporte, vista y dashboard</h2>
+    <div class="dia">
+      <svg viewBox="0 0 760 150" role="img" aria-label="Un reporte es el cubo de datos; la vista es una forma de mirarlo; el dashboard junta varias vistas">
+        <defs><marker id="a8" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--accent-ink)"/></marker></defs>
+        <rect x="20" y="45" width="200" height="62" rx="12" fill="var(--accent-wash)" stroke="var(--accent)"/>
+        <text x="120" y="72" class="svg-t" font-size="13.5" font-weight="700" text-anchor="middle">Reporte</text>
+        <text x="120" y="92" class="svg-mut" font-size="11.5" text-anchor="middle">el cubo de datos</text>
+        <line x1="220" y1="76" x2="278" y2="76" stroke="var(--accent-ink)" stroke-width="2.5" marker-end="url(#a8)"/>
+        <rect x="280" y="45" width="200" height="62" rx="12" fill="var(--paper)" stroke="var(--hair-2)"/>
+        <text x="380" y="72" class="svg-t" font-size="13.5" font-weight="700" text-anchor="middle">Vista</text>
+        <text x="380" y="92" class="svg-mut" font-size="11.5" text-anchor="middle">tabla · barras · mapa de calor</text>
+        <line x1="480" y1="76" x2="538" y2="76" stroke="var(--accent-ink)" stroke-width="2.5" marker-end="url(#a8)"/>
+        <rect x="540" y="45" width="200" height="62" rx="12" fill="var(--ti-wash)" stroke="var(--ti)"/>
+        <text x="640" y="72" class="svg-t" font-size="13.5" font-weight="700" text-anchor="middle">Dashboard</text>
+        <text x="640" y="92" class="svg-mut" font-size="11.5" text-anchor="middle">varias vistas en un tablero</text>
+      </svg>
+    </div>
+    <p class="note"><b>Un filtro</b> (dropdown: cliente, línea, turno…) acota lo que muestra el reporte. Hoy hay ~73 vistas y 3 dashboards — el detalle, en el <a href="inventario-reportes.html">Inventario</a>.</p>
+  </div></section>
+
+  <!-- 9 PLANTAS GEMELAS -->
+  <section class="slide"><div class="card">
+    <span class="snum">09 / 14</span>
+    <p class="kick ti">Dos plantas</p>
+    <h2>Plantas gemelas: TLC y MTY</h2>
+    <p class="lede">Hay dos plantas en el sistema, y <strong>todo reporte existe igual en las dos</strong>.</p>
+    <div class="two">
+      <div class="rolebox ti"><div class="who">TLC · Tlalnepantla</div><p style="margin:0;font-size:.95rem;color:var(--muted)">La planta <strong>veterana</strong>: años de historial, todos los catálogos poblados.</p></div>
+      <div class="rolebox ku"><div class="who">MTY · Monterrey</div><p style="margin:0;font-size:.95rem;color:var(--muted)">La planta <strong>nueva</strong>: apenas en arranque. Un reporte “vacío” aquí casi siempre es eso — no un error.</p></div>
+    </div>
+    <p class="note"><b>Metáfora:</b> <strong>plantas gemelas</strong> de diseño idéntico, una con años de operación y otra recién instalada. <b>Para TI:</b> un cambio en una planta se aplica también en la otra, siempre.</p>
+  </div></section>
+
+  <!-- 10 LLAVE Y CERRADURA -->
+  <section class="slide"><div class="card">
+    <span class="snum">10 / 14</span>
+    <p class="kick ti">La conexión con el ERP</p>
+    <h2>Llaves y cerraduras</h2>
+    <p class="lede">Para bajar la foto y publicar reportes, el sistema le habla a Steelhead con <strong>llaves</strong>.</p>
+    <ul class="blist ti">
+      <li><span class="b">·</span><div>Cada operación contra el ERP se abre con una <strong>llave</strong> (en lo técnico, un <em>hash</em>).</div></li>
+      <li><span class="b">·</span><div>Cuando Steelhead se actualiza, <strong>cambia la cerradura</strong>: la llave vieja deja de abrir.</div></li>
+      <li><span class="b">·</span><div>Se recupera la llave nueva y se sigue trabajando — mantenimiento de rutina, invisible para el consumidor.</div></li>
+    </ul>
+    <p class="note"><b>Metáfora:</b> la <strong>llave y la cerradura</strong> — la misma que usan los otros sistemas de la familia Steelhead. El detalle vive en el Manual del Administrador.</p>
+  </div></section>
+
+  <!-- 11 BANCO VS LINEA -->
+  <section class="slide"><div class="card">
+    <span class="snum">11 / 14</span>
+    <p class="kick ti">Los temas delicados</p>
+    <h2>Cuando el banco de pruebas engaña</h2>
+    <p class="lede">Un reporte puede salir <strong>perfecto en la copia local</strong> y aun así aparecer vacío en Steelhead. Por eso se verifica en vivo.</p>
+    <ul class="blist ti">
+      <li><span class="b">✓</span><div><strong>Banco de pruebas</strong> (copia local): el reporte da sus miles de filas.</div></li>
+      <li><span class="b">✗</span><div><strong>Línea real</strong> (Steelhead): 0 filas. Causas típicas: la <strong>ventana de fechas</strong> corría un día de más; ciertos números “demasiado grandes” no viajaban al reporte.</div></li>
+    </ul>
+    <p class="note"><b>Metáfora:</b> el banco de pruebas no reproduce todas las condiciones de la planta; algunas fallas solo aparecen al calibrar en producción. Hay una <a href="ficha-ventana-fechas.html">ficha profunda</a> dedicada a la ventana de fechas — el bug que tocó 53 reportes.</p>
+  </div></section>
+
+  <!-- 12 PANORAMA -->
+  <section class="slide"><div class="card">
+    <span class="snum">12 / 14</span>
+    <p class="kick">Panorama</p>
+    <h2>Todo lo que cubre, de un vistazo</h2>
+    <div class="mos">
+      <div><span class="n">20</span><span class="l">Producción</span></div>
+      <div><span class="n">17</span><span class="l">Ingeniería</span></div>
+      <div><span class="n">11</span><span class="l">Ventas</span></div>
+      <div><span class="n">9</span><span class="l">Almacén</span></div>
+      <div><span class="n">8</span><span class="l">Calidad</span></div>
+      <div><span class="n">8</span><span class="l">Compras</span></div>
+      <div><span class="n">8</span><span class="l">Mantenimiento</span></div>
+      <div><span class="n">7</span><span class="l">Contabilidad</span></div>
+    </div>
+    <p class="note">Y más: RRHH, Sistemas, Cuentas por Cobrar/Pagar, Laboratorio, Procesos. <b>~102 reportes en 14 departamentos</b> — la lista completa, en el <a href="inventario-reportes.html">Inventario vivo</a>.</p>
+  </div></section>
+
+  <!-- 13 TU RUTA -->
+  <section class="slide"><div class="card">
+    <span class="snum">13 / 14</span>
+    <p class="kick">Cómo seguir</p>
+    <h2>Tu ruta según tu rol</h2>
+    <div class="two">
+      <div class="rolebox ku">
+        <div class="who">Consumidor de reportes</div>
+        <ol><li>Manual del Operador</li><li>Ficha: Cliente combinado</li><li>Esta presentación (101)</li></ol>
+      </div>
+      <div class="rolebox ti">
+        <div class="who">Jefe de TI · Administrador</div>
+        <ol><li>Esta presentación (101)</li><li>Manual del Administrador</li><li>Ficha: La ventana de fechas</li></ol>
+      </div>
+    </div>
+    <p class="note">De consulta para ambos: <strong>Inventario</strong> y <strong>Glosario</strong>. Todo está en el documento <a href="00-mapa-empieza-aqui.html">“Empieza aquí”</a>, que es el índice.</p>
+  </div></section>
+
+  <!-- 14 CIERRE -->
+  <section class="slide"><div class="card">
+    <span class="snum">14 / 14</span>
+    <p class="kick">Para llevarse</p>
+    <h2>Cuatro ideas para llevarse</h2>
+    <div class="ideas">
+      <div class="idea"><span class="n">01</span><h4>La fotografía semanal</h4><p>Los reportes corren sobre una copia congelada del ERP, de solo lectura.</p></div>
+      <div class="idea"><span class="n">02</span><h4>Bajar → escribir → publicar</h4><p>El ciclo con que nace cada reporte, invisible para quien lo consume.</p></div>
+      <div class="idea"><span class="n">03</span><h4>Plantas gemelas</h4><p>Todo reporte existe igual en TLC y MTY, siempre sincronizado.</p></div>
+      <div class="idea"><span class="n">04</span><h4>Banco vs. línea real</h4><p>Se verifica en vivo, porque el banco de pruebas a veces engaña.</p></div>
+    </div>
+    <p class="note">¿Quieres el detalle fino? Las <strong>fichas profundas</strong> y los <strong>manuales</strong> te esperan en el índice del paquete.</p>
+  </div></section>
+
+</div>
+
+<nav class="nav noprint" aria-label="Navegación de la presentación">
+  <button id="prev" aria-label="Anterior">◀</button>
+  <span class="ct" id="ct">1 / 14</span>
+  <button id="next" aria-label="Siguiente">▶</button>
+</nav>
+
+<script>
+(function(){
+  var deck=document.getElementById('deck');
+  var slides=[].slice.call(deck.querySelectorAll('.slide'));
+  var ct=document.getElementById('ct'), cur=0;
+  function go(i){cur=Math.max(0,Math.min(slides.length-1,i));slides[cur].scrollIntoView({behavior:'smooth'});update();}
+  function update(){ct.textContent=(cur+1)+' / '+slides.length;}
+  document.getElementById('prev').onclick=function(){go(cur-1)};
+  document.getElementById('next').onclick=function(){go(cur+1)};
+  document.addEventListener('keydown',function(e){
+    if(e.key==='ArrowRight'||e.key==='PageDown'){e.preventDefault();go(cur+1);}
+    else if(e.key==='ArrowLeft'||e.key==='PageUp'){e.preventDefault();go(cur-1);}
+    else if(e.key==='Home'){e.preventDefault();go(0);}
+    else if(e.key==='End'){e.preventDefault();go(slides.length-1);}
+  });
+  // sincroniza el contador con el scroll manual
+  var io=new IntersectionObserver(function(es){es.forEach(function(en){if(en.isIntersecting){cur=slides.indexOf(en.target);update();}});},{threshold:0.6});
+  slides.forEach(function(s){io.observe(s);});
+})();
+</script>
+</body>
+</html>

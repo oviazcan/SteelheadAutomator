@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Onboarding de Desarrollo — Reportes SH</title>
+<style>
+:root{
+  --ground:#f7f9fb;--paper:#ffffff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;
+  --hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;
+  --ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;
+  --warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7;
+  --shadow:0 1px 2px rgba(24,34,49,.05),0 6px 20px -8px rgba(24,34,49,.12);
+  --measure:68ch;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){:root{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512;--shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -10px rgba(0,0,0,.5)}}
+:root[data-theme="light"]{--ground:#f7f9fb;--paper:#fff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;--hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;--ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;--warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7}
+:root[data-theme="dark"]{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.62;-webkit-font-smoothing:antialiased}
+.wrap{max-width:920px;margin:0 auto;padding:0 24px 96px}
+.measure{max-width:var(--measure)}
+.masthead{border-bottom:2px solid var(--ti);padding:40px 0 22px}
+.brandbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.brandmark{width:28px;height:28px;border-radius:6px;background:var(--steel);display:grid;place-items:center;flex:0 0 auto}
+.brandmark span{color:#fff;font-weight:800;font-size:.72rem;font-family:var(--mono)}
+.brandname{font-weight:700;letter-spacing:.02em;font-size:.95rem}
+.brandname em{color:var(--accent-ink);font-style:normal}
+.eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.14em;color:var(--ti);font-weight:800;margin:0 0 10px}
+.masthead h1{font-size:clamp(2rem,4.6vw,2.7rem);line-height:1.06;letter-spacing:-.02em;margin:0 0 10px;font-weight:800;text-wrap:balance}
+.masthead .sub{font-size:1.12rem;color:var(--muted);margin:0;max-width:60ch}
+.audchips{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.audchip{font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.05em}
+.audchip.ti{background:var(--ti-wash);color:var(--ti)} .audchip.p{background:var(--ti-wash);color:var(--ti)}
+.tldr{background:var(--paper);border:1px solid var(--hair);border-left:4px solid var(--ti);border-radius:12px;padding:20px 22px;margin:26px 0;box-shadow:var(--shadow)}
+.tldr .ct{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--ti);margin:0 0 8px}
+.tldr p{margin:0;font-size:1.05rem;max-width:none}
+h2.sec{font-size:1.5rem;letter-spacing:-.01em;margin:54px 0 4px;font-weight:800;text-wrap:balance}
+h2.sec .num{font-family:var(--mono);font-size:.85rem;color:var(--ti);font-weight:700;border:1px solid var(--hair-2);border-radius:6px;padding:1px 7px;margin-right:10px;vertical-align:.15em}
+h3.sub{font-size:1.16rem;margin:32px 0 6px;letter-spacing:-.01em;font-weight:700}
+.sec-lead{color:var(--muted);margin:.4rem 0 1.2rem;max-width:var(--measure)}
+p{margin:0 0 1rem;max-width:var(--measure)}
+a{color:var(--accent-ink);text-underline-offset:2px}
+code{font-family:var(--mono);font-size:.85em;background:var(--hair);padding:1px 5px;border-radius:5px;word-break:break-word}
+pre{background:var(--paper);border:1px solid var(--hair);border-left:4px solid var(--steel);border-radius:10px;padding:14px 16px;overflow-x:auto;box-shadow:var(--shadow);font-family:var(--mono);font-size:.82rem;line-height:1.5;margin:18px 0}
+pre code{background:none;padding:0;font-size:1em}
+.tok-c{color:var(--faint)} .tok-k{color:var(--ti);font-weight:600} .tok-f{color:var(--accent-ink);font-weight:600} .tok-s{color:var(--ku)}
+ul,ol{max-width:var(--measure);padding-left:1.25em} li{margin:.35rem 0}
+strong{font-weight:700}
+figure.diagram{margin:26px 0;background:var(--paper);border:1px solid var(--hair);border-radius:14px;padding:20px 18px 8px;box-shadow:var(--shadow);overflow-x:auto}
+figure.diagram svg{display:block;width:100%;height:auto;min-width:600px;max-width:840px;margin:0 auto}
+figure.diagram figcaption{font-size:.85rem;color:var(--faint);text-align:center;margin-top:10px;padding:0 8px 6px}
+.svg-t{font-family:var(--sans);fill:var(--ink)} .svg-m{font-family:var(--mono)} .svg-mut{fill:var(--muted)}
+.callout{border-radius:10px;padding:15px 17px 15px 48px;position:relative;margin:22px 0;font-size:.95rem;border:1px solid var(--hair);background:var(--paper)}
+.callout .ct{font-weight:800;margin:0 0 4px;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em}
+.callout p{max-width:none;margin:.3rem 0 0}
+.callout::before{position:absolute;left:15px;top:14px;font-size:1.15rem;line-height:1}
+.callout.meta{border-left:4px solid var(--steel);background:color-mix(in srgb,var(--steel) 6%,var(--paper))} .callout.meta .ct{color:var(--steel)} .callout.meta::before{content:"💡"}
+.callout.info{border-left:4px solid var(--ti);background:var(--ti-wash)} .callout.info .ct{color:var(--ti)} .callout.info::before{content:"ℹ";color:var(--ti);font-weight:800}
+.callout.warn{border-left:4px solid var(--warn);background:var(--warn-wash)} .callout.warn .ct{color:var(--warn)} .callout.warn::before{content:"⚠"}
+.callout.danger{border-left:4px solid var(--danger);background:var(--danger-wash)} .callout.danger .ct{color:var(--danger)} .callout.danger::before{content:"⛔"}
+.callout.tip{border-left:4px solid var(--accent);background:var(--accent-wash)} .callout.tip .ct{color:var(--accent-ink)} .callout.tip::before{content:"✓";color:var(--accent-ink);font-weight:800}
+.stages{list-style:none;padding:0;margin:24px 0;display:flex;flex-direction:column;gap:2px}
+.stages li{display:grid;grid-template-columns:44px 1fr;gap:16px;padding:16px 0;border-bottom:1px solid var(--hair);align-items:start}
+.stages li:last-child{border-bottom:none}
+.stages .k{width:38px;height:38px;border-radius:9px;background:var(--ti);color:#fff;display:grid;place-items:center;font-weight:800;font-family:var(--mono);font-size:1rem}
+.stages h4{margin:0 0 3px;font-size:1.08rem}
+.stages p{margin:0;font-size:.94rem;color:var(--muted);max-width:none}
+.tablewrap{overflow-x:auto;border:1px solid var(--hair);border-radius:12px;box-shadow:var(--shadow);margin:20px 0}
+table{border-collapse:collapse;width:100%;font-size:.9rem;background:var(--paper);min-width:520px}
+thead th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:700;padding:11px 14px;border-bottom:2px solid var(--hair-2);background:var(--ground)}
+tbody td{padding:11px 14px;border-bottom:1px solid var(--hair);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+.roles{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:26px 0}
+@media (max-width:760px){.roles{grid-template-columns:1fr}}
+.role{border-radius:12px;padding:20px;border:1px solid var(--hair);background:var(--paper);box-shadow:var(--shadow)}
+.role.ti{border-top:4px solid var(--ti)} .role.ku{border-top:4px solid var(--ku)}
+.role .who{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;margin-bottom:6px}
+.role.ti .who{color:var(--ti)} .role.ku .who{color:var(--ku)}
+.role p{margin:0;font-size:.93rem;max-width:none}
+.foot{margin-top:64px;padding-top:22px;border-top:1px solid var(--hair-2);color:var(--faint);font-size:.85rem;display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:999px}
+.badge.perenne{background:var(--ti-wash);color:var(--ti)} .badge.perenne::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+@media print{:root{--ground:#fff;--paper:#fff;--shadow:none}body{font-size:11.5pt}.wrap{max-width:none;padding:0}figure.diagram,.callout,.tablewrap,.role,.stages li,pre{break-inside:avoid}figure.diagram svg{min-width:0}h2.sec,h3.sub{break-after:avoid}a{color:var(--ink);text-decoration:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brandbar">
+      <span class="brandmark"><span>RSH</span></span>
+      <span class="brandname">Reportes<em>SH</em> · Onboarding de Desarrollo</span>
+      <a href="00-mapa-empieza-aqui.html" style="margin-left:auto;font-size:.82rem;color:var(--faint);text-decoration:none;white-space:nowrap">← Índice del paquete</a>
+    </div>
+    <p class="eyebrow">Desarrollo · Windows + Mac</p>
+    <h1>Onboarding de Desarrollo</h1>
+    <p class="sub">Monta el entorno y echa a andar el pipeline de Reportes SH en una máquina nueva — Windows o Mac — para poder mantenerlo y evolucionarlo.</p>
+    <div class="audchips">
+      <span class="audchip ti">Desarrollo</span>
+      <span class="audchip p">Documento perenne</span>
+    </div>
+  </header>
+
+  <div class="tldr measure" style="max-width:none">
+    <p class="ct">00 · En resumen</p>
+    <p>Vas a clonar el repo, instalar tres tipos de dependencias de Python, configurar un <code>.env</code> con credenciales del ERP Steelhead, bajar tu propia "fotografía" DuckDB, y correr un query de prueba. Con eso, tu máquina queda lista para <strong>consultar</strong> datos, correr las pruebas y — cuando toque — <strong>publicar</strong> reportes en los dos tenants (TLC y MTY). Cuenta <strong>~30–45 minutos</strong> para tener <code>verify_handover.py</code> en verde (clonar, instalar, configurar <code>.env</code>, autenticarte), más <strong>~10–20 minutos extra</strong> si generas tu propia fotografía DuckDB desde cero (~5–10 min por tenant). Fuente: <code>ONBOARDING.md</code> §2 y <code>TRANSFER.md</code> §2.1 de la raíz del repo.</p>
+  </div>
+
+  <!-- ============ 01 PANORAMA ============ -->
+  <h2 class="sec"><span class="num">01</span>Panorama del repo</h2>
+  <p class="sec-lead measure">Cuatro líneas antes de tocar nada — el modelo mental completo vive en la <a href="101-deck.html">Presentación 101</a>, no aquí.</p>
+  <p class="measure"><strong>Reportes SH</strong> es el pipeline que conecta el ERP <strong>Steelhead</strong> (multi-tenant: TLC y MTY) con un layer de SQL refactorizado y vistas Perspective oficiales. Cada semana <strong>baja una fotografía completa</strong> de los datos del ERP a un archivo <code>.duckdb</code> local; sobre esa fotografía corren los <code>query_*.sql</code> del repo (~89 reportes oficiales, código <code>RPT-&lt;DEP&gt;-&lt;TIPO&gt;-&lt;NN&gt;</code>); y los scripts de <code>scripts/</code> se encargan de <strong>bajar (pull)</strong> y <strong>subir (push)</strong> reportes y vistas de vuelta a Steelhead, manteniendo TLC y MTY sincronizados. El repo vive en la <strong>Capa 5</strong> de la arquitectura Ecoplating — ver <code>docs/gobernanza.md</code>.</p>
+
+  <!-- ============ 02 PREREQUISITOS ============ -->
+  <h2 class="sec"><span class="num">02</span>Prerequisitos por sistema operativo</h2>
+  <p class="sec-lead measure">Soportados: macOS, Linux y Windows 10/11. La tabla cubre Mac y Windows — los dos escenarios que este documento detalla paso a paso.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Requisito</th><th>macOS</th><th>Windows</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Python</strong></td><td><code>python3 ≥ 3.9</code> (con el sistema o vía Homebrew/python.org).</td><td><code>python ≥ 3.9</code> desde <a href="https://www.python.org/downloads/windows/" target="_blank" rel="noopener">python.org</a> — marca "Add python.exe to PATH" al instalar. <strong>No</strong> uses la versión de Microsoft Store (limita <code>pip --user</code>).</td></tr>
+        <tr><td><strong>Git</strong></td><td>Xcode Command Line Tools (ya trae <code>git</code>) o Homebrew.</td><td><strong>Git for Windows ≥ 2.40</strong> — de una vez instala Git Bash, que es el shell que necesitas (fila siguiente).</td></tr>
+        <tr><td><strong>Shell</strong></td><td>Terminal con <code>zsh</code>/<code>bash</code> — corre los <code>.sh</code> nativo.</td><td><strong>Git Bash</strong> (viene con Git for Windows). <code>weekly_snapshot.sh</code> autodetecta <code>python3</code>/<code>python</code>/<code>py</code>, pero necesita un shell tipo bash — <strong>no</strong> corre desde <code>cmd</code> ni PowerShell.</td></tr>
+        <tr><td><strong>Acceso</strong></td><td colspan="2">Acceso al repositorio (<code>https://github.com/oviazcan/Reportes-SH</code>) + cuenta autorizada en <code>https://app.gosteelhead.com</code> en <strong>ambos</strong> tenants (TLC y MTY).</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout warn measure" style="max-width:none">
+    <p class="ct">Trampa de entorno conocida en Mac (intérprete equivocado)</p>
+    <p>Si <code>python3</code> en tu Mac apunta a una instalación muy reciente (por ejemplo Homebrew con una versión nueva de Python) y ves <code>ModuleNotFoundError: No module named 'duckdb'</code> al correr cualquier script del repo, es porque el paquete <code>duckdb</code> no está instalado ahí — o no hay wheel publicado todavía para esa versión de Python. La salida documentada en <code>CLAUDE.md</code>: usar el intérprete de sistema en <strong><code>/usr/bin/python3</code></strong> (el que trae macOS con las Command Line Tools, típicamente 3.9.6), anteponiéndolo a cualquier comando del repo — por ejemplo <code>/usr/bin/python3 run_query.py query.sql</code>. Aplica igual a los scripts de <code>scripts/</code>.</p>
+  </div>
+
+  <!-- ============ 03 CLONAR E INSTALAR ============ -->
+  <h2 class="sec"><span class="num">03</span>Clonar e instalar</h2>
+
+  <ol class="stages">
+    <li><span class="k">1</span><div><h4>Clonar el repo</h4><p>En Windows, ábrelo directo en Git Bash y clona en una ruta corta y sin espacios si puedes (Git Bash acepta forward slashes: <code>C:/repos/Reportes-SH</code>). Con espacios funciona, pero hay que entrecomillar todos los comandos.</p></div></li>
+        <li><span class="k">2</span><div><h4>Paquetes runtime de <code>scripts/</code></h4><p>Los scripts de sincronización (<code>pull_reports.py</code>, <code>push_query.py</code>, <code>regenerate_duckdb.py</code>, <code>run_query.py</code>…) necesitan tres paquetes que <strong>no</strong> vienen en <code>requirements.txt</code> — se instalan aparte, tal como documenta <code>ONBOARDING.md</code> §2.2.</p></div></li>
+    <li><span class="k">3</span><div><h4>Herramientas de documentación y pruebas (opcional según lo que vayas a tocar)</h4><p><code>requirements.txt</code> / <code>requirements-dev.txt</code> cubren el renderizador de estos documentos (<code>scripts/render_docs.py</code>) y la suite de <code>pytest</code> — instálalos si vas a correr pruebas o a tocar <code>docs/training/</code>.</p></div></li>
+  </ol>
+
+  <pre><code><span class="tok-c"># macOS / Linux</span>
+git clone https://github.com/oviazcan/Reportes-SH.git "Reportes SH"
+cd "Reportes SH"
+
+<span class="tok-c"># paso 2 — paquetes runtime de scripts/ (NO están en requirements.txt)</span>
+python3 -m pip install --user requests duckdb cryptography
+
+<span class="tok-c"># paso 3 — herramientas de documentación + pruebas (opcional)</span>
+python3 -m pip install -r requirements.txt
+python3 -m pip install -r requirements-dev.txt</code></pre>
+
+  <pre><code><span class="tok-c"># Windows (Git Bash) — mismo flujo, sustituyendo python3 → python</span>
+git clone https://github.com/oviazcan/Reportes-SH.git "Reportes SH"
+cd "Reportes SH"
+
+python -m pip install --user requests duckdb cryptography
+python -m pip install -r requirements.txt
+python -m pip install -r requirements-dev.txt</code></pre>
+
+  <div class="callout warn measure" style="max-width:none">
+    <p class="ct">Documentación desactualizada detectada (23 jul 2026)</p>
+    <p><code>ONBOARDING.md</code> (última revisión 2026-06-16) dice: <em>"El repo no usa <code>requirements.txt</code> porque el set es mínimo y estable"</em>. Eso ya no es exacto — <code>requirements.txt</code> y <code>requirements-dev.txt</code> sí existen hoy (se agregaron después, commit <code>"build: deps para conversión MD→HTML"</code>), pero cubren <strong>únicamente</strong> el renderizador de documentación y las pruebas — <strong>no</strong> los paquetes runtime de <code>scripts/</code> (<code>requests</code>, <code>duckdb</code>, <code>cryptography</code>), que siguen instalándose aparte como en el paso 2 de arriba. Vale la pena avisarle a quien mantenga <code>ONBOARDING.md</code> para que se actualice esa línea.</p>
+  </div>
+
+  <!-- ============ 04 .ENV ============ -->
+  <h2 class="sec"><span class="num">04</span>Configurar el <code>.env</code></h2>
+  <p class="sec-lead measure">Todos los secretos del repo viven en <code>.env</code> — nunca en código, nunca en un commit.</p>
+
+  <pre><code>cp .env.example .env</code></pre>
+
+  <p class="measure">Abre <code>.env</code> y llena las variables. Ninguna se genera sola — todas salen de iniciar sesión en el ERP y capturarlas desde DevTools del navegador; el procedimiento exacto (con los dos modos posibles, cookie o refresh token) está en <code>scripts/README.md</code> § Setup.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Variable</th><th>Qué es</th><th>Notas</th></tr></thead>
+      <tbody>
+        <tr><td><code>STEELHEAD_COOKIE_STRING</code></td><td>Header <code>Cookie:</code> de la sesión del navegador en <code>app.gosteelhead.com</code>.</td><td><strong>Secreto.</strong> Se auto-renueva cada vez que un script corre (keep-alive) y se reescribe sola de vuelta al <code>.env</code>. Usa <strong>una</strong> de las dos credenciales de auth (esta o la de abajo).</td></tr>
+        <tr><td><code>STEELHEAD_REFRESH_TOKEN</code></td><td>OAuth2 refresh token de Authentik (<code>auth.gosteelhead.com</code>).</td><td><strong>Secreto.</strong> Estrategia <em>renewable</em>: cada uso lo renueva, no caduca mientras se use.</td></tr>
+        <tr><td><code>STEELHEAD_DOMAIN_TLC</code> / <code>STEELHEAD_DOMAIN_MTY</code></td><td>nanoID de cada tenant (lo que Steelhead manda como <code>?domainNanoId=…</code>).</td><td>No es secreto — es un identificador de tenant, ya viene precargado en <code>.env.example</code>.</td></tr>
+        <tr><td><code>STEELHEAD_DEFAULT_DOMAIN</code></td><td>Cuál dominio usar si un script no recibe <code>--domain</code>.</td><td>Texto: <code>tlc</code> o <code>mty</code>.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout danger measure" style="max-width:none">
+    <p class="ct">Nunca expongas valores reales</p>
+    <p><code>.env</code> está en <code>.gitignore</code> — jamás lo commitees, ni pegues su contenido en un chat, ticket o log. Si un secreto se filtra (cookie o refresh token), rótalo de inmediato: cierra sesión en Steelhead/Authentik, vuelve a entrar, y recaptura el valor nuevo (procedimiento en <code>ONBOARDING.md</code> §3).</p>
+  </div>
+
+  <!-- ============ 05 PRIMER HUMO ============ -->
+  <h2 class="sec"><span class="num">05</span>Primer humo: correr un query local</h2>
+  <p class="sec-lead measure">La prueba mínima de que tu entorno sirve: correr cualquier <code>query_*.sql</code> del repo contra el <code>.duckdb</code> más reciente.</p>
+
+  <pre><code><span class="tok-c"># macOS / Linux</span>
+python3 run_query.py query_facturacion.sql
+
+<span class="tok-c"># si truena con ModuleNotFoundError: No module named 'duckdb' (trampa del §02)</span>
+/usr/bin/python3 run_query.py query_facturacion.sql
+
+<span class="tok-c"># Windows (Git Bash)</span>
+python run_query.py query_facturacion.sql</code></pre>
+
+  <p class="measure"><code>run_query.py</code> auto-detecta el <code>.duckdb</code> más reciente del dominio default en <code>steelhead_snapshot/&lt;dominio&gt;/duckdb/</code>, y abre la conexión en modo <strong>read-only</strong> — ningún query del repo puede escribir sobre la fotografía. Debe imprimir filas de resultado sin errores.</p>
+
+  <div class="callout info measure" style="max-width:none">
+    <p class="ct">Si es tu primera vez en la máquina</p>
+    <p>Un clon nuevo <strong>no trae ningún <code>.duckdb</code></strong> (están en <code>.gitignore</code> por su tamaño). Si <code>run_query.py</code> no encuentra ninguno, es normal — genera tu primera fotografía con el §06 de abajo y vuelve a correr el query.</p>
+  </div>
+
+  <!-- ============ 06 FOTOGRAFIA ============ -->
+  <h2 class="sec"><span class="num">06</span>Bajar la fotografía (pull / regen)</h2>
+  <p class="sec-lead measure">Dos comandos generan tu copia local: uno baja los reportes y vistas tal como viven hoy en Steelhead, el otro genera el <code>.duckdb</code> con los datos.</p>
+
+  <ol class="stages">
+    <li><span class="k">1</span><div><h4>Bajar reportes y vistas (snapshot reverso)</h4><p><code>python3 scripts/pull_reports.py --domain tlc</code> (o <code>--domain all</code> para los dos tenants). Deja <code>steelhead_snapshot/&lt;dom&gt;/</code> con <code>index.json</code>, <code>reports/</code> y <code>perspective_configs/</code>. Es idempotente y rápido (~30s por tenant). Si termina en <code>Snapshot en steelhead_snapshot/tlc/</code>, la conexión está OK.</p></div></li>
+    <li><span class="k">2</span><div><h4>Generar el <code>.duckdb</code> con los datos</h4><p><code>python3 scripts/regenerate_duckdb.py --domain all --download --decrypt</code>. Toma <strong>~5–10 minutos por tenant</strong>: encola la generación en Steelhead, espera a que termine, descarga el archivo cifrado y lo descifra. Deja el resultado en <code>steelhead_snapshot/&lt;dom&gt;/duckdb/*.duckdb</code> — con esto ya corre el §05 de arriba.</p></div></li>
+  </ol>
+
+  <h3 class="sub">Automatizar el snapshot semanal (opcional, recomendado)</h3>
+  <p class="measure"><code>scripts/weekly_snapshot.sh</code> encadena <code>regenerate_duckdb.py --domain all --download --decrypt --prune</code> (conserva las 2 generaciones más recientes por dominio) + <code>schema_diff.py --domain all --json</code>, y deja el log rotado en <code>logs/weekly_snapshot.log</code>. Autodetecta el repo root y el intérprete Python (<code>python3</code> → <code>python</code> → <code>py</code>) — no hay paths que editar a mano.</p>
+
+  <h3 class="sub">macOS — launchd</h3>
+  <pre><code>cp scripts/launchd/com.ecoplating.steelhead-weekly-snapshot.plist ~/Library/LaunchAgents/
+launchctl load ~/Library/LaunchAgents/com.ecoplating.steelhead-weekly-snapshot.plist</code></pre>
+  <p class="measure">El plist trae el path absoluto del repo tal como estaba en la máquina donde se armó — edítalo si tu copia vive en otra ruta.</p>
+
+  <h3 class="sub">Windows — Programador de tareas (Task Scheduler)</h3>
+  <p class="measure">No hay un plist equivalente en Windows; se configura una tarea nueva a mano en <code>taskschd.msc</code>: una tarea <strong>avanzada</strong> (no "Basic Task"), disparador <strong>semanal</strong>, y una acción "Start a program" que invoque <code>bash.exe</code> de Git for Windows con el argumento <code>-lc "cd '&lt;ruta del repo&gt;' && bash scripts/weekly_snapshot.sh"</code>. El paso a paso completo con cada pantalla del asistente está en <code>ONBOARDING.md</code> §2.7.2 — remítete ahí para no perder ningún clic.</p>
+
+  <div class="callout tip measure" style="max-width:none">
+    <p class="ct">Por qué corre bien en ambos SO sin tocar el script</p>
+    <p><code>weekly_snapshot.sh</code> detecta solo qué intérprete de Python hay disponible — no hace falta una versión distinta del script por sistema operativo, solo que el programador de tareas invoque un shell tipo bash (Git Bash en Windows).</p>
+  </div>
+
+  <!-- ============ 07 PUBLICAR (RESUMEN) ============ -->
+  <h2 class="sec"><span class="num">07</span>Publicar un reporte (resumen)</h2>
+  <p class="sec-lead measure">El detalle operativo día a día — con sus reglas de oro — vive en el <strong>Manual del Administrador</strong> (en preparación al momento de escribir este documento) y en <code>docs/runbook.md</code>. Aquí solo el resumen del flujo, para que sepas qué esperar la primera vez.</p>
+
+  <ol class="stages">
+    <li><span class="k">1</span><div><h4>Re-pull del dominio destino</h4><p><code>python3 scripts/pull_reports.py --domain all</code> — refresca <code>folderId</code> y permisos vigentes antes de tocar nada. Saltarse este paso es la causa más común de que un push "regrese" un reporte a la carpeta raíz o borre sus permisos.</p></div></li>
+    <li><span class="k">2</span><div><h4>Editar el SQL o la vista</h4><p>El <code>query_*.sql</code> del repo, o el <code>.config.json</code> de la vista Perspective en <code>perspective_views/&lt;código&gt;/</code>.</p></div></li>
+    <li><span class="k">3</span><div><h4>Dry-run</h4><p><code>python3 scripts/push_query.py --domain all --name "&lt;nombre exacto&gt;" query_x.sql</code> (sin <code>--commit</code>) — revisa que la mutación se vea bien antes de aplicarla.</p></div></li>
+    <li><span class="k">4</span><div><h4>Push real</h4><p>Mismo comando, agregando <code>--commit</code>. Si el SQL usa <code>$start</code>/<code>$end</code>, el push <strong>no</strong> activa el interruptor "Use date range" — hay que encenderlo a mano en la UI de Steelhead.</p></div></li>
+    <li><span class="k">5</span><div><h4>Verificar EN VIVO</h4><p>El re-pull inmediato todavía puede mostrar la versión vieja (latencia del backend). La verdad está en lo que Steelhead tiene cargado ahora mismo, no en el archivo recién descargado — ver la <a href="ficha-ventana-fechas.html">ficha de la ventana de fechas</a> para el porqué exacto de esta regla.</p></div></li>
+  </ol>
+
+  <div class="callout meta measure" style="max-width:none">
+    <p class="ct">Un error que vas a ver tarde o temprano</p>
+    <p>Si un push falla con algo como <code>PERSISTED_QUERIES_NOT_FOUND</code> ("Must provide a query string"), es que Steelhead <strong>cambió la cerradura</strong> de esa operación GraphQL — el hash guardado en <code>scripts/steelhead_client.py</code> ya no abre. Hay que recapturar el hash nuevo desde DevTools (la "llave" nueva) y actualizar el diccionario <code>PERSISTED_QUERIES</code>. El detalle vive en <code>docs/sincronizacion_steelhead.md</code> y en la tabla de troubleshooting de <code>ONBOARDING.md</code> §8.</p>
+  </div>
+
+  <!-- ============ 08 PRUEBAS ============ -->
+  <h2 class="sec"><span class="num">08</span>Pruebas y verificación de handover</h2>
+
+  <h3 class="sub">Suite de pruebas (<code>pytest</code>)</h3>
+  <pre><code><span class="tok-c"># una sola vez</span>
+python3 -m pip install -r requirements-dev.txt
+
+<span class="tok-c"># desde la raíz del repo (conftest.py agrega el repo root al sys.path)</span>
+python3 -m pytest tests/ -v</code></pre>
+  <p class="measure">Son pruebas unitarias (<code>unittest</code>, corridas vía <code>pytest</code>) sobre lógica pura — parseo de códigos <code>RPT-…</code>, aliases, diffs de vistas, manifests, plugins Perspective, rotación de datos, y el renderizador de estos mismos documentos (<code>test_render_docs.py</code>). <strong>No</strong> tocan Steelhead ni requieren <code>.env</code>: corren igual sin credenciales ni conexión.</p>
+
+  <h3 class="sub">Verificación de handover (<code>verify_handover.py</code>)</h3>
+  <pre><code>python3 scripts/verify_handover.py</code></pre>
+  <p class="measure">Corre 7 checks de salud, en orden, e imprime OK/FAIL/SKIP por cada uno:</p>
+  <ol>
+    <li><strong>.env y variables</strong> — existe y trae las variables mínimas (dominios + al menos una credencial de auth).</li>
+    <li><strong>Paquetes Python</strong> — <code>requests</code>, <code>duckdb</code>, <code>cryptography</code> importables.</li>
+    <li><strong>Credenciales Steelhead</strong> — keep-alive contra TLC y MTY.</li>
+    <li><strong>Pull dry-run</strong> — la consulta <code>AllReports</code> baja sin errores.</li>
+    <li><strong>DuckDB local</strong> — hay snapshot y se puede consultar en modo read-only.</li>
+    <li><strong>Auditoría DEP-nombre vs DEP-header</strong> — debe dar 0 mismatches en cada dominio.</li>
+    <li><strong>Estructura del repo</strong> — scripts y docs esperados presentes.</li>
+  </ol>
+  <p class="measure">El exit code es el número de <code>FAIL</code>s. Si imprime <code>✓ Setup validado. Listo para operar.</code>, el entorno quedó funcional de punta a punta.</p>
+
+  <!-- ============ 09 DIFERENCIAS ============ -->
+  <h2 class="sec"><span class="num">09</span>Diferencias Windows / Mac (resumen)</h2>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Aspecto</th><th>macOS</th><th>Windows</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Intérprete</strong></td><td><code>python3</code> (o <code>/usr/bin/python3</code> si Homebrew da problemas — ver §02).</td><td><code>python</code> o <code>py</code> — no hay <code>python3</code> por default. Alias opcional en <code>~/.bashrc</code> de Git Bash: <code>alias python3=python</code>.</td></tr>
+        <tr><td><strong>Shell</strong></td><td>Terminal (<code>zsh</code>/<code>bash</code>) — nativo.</td><td><strong>Git Bash</strong>, nunca <code>cmd</code>/PowerShell para los <code>.sh</code>.</td></tr>
+        <tr><td><strong>Agendado semanal</strong></td><td><code>launchd</code> — plist en <code>scripts/launchd/</code>.</td><td>Programador de tareas (<code>taskschd.msc</code>) apuntando a <code>bash.exe</code> de Git for Windows.</td></tr>
+        <tr><td><strong>Rutas</strong></td><td>Espacios y forward slashes, sin fricción.</td><td>Git Bash acepta forward slashes; ruta corta sin espacios recomendada (<code>C:/repos/Reportes-SH</code>). Con espacios, entrecomilla todo.</td></tr>
+        <tr><td><strong>Line endings</strong></td><td>LF nativo.</td><td><code>.gitattributes</code> ya fuerza <code>eol=lf</code> en <code>.sh</code>/<code>.py</code> — si aun así ves <code>'\r': command not found</code>, ver troubleshooting de <code>ONBOARDING.md</code> §8.</td></tr>
+        <tr><td><strong>Consola / encoding</strong></td><td>UTF-8 nativo.</td><td>Acentos pueden salir como mojibake — <code>export PYTHONIOENCODING=utf-8</code> en <code>~/.bashrc</code> de Git Bash.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ============ 10 A DONDE IR DESPUES ============ -->
+  <h2 class="sec"><span class="num">10</span>A dónde ir después</h2>
+  <p class="sec-lead measure">Este documento monta el entorno; no es donde vive la operación del día a día ni el detalle vivo de cada comando.</p>
+  <ul class="measure">
+    <li><strong>Manual del Administrador</strong> (Jefe de TI) — snapshot semanal, publicar reportes, sincronizar TLC↔MTY, credenciales, hashes. En preparación al cierre de este documento; mientras tanto, <code>docs/runbook.md</code> y <code>CLAUDE.md</code> cubren el mismo terreno con el mismo nivel de detalle operativo.</li>
+    <li><code>docs/runbook.md</code> — la ventana de operación accionable: inventario completo de scripts, rutina diaria/semanal/mensual, recuperación de fallas, cómo agregar un dominio nuevo.</li>
+    <li><strong>Índice de <code>docs/</code></strong> — el árbol de conocimiento del proyecto: un archivo por dominio (facturación, CxC/CxP, inventario, OEE, contabilidad, mantenimiento…). La tabla completa vive en <code>CLAUDE.md</code>, en la raíz del repo.</li>
+    <li><code>ONBOARDING.md</code> y <code>TRANSFER.md</code> (raíz del repo) — los documentos vivos de los que este Onboarding es la versión enriquecida y navegable. Ante cualquier duda sobre un comando o flag exacto, son la fuente que se actualiza primero.</li>
+  </ul>
+
+  <footer class="foot">
+    <div><span class="badge perenne">Perenne</span> &nbsp; Onboarding de Desarrollo · Reportes SH</div>
+    <div>Basado en <code>ONBOARDING.md</code>, <code>TRANSFER.md</code> y <code>docs/runbook.md</code> — corte 23 jul 2026</div>
+    <div class="doc-credit" style="flex-basis:100%;margin-top:10px;padding-top:12px;border-top:1px solid var(--hair);display:flex;align-items:center;gap:12px;font-size:.78rem;color:var(--faint)">
+      <a href="https://capazconsultoria.com" target="_blank" rel="noopener" aria-label="Capaz Consultoría" style="flex:0 0 auto;display:inline-flex"><img src="assets/capaz-c.png" alt="Capaz Consultoría" style="height:30px;width:auto;display:block"></a>
+      <span>Documento elaborado por <a href="mailto:oviazcan@capazconsultoria.com" style="color:var(--accent-ink);font-weight:600;text-decoration:none">Omar Viazcán</a> · <a href="https://capazconsultoria.com" target="_blank" rel="noopener" style="color:var(--accent-ink);text-decoration:none">Capaz Consultoría</a></span>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,462 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guía de Vistas y Dashboards Perspective — Reportes SH</title>
+<style>
+:root{
+  --ground:#f7f9fb;--paper:#ffffff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;
+  --hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;
+  --ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;
+  --warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7;
+  --shadow:0 1px 2px rgba(24,34,49,.05),0 6px 20px -8px rgba(24,34,49,.12);
+  --measure:68ch;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){:root{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512;--shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -10px rgba(0,0,0,.5)}}
+:root[data-theme="light"]{--ground:#f7f9fb;--paper:#fff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;--hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;--ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;--warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7}
+:root[data-theme="dark"]{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.62;-webkit-font-smoothing:antialiased}
+.wrap{max-width:920px;margin:0 auto;padding:0 24px 96px}
+.measure{max-width:var(--measure)}
+.masthead{border-bottom:2px solid var(--accent);padding:40px 0 22px}
+.brandbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.brandmark{width:28px;height:28px;border-radius:6px;background:var(--steel);display:grid;place-items:center;flex:0 0 auto}
+.brandmark span{color:#fff;font-weight:800;font-size:.72rem;font-family:var(--mono)}
+.brandname{font-weight:700;letter-spacing:.02em;font-size:.95rem}
+.brandname em{color:var(--accent-ink);font-style:normal}
+.eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.14em;color:var(--accent-ink);font-weight:800;margin:0 0 10px}
+.masthead h1{font-size:clamp(2rem,4.6vw,2.7rem);line-height:1.06;letter-spacing:-.02em;margin:0 0 10px;font-weight:800;text-wrap:balance}
+.masthead .sub{font-size:1.12rem;color:var(--muted);margin:0;max-width:62ch}
+.audchips{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.audchip{font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.05em}
+.audchip.ti{background:var(--ti-wash);color:var(--ti)} .audchip.p{background:var(--ti-wash);color:var(--ti)}
+.audchip.all{background:var(--hair);color:var(--muted)}
+.tldr{background:var(--paper);border:1px solid var(--hair);border-left:4px solid var(--ti);border-radius:12px;padding:20px 22px;margin:26px 0;box-shadow:var(--shadow)}
+.tldr .ct{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--ti);margin:0 0 8px}
+.tldr p{margin:0;font-size:1.05rem;max-width:none}
+/* KPIs (patrón tomado de inventario-reportes.html) */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:26px 0}
+@media (max-width:760px){.kpis{grid-template-columns:repeat(2,1fr)}}
+.kpi{background:var(--paper);border:1px solid var(--hair);border-radius:12px;padding:16px 18px;box-shadow:var(--shadow)}
+.kpi .n{font-size:1.9rem;font-weight:800;letter-spacing:-.02em;color:var(--accent-ink);line-height:1;font-family:var(--mono)}
+.kpi .l{font-size:.8rem;color:var(--muted);margin-top:6px;line-height:1.3}
+h2.sec{font-size:1.5rem;letter-spacing:-.01em;margin:54px 0 4px;font-weight:800;text-wrap:balance}
+h2.sec .num{font-family:var(--mono);font-size:.85rem;color:var(--accent-ink);font-weight:700;border:1px solid var(--hair-2);border-radius:6px;padding:1px 7px;margin-right:10px;vertical-align:.15em}
+h3.sub{font-size:1.16rem;margin:32px 0 6px;letter-spacing:-.01em;font-weight:700}
+.sec-lead{color:var(--muted);margin:.4rem 0 1.2rem;max-width:var(--measure)}
+p{margin:0 0 1rem;max-width:var(--measure)}
+a{color:var(--accent-ink);text-underline-offset:2px}
+code{font-family:var(--mono);font-size:.85em;background:var(--hair);padding:1px 5px;border-radius:5px;word-break:break-word}
+pre{background:var(--paper);border:1px solid var(--hair);border-left:4px solid var(--steel);border-radius:10px;padding:14px 16px;overflow-x:auto;box-shadow:var(--shadow);font-family:var(--mono);font-size:.82rem;line-height:1.5;margin:14px 0}
+pre code{background:none;padding:0;font-size:1em}
+.tok-c{color:var(--faint)} .tok-k{color:var(--ti);font-weight:600} .tok-f{color:var(--accent-ink);font-weight:600} .tok-s{color:var(--ku)}
+.src{display:block;font-size:.78rem;color:var(--faint);margin:-8px 0 18px;font-family:var(--mono)}
+ul,ol{max-width:var(--measure);padding-left:1.25em} li{margin:.35rem 0}
+strong{font-weight:700}
+figure.diagram{margin:26px 0;background:var(--paper);border:1px solid var(--hair);border-radius:14px;padding:20px 18px 8px;box-shadow:var(--shadow);overflow-x:auto}
+figure.diagram svg{display:block;width:100%;height:auto;min-width:600px;max-width:840px;margin:0 auto}
+figure.diagram figcaption{font-size:.85rem;color:var(--faint);text-align:center;margin-top:10px;padding:0 8px 6px}
+.svg-t{font-family:var(--sans);fill:var(--ink)} .svg-m{font-family:var(--mono)} .svg-mut{fill:var(--muted)}
+.callout{border-radius:10px;padding:15px 17px 15px 48px;position:relative;margin:22px 0;font-size:.95rem;border:1px solid var(--hair);background:var(--paper)}
+.callout .ct{font-weight:800;margin:0 0 4px;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em}
+.callout p{max-width:none;margin:.3rem 0 0}
+.callout::before{position:absolute;left:15px;top:14px;font-size:1.15rem;line-height:1}
+.callout.meta{border-left:4px solid var(--steel);background:color-mix(in srgb,var(--steel) 6%,var(--paper))} .callout.meta .ct{color:var(--steel)} .callout.meta::before{content:"💡"}
+.callout.info{border-left:4px solid var(--ti);background:var(--ti-wash)} .callout.info .ct{color:var(--ti)} .callout.info::before{content:"ℹ";color:var(--ti);font-weight:800}
+.callout.warn{border-left:4px solid var(--warn);background:var(--warn-wash)} .callout.warn .ct{color:var(--warn)} .callout.warn::before{content:"⚠"}
+.callout.danger{border-left:4px solid var(--danger);background:var(--danger-wash)} .callout.danger .ct{color:var(--danger)} .callout.danger::before{content:"⛔"}
+.callout.tip{border-left:4px solid var(--accent);background:var(--accent-wash)} .callout.tip .ct{color:var(--accent-ink)} .callout.tip::before{content:"✓";color:var(--accent-ink);font-weight:800}
+.stages{list-style:none;padding:0;margin:24px 0;display:flex;flex-direction:column;gap:2px}
+.stages li{display:grid;grid-template-columns:44px 1fr;gap:16px;padding:16px 0;border-bottom:1px solid var(--hair);align-items:start}
+.stages li:last-child{border-bottom:none}
+.stages .k{width:38px;height:38px;border-radius:9px;background:var(--ti);color:#fff;display:grid;place-items:center;font-weight:800;font-family:var(--mono);font-size:1rem}
+.stages h4{margin:0 0 3px;font-size:1.08rem}
+.stages p{margin:0;font-size:.94rem;color:var(--muted);max-width:none}
+.tablewrap{overflow-x:auto;border:1px solid var(--hair);border-radius:12px;box-shadow:var(--shadow);margin:20px 0}
+table{border-collapse:collapse;width:100%;font-size:.9rem;background:var(--paper);min-width:520px}
+thead th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:700;padding:11px 14px;border-bottom:2px solid var(--hair-2);background:var(--ground)}
+tbody td{padding:11px 14px;border-bottom:1px solid var(--hair);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+.roles{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:26px 0}
+@media (max-width:760px){.roles{grid-template-columns:1fr}}
+.role{border-radius:12px;padding:20px;border:1px solid var(--hair);background:var(--paper);box-shadow:var(--shadow)}
+.role.ti{border-top:4px solid var(--ti)} .role.ku{border-top:4px solid var(--ku)}
+.role .who{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;margin-bottom:6px}
+.role.ti .who{color:var(--ti)} .role.ku .who{color:var(--ku)}
+.role p{margin:0;font-size:.93rem;max-width:none}
+.foot{margin-top:64px;padding-top:22px;border-top:1px solid var(--hair-2);color:var(--faint);font-size:.85rem;display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:999px}
+.badge.perenne{background:var(--ti-wash);color:var(--ti)} .badge.perenne::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+@media print{:root{--ground:#fff;--paper:#fff;--shadow:none}body{font-size:11.5pt}.wrap{max-width:none;padding:0}figure.diagram,.callout,.tablewrap,.role,.stages li,pre,.kpi{break-inside:avoid}figure.diagram svg{min-width:0}h2.sec,h3.sub{break-after:avoid}a{color:var(--ink);text-decoration:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brandbar">
+      <span class="brandmark"><span>RSH</span></span>
+      <span class="brandname">Reportes<em>SH</em> · Referencia</span>
+      <a href="00-mapa-empieza-aqui.html" style="margin-left:auto;font-size:.82rem;color:var(--faint);text-decoration:none;white-space:nowrap">← Índice del paquete</a>
+    </div>
+    <p class="eyebrow">Referencia · Perspective</p>
+    <h1>Guía de Vistas y Dashboards Perspective</h1>
+    <p class="sub">Del cubo de datos SQL a la gráfica en pantalla: cómo se relacionan Reportes, Vistas y Dashboards, el catálogo completo de gráficas, y el editor de configuración de una vista, control por control.</p>
+    <div class="audchips">
+      <span class="audchip all">Todos</span>
+      <span class="audchip p">Documento perenne</span>
+    </div>
+  </header>
+
+  <div class="tldr measure" style="max-width:none">
+    <p class="ct">En una frase</p>
+    <p>Un <strong>Reporte</strong> es un cubo de datos (SQL); cada <strong>Vista</strong> Perspective es una forma distinta de mirar ese cubo (una tabla o una de 12 gráficas); un <strong>Dashboard</strong> junta varias vistas — incluso de reportes distintos — en un tablero directivo. El botón <strong>config</strong> de una vista es donde eliges esa forma de mirar: qué gráfica, qué columnas, cómo se agrupan y se resumen. Y ojo: los filtros por dimensión de un dashboard <strong>no</strong> tocan los reportes personalizados de este proyecto — solo el rango de fechas cruza.</p>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi"><div class="n">73</div><div class="l">vistas Perspective en el repositorio</div></div>
+    <div class="kpi"><div class="n">13</div><div class="l">plugins: 1 tabla (Datagrid) + 12 gráficas <code>G**</code></div></div>
+    <div class="kpi"><div class="n">3</div><div class="l">dashboards (tableros que combinan vistas)</div></div>
+    <div class="kpi"><div class="n">14</div><div class="l">campos configurables en el JSON de cada vista</div></div>
+  </div>
+
+  <!-- ============ 01 LA JERARQUÍA ============ -->
+  <h2 class="sec"><span class="num">01</span>La jerarquía: reporte → vista → dashboard</h2>
+  <p class="sec-lead measure">Tres capas, cada una con un rol distinto y un archivo distinto en el repositorio.</p>
+
+  <ul class="measure">
+    <li><strong>Reporte</strong> — el cubo de datos: un archivo <code>query_*.sql</code> que corre contra DuckDB y devuelve filas y columnas. Es la <strong>única</strong> fuente de verdad de los números; nada de lo que sigue cambia lo que el SQL calcula.</li>
+    <li><strong>Vista</strong> (<code>ReportConfig</code> en Steelhead) — una <em>forma de mirar</em> ese mismo cubo: una tabla (Datagrid) o una de las 12 gráficas del catálogo <code>G**</code>. Un reporte puede tener varias vistas; cada una vive como su propio <code>.config.json</code> en <code>perspective_views/&lt;código&gt;/</code>.</li>
+    <li><strong>Dashboard</strong> (<code>PerspectiveDashboard</code>) — un tablero que combina varias vistas en una grilla de ventanas. Cada ventana no apunta a la vista directamente, sino a un <strong>componente de reporte</strong> (<code>reportComponentId</code>) fijado a esa vista — por eso un mismo reporte puede aparecer dos veces en el mismo dashboard con vistas distintas, y por eso un dashboard puede combinar vistas de <strong>reportes distintos</strong>.</li>
+  </ul>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 820 300" role="img" aria-label="Diagrama de la jerarquía reporte, vista y dashboard">
+      <defs>
+        <marker id="arw" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--steel)"/></marker>
+        <marker id="arwacc" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="var(--accent-ink)"/></marker>
+      </defs>
+
+      <!-- Reporte A -->
+      <rect x="16" y="24" width="150" height="70" rx="8" fill="var(--paper)" stroke="var(--hair-2)" stroke-width="1.5"/>
+      <text x="91" y="46" class="svg-t" font-size="12.5" font-weight="700" text-anchor="middle">RPT-PRD-ANL-14</text>
+      <text x="91" y="64" class="svg-t" font-size="10.5" text-anchor="middle">Dashboard Directivo x Línea</text>
+      <text x="91" y="80" class="svg-mut" font-size="9.5" text-anchor="middle">reporte (cubo SQL)</text>
+
+      <!-- Reporte B -->
+      <rect x="16" y="200" width="150" height="70" rx="8" fill="var(--paper)" stroke="var(--hair-2)" stroke-width="1.5"/>
+      <text x="91" y="222" class="svg-t" font-size="12.5" font-weight="700" text-anchor="middle">RPT-PRD-ANL-15</text>
+      <text x="91" y="240" class="svg-t" font-size="10.5" text-anchor="middle">USD por Carga x Acabado</text>
+      <text x="91" y="256" class="svg-mut" font-size="9.5" text-anchor="middle">otro reporte (cubo SQL)</text>
+
+      <!-- Vistas de A -->
+      <rect x="204" y="8" width="200" height="42" rx="7" fill="var(--accent-wash)" stroke="color-mix(in srgb,var(--accent) 40%,transparent)"/>
+      <text x="304" y="24" class="svg-t" font-size="11" font-weight="700" text-anchor="middle">.01 Detalle Línea×Mes</text>
+      <text x="304" y="39" class="svg-mut" font-size="9.5" text-anchor="middle">Datagrid</text>
+
+      <rect x="204" y="56" width="200" height="42" rx="7" fill="var(--accent-wash)" stroke="color-mix(in srgb,var(--accent) 40%,transparent)"/>
+      <text x="304" y="72" class="svg-t" font-size="11" font-weight="700" text-anchor="middle">.02 Facturación USD/Mes</text>
+      <text x="304" y="87" class="svg-mut" font-size="9.5" text-anchor="middle">Y Bar</text>
+
+      <rect x="204" y="104" width="200" height="42" rx="7" fill="var(--accent-wash)" stroke="color-mix(in srgb,var(--accent) 40%,transparent)"/>
+      <text x="304" y="120" class="svg-t" font-size="11" font-weight="700" text-anchor="middle">.03 Costos MO/MP/Maquila</text>
+      <text x="304" y="135" class="svg-mut" font-size="9.5" text-anchor="middle">Y Bar</text>
+
+      <rect x="204" y="152" width="200" height="30" rx="7" fill="none" stroke="var(--hair-2)" stroke-dasharray="4 3"/>
+      <text x="304" y="171" class="svg-mut" font-size="9.5" text-anchor="middle">+ 4 vistas más (.04 – .07)</text>
+
+      <!-- Vista de B -->
+      <rect x="204" y="210" width="200" height="42" rx="7" fill="var(--accent-wash)" stroke="color-mix(in srgb,var(--accent) 55%,transparent)" stroke-width="1.5"/>
+      <text x="304" y="226" class="svg-t" font-size="11" font-weight="700" text-anchor="middle">.01 USD/Carga x Acabado</text>
+      <text x="304" y="241" class="svg-mut" font-size="9.5" text-anchor="middle">Y Bar</text>
+
+      <!-- Flechas de reportes a vistas -->
+      <line x1="166" y1="59" x2="204" y2="29"  stroke="var(--steel)" stroke-width="1.6" marker-end="url(#arw)"/>
+      <line x1="166" y1="59" x2="204" y2="77"  stroke="var(--steel)" stroke-width="1.6" marker-end="url(#arw)"/>
+      <line x1="166" y1="59" x2="204" y2="125" stroke="var(--steel)" stroke-width="1.6" marker-end="url(#arw)"/>
+      <line x1="166" y1="59" x2="204" y2="167" stroke="var(--hair-2)" stroke-width="1.4" stroke-dasharray="3 3"/>
+      <line x1="166" y1="235" x2="204" y2="231" stroke="var(--accent-ink)" stroke-width="1.6" marker-end="url(#arwacc)"/>
+
+      <!-- Dashboard -->
+      <rect x="460" y="8" width="344" height="272" rx="10" fill="var(--ti-wash)" stroke="color-mix(in srgb,var(--ti) 35%,transparent)" stroke-width="1.5"/>
+      <text x="632" y="30" class="svg-t" font-size="12.5" font-weight="700" text-anchor="middle">Dashboard Perspective</text>
+      <text x="632" y="46" class="svg-mut" font-size="9.5" text-anchor="middle">«PRD. Directivo por Línea» · TLC 578 / MTY 577</text>
+
+      <rect x="476" y="58" width="312" height="38" rx="6" fill="var(--paper)" stroke="var(--hair-2)"/>
+      <text x="632" y="81" class="svg-t" font-size="10.5" text-anchor="middle">Facturación USD por Mes</text>
+
+      <rect x="476" y="102" width="150" height="38" rx="6" fill="var(--paper)" stroke="var(--hair-2)"/>
+      <text x="551" y="125" class="svg-t" font-size="10" text-anchor="middle">Costos MO/MP/Maquila</text>
+
+      <rect x="638" y="102" width="150" height="38" rx="6" fill="var(--paper)" stroke="var(--hair-2)"/>
+      <text x="713" y="125" class="svg-t" font-size="10" text-anchor="middle">% OTs Costeadas</text>
+
+      <rect x="476" y="146" width="150" height="112" rx="6" fill="var(--accent-wash)" stroke="color-mix(in srgb,var(--accent) 45%,transparent)" stroke-width="1.5"/>
+      <text x="551" y="196" class="svg-t" font-size="10" font-weight="700" text-anchor="middle">USD por Carga</text>
+      <text x="551" y="210" class="svg-t" font-size="10" font-weight="700" text-anchor="middle">x Acabado</text>
+      <text x="551" y="228" class="svg-mut" font-size="8.5" text-anchor="middle">(viene de RPT-PRD-ANL-15)</text>
+
+      <rect x="638" y="146" width="150" height="112" rx="6" fill="var(--paper)" stroke="var(--hair-2)"/>
+      <text x="713" y="196" class="svg-t" font-size="10" text-anchor="middle">Detalle Línea×Mes</text>
+      <text x="713" y="212" class="svg-mut" font-size="9" text-anchor="middle">+ 3 ventanas más</text>
+      <text x="713" y="226" class="svg-mut" font-size="9" text-anchor="middle">(Cargas, Ft², Kg)</text>
+
+      <!-- Flechas de vistas a dashboard -->
+      <line x1="404" y1="77"  x2="460" y2="77"  stroke="var(--steel)" stroke-width="1.6" marker-end="url(#arw)"/>
+      <line x1="404" y1="125" x2="460" y2="121" stroke="var(--steel)" stroke-width="1.6" marker-end="url(#arw)"/>
+      <line x1="404" y1="29"  x2="460" y2="202" stroke="var(--steel)" stroke-width="1.4" marker-end="url(#arw)"/>
+      <line x1="404" y1="167" x2="460" y2="140" stroke="var(--hair-2)" stroke-width="1.3" stroke-dasharray="3 3"/>
+      <line x1="404" y1="231" x2="460" y2="202" stroke="var(--accent-ink)" stroke-width="1.6" marker-end="url(#arwacc)"/>
+    </svg>
+    <figcaption>Caso real del repo: el dashboard <em>«PRD. Dashboard Directivo por Línea»</em> combina las 7 vistas de <code>RPT-PRD-ANL-14</code> con 1 vista de <code>RPT-PRD-ANL-15</code> (en verde) — un dashboard puede cruzar reportes, siempre que la vista ya exista. Fuente: <code>perspective_dashboards/directivo-lineas/dashboard.json</code> y los <code>manifest.json</code> de ambos reportes.</figcaption>
+  </figure>
+
+  <p class="measure">La nomenclatura sigue esa misma jerarquía: el reporte es <code>RPT-DEP-TIPO-NN</code>; cada vista que cuelga de él añade un sufijo decimal, <code>RPT-DEP-TIPO-NN.MM</code> (<code>.01</code>, <code>.02</code>…). Las vistas <strong>gráficas</strong> además llevan al inicio de su nombre en Steelhead el código de 3 letras del plugin (<code>GYB</code>, <code>GHM</code>…); las <strong>Datagrid</strong> (tabla) no llevan prefijo. El <code>MM</code> se asigna por <code>configId</code> ascendente y no cambia aunque la vista se edite después.</p>
+
+  <!-- ============ 02 NATIVO VS PERSONALIZADO ============ -->
+  <h2 class="sec"><span class="num">02</span>Dashboard nativo (Insights) vs. reporte personalizado — qué filtra qué</h2>
+  <p class="sec-lead measure">Esta es la confusión más cara del reporting en Steelhead, investigada a fondo y confirmada con dos experimentos (2026-06-09, <code>docs/gobernanza.md</code>). No son "dos tipos de dashboard": son <strong>dos tipos de ventana</strong> que pueden convivir en el mismo dashboard, y una barra de filtros que las trata distinto.</p>
+
+  <div class="roles">
+    <div class="role ti">
+      <div class="who">Insight (nativo de Steelhead)</div>
+      <p>Componente de fábrica, código cerrado (<code>insightsReportComponentId</code>). Su SQL y su lógica de filtros no son legibles ni replicables — solo se expone la configuración visual (plugin, columnas, agrupación). <strong>Sí obedece</strong> la barra de filtros por dimensión del dashboard (Cliente, Estación, Proceso, Sector, OT, Número de Parte, Orden de Venta, Sensor, Spec, Usuario… ~30 dimensiones, por ID de entidad).</p>
+    </div>
+    <div class="role ku">
+      <div class="who">Reporte personalizado (Capa 5 — este proyecto)</div>
+      <p>SQL propio sobre DuckDB (<code>reportComponentId</code> → <code>reportId</code> → tu query). Corre por otro pipeline (SQL → DuckDB-WASM → Perspective) que <strong>no tiene el gancho</strong> de los filtros por dimensión: probado que un reporte que expone las columnas <code>*_id</code> canónicas, en snake_case o en Title Case, <strong>no se filtra</strong>. Lo único de la barra que sí cruza es el <strong>rango de fechas</strong>, como <code>$start</code>/<code>$end</code> — y solo si el reporte tiene <strong>"Use date range"</strong> activado.</p>
+    </div>
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Filtro de la barra</th><th>¿Toca un Insight?</th><th>¿Toca un reporte personalizado?</th></tr></thead>
+      <tbody>
+        <tr><td>Filtro por dimensión (Cliente, Estación, OT…)</td><td>Sí, siempre</td><td><strong>No, nunca</strong> — el custom report no tiene ese gancho</td></tr>
+        <tr><td>Date Range (Start/End)</td><td>Sí, siempre</td><td>Solo si el reporte tiene <code>useDateRange</code> activo (inyecta <code>$start</code>/<code>$end</code>)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout warn measure" style="max-width:none">
+    <p class="ct">Por qué importa para un dashboard armado con <code>push_dashboard.py</code></p>
+    <p>Los dashboards que este proyecto crea (skill <code>steelhead-dashboards</code>) combinan exclusivamente <strong>componentes de reporte personalizado</strong> (<code>reportComponentId</code>) — el script no toca <code>insightsReportComponentId</code>. Así que en un dashboard 100% de reportes personalizados, mover el filtro "Cliente" o "Estación" de la barra <strong>no hace nada</strong>: solo el Date Range mueve la aguja, y solo en las ventanas cuyo reporte tenga "Use date range" encendido. Si necesitas filtrar una ventana por cliente o línea, la vía es una <strong>variable de reporte</strong> (<code>$Var</code>, ver <code>docs/gobernanza.md</code> § Filtros de Reporting y la skill <code>steelhead-report-variables</code>), no la barra del dashboard.</p>
+  </div>
+
+  <!-- ============ 03 CATÁLOGO DE PLUGINS ============ -->
+  <h2 class="sec"><span class="num">03</span>El catálogo de gráficas y tablas (<code>G**</code>)</h2>
+  <p class="sec-lead measure">13 plugins en total, catálogo cerrado y congelado al 2026-05-14 en <code>scripts/views/plugins.py</code>: 1 tabla (Datagrid, sin prefijo) + 12 gráficas con código de 3 letras. Agregar un plugin nuevo requiere actualizar ese catálogo y esta tabla antes de empujar.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Código</th><th>Plugin Perspective</th><th>Cuándo usarlo</th></tr></thead>
+      <tbody>
+        <tr><td><em>(sin prefijo)</em></td><td>Datagrid</td><td>Tabla — la mayoría de las vistas operativas; detalle fila por fila o pivote con subtotales.</td></tr>
+        <tr><td><code>GHM</code></td><td>Heatmap</td><td>Matriz 2D: dos dimensiones categóricas cruzadas, color = intensidad. Ej. Hora × Departamento.</td></tr>
+        <tr><td><code>GXB</code></td><td>X Bar</td><td>Barras horizontales — bueno para muchas categorías (nombres largos) o listas ordenadas verticalmente.</td></tr>
+        <tr><td><code>GYB</code></td><td>Y Bar</td><td>Barras verticales — el estándar para comparar categorías (líneas, causas, clientes) por un valor.</td></tr>
+        <tr><td><code>GXY</code></td><td>X/Y Line</td><td>Línea con eje X numérico/temporal continuo.</td></tr>
+        <tr><td><code>GXS</code></td><td>X/Y Scatter</td><td>Dispersión X vs Y — correlación entre dos medidas numéricas.</td></tr>
+        <tr><td><code>GYL</code></td><td>Y Line</td><td>Línea temporal simple — tendencia de una métrica en el tiempo. También la curva de un Pareto.</td></tr>
+        <tr><td><code>GYA</code></td><td>Y Area</td><td>Área apilada — composición de un total a lo largo del tiempo.</td></tr>
+        <tr><td><code>GYS</code></td><td>Y Scatter</td><td>Dispersión sobre eje categórico (no temporal).</td></tr>
+        <tr><td><code>GTM</code></td><td>Treemap</td><td>Jerarquía por área — proporción de un total entre categorías anidadas.</td></tr>
+        <tr><td><code>GSB</code></td><td>Sunburst</td><td>Jerarquía radial (donut) — proporción por categoría, ej. % de OTs por responsable.</td></tr>
+        <tr><td><code>GCS</code></td><td>Candlestick</td><td>Financiero, con cuerpo y mechas.</td></tr>
+        <tr><td><code>GOH</code></td><td>OHLC</td><td>Financiero Open-High-Low-Close.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ============ 04 EL BOTÓN CONFIG ============ -->
+  <h2 class="sec"><span class="num">04</span>El botón "config" de una vista, control por control</h2>
+  <p class="sec-lead measure">Cada vista Perspective se guarda como un objeto JSON con 14 campos. Esos mismos 14 campos son, literalmente, las secciones del editor que se abre al entrar en modo configuración de una vista dentro de Steelhead — el nombre de cada control en la UI coincide con la clave que termina en el <code>.config.json</code>. Aquí va cada uno, con un fragmento real tomado del repositorio.</p>
+
+  <h3 class="sub">Plugin — el tipo de visualización</h3>
+  <p class="measure">Es el selector de arriba del editor: elige entre Datagrid y las 12 gráficas de la tabla anterior. Cambiar el plugin es lo primero que se decide, porque condiciona qué otros controles tienen sentido (p. ej. <code>split_by</code> en un Heatmap define el segundo eje; en un Datagrid, un pivote de columnas).</p>
+  <pre><code>{
+  <span class="tok-k">"plugin"</span>: <span class="tok-s">"Heatmap"</span>,
+  <span class="tok-k">"version"</span>: <span class="tok-s">"4.0.1"</span>
+}</code></pre>
+  <span class="src">GHM-RHM-CTL-01.01.config.json — nótese que <code>"version"</code> aquí es la versión del <strong>esquema/librería Perspective</strong> (siempre <code>4.0.1</code> en el repo), distinta de <code>_meta.version</code> (el versionado propio del proyecto, ver § 06).</span>
+
+  <h3 class="sub">Columns — qué se muestra</h3>
+  <p class="measure">La lista de columnas del resultado del reporte que la vista efectivamente dibuja. En un Datagrid son las columnas visibles (y su orden); en una gráfica son las <strong>series de valores</strong> — el eje de magnitud. Una vista puede mostrar dos columnas para comparar dos series en la misma gráfica:</p>
+  <pre><code>{
+  <span class="tok-k">"columns"</span>: [<span class="tok-s">"Cargas Programadas"</span>, <span class="tok-s">"Cargas Procesadas"</span>]
+}</code></pre>
+  <span class="src">GYB-PRD-ANL-04.03.config.json — dos barras por línea, programado vs. procesado, en la misma gráfica.</span>
+
+  <h3 class="sub">Group By — agrupar filas / eje X</h3>
+  <p class="measure">En un Datagrid, agrupa las filas en un árbol expandible con subtotales (uno o varios niveles). En una gráfica, define el <strong>eje de categorías</strong> (el eje X en barras/línea). Puede tener varios niveles:</p>
+  <pre><code>{
+  <span class="tok-k">"group_by"</span>: [<span class="tok-s">"Línea"</span>, <span class="tok-s">"Tipo de Equipo"</span>, <span class="tok-s">"Equipo"</span>]
+}</code></pre>
+  <span class="src">RPT-MNT-ANL-03.01.config.json — Datagrid con jerarquía de 3 niveles: Línea → Tipo de Equipo → Equipo, cada uno con su subtotal.</span>
+
+  <div class="callout warn measure" style="max-width:none">
+    <p class="ct">Trampa confirmada: elegir bien la columna del Group By en una barra</p>
+    <p>Si el <code>group_by</code> de una <code>GYB</code>/<code>GXB</code> es una columna de <strong>fecha</strong>, Perspective dibuja el eje como línea de tiempo continua (barras anchísimas con pocos puntos) en vez de categorías — corregido el 2026-07-06 forzando el mes como texto (<code>strftime(fecha,'%Y-%m')</code>) en <code>GYB-PRD-ANL-14.02</code>/<code>.03</code>. Y si es una columna de <strong>texto largo</strong> (ej. el nombre completo de una estación), las etiquetas del eje se cortan o rotan — corregido con una columna de código corto y único (<code>Cód. Línea</code>) en <code>GYB-PRD-ANL-04.03..07</code> y <code>GYB-PRD-CTL-01.04..06</code>. Regla: para una barra, el <code>group_by</code> debe apuntar a una columna <strong>de texto, corta y única</strong> por categoría — nunca a la fecha ni al nombre completo. Detalle en <code>docs/gobernanza.md</code> § Trampas de eje.</p>
+  </div>
+
+  <h3 class="sub">Split By — series y pivote</h3>
+  <p class="measure">Divide cada grupo del <code>group_by</code> en sub-series. En un Datagrid, pivotea el valor en <strong>grupos de columnas</strong> (una cross-tab); en una gráfica, colorea/segmenta <strong>series distintas</strong> dentro de la misma categoría. Dos sabores reales, muy distintos:</p>
+
+  <pre><code>{
+  <span class="tok-k">"group_by"</span>: [<span class="tok-s">"Cliente"</span>, <span class="tok-s">"Proceso"</span>],
+  <span class="tok-k">"split_by"</span>: [<span class="tok-s">"Mes"</span>],
+  <span class="tok-k">"columns"</span>: [<span class="tok-s">"Subtotal MXN"</span>]
+}</code></pre>
+  <span class="src">RPT-VTA-ANL-01.01.config.json (Datagrid) — filas = Cliente×Proceso; el Mes se pivotea como grupo de columnas: un cross-tab clásico.</span>
+
+  <pre><code>{
+  <span class="tok-k">"group_by"</span>: [<span class="tok-s">"Hora"</span>],
+  <span class="tok-k">"split_by"</span>: [<span class="tok-s">"Departamento"</span>],
+  <span class="tok-k">"columns"</span>: [<span class="tok-s">"Actividad"</span>]
+}</code></pre>
+  <span class="src">GHM-RHM-CTL-01.01.config.json (Heatmap) — aquí <code>split_by</code> es literalmente el segundo eje de la matriz: X = Hora, Y = Departamento, color = Actividad.</span>
+
+  <h3 class="sub">Aggregates — cómo se resume cada columna</h3>
+  <p class="measure">Cuando varias filas del cubo caen en el mismo grupo (por <code>group_by</code>/<code>split_by</code>), <code>aggregates</code> decide cómo se combinan en una sola cifra. Formas observadas en el repo:</p>
+  <ul class="measure">
+    <li><strong>Forma corta</strong> (una palabra): <code>"sum"</code>, <code>"mean"</code>, <code>"count"</code>.</li>
+    <li><strong>Forma con parámetro</strong> (arreglo de 2 elementos): <code>["weighted mean", ["&lt;columna de peso&gt;"]]</code>.</li>
+  </ul>
+  <pre><code>{
+  <span class="tok-k">"aggregates"</span>: {
+    <span class="tok-k">"OT"</span>: <span class="tok-s">"count"</span>,
+    <span class="tok-k">"Procesadas"</span>: <span class="tok-s">"sum"</span>,
+    <span class="tok-k">"% Cumplimiento OTs"</span>: <span class="tok-s">"mean"</span>
+  }
+}</code></pre>
+  <span class="src">RPT-PRD-CTL-01.02.config.json — conteo de OTs, suma de procesadas, promedio simple del % de cumplimiento.</span>
+
+  <p class="measure">El caso <strong>weighted mean</strong> (promedio ponderado) es el que de verdad importa entender: un promedio simple trataría igual una fila con 2 cargas que una con 200, distorsionando el ratio al resumir. El caso real del repo:</p>
+  <pre><code>{
+  <span class="tok-k">"group_by"</span>: [<span class="tok-s">"Acabado"</span>],
+  <span class="tok-k">"columns"</span>: [<span class="tok-s">"USD por Carga"</span>],
+  <span class="tok-k">"aggregates"</span>: {
+    <span class="tok-k">"USD por Carga"</span>: [<span class="tok-s">"weighted mean"</span>, [<span class="tok-s">"Cargas"</span>]]
+  }
+}</code></pre>
+  <span class="src">GYB-PRD-ANL-15.01.config.json — el cubo trae una fila por Línea×Acabado×Mes con su propio "$/carga" y su propio conteo de "Cargas". Al agrupar solo por Acabado (colapsando Línea y Mes), un promedio simple mezclaría por igual un mes con 3 cargas y uno con 300. <code>weighted mean</code> con peso <code>"Cargas"</code> calcula <code>Σ(USD·Cargas) / Σ(Cargas)</code> — el $/carga real, ponderado por volumen.</span>
+
+  <h3 class="sub">Sort — el orden</h3>
+  <p class="measure">Lista de pares <code>[columna, "asc"|"desc"]</code>. Define el orden por default de filas o categorías — clave en una barra para que se lea de mayor a menor:</p>
+  <pre><code>{
+  <span class="tok-k">"sort"</span>: [[<span class="tok-s">"Horas de Paro"</span>, <span class="tok-s">"desc"</span>]]
+}</code></pre>
+  <span class="src">GYB-PRD-ANL-16.01.config.json — barras de Pareto ordenadas de mayor a menor.</span>
+  <p class="measure">Truco documentado del patrón Pareto: la curva de % acumulado ordena por el valor base (<code>"Horas de Paro"</code>), <strong>no</strong> por la propia columna que dibuja, para que la curva quede alineada con las barras de la vista de al lado — para eso, la columna de orden debe también estar en <code>aggregates</code> aunque no se muestre.</p>
+
+  <h3 class="sub">Filter / Where — filtrar DENTRO de la vista (no confundir con <code>$Var</code>)</h3>
+  <p class="measure">Lista de tripletas <code>[columna, operador, valor]</code> (varias tripletas = AND). Es un filtro que vive <strong>solo en esta vista</strong> — no toca el SQL ni las demás vistas del mismo reporte. Operadores observados hoy en el repo: <code>==</code>, <code>!=</code>, <code>contains</code>, <code>begins with</code>, <code>is not null</code> (Perspective soporta más operadores estándar de comparación; el repo hoy solo usa estos cinco).</p>
+  <pre><code>{
+  <span class="tok-k">"filter"</span>: [
+    [<span class="tok-s">"Tipo Correctivo"</span>, <span class="tok-s">"!="</span>, <span class="tok-s">"Otro"</span>]
+  ]
+}</code></pre>
+  <span class="src">RPT-MNT-ANL-03.01.config.json — esta vista de MTTR excluye "Otro" del tipo de correctivo; el Datagrid general del mismo reporte sí lo incluye.</span>
+  <div class="callout info measure" style="max-width:none">
+    <p class="ct">Filter (de la vista) vs. <code>$Var</code> (del reporte) — no son lo mismo</p>
+    <p><code>Filter</code> vive en el <code>.config.json</code> de <strong>una</strong> vista y recorta lo que esa vista dibuja, después de que el SQL ya corrió. Una <strong>variable de reporte</strong> (<code>$Var</code>, menú "Variables ▾") en cambio se inyecta en el <code>WHERE</code> del <strong>SQL</strong> y afecta a <strong>todas</strong> las vistas del reporte por igual — y sí puede exponerse como dropdown al usuario. Si quieres un filtro que el Key User pueda cambiar desde la UI, es <code>$Var</code> (skill <code>steelhead-report-variables</code>); si quieres que una vista específica siempre excluya algo (como el MTTR de arriba, que nunca quiere ver "Otro"), es <code>Filter</code>.</p>
+  </div>
+
+  <h3 class="sub">Theme y otros ajustes menores</h3>
+  <p class="measure">El resto de campos son ajustes finos, casi siempre cosméticos (bump de versión <strong>menor</strong>, ver § 06):</p>
+  <ul class="measure">
+    <li><strong><code>theme</code></strong> — la paleta visual del widget. Todo el repo usa <code>"Pro Light"</code> hoy; Perspective también ofrece temas oscuros (el catálogo de bumps de versión en <code>docs/gobernanza.md</code> ya prevé el cambio "Pro Light → Pro Dark" como ejemplo de cambio menor).</li>
+    <li><strong><code>settings</code></strong> — booleano; controla si el panel lateral de configuración aparece abierto por default al entrar a la vista.</li>
+    <li><strong><code>title</code></strong> — un título explicativo que se muestra encima de la gráfica, útil cuando el nombre de la vista no basta para explicar qué significa el color o el valor (ej. el heatmap de actividad, que aclara si el color es % del día o conteo).</li>
+    <li><strong><code>plugin_config</code></strong> — ajustes propios del plugin. Ejemplo real, un Datagrid de solo lectura con el scroll fijo:
+      <pre><code>{
+  <span class="tok-k">"plugin_config"</span>: {
+    <span class="tok-k">"edit_mode"</span>: <span class="tok-s">"READ_ONLY"</span>,
+    <span class="tok-k">"scroll_lock"</span>: <span class="tok-k">false</span>
+  }
+}</code></pre>
+      <span class="src">RPT-VTA-ANL-01.01.config.json</span>
+    </li>
+    <li><strong><code>columns_config</code></strong> — formato por columna. Ejemplo real, un degradado de color sobre una columna numérica dentro de un Datagrid (semáforo de desviación):
+      <pre><code>{
+  <span class="tok-k">"columns_config"</span>: {
+    <span class="tok-k">"Delta vs 90 min"</span>: {
+      <span class="tok-k">"bg_gradient"</span>: <span class="tok-k">100</span>,
+      <span class="tok-k">"number_bg_mode"</span>: <span class="tok-s">"gradient"</span>
+    }
+  }
+}</code></pre>
+      <span class="src">RPT-MNT-ANL-03.01.config.json — el MTTR que se desvía de los 90 min objetivo se pinta en degradado dentro de la misma tabla, sin necesitar una gráfica aparte.</span>
+    </li>
+  </ul>
+
+  <!-- ============ 05 EXPRESIONES ============ -->
+  <h2 class="sec"><span class="num">05</span>Expresiones: columnas calculadas dentro de la vista</h2>
+  <p class="sec-lead measure">El campo <code>expressions</code> deja crear una columna nueva calculada a partir de las columnas existentes, <strong>sin tocar el SQL</strong> — usando el lenguaje de expresiones de Perspective (tipo hoja de cálculo, basado en ExprTK). En el editor, se declara el nombre de la columna nueva en la primera línea como comentario y la fórmula debajo, referenciando columnas existentes entre comillas:</p>
+  <pre><code><span class="tok-c">// Margen %</span>
+(<span class="tok-s">"Facturación USD"</span> - <span class="tok-s">"Costo USD"</span>) / <span class="tok-s">"Facturación USD"</span> * 100</code></pre>
+  <span class="src">Ejemplo genérico — ver nota de verificación abajo.</span>
+
+  <div class="callout meta measure" style="max-width:none">
+    <p class="ct">Verificado: hoy ninguna vista del repo usa expressions</p>
+    <p>Se revisaron programáticamente las <strong>73</strong> vistas del repositorio buscando un campo <code>expressions</code> no vacío; en las 73, el campo está presente pero <strong>vacío</strong> (<code>"expressions": {}</code>). El ejemplo de arriba es genérico, no viene de una vista real — se documenta para que sepas que el control existe y cómo se escribe, no porque ya se use aquí.</p>
+  </div>
+
+  <p class="measure">Por qué el repo prefiere resolverlo en SQL en vez de con expressions: (1) centraliza la lógica de negocio en el reporte, versionada y sincronizada TLC↔MTY, en vez de duplicarla vista por vista; y (2) hay una limitación real documentada — las <code>expressions</code> de Perspective corren <strong>antes</strong> de agregar (confirmado por el mantenedor de Perspective, discusión #2954), así que no sirven para un total corrido (running total). Por eso el patrón de Pareto del repo (barras + % acumulado) <strong>precalcula el % acumulado en el SQL</strong> con una ventana (<code>SUM() OVER (ORDER BY ... ROWS UNBOUNDED PRECEDING)</code>) en vez de intentarlo como expression — ver <code>docs/gobernanza.md</code> § Patrón Pareto.</p>
+
+  <!-- ============ 06 GUARDAR Y VERSIONAR ============ -->
+  <h2 class="sec"><span class="num">06</span>Cómo se guarda y versiona una vista</h2>
+  <p class="sec-lead measure">Cada vista lleva su propio <code>_meta.version</code> (<code>vX.Y</code>), independiente de la versión del reporte padre.</p>
+
+  <ol class="stages">
+    <li><span class="k">1</span><div><h4>Editar el <code>.config.json</code> local</h4><p>Se ajustan los campos que viste en la § 04 — plugin, columns, group_by, aggregates, etc.</p></div></li>
+    <li><span class="k">2</span><div><h4>Bump de versión según el tipo de cambio</h4><p><strong>Mayor</strong> (<code>vX.Y → v(X+1).0</code>) si cambia <code>columns</code>, <code>group_by</code>, <code>split_by</code>, <code>aggregates</code>, <code>expressions</code>, <code>plugin</code>, o el filtro semántico. <strong>Menor</strong> (<code>vX.Y → vX.(Y+1)</code>) si es <code>theme</code>, <code>plugin_config</code> visual, <code>sort</code>, <code>title</code>, <code>settings</code> o formato. El <code>changelog</code> dentro de <code>_meta</code> registra cada bump.</p></div></li>
+    <li><span class="k">3</span><div><h4><code>push_view.py</code> resuelve, valida y sube</h4><p>Resuelve el <code>configId</code> por dominio desde el <code>manifest.json</code> del reporte padre, hace un pull no destructivo, calcula el diff contra lo que ya vive en Steelhead (se guarda en <code>logs/views_diff/</code>), valida <code>_meta</code> y aliases, y sube por <code>UpdateReportConfig</code> (si ya existe) o <code>CreateReportConfig</code> (si es nueva).</p></div></li>
+    <li><span class="k">4</span><div><h4>Espejo obligatorio TLC ↔ MTY</h4><p>La unidad versionada es única para todos los dominios: si la vista existe en TLC y no en MTY, <code>--domain all</code> la crea automáticamente en MTY. Toda deriva entre dominios se trata como bug.</p></div></li>
+  </ol>
+
+  <div class="callout info measure" style="max-width:none">
+    <p class="ct">La vista que abre por default (la estrellita ⭐)</p>
+    <p>Qué vista se muestra al abrir un reporte (fuera de un dashboard) es un campo aparte, <code>defaultReportConfigId</code>, que <code>push_view.py</code> <strong>no</strong> sincroniza — se fija a mano en Steelhead con la estrellita ⭐ del panel Perspective, y hay que reflejarlo en <code>manifest.json</code> (<code>"es_default": true</code>). Flujo completo y trampas de hash en <code>docs/gobernanza.md</code> § Vista default y en el Manual del Administrador.</p>
+  </div>
+
+  <!-- ============ 07 RECETAS ============ -->
+  <h2 class="sec"><span class="num">07</span>Recetas rápidas</h2>
+  <p class="sec-lead measure">"Quiero…" → qué controles tocar, con el ejemplo real del repo que ya lo resuelve así.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Quiero…</th><th>Plugin</th><th>Controles clave</th><th>Ejemplo real</th></tr></thead>
+      <tbody>
+        <tr><td>Ver el detalle fila por fila, sin resumir</td><td>Datagrid</td><td><code>group_by</code> vacío, todas las <code>columns</code> visibles</td><td>RPT-PRD-ANL-04.01 Tabla de datos</td></tr>
+        <tr><td>Una barra por categoría (línea, causa, cliente…)</td><td>Y Bar / X Bar</td><td><code>group_by</code> = columna corta y única; <code>sort</code> desc</td><td>GYB-PRD-ANL-16.01 Paros por Causa</td></tr>
+        <tr><td>Comparar 2 series en la misma barra (programado vs. real)</td><td>Y Bar</td><td><code>columns</code> = [serie1, serie2]; <code>aggregates</code> sum en ambas</td><td>GYB-PRD-ANL-04.03 Cargas Prog. vs. Proc.</td></tr>
+        <tr><td>Una serie de tiempo continua</td><td>Y Line / X-Y Line</td><td>deja la fecha como <code>DATE</code> (no texto) en el <code>group_by</code></td><td>GYL-PRD-ANL-16.02 (curva Pareto)</td></tr>
+        <tr><td>Un cross-tab / pivote de columnas</td><td>Datagrid</td><td><code>group_by</code> = filas; <code>split_by</code> = columna a pivotear</td><td>RPT-VTA-ANL-01.01 Cliente×Proceso×Mes</td></tr>
+        <tr><td>Un ratio correcto al resumir filas de distinto tamaño</td><td>cualquiera</td><td><code>aggregates</code>: <code>["weighted mean",["&lt;peso&gt;"]]</code></td><td>GYB-PRD-ANL-15.01 USD por Carga (peso = Cargas)</td></tr>
+        <tr><td>Un Pareto (barras + % acumulado)</td><td>Y Bar + Y Line apiladas</td><td>% acumulado <strong>precalculado en el SQL</strong>, no en <code>expressions</code>; 2 vistas en el dashboard</td><td>RPT-PRD-ANL-16 (paros) / RPT-VTA-ANL-05 (facturación)</td></tr>
+        <tr><td>Un mapa de calor 2D</td><td>Heatmap</td><td><code>group_by</code> = eje X; <code>split_by</code> = eje Y</td><td>GHM-RHM-CTL-01.01 Hora × Departamento</td></tr>
+        <tr><td>Excluir una categoría ruidosa sin tocar el SQL del reporte</td><td>cualquiera</td><td><code>filter</code> con <code>!=</code>/<code>contains</code>/<code>is not null</code></td><td>RPT-MNT-ANL-03.01 (excluye "Otro")</td></tr>
+        <tr><td>Un semáforo de color dentro de una tabla</td><td>Datagrid</td><td><code>columns_config</code> → <code>bg_gradient</code> / <code>number_bg_mode</code></td><td>RPT-MNT-ANL-03.01 (Delta vs 90 min)</td></tr>
+        <tr><td>Que el reporte abra en esta vista por default</td><td>—</td><td><code>defaultReportConfigId</code> (estrellita ⭐), fuera de <code>push_view.py</code></td><td>ver § 06 y <code>docs/gobernanza.md</code></td></tr>
+        <tr><td>Armar un tablero con varias vistas</td><td>—</td><td><code>perspective_dashboards/&lt;slug&gt;/dashboard.json</code> + <code>push_dashboard.py</code></td><td>directivo-lineas, pareto-paros, pareto-facturacion</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer class="foot">
+    <div><span class="badge perenne">Perenne</span> &nbsp; Guía de Vistas y Dashboards Perspective · Reportes SH</div>
+    <div>Verificado contra el repositorio · corte 23 jul 2026</div>
+    <div class="doc-credit" style="flex-basis:100%;margin-top:10px;padding-top:12px;border-top:1px solid var(--hair);display:flex;align-items:center;gap:12px;font-size:.78rem;color:var(--faint)">
+      <a href="https://capazconsultoria.com" target="_blank" rel="noopener" aria-label="Capaz Consultoría" style="flex:0 0 auto;display:inline-flex"><img src="assets/capaz-c.png" alt="Capaz Consultoría" style="height:30px;width:auto;display:block"></a>
+      <span>Documento elaborado por <a href="mailto:oviazcan@capazconsultoria.com" style="color:var(--accent-ink);font-weight:600;text-decoration:none">Omar Viazcán</a> · <a href="https://capazconsultoria.com" target="_blank" rel="noopener" style="color:var(--accent-ink);text-decoration:none">Capaz Consultoría</a></span>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ficha profunda: OEE (dos versiones) — Reportes SH</title>
+<style>
+:root{
+  --ground:#f7f9fb;--paper:#ffffff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;
+  --hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;
+  --ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;
+  --warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7;
+  --shadow:0 1px 2px rgba(24,34,49,.05),0 6px 20px -8px rgba(24,34,49,.12);
+  --measure:68ch;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){:root{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512;--shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -10px rgba(0,0,0,.5)}}
+:root[data-theme="light"]{--ground:#f7f9fb;--paper:#fff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;--hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;--ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;--warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7}
+:root[data-theme="dark"]{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.62;-webkit-font-smoothing:antialiased}
+.wrap{max-width:920px;margin:0 auto;padding:0 24px 96px}
+.measure{max-width:var(--measure)}
+.masthead{border-bottom:2px solid var(--ku);padding:40px 0 22px}
+.brandbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.brandmark{width:28px;height:28px;border-radius:6px;background:var(--steel);display:grid;place-items:center;flex:0 0 auto}
+.brandmark span{color:#fff;font-weight:800;font-size:.72rem;font-family:var(--mono)}
+.brandname{font-weight:700;letter-spacing:.02em;font-size:.95rem}
+.brandname em{color:var(--accent-ink);font-style:normal}
+.eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.14em;color:var(--ku);font-weight:800;margin:0 0 10px}
+.masthead h1{font-size:clamp(2rem,4.6vw,2.7rem);line-height:1.06;letter-spacing:-.02em;margin:0 0 10px;font-weight:800;text-wrap:balance}
+.masthead .sub{font-size:1.12rem;color:var(--muted);margin:0;max-width:60ch}
+.audchips{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.audchip{font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.05em}
+.audchip.ti{background:var(--ti-wash);color:var(--ti)} .audchip.p{background:var(--ti-wash);color:var(--ti)}
+.audchip.ku{background:var(--ku-wash);color:var(--ku)}
+.tldr{background:var(--paper);border:1px solid var(--hair);border-left:4px solid var(--ku);border-radius:12px;padding:20px 22px;margin:26px 0;box-shadow:var(--shadow)}
+.tldr .ct{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--ku);margin:0 0 8px}
+.tldr p{margin:0;font-size:1.05rem;max-width:none}
+h2.sec{font-size:1.5rem;letter-spacing:-.01em;margin:54px 0 4px;font-weight:800;text-wrap:balance}
+h2.sec .num{font-family:var(--mono);font-size:.85rem;color:var(--ku);font-weight:700;border:1px solid var(--hair-2);border-radius:6px;padding:1px 7px;margin-right:10px;vertical-align:.15em}
+h3.sub{font-size:1.16rem;margin:32px 0 6px;letter-spacing:-.01em;font-weight:700}
+.sec-lead{color:var(--muted);margin:.4rem 0 1.2rem;max-width:var(--measure)}
+p{margin:0 0 1rem;max-width:var(--measure)}
+a{color:var(--accent-ink);text-underline-offset:2px}
+code{font-family:var(--mono);font-size:.85em;background:var(--hair);padding:1px 5px;border-radius:5px;word-break:break-word}
+pre{background:var(--paper);border:1px solid var(--hair);border-left:4px solid var(--steel);border-radius:10px;padding:14px 16px;overflow-x:auto;box-shadow:var(--shadow);font-family:var(--mono);font-size:.82rem;line-height:1.5;margin:18px 0}
+pre code{background:none;padding:0;font-size:1em}
+.tok-c{color:var(--faint)} .tok-k{color:var(--ti);font-weight:600} .tok-f{color:var(--accent-ink);font-weight:600} .tok-s{color:var(--ku)}
+ul,ol{max-width:var(--measure);padding-left:1.25em} li{margin:.35rem 0}
+strong{font-weight:700}
+figure.diagram{margin:26px 0;background:var(--paper);border:1px solid var(--hair);border-radius:14px;padding:20px 18px 8px;box-shadow:var(--shadow);overflow-x:auto}
+figure.diagram svg{display:block;width:100%;height:auto;min-width:600px;max-width:840px;margin:0 auto}
+figure.diagram figcaption{font-size:.85rem;color:var(--faint);text-align:center;margin-top:10px;padding:0 8px 6px}
+.svg-t{font-family:var(--sans);fill:var(--ink)} .svg-m{font-family:var(--mono)} .svg-mut{fill:var(--muted)}
+.callout{border-radius:10px;padding:15px 17px 15px 48px;position:relative;margin:22px 0;font-size:.95rem;border:1px solid var(--hair);background:var(--paper)}
+.callout .ct{font-weight:800;margin:0 0 4px;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em}
+.callout p{max-width:none;margin:.3rem 0 0}
+.callout::before{position:absolute;left:15px;top:14px;font-size:1.15rem;line-height:1}
+.callout.meta{border-left:4px solid var(--steel);background:color-mix(in srgb,var(--steel) 6%,var(--paper))} .callout.meta .ct{color:var(--steel)} .callout.meta::before{content:"💡"}
+.callout.info{border-left:4px solid var(--ti);background:var(--ti-wash)} .callout.info .ct{color:var(--ti)} .callout.info::before{content:"ℹ";color:var(--ti);font-weight:800}
+.callout.warn{border-left:4px solid var(--warn);background:var(--warn-wash)} .callout.warn .ct{color:var(--warn)} .callout.warn::before{content:"⚠"}
+.callout.danger{border-left:4px solid var(--danger);background:var(--danger-wash)} .callout.danger .ct{color:var(--danger)} .callout.danger::before{content:"⛔"}
+.callout.tip{border-left:4px solid var(--accent);background:var(--accent-wash)} .callout.tip .ct{color:var(--accent-ink)} .callout.tip::before{content:"✓";color:var(--accent-ink);font-weight:800}
+.stages{list-style:none;padding:0;margin:24px 0;display:flex;flex-direction:column;gap:2px}
+.stages li{display:grid;grid-template-columns:44px 1fr;gap:16px;padding:16px 0;border-bottom:1px solid var(--hair);align-items:start}
+.stages li:last-child{border-bottom:none}
+.stages .k{width:38px;height:38px;border-radius:9px;background:var(--ku);color:#fff;display:grid;place-items:center;font-weight:800;font-family:var(--mono);font-size:1rem}
+.stages h4{margin:0 0 3px;font-size:1.08rem}
+.stages p{margin:0;font-size:.94rem;color:var(--muted);max-width:none}
+.tablewrap{overflow-x:auto;border:1px solid var(--hair);border-radius:12px;box-shadow:var(--shadow);margin:20px 0}
+table{border-collapse:collapse;width:100%;font-size:.9rem;background:var(--paper);min-width:520px}
+thead th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:700;padding:11px 14px;border-bottom:2px solid var(--hair-2);background:var(--ground)}
+tbody td{padding:11px 14px;border-bottom:1px solid var(--hair);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+.roles{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:26px 0}
+@media (max-width:760px){.roles{grid-template-columns:1fr}}
+.role{border-radius:12px;padding:20px;border:1px solid var(--hair);background:var(--paper);box-shadow:var(--shadow)}
+.role.ti{border-top:4px solid var(--ti)} .role.ku{border-top:4px solid var(--ku)}
+.role .who{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;margin-bottom:6px}
+.role.ti .who{color:var(--ti)} .role.ku .who{color:var(--ku)}
+.role p{margin:0;font-size:.93rem;max-width:none}
+.foot{margin-top:64px;padding-top:22px;border-top:1px solid var(--hair-2);color:var(--faint);font-size:.85rem;display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:999px}
+.badge.perenne{background:var(--ti-wash);color:var(--ti)} .badge.perenne::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+@media print{:root{--ground:#fff;--paper:#fff;--shadow:none}body{font-size:11.5pt}.wrap{max-width:none;padding:0}figure.diagram,.callout,.tablewrap,.role,.stages li,pre{break-inside:avoid}figure.diagram svg{min-width:0}h2.sec,h3.sub{break-after:avoid}a{color:var(--ink);text-decoration:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brandbar">
+      <span class="brandmark"><span>RSH</span></span>
+      <span class="brandname">Reportes<em>SH</em> · Ficha profunda</span>
+      <a href="00-mapa-empieza-aqui.html" style="margin-left:auto;font-size:.82rem;color:var(--faint);text-decoration:none;white-space:nowrap">← Índice del paquete</a>
+    </div>
+    <p class="eyebrow">Ficha profunda · Key User</p>
+    <h1>OEE — dos versiones</h1>
+    <p class="sub">Por qué el sistema tiene dos reportes de OEE con nombre parecido, en qué se diferencian de verdad, y cuál conviene mirar cuando algo no cuadra.</p>
+    <div class="audchips">
+      <span class="audchip ku">Key User</span>
+      <span class="audchip p">Documento perenne</span>
+    </div>
+  </header>
+
+  <div class="tldr measure" style="max-width:none">
+    <p class="ct">En una frase</p>
+    <p>Hay dos reportes de OEE en el sistema —el nuestro, <strong>"PRD. Productividad OEE"</strong> (formato IBMS, el que ya conocían los supervisores) y el nativo de Steelhead, <strong>"PRD. OEE"</strong>— y aunque los dos multiplican Disponibilidad × Eficiencia × Calidad, cada uno decide distinto qué cuenta como producción, qué línea se lleva el crédito y cuánto tiempo estuvo realmente disponible la línea; por eso llegan a números que se parecen poco.</p>
+  </div>
+
+  <!-- ============ 01 QUÉ MIDE EL OEE ============ -->
+  <h2 class="sec"><span class="num">01</span>Qué mide el OEE</h2>
+  <p class="sec-lead measure">OEE (<em>Overall Equipment Effectiveness</em>) responde una sola pregunta: de todo el tiempo que una línea pudo haber estado produciendo piezas buenas al ritmo esperado, ¿cuánto realmente aprovechó? Es un solo número que resulta de multiplicar tres factores — y como es una multiplicación, no una suma, un factor débil arrastra a los otros dos aunque estén perfectos.</p>
+  <p class="measure">En nuestro reporte (<code>query_oee.sql</code>, RPT-PRD-ANL-04) los tres factores se calculan así, en cascada:</p>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 780 230" role="img" aria-label="Diagrama de los tres factores del OEE multiplicados entre sí">
+      <rect x="10" y="45" width="165" height="120" rx="12" fill="var(--paper)" stroke="var(--hair-2)" stroke-width="1.5"/>
+      <text x="92" y="72" class="svg-t" font-size="13" font-weight="700" text-anchor="middle">% Disponibilidad</text>
+      <line x1="30" y1="82" x2="155" y2="82" stroke="var(--hair)" stroke-width="1"/>
+      <text x="92" y="106" class="svg-mut" font-size="10.5" text-anchor="middle">Tiempo Operativo</text>
+      <text x="92" y="122" class="svg-mut" font-size="10.5" text-anchor="middle">÷ Tiempo Disponible</text>
+      <text x="92" y="150" class="svg-t" font-size="9.5" text-anchor="middle" fill="var(--faint)">¿cuánto tiempo corrió?</text>
+
+      <text x="196" y="112" class="svg-t" font-size="22" font-weight="700" text-anchor="middle">×</text>
+
+      <rect x="217" y="45" width="165" height="120" rx="12" fill="var(--paper)" stroke="var(--hair-2)" stroke-width="1.5"/>
+      <text x="299" y="72" class="svg-t" font-size="13" font-weight="700" text-anchor="middle">% Eficiencia</text>
+      <line x1="237" y1="82" x2="362" y2="82" stroke="var(--hair)" stroke-width="1"/>
+      <text x="299" y="106" class="svg-mut" font-size="10.5" text-anchor="middle">Cargas Procesadas</text>
+      <text x="299" y="122" class="svg-mut" font-size="10.5" text-anchor="middle">÷ Cargas Objetivo</text>
+      <text x="299" y="150" class="svg-t" font-size="9.5" text-anchor="middle" fill="var(--faint)">¿al ritmo que tocaba?</text>
+
+      <text x="403" y="112" class="svg-t" font-size="22" font-weight="700" text-anchor="middle">×</text>
+
+      <rect x="424" y="45" width="165" height="120" rx="12" fill="var(--paper)" stroke="var(--hair-2)" stroke-width="1.5"/>
+      <text x="506" y="72" class="svg-t" font-size="13" font-weight="700" text-anchor="middle">% Calidad</text>
+      <line x1="444" y1="82" x2="569" y2="82" stroke="var(--hair)" stroke-width="1"/>
+      <text x="506" y="106" class="svg-mut" font-size="10.5" text-anchor="middle">Piezas − Scrap − Retrab.</text>
+      <text x="506" y="122" class="svg-mut" font-size="10.5" text-anchor="middle">÷ Piezas Procesadas</text>
+      <text x="506" y="150" class="svg-t" font-size="9.5" text-anchor="middle" fill="var(--faint)">¿sin defectos?</text>
+
+      <text x="610" y="112" class="svg-t" font-size="22" font-weight="700" text-anchor="middle">=</text>
+
+      <rect x="631" y="35" width="140" height="140" rx="14" fill="var(--accent-wash)" stroke="var(--accent)" stroke-width="2"/>
+      <text x="701" y="100" class="svg-t" font-size="26" font-weight="800" text-anchor="middle" fill="var(--accent-ink)">OEE</text>
+      <text x="701" y="122" class="svg-mut" font-size="10" text-anchor="middle">el número</text>
+      <text x="701" y="135" class="svg-mut" font-size="10" text-anchor="middle">final</text>
+    </svg>
+    <figcaption>Tiempo Operativo = Tiempo Disponible − Tiempo Muerto. Cargas Objetivo = Tiempo Operativo × cargas/hora teóricas (60 ÷ tiempo de ciclo). El OEE es la multiplicación de los tres porcentajes, no un promedio.</figcaption>
+  </figure>
+
+  <p class="measure">En la literatura de manufactura, el segundo factor suele llamarse <em>Rendimiento</em> o <em>Performance</em>; en nuestros reportes y en los de Steelhead aparece siempre como <strong>% Eficiencia</strong> — es el mismo concepto, distinto nombre de columna.</p>
+
+  <div class="callout meta measure" style="max-width:none">
+    <p class="ct">La metáfora</p>
+    <p>Piensa en el OEE como una cadena de tres eslabones: <strong>tiempo</strong>, <strong>ritmo</strong> y <strong>calidad</strong>. No importa qué tan fuertes sean dos de los eslabones — si el tercero se debilita, toda la cadena carga con esa debilidad. Un turno con 100% de disponibilidad y 100% de calidad, pero a la mitad del ritmo esperado, tiene un OEE de apenas 50%.</p>
+  </div>
+
+  <!-- ============ 02 POR QUÉ HAY DOS VERSIONES ============ -->
+  <h2 class="sec"><span class="num">02</span>Por qué hay dos versiones en el sistema</h2>
+  <p class="sec-lead measure">Steelhead trae su propio cálculo nativo de OEE integrado al ERP. Cuando se revisó a fondo contra nuestros datos reales, ese cálculo tenía fallas que lo hacían poco confiable para la operación diaria — así que se construyó un segundo reporte, en paralelo, que reproduce el tablero de OEE que Producción ya conocía y en el que confiaba de un sistema anterior (formato <strong>IBMS</strong>: mismo orden de columnas, mismos nombres).</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Reporte</th><th>Código</th><th>Archivo</th><th>reportId (TLC / MTY)</th></tr></thead>
+      <tbody>
+        <tr><td><strong>"PRD. Productividad OEE"</strong> — el nuestro, formato IBMS</td><td>RPT-PRD-ANL-04</td><td><code>query_oee.sql</code></td><td>3234 / 3549</td></tr>
+        <tr><td><strong>"PRD. OEE"</strong> — el nativo de Steelhead</td><td>RPT-PRD-ANL-05</td><td><code>query_oee_steelhead.sql</code> (v1.0) + <code>query_oee_steelhead_v1_1.sql</code> (v1.1, en paralelo)</td><td>3249 / 3550</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="measure">El segundo reporte de Steelhead existe en <strong>dos archivos locales</strong> a propósito: <code>query_oee_steelhead.sql</code> conserva la lógica original (abril 2026, traducida al español) intacta como referencia, y <code>query_oee_steelhead_v1_1.sql</code> adopta la actualización que el propio equipo de Steelhead liberó después (mayo 2026) — corre en paralelo, todavía no sustituye a la v1.0 porque falta validarla del todo con el negocio.</p>
+
+  <div class="callout warn measure" style="max-width:none">
+    <p class="ct">La trampa del nombre — cuidado al buscar "OEE" en Steelhead</p>
+    <p>Los dos reportes tienen "OEE" en el nombre, y si buscas esa palabra en el buscador de reportes de Steelhead, el que aparece primero es <strong>"PRD. OEE"</strong> (el de Steelhead) — no el nuestro. El nuestro se llama <strong>"PRD. Productividad OEE"</strong>, con una palabra más. Esta confusión ya causó un incidente real: en una sesión se publicó por error un cambio al reporte equivocado y hubo que restaurarlo. Si vas a modificar o reportar algo sobre cualquiera de los dos, confirma primero el nombre completo.</p>
+  </div>
+
+  <!-- ============ 03 LAS DIFERENCIAS ============ -->
+  <h2 class="sec"><span class="num">03</span>Las diferencias, lado a lado</h2>
+  <p class="sec-lead measure">No son dos variantes del mismo cálculo — son dos filosofías distintas de dónde nace la producción y a quién se le acredita.</p>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 780 260" role="img" aria-label="Diagrama comparando la atribución por tramo contra la atribución a la última línea">
+      <defs>
+        <marker id="oeeArA" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--accent)"/></marker>
+        <marker id="oeeArT" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--ti)"/></marker>
+      </defs>
+
+      <text x="40" y="25" class="svg-t" font-size="12.5" font-weight="700" fill="var(--accent-ink)">NUESTRO (RPT-PRD-ANL-04) · programa-céntrico, por tramo</text>
+
+      <rect x="40" y="40" width="150" height="70" rx="10" fill="var(--accent-wash)" stroke="var(--accent)" stroke-width="1.5"/>
+      <text x="115" y="68" class="svg-t" font-size="13" font-weight="700" text-anchor="middle">T109</text>
+      <text x="115" y="86" class="svg-mut" font-size="9.5" text-anchor="middle">cuenta su propio</text>
+      <text x="115" y="98" class="svg-mut" font-size="9.5" text-anchor="middle">tramo</text>
+
+      <line x1="190" y1="75" x2="226" y2="75" stroke="var(--accent)" stroke-width="2" marker-end="url(#oeeArA)"/>
+      <text x="208" y="65" class="svg-t" font-size="8.5" text-anchor="middle" fill="var(--faint)">Recibo de Orden</text>
+
+      <rect x="230" y="40" width="150" height="70" rx="10" fill="var(--accent-wash)" stroke="var(--accent)" stroke-width="1.5"/>
+      <text x="305" y="68" class="svg-t" font-size="13" font-weight="700" text-anchor="middle">T205</text>
+      <text x="305" y="86" class="svg-mut" font-size="9.5" text-anchor="middle">cuenta su propio</text>
+      <text x="305" y="98" class="svg-mut" font-size="9.5" text-anchor="middle">tramo</text>
+
+      <line x1="380" y1="75" x2="416" y2="75" stroke="var(--accent)" stroke-width="2" marker-end="url(#oeeArA)"/>
+      <text x="398" y="65" class="svg-t" font-size="8.5" text-anchor="middle" fill="var(--faint)">Prep. Embarque</text>
+
+      <rect x="580" y="38" width="185" height="74" rx="10" fill="var(--accent-wash)" stroke="var(--accent)" stroke-width="1.5"/>
+      <text x="672" y="66" class="svg-t" font-size="12" font-weight="700" text-anchor="middle" fill="var(--accent-ink)">✓ Ambas líneas</text>
+      <text x="672" y="83" class="svg-t" font-size="12" font-weight="700" text-anchor="middle" fill="var(--accent-ink)">quedan reportadas</text>
+
+      <text x="40" y="150" class="svg-t" font-size="12.5" font-weight="700" fill="var(--ti)">STEELHEAD (RPT-PRD-ANL-05) · transfer-céntrico, a la última línea</text>
+
+      <rect x="40" y="165" width="150" height="70" rx="10" fill="var(--warn-wash)" stroke="var(--warn)" stroke-width="1.5" stroke-dasharray="4 3"/>
+      <text x="115" y="193" class="svg-t" font-size="13" font-weight="700" text-anchor="middle">T109</text>
+      <text x="115" y="211" class="svg-mut" font-size="9.5" text-anchor="middle">sin producción</text>
+      <text x="115" y="223" class="svg-mut" font-size="9.5" text-anchor="middle">reportada</text>
+
+      <line x1="190" y1="200" x2="226" y2="200" stroke="var(--faint)" stroke-width="2" stroke-dasharray="3 3"/>
+
+      <rect x="230" y="165" width="150" height="70" rx="10" fill="var(--ti-wash)" stroke="var(--ti)" stroke-width="1.5"/>
+      <text x="305" y="193" class="svg-t" font-size="13" font-weight="700" text-anchor="middle">T205</text>
+      <text x="305" y="211" class="svg-mut" font-size="9.5" text-anchor="middle">se lleva TODA</text>
+      <text x="305" y="223" class="svg-mut" font-size="9.5" text-anchor="middle">la pieza</text>
+
+      <line x1="380" y1="200" x2="416" y2="200" stroke="var(--ti)" stroke-width="2" marker-end="url(#oeeArT)"/>
+      <text x="398" y="190" class="svg-t" font-size="8" text-anchor="middle" fill="var(--faint)">tag 7039</text>
+
+      <rect x="580" y="163" width="185" height="74" rx="10" fill="var(--warn-wash)" stroke="var(--warn)" stroke-width="1.5"/>
+      <text x="672" y="191" class="svg-t" font-size="12" font-weight="700" text-anchor="middle" fill="var(--warn)">⚠ Solo una línea</text>
+      <text x="672" y="208" class="svg-t" font-size="12" font-weight="700" text-anchor="middle" fill="var(--warn)">queda reportada</text>
+    </svg>
+    <figcaption>Ejemplo real (~8% de las OTs pasan por más de una línea): en un recorrido T109 → T205, el nuestro acredita a cada línea su propio tramo; el de Steelhead carga toda la pieza a T205 (la última antes de Prep. Embarque) y T109 se queda sin reportar. Es un "concern" que ya se le planteó a Steelhead — sigue sin respuesta.</figcaption>
+  </figure>
+
+  <h3 class="sub">Metodología, lado a lado</h3>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Aspecto</th><th>RPT-PRD-ANL-04 (nuestro)</th><th>RPT-PRD-ANL-05 (Steelhead)</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Filosofía</strong></td><td>Programa-céntrico: parte de lo programado y segmenta por el nodo "Recibo de Orden"; cada línea cuenta su propio tramo</td><td>Transfer-céntrico: parte de las transferencias que cruzan el tag de Prep. Embarque; atribuye toda la pieza a la <strong>última</strong> línea antes del cruce</td></tr>
+        <tr><td><strong>Estaciones incluidas</strong></td><td>Todas las <code>valid_stations</code> con calendario y vivas — incluye satélites (Antitarnish, hornos de deshidrogenado, ensamble de kits, etc.)</td><td>Solo estaciones cuyo nombre trae paréntesis (proxy de "línea LI") — deja fuera las satélites</td></tr>
+        <tr><td><strong>Tiempo disponible</strong></td><td>Horas realmente programadas ese día, por estación y turno</td><td>24 horas fijas por estación, todos los días — bug conocido, sigue sin cerrarse ni en la v1.1</td></tr>
+        <tr><td><strong>Eficiencia</strong></td><td>Cargas reales ÷ cargas objetivo (ritmo teórico); acotada, salvo un residual de tiempo de ciclo en ~7% de las tareas</td><td>Piezas reales ÷ piezas programadas, <strong>sin techo</strong> — puede desbordar muy por encima de 100%</td></tr>
+        <tr><td><strong>Calidad</strong></td><td>Scrap + retrabajo atribuidos a la estación dominante de la orden de trabajo</td><td>Scrap + retrabajo solo si la orden llegó a cruzar el tag de Prep. Embarque — si no cruza, ese scrap se pierde</td></tr>
+        <tr><td><strong>Portabilidad TLC↔MTY</strong></td><td>Todo por nombre ("Preparación de Embarque en Almacén", "Recibo de Orden")</td><td>El tag de corte va hardcodeado por número (7039 en TLC, 8784 en MTY) — no portable tal cual</td></tr>
+        <tr><td><strong>Valorización en USD</strong></td><td>Sí: cascada de precios de 3 niveles + tipo de cambio del domain</td><td>No calcula valor</td></tr>
+        <tr><td><strong>Filas sin actividad</strong></td><td>Solo emite estación × día con algo que reportar (unión de fechas reales)</td><td>Cruza <em>todas</em> las estaciones contra <em>todos</em> los días — huecos que antes se rellenaban con un falso 100%</td></tr>
+        <tr><td><strong>Ventana de fechas ($start/$end)</strong></td><td>Corregida — inmune al bug de huso horario que tocó otros 53 reportes (ver <a href="ficha-ventana-fechas.html">ficha de la ventana de fechas</a>)</td><td>Se dejó intacta por decisión — ver §05</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 class="sub">Lo que se midió (TLC, junio 2026, fotografía semanal)</h3>
+  <p class="measure">Estas cifras salen de correr ambos SQL contra la misma fotografía semanal del snapshot de TLC — el banco de pruebas, no el reporte corriendo en vivo dentro de Steelhead — para el mismo mes calendario.</p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Métrica</th><th>Nuestro</th><th>Steelhead v1.1</th><th>Lectura</th></tr></thead>
+      <tbody>
+        <tr><td>Piezas procesadas</td><td>9,857,660</td><td>19,512,925</td><td>Steelhead cuenta ~2×</td></tr>
+        <tr><td>Scrap</td><td>145</td><td>0</td><td>Steelhead no captura scrap sin cruce del tag</td></tr>
+        <tr><td>Retrabajo</td><td>4,980</td><td>4,780</td><td>≈ iguales</td></tr>
+        <tr><td>Σ Horas disponibles</td><td>2,418</td><td>25,919</td><td>= 1,080 filas × 24 h fijas</td></tr>
+        <tr><td>Disponibilidad (mediana)</td><td>98.5%</td><td>100.0%</td><td>inflada por el uptime fijo</td></tr>
+        <tr><td>Eficiencia (mediana)</td><td>79.4%</td><td>15.9%</td><td>metodologías distintas</td></tr>
+        <tr><td>Eficiencia (máxima)</td><td>2,077%</td><td>919,183%</td><td>sin techo en Steelhead</td></tr>
+        <tr><td>Calidad (mediana)</td><td>100%</td><td>100%</td><td>coinciden</td></tr>
+        <tr><td><strong>OEE (mediana)</strong></td><td><strong>88.9%</strong></td><td><strong>86.7%</strong></td><td>cerca — por caminos opuestos</td></tr>
+        <tr><td>OEE (promedio)</td><td>116.6%</td><td>6,561.7%</td><td>Steelhead inservible sin limpiar outliers</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ============ 04 POR QUÉ ARMAMOS EL NUESTRO ============ -->
+  <h2 class="sec"><span class="num">04</span>Por qué armamos el nuestro como está</h2>
+  <p class="sec-lead measure">El reporte propio nació como un plan alterno independiente del motor de reportes de Steelhead, mientras se revisaba a fondo la versión nativa. La revisión encontró ocho hallazgos concretos en el query original de Steelhead, dos de ellos críticos.</p>
+  <p class="measure">Los más graves: la atribución de producción parecía capturar <strong>menos del 1%</strong> de las piezas reales (más tarde se confirmó que la lógica en sí era correcta — el snapshot de prueba tenía muchas órdenes aún en proceso o archivadas, no era un defecto del cálculo), y el cálculo de tiempo muerto <strong>no incluía los paros no planificados</strong> de mantenimiento, incumpliendo lo acordado. A esos se sumaban división entera en Calidad/Eficiencia (solo podía dar 0% o 100%), un valor por defecto de 100% cuando no había datos (que inflaba los promedios) y un uptime fijo de 24 horas por estación.</p>
+  <p class="measure">En vez de esperar a que esas fallas se resolvieran del lado de Steelhead, se construyó <strong>"PRD. Productividad OEE"</strong> reproduciendo el tablero de OEE en formato <strong>IBMS</strong> que Producción ya conocía de un sistema anterior — mismo orden y nombres de columna, para no obligar a los supervisores a reaprender el reporte. Las decisiones de fondo, acordadas con Producción:</p>
+  <ul class="measure">
+    <li><strong>Todas las estaciones con actividad</strong> (no solo las líneas "LI"): entran satélites como Antitarnish, hornos de deshidrogenado y ensamble de kits, porque también tienen programa, producción o paros que reportar.</li>
+    <li><strong>Producción = cruce del siguiente "Recibo de Orden"</strong>, sin prorrateo: cada estación cuenta el tramo que le toca, y una misma orden puede aparecer en varias líneas si pasó por varias.</li>
+    <li><strong>Calidad = scrap + retrabajo</strong> de las transferencias reales, no retenciones de calidad (una retención solo cuenta si termina en pérdida definitiva).</li>
+    <li><strong>Cargas por una cascada robusta de tipo de rack</strong> en vez del dato crudo del programa, que venía mal capturado (siempre "1") en ~17% de los casos y llegaba a inflar la eficiencia a más de 1000%.</li>
+    <li><strong>Ayudas en dólares</strong> (Valor Producido, % Eficiencia USD, etc.) con la misma cascada de precios de 3 niveles + tipo de cambio que usa el Inventario de Clientes — para que el OEE también se pueda leer en valor, no solo en piezas.</li>
+  </ul>
+  <p class="measure">Un detalle que costó confusión al principio: la primera versión traía "Horas Programadas" y "Horas Disponibles" con los nombres <em>invertidos</em> respecto al formato IBMS original. Se corrigió a <strong>Tiempo Disponible</strong> (el bruto) y <strong>Tiempo Operativo</strong> (el neto, ya descontados los paros) — el orden que los supervisores esperaban ver.</p>
+
+  <div class="callout tip measure" style="max-width:none">
+    <p class="ct">Honestidad ante todo: el nuestro tampoco es perfecto</p>
+    <p>Alrededor del 7% de las tareas programadas traen un tiempo de ciclo absurdamente corto (menos de un minuto), lo que infla la Cargas Objetivo y puede empujar la Eficiencia de esa línea puntual por encima de 100%. Es un hueco conocido, sin corregir todavía — el mismo que tiene el formato IBMS original.</p>
+  </div>
+
+  <!-- ============ 05 CUÁL USAR Y CUÁNDO ============ -->
+  <h2 class="sec"><span class="num">05</span>Cuál usar y cuándo</h2>
+  <p class="sec-lead measure">Para el trabajo diario de Producción, la recomendación es clara.</p>
+
+  <div class="callout tip measure" style="max-width:none">
+    <p class="ct">Recomendación</p>
+    <p>Usa <strong>"PRD. Productividad OEE"</strong> (RPT-PRD-ANL-04) como fuente oficial del día a día: es portable entre plantas, valida sus divisiones, valoriza en dólares y habla el formato que ya conocías. <strong>"PRD. OEE"</strong> (RPT-PRD-ANL-05) se mantiene en paralelo como referencia del cálculo nativo de Steelhead — útil para comparar, no para tomar decisiones operativas mientras conserve el uptime fijo de 24 horas y la atribución sin techo en Eficiencia.</p>
+  </div>
+
+  <h3 class="sub">Cómo saber cuál reporte tienes enfrente</h3>
+  <ol class="stages">
+    <li><span class="k">1</span><div><h4>Lee el nombre completo</h4><p>"PRD. Productividad OEE" es el nuestro; "PRD. OEE" a secas es el de Steelhead. Buscar solo la palabra "OEE" en Steelhead muestra primero el de Steelhead.</p></div></li>
+    <li><span class="k">2</span><div><h4>Mira la Disponibilidad</h4><p>Si está pegada al 100% casi todos los días, casi seguro es la versión de Steelhead (uptime fijo de 24 h). La nuestra varía por turno y por línea.</p></div></li>
+    <li><span class="k">3</span><div><h4>Mira la Eficiencia</h4><p>Si ves cifras de cientos o miles de por ciento, es la versión de Steelhead (sin techo). La nuestra queda acotada salvo el hueco conocido del tiempo de ciclo.</p></div></li>
+  </ol>
+
+  <div class="callout warn measure" style="max-width:none">
+    <p class="ct">El matiz honesto sobre la ventana de fechas</p>
+    <p>Cuando se corrigió el bug de huso horario que tocó 53 reportes (ver <a href="ficha-ventana-fechas.html">esa ficha</a>), la auditoría clasificó a <strong>"PRD. OEE"</strong> (los dos archivos, v1.0 y v1.1) como afectado por una variante del mismo problema — y aun así se decidió <strong>no tocarlo</strong>, a diferencia de los otros 53. Es el único reporte de todo el universo auditado que quedó intacto por decisión del usuario. El nuestro, en cambio, se clasificó como <strong>inmune</strong>: ya resta las 6 horas de diferencia entre México y Greenwich antes de recortar la fecha, así que nunca tuvo el problema.</p>
+  </div>
+
+  <!-- ============ 06 QUÉ SIGNIFICA PARA TI ============ -->
+  <h2 class="sec"><span class="num">06</span>Qué significa para ti</h2>
+  <div class="roles">
+    <div class="role ku">
+      <div class="who">Key User · Consumidor</div>
+      <p>Para tu reporte del día a día usa <strong>"PRD. Productividad OEE"</strong>. Si alguna vez abres "PRD. OEE" por error (es fácil, comparten nombre) y ves Disponibilidad al 100% todos los días o Eficiencias de cientos de por ciento, no es un error tuyo ni de la planta: es la versión nativa de Steelhead, con sus limitaciones conocidas. Repórtalo si te genera dudas, pero no lo tomes como cifra oficial.</p>
+    </div>
+    <div class="role ti">
+      <div class="who">Jefe de TI · Administrador</div>
+      <p>Al tocar cualquiera de los dos reportes, empuja siempre por <code>reportId</code> (3234/3549 el nuestro, 3249/3550 el de Steelhead) o por el código del header del SQL — nunca por substring del nombre, para no repetir el incidente de publicar en el reporte equivocado. Si algún día se decide corregir la ventana de fechas de "PRD. OEE", es una decisión de negocio que hay que confirmar con el usuario primero, no solo un parche técnico. Y recuerda la pregunta abierta con Steelhead sobre atribución multi-línea — sigue sin respuesta.</p>
+    </div>
+  </div>
+
+  <footer class="foot">
+    <div><span class="badge perenne">Perenne</span> &nbsp; Ficha profunda: OEE — dos versiones · Reportes SH</div>
+    <div>RPT-PRD-ANL-04 v2.1 · RPT-PRD-ANL-05 v1.1 · comparación TLC junio 2026</div>
+    <div class="doc-credit" style="flex-basis:100%;margin-top:10px;padding-top:12px;border-top:1px solid var(--hair);display:flex;align-items:center;gap:12px;font-size:.78rem;color:var(--faint)">
+      <a href="https://capazconsultoria.com" target="_blank" rel="noopener" aria-label="Capaz Consultoría" style="flex:0 0 auto;display:inline-flex"><img src="assets/capaz-c.png" alt="Capaz Consultoría" style="height:30px;width:auto;display:block"></a>
+      <span>Documento elaborado por <a href="mailto:oviazcan@capazconsultoria.com" style="color:var(--accent-ink);font-weight:600;text-decoration:none">Omar Viazcán</a> · <a href="https://capazconsultoria.com" target="_blank" rel="noopener" style="color:var(--accent-ink);text-decoration:none">Capaz Consultoría</a></span>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,321 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Empieza aquí — Paquete de capacitación Reportes SH</title>
+<style>
+/* ============================================================
+   Sistema de diseño canónico — Reportes SH / capacitación
+   Estética: manual técnico de campo. Neutros acero, acento verde
+   del producto, codificación por audiencia. Light-first, imprimible.
+   ============================================================ */
+:root{
+  --ground:#f7f9fb; --paper:#ffffff; --ink:#182231; --muted:#55677a;
+  --faint:#7b8a99; --hair:#e2e8ee; --hair-2:#cdd7e0; --steel:#2b3f52;
+  --accent:#0f8f61; --accent-ink:#0b6f4b; --accent-wash:#e7f5ee;
+  --ku:#c0632e; --ku-wash:#f8ede6;   /* Key User / Consumidor de reportes */
+  --ti:#2f6f9f; --ti-wash:#e8f0f7;   /* Jefe de TI / Administrador del sistema */
+  --bi:#7d4f9c; --bi-wash:#f0e9f6;   /* acento terciario (referencia) */
+  --warn:#a9640c; --warn-wash:#fbf1e0; --danger:#b5372b; --danger-wash:#fbe9e7;
+  --shadow:0 1px 2px rgba(24,34,49,.05), 0 6px 20px -8px rgba(24,34,49,.12);
+  --measure:68ch;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --ground:#0f141a; --paper:#161d26; --ink:#e6ecf2; --muted:#9fb0c0;
+    --faint:#7d8ea0; --hair:#26303c; --hair-2:#33404e; --steel:#b9c6d3;
+    --accent:#25b884; --accent-ink:#3fd39c; --accent-wash:#12211b;
+    --ku:#e08a55; --ku-wash:#241a13; --ti:#63a3d4; --ti-wash:#121e28;
+    --bi:#b58fd6; --bi-wash:#1d1626; --warn:#d69838; --warn-wash:#241c10;
+    --danger:#e0655a; --danger-wash:#251512;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px -10px rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="light"]{
+  --ground:#f7f9fb; --paper:#ffffff; --ink:#182231; --muted:#55677a; --faint:#7b8a99;
+  --hair:#e2e8ee; --hair-2:#cdd7e0; --steel:#2b3f52; --accent:#0f8f61; --accent-ink:#0b6f4b;
+  --accent-wash:#e7f5ee; --ku:#c0632e; --ku-wash:#f8ede6; --ti:#2f6f9f; --ti-wash:#e8f0f7;
+  --bi:#7d4f9c; --bi-wash:#f0e9f6; --warn:#a9640c; --warn-wash:#fbf1e0; --danger:#b5372b; --danger-wash:#fbe9e7;
+}
+:root[data-theme="dark"]{
+  --ground:#0f141a; --paper:#161d26; --ink:#e6ecf2; --muted:#9fb0c0; --faint:#7d8ea0;
+  --hair:#26303c; --hair-2:#33404e; --steel:#b9c6d3; --accent:#25b884; --accent-ink:#3fd39c;
+  --accent-wash:#12211b; --ku:#e08a55; --ku-wash:#241a13; --ti:#63a3d4; --ti-wash:#121e28;
+  --bi:#b58fd6; --bi-wash:#1d1626; --warn:#d69838; --warn-wash:#241c10; --danger:#e0655a; --danger-wash:#251512;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--ground); color:var(--ink);
+  font-family:var(--sans); font-size:17px; line-height:1.62;
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility;
+}
+.wrap{max-width:960px; margin:0 auto; padding:0 24px 96px}
+.measure{max-width:var(--measure)}
+/* ---------- masthead ---------- */
+.masthead{
+  border-bottom:2px solid var(--steel); padding:40px 0 22px; margin-bottom:8px;
+}
+.eyebrow{
+  font-size:.72rem; text-transform:uppercase; letter-spacing:.14em;
+  color:var(--faint); font-weight:700; margin:0 0 10px;
+}
+.masthead h1{
+  font-size:clamp(1.9rem,4.4vw,2.6rem); line-height:1.08; letter-spacing:-.02em;
+  margin:0 0 8px; text-wrap:balance; color:var(--ink); font-weight:800;
+}
+.masthead .sub{font-size:1.12rem; color:var(--muted); margin:0; max-width:60ch}
+.masthead .brandbar{display:flex; align-items:center; gap:10px; margin-bottom:18px}
+.brandmark{
+  width:28px; height:28px; border-radius:6px; background:var(--steel);
+  display:grid; place-items:center; flex:0 0 auto;
+}
+.brandmark span{color:#fff; font-weight:800; font-size:.72rem; font-family:var(--mono); letter-spacing:.02em}
+.brandname{font-weight:700; letter-spacing:.02em; font-size:.95rem}
+.brandname em{color:var(--accent-ink); font-style:normal}
+/* ---------- badges ---------- */
+.badge{
+  display:inline-flex; align-items:center; gap:6px; font-size:.72rem; font-weight:700;
+  text-transform:uppercase; letter-spacing:.06em; padding:3px 9px; border-radius:999px;
+  border:1px solid transparent; white-space:nowrap;
+}
+.badge.vivo{background:var(--accent-wash); color:var(--accent-ink); border-color:color-mix(in srgb,var(--accent) 35%,transparent)}
+.badge.perenne{background:var(--ti-wash); color:var(--ti); border-color:color-mix(in srgb,var(--ti) 30%,transparent)}
+.badge.dot::before{content:""; width:7px; height:7px; border-radius:50%; background:currentColor}
+/* ---------- freshness banner ---------- */
+.freshness{
+  display:flex; gap:14px; align-items:flex-start; margin:22px 0 6px;
+  background:var(--accent-wash); border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);
+  border-left:4px solid var(--accent); border-radius:10px; padding:14px 16px; font-size:.92rem;
+}
+.freshness .ic{flex:0 0 auto; color:var(--accent-ink); margin-top:1px}
+.freshness b{color:var(--accent-ink)}
+.freshness code{background:color-mix(in srgb,var(--accent) 14%,transparent)}
+/* ---------- typography blocks ---------- */
+h2.sec{
+  font-size:1.5rem; letter-spacing:-.01em; margin:52px 0 4px; padding-top:8px;
+  font-weight:800; color:var(--ink); text-wrap:balance;
+}
+h2.sec .num{
+  font-family:var(--mono); font-size:.9rem; color:var(--accent-ink); font-weight:700;
+  border:1px solid var(--hair-2); border-radius:6px; padding:1px 7px; margin-right:10px; vertical-align:.15em;
+}
+.sec-lead{color:var(--muted); margin:.4rem 0 1.4rem; max-width:var(--measure)}
+p{margin:0 0 1rem; max-width:var(--measure)}
+strong{font-weight:700}
+a{color:var(--accent-ink); text-decoration:underline; text-underline-offset:2px; text-decoration-thickness:1px}
+a:hover{text-decoration-thickness:2px}
+code{font-family:var(--mono); font-size:.86em; background:var(--hair); padding:1px 5px; border-radius:5px}
+ul,ol{max-width:var(--measure); padding-left:1.25em}
+li{margin:.3rem 0}
+/* ---------- cards / grid ---------- */
+.grid{display:grid; gap:18px}
+.grid.cols-3{grid-template-columns:repeat(3,1fr)}
+.grid.cols-2{grid-template-columns:repeat(2,1fr)}
+@media (max-width:820px){.grid.cols-3,.grid.cols-2{grid-template-columns:1fr}}
+.card{
+  background:var(--paper); border:1px solid var(--hair); border-radius:12px;
+  padding:20px; box-shadow:var(--shadow);
+}
+/* audience card */
+.acard{border-top:4px solid var(--aud,var(--steel)); display:flex; flex-direction:column; gap:2px}
+.acard.ku{--aud:var(--ku)} .acard.ti{--aud:var(--ti)} .acard.bi{--aud:var(--bi)}
+.acard .who{font-size:.72rem; text-transform:uppercase; letter-spacing:.1em; font-weight:800; color:var(--aud)}
+.acard h3{margin:.15rem 0 .1rem; font-size:1.24rem; letter-spacing:-.01em}
+.acard .youare{font-size:.92rem; color:var(--muted); margin:0 0 14px; font-style:italic}
+.path{list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:8px}
+.path li{display:flex; gap:10px; align-items:baseline; margin:0}
+.path .rank{
+  font-family:var(--mono); font-size:.68rem; font-weight:700; color:#fff; background:var(--aud);
+  border-radius:5px; padding:1px 6px; flex:0 0 auto; letter-spacing:.02em;
+}
+.path .doc{font-weight:600}
+.path .doc small{display:block; font-weight:400; color:var(--faint); font-size:.82rem}
+/* ---------- convention split ---------- */
+.split{display:grid; grid-template-columns:1fr 1fr; gap:18px}
+@media (max-width:820px){.split{grid-template-columns:1fr}}
+.conv{border-radius:12px; padding:20px; border:1px solid var(--hair); background:var(--paper)}
+.conv.v{border-left:4px solid var(--accent)} .conv.p{border-left:4px solid var(--ti)}
+.conv h3{margin:0 0 4px; font-size:1.12rem; display:flex; align-items:center; gap:10px}
+.conv .lede{color:var(--muted); font-size:.94rem; margin:.2rem 0 .8rem}
+.conv ul{font-size:.92rem; margin:0}
+/* ---------- contents table ---------- */
+.tablewrap{overflow-x:auto; border:1px solid var(--hair); border-radius:12px; box-shadow:var(--shadow)}
+table{border-collapse:collapse; width:100%; font-size:.92rem; background:var(--paper); min-width:640px}
+thead th{
+  text-align:left; font-size:.7rem; text-transform:uppercase; letter-spacing:.08em; color:var(--faint);
+  font-weight:700; padding:12px 14px; border-bottom:2px solid var(--hair-2); background:var(--ground);
+}
+tbody td{padding:11px 14px; border-bottom:1px solid var(--hair); vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+.chip{display:inline-block; font-size:.7rem; font-weight:700; padding:2px 8px; border-radius:6px; white-space:nowrap}
+.chip.ku{background:var(--ku-wash); color:var(--ku)} .chip.ti{background:var(--ti-wash); color:var(--ti)}
+.chip.bi{background:var(--bi-wash); color:var(--bi)} .chip.all{background:var(--hair); color:var(--muted)}
+.tag-v{color:var(--accent-ink); font-weight:700} .tag-p{color:var(--ti); font-weight:700}
+/* ---------- callouts ---------- */
+.callout{
+  border-radius:10px; padding:14px 16px 14px 46px; position:relative; margin:20px 0;
+  font-size:.94rem; border:1px solid var(--hair); background:var(--paper);
+}
+.callout .ct{font-weight:700; margin:0 0 3px; font-size:.82rem; text-transform:uppercase; letter-spacing:.05em}
+.callout::before{position:absolute; left:14px; top:14px; font-size:1.1rem; line-height:1}
+.callout.tip{border-left:4px solid var(--accent); background:var(--accent-wash)}
+.callout.tip .ct{color:var(--accent-ink)} .callout.tip::before{content:"✓"; color:var(--accent-ink); font-weight:800}
+.callout.info{border-left:4px solid var(--ti); background:var(--ti-wash)}
+.callout.info .ct{color:var(--ti)} .callout.info::before{content:"ℹ"; color:var(--ti); font-weight:800}
+/* ---------- footer ---------- */
+.foot{margin-top:64px; padding-top:22px; border-top:1px solid var(--hair-2); color:var(--faint);
+  font-size:.85rem; display:flex; flex-wrap:wrap; gap:8px 20px; align-items:center; justify-content:space-between}
+.foot .meta{display:flex; gap:16px; flex-wrap:wrap}
+/* ---------- print ---------- */
+@media print{
+  :root{--ground:#fff; --paper:#fff; --shadow:none}
+  body{font-size:11.5pt}
+  .wrap{max-width:none; padding:0}
+  .card,.conv,.tablewrap,.freshness,.callout{break-inside:avoid}
+  h2.sec{break-after:avoid}
+  a{color:var(--ink); text-decoration:none}
+  .noprint{display:none !important}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brandbar" style="flex-wrap:wrap;gap:10px 16px">
+      <span class="brandmark"><span>RSH</span></span>
+      <span class="brandname">Reportes<em>SH</em> · Paquete de capacitación y referencia</span>
+      <a href="https://capazconsultoria.com" target="_blank" rel="noopener" aria-label="Capaz Consultoría" style="margin-left:auto;flex:0 0 auto;background:#fff;border:1px solid #dbe1e8;border-radius:9px;padding:6px 12px;display:inline-flex;align-items:center;box-shadow:0 1px 3px rgba(24,34,49,.12)"><img src="assets/capaz-wordmark.png" alt="Capaz Consultoría" style="height:40px;width:auto;display:block"></a>
+    </div>
+    <p class="eyebrow">Empieza aquí — el mapa del paquete</p>
+    <h1>Qué es este paquete y cómo se lee según tu rol</h1>
+    <p class="sub">El índice del paquete: qué documento leer según tu rol, y cuáles conviene consultar siempre en su versión más reciente.</p>
+  </header>
+
+  <div class="freshness noprint" style="border-left-color:var(--ti); background:var(--ti-wash); border-color:color-mix(in srgb,var(--ti) 30%,transparent)">
+    <span class="ic" aria-hidden="true">📌</span>
+    <div><b style="color:var(--ti)">Este documento es PERENNE.</b> Explica conceptos y rutas de lectura que casi no cambian. Los conteos exactos (“~102 reportes”, versiones) viven en los documentos marcados <span class="badge vivo dot" style="vertical-align:1px">Vivo</span>, que sí se actualizan cada vez que se agregan o modifican reportes.</div>
+  </div>
+
+  <p class="measure" style="margin-top:26px">Reportes SH es el sistema de <strong>reportería personalizada</strong> del ERP <strong>Steelhead</strong> (<code>app.gosteelhead.com</code>) para Ecoplating. Cada semana baja una <strong>“fotografía” completa</strong> de los datos del ERP a un archivo local, corre sobre ella los reportes escritos a la medida (SQL), y los <strong>publica de vuelta dentro de Steelhead</strong> para que cada área los consulte con sus propios filtros. Hoy son <strong>~102 reportes</strong> —producción, ventas, calidad, inventario, contabilidad, mantenimiento y más— vivos en las dos plantas: <strong>TLC</strong> (Tlalnepantla) y <strong>MTY</strong> (Monterrey).</p>
+
+  <!-- ============ CONVENCIÓN VIVO / PERENNE ============ -->
+  <h2 class="sec"><span class="num">01</span>La convención que debes conocer antes de imprimir</h2>
+  <p class="sec-lead measure">Cada documento del paquete está marcado con una de dos etiquetas. La distinción importa <strong>especialmente si vas a imprimir</strong>: lo “vivo” caduca; lo “perenne”, no.</p>
+
+  <div class="split">
+    <div class="conv v">
+      <h3><span class="badge vivo dot">Documento vivo</span></h3>
+      <p class="lede">Refleja el estado <em>actual</em> del sistema: cuántos reportes hay, en qué departamentos, qué vistas y dashboards existen.</p>
+      <ul>
+        <li>Cambia cada vez que se agrega o modifica un reporte (varias veces por mes).</li>
+        <li>Lleva un <strong>banner de frescura</strong> con la fecha del corte.</li>
+        <li>Si lo imprimes, anota la fecha: una copia impresa es una <strong>foto de un momento</strong>, no la verdad viva.</li>
+        <li>Ejemplo: el <em>Inventario de Reportes</em>.</li>
+      </ul>
+    </div>
+    <div class="conv p">
+      <h3><span class="badge perenne dot">Documento perenne</span></h3>
+      <p class="lede">Enseña <em>modelos mentales</em> y patrones estables: cómo funciona, no cuántos hay hoy.</p>
+      <ul>
+        <li>No necesita re-emitirse con cada reporte nuevo; envejece muy despacio.</li>
+        <li>Cuando menciona cifras lo hace en <strong>relativo</strong> (“~102 reportes; ver el Inventario vivo”).</li>
+        <li>Puedes imprimirlo con confianza y reutilizarlo por mucho tiempo.</li>
+        <li>Ejemplos: este Mapa, la presentación 101, los manuales, el glosario, las fichas profundas.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout info measure" style="max-width:none">
+    <p class="ct">Cómo comprobar la “versión viva” en cualquier momento</p>
+    <strong>Consumidor de reportes / Key User:</strong> cada reporte trae su versión en el encabezado del SQL (<code>-- Versión: v1.2</code>) y en el historial de “Version Control” de Steelhead. &nbsp;·&nbsp; <strong>Administrador / TI:</strong> el <em>Inventario de Reportes</em> (documento vivo) se regenera del propio código; su corte indica qué tan actual es la copia que tienes en la mano.
+  </div>
+
+  <!-- ============ AUDIENCIAS ============ -->
+  <h2 class="sec"><span class="num">02</span>Dos rutas de lectura según tu rol</h2>
+  <p class="sec-lead measure">Cada color te acompaña por todo el paquete: cuando veas tu color en un encabezado o una tarjeta, esa sección está pensada para ti. Empieza por donde te toca; lo demás está disponible cuando lo necesites.</p>
+
+  <div class="grid cols-2">
+    <!-- Key User -->
+    <article class="card acard ku">
+      <span class="who">Key User · Consumidor de reportes</span>
+      <h3>Usas los reportes para decidir</h3>
+      <p class="youare">Eres dueño o analista de un área (Producción, Ventas, Calidad…). Abres los reportes en Steelhead, aplicas filtros y lees los resultados; quieres saber cuál usar y qué significa cada columna.</p>
+      <ul class="path">
+        <li><span class="rank">01</span><span class="doc">Manual del Operador<small>Cómo abrir, filtrar y leer un reporte + ficha breve de cada familia</small></span></li>
+        <li><span class="rank">02</span><span class="doc">Ficha profunda: Cliente combinado<small>Por qué un mismo cliente aparece con su planta, y cómo se decide</small></span></li>
+        <li><span class="rank">03</span><span class="doc">Presentación 101<small>El panorama de cómo nace y se publica un reporte</small></span></li>
+      </ul>
+      <p style="margin:14px 0 0;font-size:.82rem;color:var(--faint)">De consulta: <strong>Inventario</strong> y <strong>Glosario</strong>.</p>
+    </article>
+    <!-- Jefe de TI -->
+    <article class="card acard ti">
+      <span class="who">Jefe de TI · Administrador del sistema</span>
+      <h3>Mantienes vivo el sistema de reportes</h3>
+      <p class="youare">Vienes de sistemas/infraestructura. Respondes por la fotografía semanal, la publicación de reportes, la sincronización entre plantas y las credenciales del ERP.</p>
+      <ul class="path">
+        <li><span class="rank">01</span><span class="doc">Presentación 101<small>El modelo completo: fotografía, pull/push, banco vs. línea</small></span></li>
+        <li><span class="rank">02</span><span class="doc">Manual del Administrador<small>Snapshot semanal, publicar reportes, sincronizar TLC↔MTY, credenciales, hashes</small></span></li>
+        <li><span class="rank">03</span><span class="doc">Ficha profunda: La ventana de fechas<small>El error de huso horario que tocó 53 reportes, y su patrón</small></span></li>
+      </ul>
+      <p style="margin:14px 0 0;font-size:.82rem;color:var(--faint)">De consulta: <strong>Inventario</strong> (vivo) y <strong>Glosario</strong>.</p>
+    </article>
+  </div>
+
+  <!-- ============ CONTENIDO DEL PAQUETE ============ -->
+  <h2 class="sec"><span class="num">03</span>El paquete completo, de un vistazo</h2>
+  <p class="sec-lead measure">Los documentos del paquete, organizados por capas, de lo más conceptual a lo más detallado. La columna <em>Longevidad</em> te dice si conviene imprimirlo hoy o consultarlo siempre en su versión viva.</p>
+
+  <div class="callout info measure" style="max-width:none">
+    <p class="ct">Estado del paquete — completo</p>
+    Todos los documentos ya están <strong>listos</strong> (enlace <strong>“Abrir ↗”</strong> en la tabla). Incluye un documento transversal de <strong>Repositorios, GitHub y mantenimiento</strong> que aplica a los tres repositorios de la familia Steelhead (lo aporta el paquete de SteelheadAutomator) y una <strong>Guía de Onboarding de Desarrollo (Windows + Mac)</strong> para quien vaya a mantener el repo.
+  </div>
+
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr><th>Capa</th><th>Documento</th><th>Audiencia principal</th><th>Longevidad</th><th>Para qué sirve</th><th>Abrir</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>0</td><td><strong>Mapa “Empieza aquí”</strong></td><td><span class="chip all">Todos</span></td><td><span class="tag-p">Perenne</span></td><td>Este documento: qué leer según tu rol.</td><td><span style="color:var(--faint);font-size:.8rem;white-space:nowrap">Estás aquí</span></td></tr>
+        <tr><td>1</td><td><strong>Reportes SH 101</strong></td><td><span class="chip all">Todos</span> <span class="chip ti">TI</span></td><td><span class="tag-p">Perenne</span></td><td>Los conceptos: la fotografía semanal, pull/push, banco vs. línea, plantas gemelas.</td><td><a href="101-deck.html" style="font-weight:700;white-space:nowrap">Abrir ↗</a></td></tr>
+        <tr><td>2</td><td><strong>Manual del Operador</strong></td><td><span class="chip ku">Key User</span></td><td><span class="tag-p">Perenne</span></td><td>Abrir, filtrar y leer un reporte; fichas breves por familia.</td><td><a href="manual-operador.html" style="font-weight:700;white-space:nowrap">Abrir ↗</a></td></tr>
+        <tr><td>2</td><td><strong>Manual del Administrador</strong></td><td><span class="chip ti">Jefe de TI</span></td><td><span class="tag-p">Perenne</span></td><td>Snapshot semanal, publicar reportes, sincronizar plantas, credenciales, hashes.</td><td><a href="manual-administrador.html" style="font-weight:700;white-space:nowrap">Abrir ↗</a></td></tr>
+        <tr><td>3</td><td><strong>Inventario de Reportes</strong></td><td><span class="chip all">Todos</span></td><td><span class="tag-v">Vivo</span></td><td>Tabla autoritativa de los ~102 reportes que hoy corren en las dos plantas.</td><td><a href="inventario-reportes.html" style="font-weight:700;white-space:nowrap">Abrir ↗</a></td></tr>
+        <tr><td>3</td><td><strong>Glosario técnico</strong></td><td><span class="chip all">Todos</span></td><td><span class="tag-p">Perenne</span></td><td>Cada término (snapshot, hash, vista, dropdown…) en lenguaje llano, con metáfora.</td><td><a href="glosario.html" style="font-weight:700;white-space:nowrap">Abrir ↗</a></td></tr>
+        <tr><td>3</td><td><strong>Gobernanza de datos</strong></td><td><span class="chip all">Todos</span> <span class="chip ti">TI</span></td><td><span class="tag-p">Perenne</span></td><td>La placa <code>RPT-DEP-TIPO-NN</code> a detalle: departamentos y dueños, tipos, versionamiento, capas y ciclo de vida.</td><td><a href="gobernanza-datos.html" style="font-weight:700;white-space:nowrap">Abrir ↗</a></td></tr>
+        <tr><td>3</td><td><strong>Guía de Vistas y Dashboards Perspective</strong></td><td><span class="chip all">Todos</span></td><td><span class="tag-p">Perenne</span></td><td>Reporte vs. vista vs. dashboard, el catálogo de gráficas, y el editor “config” control por control (incluidas las expresiones).</td><td><a href="guia-perspective.html" style="font-weight:700;white-space:nowrap">Abrir ↗</a></td></tr>
+        <tr><td>4</td><td><strong>Ficha profunda: La ventana de fechas</strong></td><td><span class="chip ti">Jefe de TI</span></td><td><span class="tag-p">Perenne</span></td><td>El error de huso horario que corría un día de más; tocó 53 reportes.</td><td><a href="ficha-ventana-fechas.html" style="font-weight:700;white-space:nowrap">Abrir ↗</a></td></tr>
+        <tr><td>4</td><td><strong>Ficha profunda: Cliente combinado</strong></td><td><span class="chip ku">Key User</span></td><td><span class="tag-p">Perenne</span></td><td>Cómo se muestra un cliente con varias plantas sin confundirlas.</td><td><a href="ficha-cliente-combinado.html" style="font-weight:700;white-space:nowrap">Abrir ↗</a></td></tr>
+        <tr><td>4</td><td><strong>Ficha profunda: Consumo de plata</strong></td><td><span class="chip ku">Key User</span></td><td><span class="tag-p">Perenne</span></td><td>El reporte que rastrea la plata y el cianuro por tina — caso de estudio.</td><td><a href="ficha-consumo-plata.html" style="font-weight:700;white-space:nowrap">Abrir ↗</a></td></tr>
+        <tr><td>4</td><td><strong>Ficha profunda: OEE — dos versiones</strong></td><td><span class="chip ku">Key User</span></td><td><span class="tag-p">Perenne</span></td><td>Por qué hay dos reportes de OEE con nombre parecido y cuál usar.</td><td><a href="ficha-oee.html" style="font-weight:700;white-space:nowrap">Abrir ↗</a></td></tr>
+        <tr><td>5</td><td><strong>Repositorios, GitHub y mantenimiento</strong></td><td><span class="chip all">Todos</span> <span class="chip ti">TI</span></td><td><span class="tag-p">Perenne</span></td><td>Documento transversal a los tres repos de la familia: qué es un repo y el modelo de mantenimiento.</td><td><a href="repos-y-mantenimiento.html" style="font-weight:700;white-space:nowrap">Abrir ↗</a></td></tr>
+        <tr><td>5</td><td><strong>Onboarding de Desarrollo</strong></td><td><span class="chip ti">Desarrollo</span></td><td><span class="tag-p">Perenne</span></td><td>Montar el entorno (Windows + Mac) para mantener y evolucionar el repo.</td><td><a href="onboarding-desarrollo.html" style="font-weight:700;white-space:nowrap">Abrir ↗</a></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout tip measure" style="max-width:none">
+    <p class="ct">Sugerencia de recorrido para la sesión de capacitación</p>
+    Arranquen todos juntos con la <strong>Presentación 101</strong> (30–40 min) para compartir el mismo modelo mental. Después, cada quien profundiza por su ruta. Las <strong>fichas profundas</strong> se reservan para quien quiera el detalle fino de los temas más delicados del sistema.
+  </div>
+
+  <footer class="foot">
+    <div class="meta">
+      <span><span class="badge perenne dot">Perenne</span></span>
+      <span>Paquete de capacitación Reportes SH · Mapa v1</span>
+    </div>
+    <div class="meta">
+      <span>Corte de referencia: 23 jul 2026</span>
+    </div>
+
+      <div style="flex-basis:100%;margin-top:10px;padding-top:12px;border-top:1px solid var(--hair);display:flex;align-items:center;gap:12px;font-size:.78rem;color:var(--faint)"><a href="https://capazconsultoria.com" target="_blank" rel="noopener" aria-label="Capaz Consultoría" style="flex:0 0 auto;display:inline-flex"><img src="assets/capaz-c.png" alt="Capaz Consultoría" style="height:30px;width:auto;display:block"></a><span>Documento elaborado por <a href="mailto:oviazcan@capazconsultoria.com" style="color:var(--accent-ink);font-weight:600;text-decoration:none">Omar Viazcán</a> · <a href="https://capazconsultoria.com" target="_blank" rel="noopener" style="color:var(--accent-ink);text-decoration:none">Capaz Consultoría</a></span></div>
+    </footer>
+
+</div>
+</body>
+</html>

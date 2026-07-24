@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ficha profunda: La ventana de fechas — Reportes SH</title>
+<style>
+:root{
+  --ground:#f7f9fb;--paper:#ffffff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;
+  --hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;
+  --ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;
+  --warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7;
+  --shadow:0 1px 2px rgba(24,34,49,.05),0 6px 20px -8px rgba(24,34,49,.12);
+  --measure:68ch;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){:root{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512;--shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -10px rgba(0,0,0,.5)}}
+:root[data-theme="light"]{--ground:#f7f9fb;--paper:#fff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;--hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;--ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;--warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7}
+:root[data-theme="dark"]{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.62;-webkit-font-smoothing:antialiased}
+.wrap{max-width:920px;margin:0 auto;padding:0 24px 96px}
+.measure{max-width:var(--measure)}
+.masthead{border-bottom:2px solid var(--ti);padding:40px 0 22px}
+.brandbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.brandmark{width:28px;height:28px;border-radius:6px;background:var(--steel);display:grid;place-items:center;flex:0 0 auto}
+.brandmark span{color:#fff;font-weight:800;font-size:.72rem;font-family:var(--mono)}
+.brandname{font-weight:700;letter-spacing:.02em;font-size:.95rem}
+.brandname em{color:var(--accent-ink);font-style:normal}
+.eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.14em;color:var(--ti);font-weight:800;margin:0 0 10px}
+.masthead h1{font-size:clamp(2rem,4.6vw,2.7rem);line-height:1.06;letter-spacing:-.02em;margin:0 0 10px;font-weight:800;text-wrap:balance}
+.masthead .sub{font-size:1.12rem;color:var(--muted);margin:0;max-width:60ch}
+.audchips{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.audchip{font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.05em}
+.audchip.ti{background:var(--ti-wash);color:var(--ti)} .audchip.p{background:var(--ti-wash);color:var(--ti)}
+.tldr{background:var(--paper);border:1px solid var(--hair);border-left:4px solid var(--ti);border-radius:12px;padding:20px 22px;margin:26px 0;box-shadow:var(--shadow)}
+.tldr .ct{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--ti);margin:0 0 8px}
+.tldr p{margin:0;font-size:1.05rem;max-width:none}
+h2.sec{font-size:1.5rem;letter-spacing:-.01em;margin:54px 0 4px;font-weight:800;text-wrap:balance}
+h2.sec .num{font-family:var(--mono);font-size:.85rem;color:var(--ti);font-weight:700;border:1px solid var(--hair-2);border-radius:6px;padding:1px 7px;margin-right:10px;vertical-align:.15em}
+h3.sub{font-size:1.16rem;margin:32px 0 6px;letter-spacing:-.01em;font-weight:700}
+.sec-lead{color:var(--muted);margin:.4rem 0 1.2rem;max-width:var(--measure)}
+p{margin:0 0 1rem;max-width:var(--measure)}
+a{color:var(--accent-ink);text-underline-offset:2px}
+code{font-family:var(--mono);font-size:.85em;background:var(--hair);padding:1px 5px;border-radius:5px;word-break:break-word}
+pre{background:var(--paper);border:1px solid var(--hair);border-left:4px solid var(--steel);border-radius:10px;padding:14px 16px;overflow-x:auto;box-shadow:var(--shadow);font-family:var(--mono);font-size:.82rem;line-height:1.5;margin:18px 0}
+pre code{background:none;padding:0;font-size:1em}
+.tok-c{color:var(--faint)} .tok-k{color:var(--ti);font-weight:600} .tok-f{color:var(--accent-ink);font-weight:600} .tok-s{color:var(--ku)}
+ul,ol{max-width:var(--measure);padding-left:1.25em} li{margin:.35rem 0}
+strong{font-weight:700}
+figure.diagram{margin:26px 0;background:var(--paper);border:1px solid var(--hair);border-radius:14px;padding:20px 18px 8px;box-shadow:var(--shadow);overflow-x:auto}
+figure.diagram svg{display:block;width:100%;height:auto;min-width:600px;max-width:840px;margin:0 auto}
+figure.diagram figcaption{font-size:.85rem;color:var(--faint);text-align:center;margin-top:10px;padding:0 8px 6px}
+.svg-t{font-family:var(--sans);fill:var(--ink)} .svg-m{font-family:var(--mono)} .svg-mut{fill:var(--muted)}
+.callout{border-radius:10px;padding:15px 17px 15px 48px;position:relative;margin:22px 0;font-size:.95rem;border:1px solid var(--hair);background:var(--paper)}
+.callout .ct{font-weight:800;margin:0 0 4px;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em}
+.callout p{max-width:none;margin:.3rem 0 0}
+.callout::before{position:absolute;left:15px;top:14px;font-size:1.15rem;line-height:1}
+.callout.meta{border-left:4px solid var(--steel);background:color-mix(in srgb,var(--steel) 6%,var(--paper))} .callout.meta .ct{color:var(--steel)} .callout.meta::before{content:"💡"}
+.callout.info{border-left:4px solid var(--ti);background:var(--ti-wash)} .callout.info .ct{color:var(--ti)} .callout.info::before{content:"ℹ";color:var(--ti);font-weight:800}
+.callout.warn{border-left:4px solid var(--warn);background:var(--warn-wash)} .callout.warn .ct{color:var(--warn)} .callout.warn::before{content:"⚠"}
+.callout.danger{border-left:4px solid var(--danger);background:var(--danger-wash)} .callout.danger .ct{color:var(--danger)} .callout.danger::before{content:"⛔"}
+.callout.tip{border-left:4px solid var(--accent);background:var(--accent-wash)} .callout.tip .ct{color:var(--accent-ink)} .callout.tip::before{content:"✓";color:var(--accent-ink);font-weight:800}
+.stages{list-style:none;padding:0;margin:24px 0;display:flex;flex-direction:column;gap:2px}
+.stages li{display:grid;grid-template-columns:44px 1fr;gap:16px;padding:16px 0;border-bottom:1px solid var(--hair);align-items:start}
+.stages li:last-child{border-bottom:none}
+.stages .k{width:38px;height:38px;border-radius:9px;background:var(--ti);color:#fff;display:grid;place-items:center;font-weight:800;font-family:var(--mono);font-size:1rem}
+.stages h4{margin:0 0 3px;font-size:1.08rem}
+.stages p{margin:0;font-size:.94rem;color:var(--muted);max-width:none}
+.tablewrap{overflow-x:auto;border:1px solid var(--hair);border-radius:12px;box-shadow:var(--shadow);margin:20px 0}
+table{border-collapse:collapse;width:100%;font-size:.9rem;background:var(--paper);min-width:520px}
+thead th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:700;padding:11px 14px;border-bottom:2px solid var(--hair-2);background:var(--ground)}
+tbody td{padding:11px 14px;border-bottom:1px solid var(--hair);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+.roles{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:26px 0}
+@media (max-width:760px){.roles{grid-template-columns:1fr}}
+.role{border-radius:12px;padding:20px;border:1px solid var(--hair);background:var(--paper);box-shadow:var(--shadow)}
+.role.ti{border-top:4px solid var(--ti)} .role.ku{border-top:4px solid var(--ku)}
+.role .who{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;margin-bottom:6px}
+.role.ti .who{color:var(--ti)} .role.ku .who{color:var(--ku)}
+.role p{margin:0;font-size:.93rem;max-width:none}
+.foot{margin-top:64px;padding-top:22px;border-top:1px solid var(--hair-2);color:var(--faint);font-size:.85rem;display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:999px}
+.badge.perenne{background:var(--ti-wash);color:var(--ti)} .badge.perenne::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+@media print{:root{--ground:#fff;--paper:#fff;--shadow:none}body{font-size:11.5pt}.wrap{max-width:none;padding:0}figure.diagram,.callout,.tablewrap,.role,.stages li,pre{break-inside:avoid}figure.diagram svg{min-width:0}h2.sec,h3.sub{break-after:avoid}a{color:var(--ink);text-decoration:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brandbar">
+      <span class="brandmark"><span>RSH</span></span>
+      <span class="brandname">Reportes<em>SH</em> · Ficha profunda</span>
+      <a href="00-mapa-empieza-aqui.html" style="margin-left:auto;font-size:.82rem;color:var(--faint);text-decoration:none;white-space:nowrap">← Índice del paquete</a>
+    </div>
+    <p class="eyebrow">Ficha profunda · Jefe de TI</p>
+    <h1>La ventana de fechas</h1>
+    <p class="sub">El error de huso horario que hacía que 53 reportes incluyeran un día de más — y el patrón de una sola línea que lo resolvió en todos.</p>
+    <div class="audchips">
+      <span class="audchip ti">Jefe de TI</span>
+      <span class="audchip p">Documento perenne</span>
+    </div>
+  </header>
+
+  <div class="tldr measure" style="max-width:none">
+    <p class="ct">En una frase</p>
+    <p>Steelhead entrega el filtro de fechas en <strong>hora de Greenwich (UTC)</strong>, no en hora de México; al recortarlo “a secas”, el final del rango se recorría al día siguiente y el reporte sumaba un día que no debía. La cura fue <strong>convertir a hora local antes de recortar</strong>, y se aplicó a los 53 reportes afectados.</p>
+  </div>
+
+  <!-- ============ 01 EL SÍNTOMA ============ -->
+  <h2 class="sec"><span class="num">01</span>El síntoma: un día de más, siempre por arriba</h2>
+  <p class="sec-lead measure">Muchos reportes tienen una <strong>ventana de fechas</strong>: el usuario elige “del 1 al 20 de julio” y el reporte responde solo con lo de ese rango. Steelhead ofrece esa función con el nombre <em>“Use date range”</em>, e inyecta dos valores en el SQL: <code>$start</code> (inicio) y <code>$end</code> (fin).</p>
+  <p class="measure">El síntoma era sutil y siempre el mismo: si pedías “hasta el 20 de julio”, el reporte incluía también movimientos del <strong>21</strong>. Nunca fallaba por el inicio del rango (el <code>$start</code>), solo por el final (<code>$end</code>) — y solo por <strong>un</strong> día. Un error de esos que pasa desapercibido meses, hasta que alguien concilia contra contabilidad y no cuadra por las operaciones de un día.</p>
+
+  <!-- ============ 02 POR QUÉ PASA ============ -->
+  <h2 class="sec"><span class="num">02</span>Por qué pasa: la medianoche que se corre</h2>
+  <p class="sec-lead measure">La causa es un choque de <strong>husos horarios</strong>. México va detrás de Greenwich (UTC) unas 6 horas. Cuando en la planta son las 23:59 del 20 de julio, en Greenwich ya es la madrugada del 21.</p>
+  <p class="measure">Steelhead entrega <code>$end</code> como un instante en <strong>hora UTC</strong>. El “fin del 20 de julio en la planta” (23:59 local) llega escrito como <code>2026-07-21 05:59</code> <em>en UTC</em>. Si el reporte lo recorta a fecha “a secas” (tomando solo la parte de fecha del texto), lee <strong>“21 de julio”</strong> — y con eso deja entrar todo el día 21.</p>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 780 300" role="img" aria-label="Diagrama del desfase de husos horarios">
+      <defs>
+        <marker id="ar" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--danger)"/></marker>
+      </defs>
+      <!-- eje local -->
+      <text x="20" y="70" class="svg-t" font-size="13" font-weight="700">Hora local (planta · MX)</text>
+      <line x1="20" y1="90" x2="620" y2="90" stroke="var(--hair-2)" stroke-width="2"/>
+      <!-- día 20 local -->
+      <rect x="20" y="80" width="300" height="20" fill="var(--accent-wash)" stroke="color-mix(in srgb,var(--accent) 40%,transparent)"/>
+      <text x="170" y="94" class="svg-t" font-size="12" text-anchor="middle" font-weight="600">20 jul (lo que SÍ debe entrar)</text>
+      <!-- día 21 local -->
+      <rect x="320" y="80" width="300" height="20" fill="var(--paper)" stroke="var(--hair-2)"/>
+      <text x="470" y="94" class="svg-mut" font-size="12" text-anchor="middle">21 jul</text>
+      <!-- marca 23:59 -->
+      <circle cx="320" cy="90" r="5" fill="var(--accent-ink)"/>
+      <text x="320" y="126" class="svg-t" font-size="11.5" text-anchor="middle" font-weight="700">$end = 20 jul 23:59</text>
+      <text x="320" y="142" class="svg-mut" font-size="11" text-anchor="middle">fin de “ayer” en la planta</text>
+
+      <!-- flecha de traducción -->
+      <line x1="320" y1="150" x2="440" y2="205" stroke="var(--danger)" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#ar)"/>
+      <text x="470" y="180" class="svg-t" font-size="11" fill="var(--danger)" font-weight="700">+6 h → UTC</text>
+
+      <!-- eje UTC -->
+      <text x="20" y="238" class="svg-t" font-size="13" font-weight="700">Hora UTC (como llega $end a Steelhead)</text>
+      <line x1="20" y1="258" x2="620" y2="258" stroke="var(--hair-2)" stroke-width="2"/>
+      <rect x="20" y="248" width="420" height="20" fill="var(--paper)" stroke="var(--hair-2)"/>
+      <text x="230" y="262" class="svg-mut" font-size="12" text-anchor="middle">21 jul 00:00 UTC</text>
+      <rect x="440" y="248" width="180" height="20" fill="var(--danger-wash)" stroke="color-mix(in srgb,var(--danger) 40%,transparent)"/>
+      <circle cx="440" cy="258" r="5" fill="var(--danger)"/>
+      <text x="530" y="262" class="svg-t" font-size="11.5" text-anchor="middle" fill="var(--danger)" font-weight="700">21 jul 05:59Z</text>
+
+      <!-- conclusión -->
+      <text x="640" y="90" class="svg-t" font-size="12" font-weight="700">Recorte</text>
+      <text x="640" y="110" class="svg-mut" font-size="11">a secas:</text>
+      <text x="640" y="262" class="svg-t" font-size="12" fill="var(--danger)" font-weight="700">lee “21 jul”</text>
+      <text x="640" y="280" class="svg-mut" font-size="11">→ +1 día</text>
+    </svg>
+    <figcaption>El mismo instante — “fin del 20 de julio en la planta” — se escribe como <em>21 jul</em> en hora UTC. Recortarlo a fecha sin convertir primero deja entrar un día de más.</figcaption>
+  </figure>
+
+  <!-- ============ 03 LA CURA ============ -->
+  <h2 class="sec"><span class="num">03</span>La cura: convertir a hora local antes de recortar</h2>
+  <p class="sec-lead measure">El patrón canónico normaliza el valor a la <strong>zona horaria de México</strong> y <em>después</em> lo recorta a fecha. Así, “20 jul 23:59” se queda en el 20, no salta al 21.</p>
+
+  <pre><code><span class="tok-c">-- Patrón canónico (se aplica a $start Y a $end):</span>
+(<span class="tok-f">TRY_CAST</span>($end <span class="tok-k">AS</span> TIMESTAMPTZ) <span class="tok-k">AT TIME ZONE</span> <span class="tok-s">'America/Mexico_City'</span>)::<span class="tok-k">DATE</span></code></pre>
+
+  <p class="measure">Es robusto en los dos escenarios en que corre el reporte: cuando se prueba en el <strong>banco de pruebas</strong> local (donde <code>$end</code> llega como fecha plana) y cuando corre en la <strong>línea real</strong> dentro de Steelhead (donde llega como instante UTC). En ambos casos, la sesión de base de datos está configurada en hora de México, así que la conversión aterriza siempre en el día correcto.</p>
+
+  <div class="callout meta measure" style="max-width:none">
+    <p class="ct">La metáfora</p>
+    <p>Es la diferencia entre el <strong>banco de pruebas</strong> y la <strong>línea real</strong>. Una receta puede salir perfecta calibrada en el laboratorio y desviarse al escalarla a producción, porque el banco no reproduce todas las condiciones de la planta. Aquí el “banco” (la prueba local) usaba hora de México y todo cuadraba; la “línea real” (Steelhead) manda la hora en formato UTC — y ahí aparecía el día de más. El patrón canónico calibra el reporte para que dé lo mismo en ambos.</p>
+  </div>
+
+  <!-- ============ 04 LO QUE NO ERA ============ -->
+  <h2 class="sec"><span class="num">04</span>Lo que NO era el problema (y por qué importa)</h2>
+  <p class="sec-lead measure">Al diagnosticar, la tentación era “arreglar” también las columnas de fecha de cada tabla. Sería un error: habría roto lo que ya funcionaba.</p>
+  <ul class="measure">
+    <li>Las columnas de fecha del ERP ya vienen con su huso horario incorporado (son del tipo <em>timestamp con zona</em>). Recortarlas a fecha ya aterriza en el día local correcto — no hay que tocarlas.</li>
+    <li>La única excepción es una columna contable de fecha “pura” (sin hora), que no tiene el problema porque no lleva hora que se pueda correr.</li>
+    <li>El arreglo se limita a <strong><code>$start</code> y <code>$end</code></strong> — los dos valores que Steelhead inyecta en UTC. Ni una columna más.</li>
+  </ul>
+  <div class="callout warn measure" style="max-width:none">
+    <p class="ct">La trampa del “falso positivo” al auditar</p>
+    <p>Buscar la frase <code>AT TIME ZONE</code> en el código para ver “quién ya está arreglado” engaña: algunas columnas ya la usaban por otras razones. La búsqueda correcta es el patrón <em>exacto</em> aplicado a la variable, no la frase suelta.</p>
+  </div>
+
+  <!-- ============ 05 EL ALCANCE ============ -->
+  <h2 class="sec"><span class="num">05</span>El alcance: un mismo bug en 53 reportes</h2>
+  <p class="sec-lead measure">Como el patrón de la ventana de fechas se copia de un reporte a otro, el error viajaba con él. La auditoría del 17 de julio de 2026 recorrió el universo completo de reportes con ventana de fechas y los clasificó por veredicto.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Veredicto</th><th>Qué significa</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Afectado</strong></td><td>Recortaba <code>$end</code> a secas → incluía un día de más. Es el grueso de los 53 corregidos.</td></tr>
+        <tr><td><strong>Ya arreglado</strong></td><td>Ya traía el patrón canónico (reportes escritos después de descubrir el bug).</td></tr>
+        <tr><td><strong>Inmune</strong></td><td>Su lógica de fechas no permitía el corrimiento.</td></tr>
+        <tr><td><strong>No filtra por fecha</strong></td><td>Catálogos y similares, sin ventana de fechas — nada que corregir.</td></tr>
+        <tr><td><strong>Intacto por decisión</strong></td><td>La versión “OEE de Steelhead” se dejó como estaba, a pedido expreso, por compatibilidad.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="measure">El resultado: <strong>53 reportes corregidos y publicados en las dos plantas</strong> (TLC y MTY). La auditoría completa, reporte por reporte con la línea exacta del defecto, quedó registrada en un tablero navegable dentro del repositorio (<code>docs/auditoria_tz_startend.html</code>).</p>
+
+  <!-- ============ 06 VERIFICACIÓN ============ -->
+  <h2 class="sec"><span class="num">06</span>Cómo se verifica el arreglo (y una trampa)</h2>
+  <p class="sec-lead measure">Verificar que un reporte quedó bien tiene un matiz operativo que cuesta caro si se ignora.</p>
+
+  <ol class="stages">
+    <li><span class="k">1</span><div><h4>No confíes en el re-descargado inmediato</h4><p>Justo después de publicar un cambio, volver a bajar la definición del reporte <strong>todavía muestra la versión vieja</strong>: el backend de Steelhead tarda un momento en reflejarlo. Comparar contra esa copia recién bajada da un falso “no se aplicó”.</p></div></li>
+    <li><span class="k">2</span><div><h4>Verifica EN VIVO contra el ERP</h4><p>La verdad está en lo que Steelhead tiene cargado ahora mismo (la consulta que lista todos los reportes con su SQL vigente), no en el archivo local recién descargado.</p></div></li>
+    <li><span class="k">3</span><div><h4>Reactiva “Use date range” si el reporte es nuevo</h4><p>La publicación del SQL <strong>no</strong> arrastra el interruptor de la ventana de fechas. En reportes nuevos hay que encenderlo a mano en la interfaz de Steelhead tras publicar.</p></div></li>
+  </ol>
+
+  <div class="callout tip measure" style="max-width:none">
+    <p class="ct">La lección que quedó</p>
+    <p>Este fue el bug que le enseñó al proyecto a <strong>verificar en la línea real, no solo en el banco de pruebas</strong>. De aquí salió la disciplina de comprobar cada reporte en vivo dentro de Steelhead antes de darlo por bueno — la misma que hoy atrapa otras diferencias entre local y producción.</p>
+  </div>
+
+  <!-- ============ QUÉ SIGNIFICA PARA TI ============ -->
+  <h2 class="sec"><span class="num">07</span>Qué significa para ti</h2>
+  <div class="roles">
+    <div class="role ti">
+      <div class="who">Jefe de TI · Administrador</div>
+      <p>Cuando crees o edites un reporte con ventana de fechas, usa el patrón canónico en <code>$start</code> y <code>$end</code>, nunca el recorte a secas. Y verifica en vivo, no contra la copia recién descargada. Es una línea de código, pero se copia mal con facilidad.</p>
+    </div>
+    <div class="role ku">
+      <div class="who">Key User · Consumidor</div>
+      <p>Si un reporte con rango de fechas te muestra movimientos de un día que no pediste, repórtalo: probablemente es este patrón sin aplicar. Hoy los 53 reportes conocidos ya están corregidos, pero saber el síntoma ayuda a cazar cualquier caso nuevo.</p>
+    </div>
+  </div>
+
+  <footer class="foot">
+    <div><span class="badge perenne">Perenne</span> &nbsp; Ficha profunda: La ventana de fechas · Reportes SH</div>
+    <div>Basado en la auditoría del 17 jul 2026</div>
+    <div class="doc-credit" style="flex-basis:100%;margin-top:10px;padding-top:12px;border-top:1px solid var(--hair);display:flex;align-items:center;gap:12px;font-size:.78rem;color:var(--faint)">
+      <a href="https://capazconsultoria.com" target="_blank" rel="noopener" aria-label="Capaz Consultoría" style="flex:0 0 auto;display:inline-flex"><img src="assets/capaz-c.png" alt="Capaz Consultoría" style="height:30px;width:auto;display:block"></a>
+      <span>Documento elaborado por <a href="mailto:oviazcan@capazconsultoria.com" style="color:var(--accent-ink);font-weight:600;text-decoration:none">Omar Viazcán</a> · <a href="https://capazconsultoria.com" target="_blank" rel="noopener" style="color:var(--accent-ink);text-decoration:none">Capaz Consultoría</a></span>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>

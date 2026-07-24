@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glosario técnico — Reportes SH</title>
+<style>
+:root{
+  --ground:#f7f9fb; --paper:#ffffff; --ink:#182231; --muted:#55677a;
+  --faint:#7b8a99; --hair:#e2e8ee; --hair-2:#cdd7e0; --steel:#2b3f52;
+  --accent:#0f8f61; --accent-ink:#0b6f4b; --accent-wash:#e7f5ee;
+  --ku:#c0632e; --ku-wash:#f8ede6; --ti:#2f6f9f; --ti-wash:#e8f0f7;
+  --bi:#7d4f9c; --bi-wash:#f0e9f6; --warn:#a9640c; --warn-wash:#fbf1e0;
+  --danger:#b5372b; --danger-wash:#fbe9e7;
+  --shadow:0 1px 2px rgba(24,34,49,.05), 0 6px 20px -8px rgba(24,34,49,.12);
+  --measure:68ch;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){:root{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512}}
+:root[data-theme="light"]{--ground:#f7f9fb;--paper:#fff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;--hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;--ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;--warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7}
+:root[data-theme="dark"]{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.62;-webkit-font-smoothing:antialiased}
+.wrap{max-width:960px;margin:0 auto;padding:0 24px 96px}
+.measure{max-width:var(--measure)}
+.masthead{border-bottom:2px solid var(--accent);padding:40px 0 22px}
+.brandbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.brandmark{width:28px;height:28px;border-radius:6px;background:var(--steel);display:grid;place-items:center;flex:0 0 auto}
+.brandmark span{color:#fff;font-weight:800;font-size:.72rem;font-family:var(--mono)}
+.brandname{font-weight:700;letter-spacing:.02em;font-size:.95rem}
+.brandname em{color:var(--accent-ink);font-style:normal}
+.eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.14em;color:var(--accent-ink);font-weight:800;margin:0 0 10px}
+.masthead h1{font-size:clamp(1.9rem,4.4vw,2.6rem);line-height:1.06;letter-spacing:-.02em;margin:0 0 8px;font-weight:800;text-wrap:balance}
+.masthead .sub{font-size:1.12rem;color:var(--muted);margin:0;max-width:62ch}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:999px;border:1px solid transparent}
+.badge.vivo{background:var(--accent-wash);color:var(--accent-ink);border-color:color-mix(in srgb,var(--accent) 35%,transparent)}
+.badge.perenne{background:var(--ti-wash);color:var(--ti);border-color:color-mix(in srgb,var(--ti) 30%,transparent)}
+.badge.dot::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.freshness{display:flex;gap:14px;align-items:flex-start;margin:24px 0 6px;background:var(--accent-wash);border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);border-left:4px solid var(--accent);border-radius:10px;padding:14px 16px;font-size:.92rem}
+.freshness .ic{flex:0 0 auto;color:var(--accent-ink);margin-top:1px}
+.freshness b{color:var(--accent-ink)}
+.freshness code{background:color-mix(in srgb,var(--accent) 14%,transparent);font-family:var(--mono);font-size:.85em;padding:1px 5px;border-radius:5px}
+h2.sec{font-size:1.5rem;letter-spacing:-.01em;margin:48px 0 4px;font-weight:800;text-wrap:balance}
+h2.sec .num{font-family:var(--mono);font-size:.9rem;color:var(--accent-ink);font-weight:700;border:1px solid var(--hair-2);border-radius:6px;padding:1px 7px;margin-right:10px;vertical-align:.15em}
+.sec-lead{color:var(--muted);margin:.4rem 0 1.4rem;max-width:var(--measure)}
+p{margin:0 0 1rem;max-width:var(--measure)}
+a{color:var(--accent-ink);text-underline-offset:2px}
+code{font-family:var(--mono);font-size:.86em;background:var(--hair);padding:1px 5px;border-radius:5px}
+/* KPIs */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:26px 0}
+@media (max-width:760px){.kpis{grid-template-columns:repeat(2,1fr)}}
+.kpi{background:var(--paper);border:1px solid var(--hair);border-radius:12px;padding:16px 18px;box-shadow:var(--shadow)}
+.kpi .n{font-size:1.9rem;font-weight:800;letter-spacing:-.02em;color:var(--accent-ink);line-height:1;font-family:var(--mono)}
+.kpi .l{font-size:.8rem;color:var(--muted);margin-top:6px;line-height:1.3}
+/* leyenda de códigos */
+.legend{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:22px 0}
+@media (max-width:760px){.legend{grid-template-columns:1fr}}
+.legend .box{border:1px solid var(--hair);border-radius:12px;padding:16px 18px;background:var(--paper)}
+.legend h3{margin:0 0 8px;font-size:1rem}
+.legend ul{margin:0;padding-left:1.1em;font-size:.9rem}
+.codebreak{font-family:var(--mono);font-size:1.05rem;font-weight:700;letter-spacing:.02em;display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:4px 0 12px}
+.codebreak .seg{padding:3px 8px;border-radius:6px}
+.codebreak .s1{background:var(--hair);color:var(--muted)} .codebreak .s2{background:var(--ku-wash);color:var(--ku)} .codebreak .s3{background:var(--ti-wash);color:var(--ti)} .codebreak .s4{background:var(--accent-wash);color:var(--accent-ink)}
+/* tipo tags */
+.tt{display:inline-block;font-size:.68rem;font-weight:700;padding:2px 8px;border-radius:6px;white-space:nowrap;text-transform:uppercase;letter-spacing:.04em}
+.tt.cat{background:var(--ti-wash);color:var(--ti)} .tt.anl{background:var(--accent-wash);color:var(--accent-ink)} .tt.ctl{background:var(--ku-wash);color:var(--ku)}
+/* buscador */
+.search{position:sticky;top:0;z-index:5;background:var(--ground);padding:12px 0 10px;margin:8px 0 0}
+.search input{width:100%;font-size:1rem;font-family:var(--sans);padding:12px 14px;border:1.5px solid var(--hair-2);border-radius:10px;background:var(--paper);color:var(--ink)}
+.search input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-wash)}
+.search .hint{font-size:.78rem;color:var(--faint);margin:6px 2px 0}
+/* tabla (reservado; no se usa en este documento pero se conserva del molde) */
+.tablewrap{overflow-x:auto;border:1px solid var(--hair);border-radius:12px;box-shadow:var(--shadow);margin:6px 0 0}
+table{border-collapse:collapse;width:100%;font-size:.9rem;background:var(--paper);min-width:640px}
+thead th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:700;padding:11px 14px;border-bottom:2px solid var(--hair-2);background:var(--ground);position:sticky;top:64px}
+tbody td{padding:10px 14px;border-bottom:1px solid var(--hair);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+tr.deph td{background:var(--ground);border-bottom:2px solid var(--hair-2);font-size:.95rem}
+tr.deph strong{color:var(--steel)}
+code.src{font-size:.82em;color:var(--faint);background:transparent;white-space:nowrap}
+.callout{border-radius:10px;padding:14px 16px 14px 46px;position:relative;margin:22px 0;font-size:.94rem;border:1px solid var(--hair);background:var(--paper)}
+.callout .ct{font-weight:700;margin:0 0 3px;font-size:.82rem;text-transform:uppercase;letter-spacing:.05em}
+.callout::before{position:absolute;left:14px;top:14px;font-size:1.1rem;line-height:1}
+.callout.info{border-left:4px solid var(--ti);background:var(--ti-wash)} .callout.info .ct{color:var(--ti)} .callout.info::before{content:"ℹ";color:var(--ti);font-weight:800}
+.callout.warn{border-left:4px solid var(--warn);background:var(--warn-wash)} .callout.warn .ct{color:var(--warn)} .callout.warn::before{content:"⚠"}
+.callout.tip{border-left:4px solid var(--accent);background:var(--accent-wash)} .callout.tip .ct{color:var(--accent-ink)} .callout.tip::before{content:"✓";color:var(--accent-ink);font-weight:800}
+.foot{margin-top:56px;padding-top:22px;border-top:1px solid var(--hair-2);color:var(--faint);font-size:.85rem;display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;justify-content:space-between}
+@media print{:root{--ground:#fff;--paper:#fff;--shadow:none}body{font-size:10.5pt}.wrap{max-width:none;padding:0}.search{position:static}thead th{position:static}.kpi,.tablewrap,.callout,.legend .box,.term{break-inside:avoid}.noprint{display:none!important}}
+
+/* ============ Añadidos propios del Glosario (no vienen del molde) ============ */
+.intro{margin-top:26px}
+.grp{margin-top:8px}
+.terms{display:flex;flex-direction:column;gap:14px;margin-top:8px}
+.term{background:var(--paper);border:1px solid var(--hair);border-radius:12px;padding:18px 22px;box-shadow:var(--shadow)}
+.term h3{margin:0 0 8px;font-size:1.05rem;font-weight:800;letter-spacing:-.01em;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.term h3 code{font-size:.92em;background:var(--accent-wash);color:var(--accent-ink);padding:2px 8px}
+.term p{margin:0 0 8px;font-size:.95rem}
+.term p:last-of-type{margin-bottom:0}
+.term .metaphor{margin-top:10px;font-size:.86rem;color:var(--faint);border-top:1px dashed var(--hair-2);padding-top:10px;max-width:none}
+.term .metaphor b{color:var(--accent-ink);font-weight:700}
+.term .seealso{margin-top:8px;font-size:.86rem;color:var(--faint);max-width:none}
+#noresults{display:none;color:var(--muted);text-align:center;padding:24px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brandbar">
+      <span class="brandmark"><span>RSH</span></span>
+      <span class="brandname">Reportes<em>SH</em> · Paquete de capacitación y referencia</span>
+      <a href="00-mapa-empieza-aqui.html" style="margin-left:auto;font-size:.82rem;color:var(--faint);text-decoration:none;white-space:nowrap">← Índice del paquete</a>
+    </div>
+    <p class="eyebrow">Documento perenne · Glosario</p>
+    <h1>Glosario técnico</h1>
+    <p class="sub">Cada término del sistema de reportería — de la fotografía semanal a las trampas más finas del SQL — explicado en lenguaje llano, con su metáfora cuando la tiene. Para Key Users y para Jefes de TI: el mismo vocabulario, sin condescendencia.</p>
+  </header>
+
+  <div class="freshness noprint" style="border-left-color:var(--ti);background:var(--ti-wash);border-color:color-mix(in srgb,var(--ti) 30%,transparent)">
+    <span class="ic" aria-hidden="true">📌</span>
+    <div><b style="color:var(--ti)">Este documento es PERENNE.</b> Explica conceptos y patrones estables del sistema — no caduca con cada reporte nuevo. Para el conteo vigente de reportes, vistas y dashboards, consulta el <a href="inventario-reportes.html">Inventario de Reportes</a> (documento vivo).</div>
+  </div>
+
+  <div class="kpis">
+    <div class="kpi"><div class="n">24</div><div class="l">términos definidos</div></div>
+    <div class="kpi"><div class="n">4</div><div class="l">grupos temáticos</div></div>
+    <div class="kpi"><div class="n">2</div><div class="l">audiencias: Key User · Jefe de TI</div></div>
+    <div class="kpi"><div class="n">0</div><div class="l">condescendencia — trato de profesional a profesional</div></div>
+  </div>
+
+  <p class="intro measure">Usa el buscador para saltar directo a un término, o recorre los cuatro grupos en orden: primero el motor que hace posible todo el sistema, luego los objetos con los que trabajas dentro de un reporte, después cómo el repo se conecta con el ERP, y por último las trampas técnicas que ya mordieron a algún reporte y que ahora están documentadas para no repetirse.</p>
+
+  <div class="search noprint">
+    <input id="q" type="search" placeholder="Buscar un término: snapshot, hash, HUGEINT, dashboard…" aria-label="Buscar en el glosario" autocomplete="off">
+    <div class="hint" id="hint">Mostrando los 24 términos.</div>
+  </div>
+
+  <!-- ============ GRUPO 1 ============ -->
+  <section class="grp" data-grp="motor">
+    <h2 class="sec"><span class="num">01</span>El motor y la fotografía</h2>
+    <p class="sec-lead measure">Cómo existe una copia del ERP fuera del ERP, y por qué correr un reporte ahí es seguro por diseño.</p>
+    <div class="terms">
+
+      <article class="term">
+        <h3><code>Snapshot</code> / fotografía semanal</h3>
+        <p>Una copia congelada de la base de datos de Steelhead, guardada en un solo archivo <code>.duckdb</code>. Se genera automáticamente cada <strong>lunes a las 07:00</strong> (el schedule <code>scripts/weekly_snapshot.sh</code>), y es sobre esa copia —no contra el ERP en vivo— que corren todos los reportes en local.</p>
+        <p class="metaphor"><b>Metáfora:</b> la <strong>fotografía semanal de la planta</strong>. No ves la planta en tiempo real; ves el retrato más reciente que se tomó de ella.</p>
+      </article>
+
+      <article class="term">
+        <h3><code>DuckDB</code></h3>
+        <p>El motor de base de datos que lee el archivo <code>.duckdb</code> y ejecuta el SQL de cada reporte. La copia local de este repo corre <strong>DuckDB v1.2.2</strong>; el servidor de Steelhead que ejecuta los reportes publicados corre <strong>DuckDB v1.5.2</strong> — dos versiones del mismo motor, con diferencias de comportamiento que sí importan (ver <code>HUGEINT</code> más abajo).</p>
+      </article>
+
+      <article class="term">
+        <h3>Solo lectura (<code>read-only</code>)</h3>
+        <p>La copia local se abre siempre en modo solo lectura: ningún reporte puede hacer <code>CREATE</code>, <code>INSERT</code>, <code>UPDATE</code> ni ninguna otra escritura contra ella. Es estructuralmente imposible dañar los datos del ERP corriendo un reporte, porque el reporte nunca tiene permiso para escribir.</p>
+        <p class="metaphor"><b>Metáfora:</b> <strong>la foto con candado</strong>: se mira, no se altera.</p>
+      </article>
+
+      <article class="term">
+        <h3><code>pull</code> / <code>push</code></h3>
+        <p><code>pull</code> baja del ERP lo que el repo necesita: reportes existentes, el snapshot semanal, las vistas Perspective. <code>push</code> sube de vuelta el SQL o la vista ya escritos o corregidos, para que aparezcan publicados dentro de Steelhead.</p>
+        <p class="metaphor"><b>Metáfora:</b> <code>pull</code> = recoger las fotos reveladas del laboratorio; <code>push</code> = colgar el reporte en el tablero de la línea.</p>
+      </article>
+
+      <article class="term">
+        <h3>Banco de pruebas vs. línea real</h3>
+        <p>Correr un reporte en local (contra el snapshot, con <code>run_query.py</code>) es el banco de pruebas: rápido y sin riesgo. Correrlo dentro de Steelhead —server-side, sobre DuckDB 1.5.2, con la sustitución real de variables del usuario— es la línea real, y ahí es donde aparecen ciertas trampas (<code>HUGEINT</code>, el dropdown <code>'null'</code>, el huso horario) que el banco de pruebas no reproduce. Por eso todo cambio de fondo se verifica en vivo antes de darlo por bueno.</p>
+        <p class="metaphor"><b>Metáfora:</b> el <strong>banco de pruebas</strong> no reproduce todas las condiciones de la <strong>línea real</strong>; algunas fallas solo aparecen al calibrar en producción.</p>
+      </article>
+
+    </div>
+  </section>
+
+  <!-- ============ GRUPO 2 ============ -->
+  <section class="grp" data-grp="objetos">
+    <h2 class="sec"><span class="num">02</span>Los objetos de un reporte</h2>
+    <p class="sec-lead measure">La jerarquía con la que se organiza todo lo que ve un Key User dentro de Steelhead: del dato crudo al tablero directivo.</p>
+    <div class="terms">
+
+      <article class="term">
+        <h3>Reporte</h3>
+        <p>El SQL fuente: trae todas las columnas relevantes de un dominio de negocio (una orden de trabajo, una factura, un movimiento de inventario…). Un reporte no decide cómo se ve esa información en pantalla — eso lo define cada una de sus vistas.</p>
+        <p class="metaphor"><b>Metáfora:</b> el <strong>cubo de datos</strong>.</p>
+      </article>
+
+      <article class="term">
+        <h3>Vista (<code>Perspective</code>)</h3>
+        <p>Una forma de mirar el cubo de un reporte: una tabla (Datagrid) o una gráfica (barras, líneas, mapa de calor, treemap…) con sus propias columnas, agrupamientos, orden y filtros. Un mismo reporte puede tener varias vistas; se nombran con el sufijo decimal de su reporte padre — <code>RPT-DEP-TIPO-NN.MM</code>.</p>
+        <p class="metaphor"><b>Metáfora:</b> la <strong>forma de mirarlo</strong>.</p>
+      </article>
+
+      <article class="term">
+        <h3>Dashboard</h3>
+        <p>Un tablero que combina varias vistas —de uno o de distintos reportes— en ventanas cuyo tamaño y posición se ajustan libremente, para una lectura de un vistazo.</p>
+        <p class="metaphor"><b>Metáfora:</b> el <strong>tablero directivo</strong>.</p>
+      </article>
+
+      <article class="term">
+        <h3>Variable / dropdown (<code>$Var</code>)</h3>
+        <p>Un filtro configurado sobre un reporte (turno, línea, supervisor, cliente…) que aparece en la UI de Steelhead como un menú desplegable en "Variables ▾". El valor que el usuario elige se inyecta en el SQL en el lugar del placeholder — <code>$Turno</code>, <code>$Linea</code>, <code>$Supervisor</code>. Cuando el dropdown se deja sin seleccionar nada, ver la trampa <code>Dropdown 'null'</code> en el grupo 04.</p>
+      </article>
+
+      <article class="term">
+        <h3>Perspective</h3>
+        <p>El motor de visualización de Steelhead sobre el que corren todas las vistas — tablas y alrededor de una docena de tipos de gráfica (mapa de calor, barras, líneas, dispersión, treemap, sunburst, velas japonesas, entre otros).</p>
+      </article>
+
+      <article class="term">
+        <h3>Placa <code>RPT-DEP-TIPO-NN</code></h3>
+        <p>La nomenclatura oficial de todo reporte: <code>RPT</code> (reporte oficial autorizado), <code>DEP</code> (departamento dueño, 3 letras — <code>PRD</code>, <code>VTA</code>, <code>CAL</code>…), <code>TIPO</code> (<code>CAT</code> catálogo de referencia, <code>ANL</code> analítica granular, o <code>CTL</code> control/cumplimiento) y <code>NN</code> (consecutivo de 2 dígitos dentro de ese departamento y tipo). El catálogo completo vive en el <a href="inventario-reportes.html">Inventario de Reportes</a>.</p>
+        <p class="metaphor"><b>Metáfora:</b> la <strong>placa/matrícula del reporte</strong> — identificas cualquiera sin abrirlo, igual que identificas una tina por su placa sin meter la mano.</p>
+      </article>
+
+      <article class="term">
+        <h3>Version Control</h3>
+        <p>El historial de versiones del SQL de un reporte que Steelhead guarda automáticamente cada vez que se publica un cambio (<code>push</code>). Permite comparar, dentro de la propia UI de Steelhead, el SQL viejo contra el nuevo lado a lado.</p>
+      </article>
+
+      <article class="term">
+        <h3>Carpeta y permisos (<code>folder</code> / <code>managedPermissions</code>)</h3>
+        <p>Dónde vive un reporte dentro del menú de Steelhead (su carpeta) y quién puede verlo (sus permisos gestionados, p. ej. <code>EXPORT_CSV</code>). Todo reporte oficial debe terminar en su carpeta correcta con permisos validados — ninguno queda "sin carpeta" tras publicarse.</p>
+      </article>
+
+    </div>
+  </section>
+
+  <!-- ============ GRUPO 3 ============ -->
+  <section class="grp" data-grp="conexion">
+    <h2 class="sec"><span class="num">03</span>La conexión con el ERP</h2>
+    <p class="sec-lead measure">Cómo el repo le habla a Steelhead sin ser parte de Steelhead: dos plantas, una llave, y las credenciales que la sostienen.</p>
+    <div class="terms">
+
+      <article class="term">
+        <h3><code>TLC</code> / <code>MTY</code> (dominio / tenant)</h3>
+        <p>Las dos plantas de Ecoplating, cada una su propio dominio (tenant) dentro de Steelhead: <strong>TLC</strong> es Tlalnepantla, la planta veterana con años de historial de datos; <strong>MTY</strong> es Monterrey, la planta de arranque más reciente. Todo cambio de reporte se aplica siempre a ambos dominios en la misma sesión — nunca a uno solo.</p>
+        <p class="metaphor"><b>Metáfora:</b> <strong>plantas gemelas</strong>: la veterana y la de arranque.</p>
+      </article>
+
+      <article class="term">
+        <h3>Hash / <code>persisted query</code> (APQ)</h3>
+        <p>Steelhead corre su GraphQL en modo APQ-only (<em>Automatic Persisted Queries</em>): el servidor no acepta el texto de la consulta, solo un hash <code>sha256</code> que la identifica de antemano. Sin el hash correcto ya registrado, el servidor simplemente no sabe qué operación ejecutar.</p>
+        <p class="metaphor"><b>Metáfora:</b> la <strong>llave</strong> que abre una operación del ERP.</p>
+      </article>
+
+      <article class="term">
+        <h3>Rotación de hash</h3>
+        <p>Cada vez que Steelhead despliega una actualización, puede invalidar los hashes vigentes de ciertas operaciones. La señal es el error HTTP 400 <code>"Must provide a query string"</code>: la llave vieja ya no abre esa cerradura, y hay que capturar la nueva desde el tráfico real del navegador antes de seguir operando ese endpoint.</p>
+        <p class="metaphor"><b>Metáfora:</b> Steelhead <strong>cambia la cerradura</strong>.</p>
+      </article>
+
+      <article class="term">
+        <h3>Cookie / <code>refresh token</code></h3>
+        <p>Las credenciales con las que los scripts del repo se autentican contra Steelhead: una cookie de sesión para ciertos endpoints REST, y un refresh token que renueva el JWT usado en <code>/graphql</code>. Se mantienen vigentes de forma automática mientras el schedule semanal corra al menos una vez cada 30 días; si pasa más tiempo sin correr, hay que repegar la cookie a mano.</p>
+      </article>
+
+    </div>
+  </section>
+
+  <!-- ============ GRUPO 4 ============ -->
+  <section class="grp" data-grp="trampas">
+    <h2 class="sec"><span class="num">04</span>Las trampas técnicas</h2>
+    <p class="sec-lead measure">Bugs ya mordidos, ya diagnosticados y ya corregidos — documentados aquí para que no vuelvan a sorprender a nadie.</p>
+    <div class="terms">
+
+      <article class="term">
+        <h3>Ventana de fechas (<code>$start</code> / <code>$end</code> · "Use date range")</h3>
+        <p>El filtro de rango que Steelhead inyecta como <code>$start</code>/<code>$end</code> cuando un reporte tiene activado "Use date range". Llega como timestamp UTC, no como fecha plana — truncarlo sin normalizar a hora local puede correr la cota superior un día de más.</p>
+        <p class="seealso">Detalle completo del bug (tocó 53 reportes) y el patrón de corrección en la <a href="ficha-ventana-fechas.html">Ficha profunda: La ventana de fechas</a>.</p>
+      </article>
+
+      <article class="term">
+        <h3><code>HUGEINT</code></h3>
+        <p>Un entero de 128 bits que produce DuckDB al sumar columnas de conteo (típicamente <code>SUM(part_count)</code>). Es válido en local, pero el servidor de Steelhead (DuckDB 1.5.2) no puede serializarlo a JSON: el reporte corre perfecto en el banco de pruebas y muestra <code>"This report did not return any data"</code> en la línea real. Se corrige forzando <code>CAST(SUM(...) AS BIGINT)</code> en el <code>SELECT</code> final.</p>
+      </article>
+
+      <article class="term">
+        <h3>Dropdown <code>'null'</code></h3>
+        <p>Cuando un usuario deja un filtro de dropdown sin seleccionar nada, Steelhead no manda el placeholder <code>$Var</code> ni una cadena vacía: inyecta literalmente el texto <code>'null'</code> (en minúsculas). Si el SQL del reporte no contempla ese caso, el <code>WHERE</code> termina filtrando por la palabra "null" y el reporte devuelve cero filas en vivo — aunque en local, sin ese reemplazo, muestre miles.</p>
+      </article>
+
+      <article class="term">
+        <h3>Cliente combinado</h3>
+        <p>El patrón obligatorio para la columna <code>Cliente</code> en todo reporte: nombre a secas si el cliente tiene una sola dirección de envío activa, o <code>Cliente — Planta/Ciudad</code> si tiene varias, para no confundir, por ejemplo, las distintas plantas de un mismo cliente que reciben material por separado.</p>
+      </article>
+
+      <article class="term">
+        <h3>Tipo de cambio (<code>TC</code>)</h3>
+        <p>La tasa de MXN por USD que valoriza los reportes financieros. Se resuelve con una cadena de respaldo de 3 niveles: el histórico más cercano a la fecha objetivo, luego el tipo de cambio vigente del dominio (invertido), y por último el histórico más antiguo disponible — para que un reporte nunca se quede sin tipo de cambio.</p>
+        <p class="metaphor"><b>Metáfora:</b> la <strong>cadena de repuestos de respaldo del almacén</strong>: si no está el repuesto exacto, se usa el siguiente disponible en la jerarquía.</p>
+      </article>
+
+      <article class="term">
+        <h3><code>CTE</code></h3>
+        <p>Un bloque <code>WITH ... AS (...)</code> de SQL que nombra un paso intermedio de una consulta. Es la convención obligatoria del repo para toda lógica de varios pasos: nada de tablas temporales, nada de subconsultas anidadas difíciles de leer.</p>
+      </article>
+
+      <article class="term">
+        <h3>microdólares / microcantidad</h3>
+        <p>La unidad interna en la que Steelhead guarda montos y cantidades. Hay que dividir entre 1,000,000 para obtener el dólar o la pieza real: montos en <code>microdollars</code>, cantidades en <code>microquantity</code>.</p>
+      </article>
+
+    </div>
+  </section>
+
+  <p id="noresults">Ningún término coincide con tu búsqueda.</p>
+
+  <footer class="foot">
+    <div style="display:flex;gap:16px;flex-wrap:wrap"><span><span class="badge perenne dot">Perenne</span></span><span>Glosario técnico · Reportes SH</span></div>
+    <div>Última revisión: 23 jul 2026</div>
+    <div style="flex-basis:100%;margin-top:10px;padding-top:12px;border-top:1px solid var(--hair);display:flex;align-items:center;gap:12px;font-size:.78rem;color:var(--faint)"><a href="https://capazconsultoria.com" target="_blank" rel="noopener" aria-label="Capaz Consultoría" style="flex:0 0 auto;display:inline-flex"><img src="assets/capaz-c.png" alt="Capaz Consultoría" style="height:30px;width:auto;display:block"></a><span>Documento elaborado por <a href="mailto:oviazcan@capazconsultoria.com" style="color:var(--accent-ink);font-weight:600;text-decoration:none">Omar Viazcán</a> · <a href="https://capazconsultoria.com" target="_blank" rel="noopener" style="color:var(--accent-ink);text-decoration:none">Capaz Consultoría</a></span></div>
+  </footer>
+
+</div>
+<script>
+(function(){
+  var q=document.getElementById('q'), hint=document.getElementById('hint'), nr=document.getElementById('noresults');
+  var terms=[].slice.call(document.querySelectorAll('.term'));
+  var grps=[].slice.call(document.querySelectorAll('.grp'));
+  var total=terms.length;
+  function norm(s){return (s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');}
+  terms.forEach(function(t){t._t=norm(t.textContent);});
+  q.addEventListener('input',function(){
+    var term=norm(q.value.trim()); var shown=0;
+    terms.forEach(function(t){var ok=!term||t._t.indexOf(term)>-1;t.style.display=ok?'':'none';if(ok)shown++;});
+    grps.forEach(function(g){
+      var any=[].slice.call(g.querySelectorAll('.term')).some(function(t){return t.style.display!=='none';});
+      g.style.display=any?'':'none';
+    });
+    nr.style.display=shown?'none':'';
+    hint.textContent= term ? ('Mostrando '+shown+' de '+total+' términos.') : ('Mostrando los '+total+' términos.');
+  });
+})();
+</script>
+</body>
+</html>

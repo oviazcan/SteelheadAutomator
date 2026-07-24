@@ -1,0 +1,376 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gobernanza de datos — Reportes SH</title>
+<style>
+:root{
+  --ground:#f7f9fb;--paper:#ffffff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;
+  --hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;
+  --ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;
+  --warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7;
+  --shadow:0 1px 2px rgba(24,34,49,.05),0 6px 20px -8px rgba(24,34,49,.12);
+  --measure:68ch;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){:root{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512;--shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -10px rgba(0,0,0,.5)}}
+:root[data-theme="light"]{--ground:#f7f9fb;--paper:#fff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;--hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;--ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;--warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7}
+:root[data-theme="dark"]{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.62;-webkit-font-smoothing:antialiased}
+.wrap{max-width:920px;margin:0 auto;padding:0 24px 96px}
+.measure{max-width:var(--measure)}
+.masthead{border-bottom:2px solid var(--ti);padding:40px 0 22px}
+.brandbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.brandmark{width:28px;height:28px;border-radius:6px;background:var(--steel);display:grid;place-items:center;flex:0 0 auto}
+.brandmark span{color:#fff;font-weight:800;font-size:.72rem;font-family:var(--mono)}
+.brandname{font-weight:700;letter-spacing:.02em;font-size:.95rem}
+.brandname em{color:var(--accent-ink);font-style:normal}
+.eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.14em;color:var(--ti);font-weight:800;margin:0 0 10px}
+.masthead h1{font-size:clamp(2rem,4.6vw,2.7rem);line-height:1.06;letter-spacing:-.02em;margin:0 0 10px;font-weight:800;text-wrap:balance}
+.masthead .sub{font-size:1.12rem;color:var(--muted);margin:0;max-width:60ch}
+.audchips{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.audchip{font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.05em}
+.audchip.ti{background:var(--ti-wash);color:var(--ti)} .audchip.p{background:var(--ti-wash);color:var(--ti)}
+.tldr{background:var(--paper);border:1px solid var(--hair);border-left:4px solid var(--ti);border-radius:12px;padding:20px 22px;margin:26px 0;box-shadow:var(--shadow)}
+.tldr .ct{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--ti);margin:0 0 8px}
+.tldr p{margin:0;font-size:1.05rem;max-width:none}
+h2.sec{font-size:1.5rem;letter-spacing:-.01em;margin:54px 0 4px;font-weight:800;text-wrap:balance}
+h2.sec .num{font-family:var(--mono);font-size:.85rem;color:var(--ti);font-weight:700;border:1px solid var(--hair-2);border-radius:6px;padding:1px 7px;margin-right:10px;vertical-align:.15em}
+h3.sub{font-size:1.16rem;margin:32px 0 6px;letter-spacing:-.01em;font-weight:700}
+.sec-lead{color:var(--muted);margin:.4rem 0 1.2rem;max-width:var(--measure)}
+p{margin:0 0 1rem;max-width:var(--measure)}
+a{color:var(--accent-ink);text-underline-offset:2px}
+code{font-family:var(--mono);font-size:.85em;background:var(--hair);padding:1px 5px;border-radius:5px;word-break:break-word}
+pre{background:var(--paper);border:1px solid var(--hair);border-left:4px solid var(--steel);border-radius:10px;padding:14px 16px;overflow-x:auto;box-shadow:var(--shadow);font-family:var(--mono);font-size:.82rem;line-height:1.5;margin:18px 0}
+pre code{background:none;padding:0;font-size:1em}
+.tok-c{color:var(--faint)} .tok-k{color:var(--ti);font-weight:600} .tok-f{color:var(--accent-ink);font-weight:600} .tok-s{color:var(--ku)}
+ul,ol{max-width:var(--measure);padding-left:1.25em} li{margin:.35rem 0}
+strong{font-weight:700}
+figure.diagram{margin:26px 0;background:var(--paper);border:1px solid var(--hair);border-radius:14px;padding:20px 18px 8px;box-shadow:var(--shadow);overflow-x:auto}
+figure.diagram svg{display:block;width:100%;height:auto;min-width:600px;max-width:840px;margin:0 auto}
+figure.diagram figcaption{font-size:.85rem;color:var(--faint);text-align:center;margin-top:10px;padding:0 8px 6px}
+.svg-t{font-family:var(--sans);fill:var(--ink)} .svg-m{font-family:var(--mono)} .svg-mut{fill:var(--muted)}
+.callout{border-radius:10px;padding:15px 17px 15px 48px;position:relative;margin:22px 0;font-size:.95rem;border:1px solid var(--hair);background:var(--paper)}
+.callout .ct{font-weight:800;margin:0 0 4px;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em}
+.callout p{max-width:none;margin:.3rem 0 0}
+.callout::before{position:absolute;left:15px;top:14px;font-size:1.15rem;line-height:1}
+.callout.meta{border-left:4px solid var(--steel);background:color-mix(in srgb,var(--steel) 6%,var(--paper))} .callout.meta .ct{color:var(--steel)} .callout.meta::before{content:"💡"}
+.callout.info{border-left:4px solid var(--ti);background:var(--ti-wash)} .callout.info .ct{color:var(--ti)} .callout.info::before{content:"ℹ";color:var(--ti);font-weight:800}
+.callout.warn{border-left:4px solid var(--warn);background:var(--warn-wash)} .callout.warn .ct{color:var(--warn)} .callout.warn::before{content:"⚠"}
+.callout.danger{border-left:4px solid var(--danger);background:var(--danger-wash)} .callout.danger .ct{color:var(--danger)} .callout.danger::before{content:"⛔"}
+.callout.tip{border-left:4px solid var(--accent);background:var(--accent-wash)} .callout.tip .ct{color:var(--accent-ink)} .callout.tip::before{content:"✓";color:var(--accent-ink);font-weight:800}
+.stages{list-style:none;padding:0;margin:24px 0;display:flex;flex-direction:column;gap:2px}
+.stages li{display:grid;grid-template-columns:44px 1fr;gap:16px;padding:16px 0;border-bottom:1px solid var(--hair);align-items:start}
+.stages li:last-child{border-bottom:none}
+.stages .k{width:38px;height:38px;border-radius:9px;background:var(--ti);color:#fff;display:grid;place-items:center;font-weight:800;font-family:var(--mono);font-size:1rem}
+.stages h4{margin:0 0 3px;font-size:1.08rem}
+.stages p{margin:0;font-size:.94rem;color:var(--muted);max-width:none}
+.tablewrap{overflow-x:auto;border:1px solid var(--hair);border-radius:12px;box-shadow:var(--shadow);margin:20px 0}
+table{border-collapse:collapse;width:100%;font-size:.9rem;background:var(--paper);min-width:520px}
+thead th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:700;padding:11px 14px;border-bottom:2px solid var(--hair-2);background:var(--ground)}
+tbody td{padding:11px 14px;border-bottom:1px solid var(--hair);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+.roles{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:26px 0}
+@media (max-width:760px){.roles{grid-template-columns:1fr}}
+.role{border-radius:12px;padding:20px;border:1px solid var(--hair);background:var(--paper);box-shadow:var(--shadow)}
+.role.ti{border-top:4px solid var(--ti)} .role.ku{border-top:4px solid var(--ku)}
+.role .who{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;margin-bottom:6px}
+.role.ti .who{color:var(--ti)} .role.ku .who{color:var(--ku)}
+.role p{margin:0;font-size:.93rem;max-width:none}
+.foot{margin-top:64px;padding-top:22px;border-top:1px solid var(--hair-2);color:var(--faint);font-size:.85rem;display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:999px}
+.badge.perenne{background:var(--ti-wash);color:var(--ti)} .badge.perenne::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+@media print{:root{--ground:#fff;--paper:#fff;--shadow:none}body{font-size:11.5pt}.wrap{max-width:none;padding:0}figure.diagram,.callout,.tablewrap,.role,.stages li,pre{break-inside:avoid}figure.diagram svg{min-width:0}h2.sec,h3.sub{break-after:avoid}a{color:var(--ink);text-decoration:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brandbar">
+      <span class="brandmark"><span>RSH</span></span>
+      <span class="brandname">Reportes<em>SH</em> · Gobernanza de datos</span>
+      <a href="00-mapa-empieza-aqui.html" style="margin-left:auto;font-size:.82rem;color:var(--faint);text-decoration:none;white-space:nowrap">← Índice del paquete</a>
+    </div>
+    <p class="eyebrow">Referencia · Gobernanza</p>
+    <h1>La placa de cada reporte</h1>
+    <p class="sub">Por qué un código como <code>RPT-PRD-ANL-17</code> no es burocracia: es lo que hace que cualquier persona pueda ubicar un reporte, saber quién responde por él, y confiar en que la versión que tiene enfrente es la vigente.</p>
+    <div class="audchips">
+      <span class="audchip ti">Jefe de TI</span>
+      <span class="audchip p">Documento perenne</span>
+    </div>
+  </header>
+
+  <div class="tldr measure" style="max-width:none">
+    <p class="ct">En pocas palabras</p>
+    <p>Todo reporte oficial de Reportes SH lleva una <strong>placa</strong> — <code>RPT-DEP-TIPO-NN</code> — que identifica su departamento dueño, su naturaleza (catálogo, analítica o control) y un consecutivo único. Esa placa, más una versión declarada en el encabezado del SQL, más el hecho de que ambas plantas (TLC y MTY) corren siempre el mismo reporte con el mismo código, es lo que permite que un reporte se pueda <strong>ubicar, versionar y auditar</strong> sin ambigüedad — la razón de ser de este documento.</p>
+  </div>
+
+  <!-- ============ 01 LA PLACA ============ -->
+  <h2 class="sec"><span class="num">01</span>La placa: anatomía de <code>RPT-DEP-TIPO-NN</code></h2>
+  <p class="sec-lead measure">Vigente desde el <strong>2026-05-08</strong>. Cada segmento del código responde una pregunta distinta sobre el reporte — igual que una placa vehicular identifica de un vistazo el estado y el número de un auto, sin tener que abrir la cajuela.</p>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 780 230" role="img" aria-label="Diagrama de los segmentos del código RPT-DEP-TIPO-NN punto MM">
+      <!-- RPT -->
+      <rect x="156" y="50" width="64" height="46" rx="8" fill="var(--steel)"/>
+      <text x="188" y="79" text-anchor="middle" class="svg-m" font-size="15" font-weight="700" fill="#fff">RPT</text>
+      <text x="227" y="79" text-anchor="middle" class="svg-mut" font-size="18" font-weight="700">-</text>
+      <!-- DEP -->
+      <rect x="234" y="50" width="110" height="46" rx="8" fill="var(--ti)"/>
+      <text x="289" y="79" text-anchor="middle" class="svg-m" font-size="15" font-weight="700" fill="#fff">DEP</text>
+      <text x="351" y="79" text-anchor="middle" class="svg-mut" font-size="18" font-weight="700">-</text>
+      <!-- TIPO -->
+      <rect x="358" y="50" width="110" height="46" rx="8" fill="var(--accent)"/>
+      <text x="413" y="79" text-anchor="middle" class="svg-m" font-size="15" font-weight="700" fill="#fff">TIPO</text>
+      <text x="475" y="79" text-anchor="middle" class="svg-mut" font-size="18" font-weight="700">-</text>
+      <!-- NN -->
+      <rect x="482" y="50" width="64" height="46" rx="8" fill="var(--bi)"/>
+      <text x="514" y="79" text-anchor="middle" class="svg-m" font-size="15" font-weight="700" fill="#fff">NN</text>
+      <text x="553" y="79" text-anchor="middle" class="svg-mut" font-size="18" font-weight="700">.</text>
+      <!-- MM opcional -->
+      <rect x="560" y="50" width="64" height="46" rx="8" fill="var(--paper)" stroke="var(--faint)" stroke-width="2" stroke-dasharray="4 3"/>
+      <text x="592" y="79" text-anchor="middle" class="svg-m" font-size="15" font-weight="700" fill="var(--muted)">MM</text>
+
+      <!-- captions -->
+      <text x="188" y="120" text-anchor="middle" class="svg-t" font-size="12.5" font-weight="700">Reporte oficial</text>
+      <text x="188" y="135" text-anchor="middle" class="svg-mut" font-size="10.5">prefijo constante</text>
+
+      <text x="289" y="120" text-anchor="middle" class="svg-t" font-size="12.5" font-weight="700">Departamento Owner</text>
+      <text x="289" y="135" text-anchor="middle" class="svg-mut" font-size="10.5">3 letras — ver §02</text>
+
+      <text x="413" y="120" text-anchor="middle" class="svg-t" font-size="12.5" font-weight="700">Tipo de dato</text>
+      <text x="413" y="135" text-anchor="middle" class="svg-mut" font-size="10.5">CAT / ANL / CTL</text>
+
+      <text x="514" y="120" text-anchor="middle" class="svg-t" font-size="12.5" font-weight="700">Consecutivo</text>
+      <text x="514" y="135" text-anchor="middle" class="svg-mut" font-size="10.5">2 dígitos, no se recicla</text>
+
+      <text x="592" y="120" text-anchor="middle" class="svg-t" font-size="12.5" font-weight="700">Vista (opcional)</text>
+      <text x="592" y="135" text-anchor="middle" class="svg-mut" font-size="10.5">.01, .02… ver §04</text>
+
+      <!-- ejemplo real -->
+      <line x1="156" y1="160" x2="624" y2="160" stroke="var(--hair)" stroke-width="1"/>
+      <text x="390" y="188" text-anchor="middle" class="svg-m" font-size="16" font-weight="700"><tspan fill="var(--steel)">RPT</tspan><tspan fill="var(--faint)">-</tspan><tspan fill="var(--ti)">PRD</tspan><tspan fill="var(--faint)">-</tspan><tspan fill="var(--accent-ink)">ANL</tspan><tspan fill="var(--faint)">-</tspan><tspan fill="var(--bi)">17</tspan><tspan fill="var(--muted)">.02</tspan></text>
+      <text x="390" y="210" text-anchor="middle" class="svg-mut" font-size="11.5">PRD. Seguimiento de Operaciones · 2ª vista (TLC 4070 / MTY 4071)</text>
+    </svg>
+    <figcaption>Un ejemplo real y vigente: <code>RPT-PRD-ANL-17</code> es el reporte “PRD. Seguimiento de Operaciones” del departamento de Producción, de tipo Analítica, consecutivo 17 — y <code>.02</code> identifica una de sus vistas Perspective.</figcaption>
+  </figure>
+
+  <p class="measure">El consecutivo <code>NN</code> se asigna en orden ascendente dentro de cada combinación <code>DEP-TIPO</code> — el siguiente número libre es el mayor NN existente más uno. La convención del proyecto es <strong>no reciclar</strong> el consecutivo de un reporte archivado o dado de baja: aunque un número quede "libre", no se vuelve a asignar a un reporte distinto — evita que el mismo código, citado en una bitácora o en una conversación vieja, termine apuntando a dos reportes diferentes según la fecha.</p>
+
+  <div class="callout warn measure" style="max-width:none">
+    <p class="ct">Trampa detectada — el script de auditoría no es infalible</p>
+    <p><code>audit_nn_libres.py</code> encuentra el siguiente NN libre escaneando el encabezado SQL de cada reporte con una expresión regular. Si un reporte viejo no declaró su código en ese formato exacto, el script <strong>no lo cuenta</strong> — es lo que pasó con <code>RPT-PRD-ANL-16</code>, invisible para el script al momento de crear <code>RPT-PRD-ANL-17</code> (2026-07-22). Antes de asignar un NN nuevo, verifica también contra el inventario vivo, no solo contra la salida del script.</p>
+  </div>
+
+  <div class="callout meta measure" style="max-width:none">
+    <p class="ct">Nota histórica — de <code>FUE</code> a <code>TIPO</code></p>
+    <p>Antes del 2026-05-08 el tercer segmento se llamaba <code>FUE</code> (fuente) y tenía un catálogo abierto de más de una decena de valores (catálogos maestros, fuentes analíticas, fuentes de control). Un refactor masivo esa fecha renombró 45 archivos al formato vigente con <code>TIPO</code> — un catálogo cerrado de solo 3 valores (§03). Los códigos previos (<code>RPT-ING-SH-01</code>, <code>RPT-RH-USR-01</code>, <code>RPT-GER-SH-01</code>, <code>RPT-11-CMP-01</code>, etc.) quedaron deprecados; cada archivo migrado declara la equivalencia en su propio <code>Changelog</code>.</p>
+  </div>
+
+  <!-- ============ 02 DEPARTAMENTOS ============ -->
+  <h2 class="sec"><span class="num">02</span>Los 14 departamentos y sus dueños</h2>
+  <p class="sec-lead measure">El segmento <code>DEP</code> no es solo una etiqueta de 3 letras: apunta a una persona real que es dueña de la definición de negocio de ese reporte. Es a quien se consulta cuando una cifra no cuadra, y quien valida en UAT antes de que el reporte se publique.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>DEP</th><th>Departamento</th><th>Owner</th></tr></thead>
+      <tbody>
+        <tr><td><code>PRD</code></td><td>Producción</td><td>Julio Martínez</td></tr>
+        <tr><td><code>CAL</code></td><td>Calidad</td><td>Emanuel Hernández</td></tr>
+        <tr><td><code>MNT</code></td><td>Mantenimiento</td><td>Juan Carlos Portillo</td></tr>
+        <tr><td><code>PRC</code></td><td>Procesos</td><td>Karla Hernández / David Martínez</td></tr>
+        <tr><td><code>CMP</code></td><td>Compras</td><td>Germán Moya</td></tr>
+        <tr><td><code>ALM</code></td><td>Almacén</td><td>Roberto Hernández / Fernando Olivares</td></tr>
+        <tr><td><code>VTA</code></td><td>Ventas</td><td>Sergio Hernández</td></tr>
+        <tr><td><code>ING</code></td><td>Ingeniería</td><td>Giovanni Lourido</td></tr>
+        <tr><td><code>LAB</code></td><td>Laboratorio</td><td>(por asignar)</td></tr>
+        <tr><td><code>RHM</code></td><td>Recursos Humanos</td><td>Dulce Romero</td></tr>
+        <tr><td><code>CTB</code></td><td>Contabilidad</td><td>Marlén Martínez</td></tr>
+        <tr><td><code>CXC</code></td><td>Cuentas por Cobrar</td><td>Leticia Ortega</td></tr>
+        <tr><td><code>CXP</code></td><td>Cuentas por Pagar</td><td>Verónica Flores</td></tr>
+        <tr><td><code>SIS</code></td><td>Sistemas</td><td>Maximino Sierra</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout info measure" style="max-width:none">
+    <p class="ct">El catálogo no es estático</p>
+    <p>El 2026-05-15 se renombró <code>RH</code> a <code>RHM</code> (tres letras, como el resto del catálogo, evitando el conflicto con el código histórico de 2 letras), y <code>LAB</code> se separó del bloque <code>PRC</code> (Procesos) como Owner propio. <code>LAB</code> hoy no tiene un Owner asignado — se conserva así hasta que el cliente lo confirme; no es un error de este documento.</p>
+  </div>
+
+  <!-- ============ 03 LOS TRES TIPOS ============ -->
+  <h2 class="sec"><span class="num">03</span>Los tres tipos: <code>CAT</code>, <code>ANL</code>, <code>CTL</code></h2>
+  <p class="sec-lead measure">El segmento <code>TIPO</code> es un catálogo <strong>cerrado</strong> de solo 3 valores — a diferencia del viejo <code>FUE</code>, aquí no se agregan valores nuevos. Clasifica la naturaleza del dato, no el departamento.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>TIPO</th><th>Significado</th><th>Ejemplo</th></tr></thead>
+      <tbody>
+        <tr><td><code>CAT</code></td><td>Catálogo / referencia — una fila por entidad maestra, atemporal. Responde "qué existe", no "qué pasó".</td><td><code>RPT-ING-CAT-01</code> (números de parte base)</td></tr>
+        <tr><td><code>ANL</code></td><td>Analítica / cubo operativo — granular, parametrizado por rango de fechas (<code>$start</code>/<code>$end</code>). Responde "qué pasó, en qué periodo".</td><td><code>RPT-PRD-ANL-01</code> (cubo de órdenes de trabajo)</td></tr>
+        <tr><td><code>CTL</code></td><td>Control / cumplimiento — un KPI binario (¿se cumplió?) o una conciliación contra otra fuente.</td><td><code>RPT-VTA-CTL-01</code> (OTIF)</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ============ 04 VISTAS Y G** ============ -->
+  <h2 class="sec"><span class="num">04</span>Las vistas y el catálogo de gráficas <code>G**</code></h2>
+  <p class="sec-lead measure">Un reporte publica un SQL — un cubo de datos. Cada <strong>vista</strong> es una forma distinta de mirar ese mismo cubo dentro de Perspective (una tabla, una barra, un mapa de calor…), y hereda el código de su reporte con un sufijo decimal: <code>RPT-DEP-TIPO-NN.MM</code> (<code>.01</code>, <code>.02</code>, … <code>.99</code>).</p>
+
+  <ul class="measure">
+    <li>El <code>MM</code> se asigna por <code>configId</code> ascendente al momento del bootstrap — preserva el orden cronológico en que se crearon en Steelhead. Cambios posteriores a la vista <strong>no</strong> cambian su <code>MM</code>.</li>
+    <li>Las vistas <strong>gráficas</strong> (cualquier plugin distinto de Datagrid) llevan, además, el código de 3 letras del plugin al inicio de su nombre visible en Perspective (p. ej. <code>GYB-PRD-ANL-14.02</code>). Las vistas <strong>Datagrid</strong> (tabla) no llevan prefijo.</li>
+  </ul>
+
+  <p class="measure">El catálogo de plugins está cerrado y congelado al 2026-05-14: 1 tabla (Datagrid, sin prefijo) + 12 gráficas con código de 3 letras.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Código</th><th>Plugin Perspective</th><th>Uso típico</th></tr></thead>
+      <tbody>
+        <tr><td><em>(sin prefijo)</em></td><td>Datagrid</td><td>Tabla — la mayoría de las vistas operativas.</td></tr>
+        <tr><td><code>GHM</code></td><td>Heatmap</td><td>Matriz 2D.</td></tr>
+        <tr><td><code>GXB</code></td><td>X Bar</td><td>Barras horizontales.</td></tr>
+        <tr><td><code>GYB</code></td><td>Y Bar</td><td>Barras verticales.</td></tr>
+        <tr><td><code>GXY</code></td><td>X/Y Line</td><td>Línea con eje X numérico/temporal.</td></tr>
+        <tr><td><code>GXS</code></td><td>X/Y Scatter</td><td>Dispersión X vs Y.</td></tr>
+        <tr><td><code>GYL</code></td><td>Y Line</td><td>Línea temporal simple.</td></tr>
+        <tr><td><code>GYA</code></td><td>Y Area</td><td>Área apilada.</td></tr>
+        <tr><td><code>GYS</code></td><td>Y Scatter</td><td>Dispersión sobre eje categórico.</td></tr>
+        <tr><td><code>GTM</code></td><td>Treemap</td><td>Jerarquía por área.</td></tr>
+        <tr><td><code>GSB</code></td><td>Sunburst</td><td>Jerarquía radial.</td></tr>
+        <tr><td><code>GCS</code></td><td>Candlestick</td><td>Financiero con cuerpo y mechas.</td></tr>
+        <tr><td><code>GOH</code></td><td>OHLC</td><td>Financiero Open-High-Low-Close.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout tip measure" style="max-width:none">
+    <p class="ct">Para el detalle de cómo se arma una vista</p>
+    <p>Este documento cubre el <strong>modelo de gobernanza</strong> del catálogo — qué es cada código y quién manda en cada decisión. El "cómo" — los 14 campos del <code>.config.json</code>, el patrón de Pareto, la trampa del eje temporal vs. categórico en barras, el espejeo TLC↔MTY de vistas, o cómo armar un dashboard con varias vistas — vive en la <a href="guia-perspective.html">Guía de Vistas y Dashboards Perspective</a>.</p>
+  </div>
+
+  <!-- ============ 05 VERSIONAMIENTO ============ -->
+  <h2 class="sec"><span class="num">05</span>Versionamiento: reportes y vistas</h2>
+  <p class="sec-lead measure">La placa identifica <em>qué</em> reporte es; la versión identifica <em>qué tan al día</em> está su definición de negocio. Ambas viven juntas, pero se leen distinto.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Versión</th><th>Criterio</th></tr></thead>
+      <tbody>
+        <tr><td><code>v0.x</code></td><td>Borrador en desarrollo.</td></tr>
+        <tr><td><code>v1.0</code></td><td>Primera versión validada (UAT) y liberada a producción.</td></tr>
+        <tr><td><code>v1.1+</code></td><td>Cambio menor sin alterar la definición de negocio (formato, alias, orden).</td></tr>
+        <tr><td><code>v2.0+</code></td><td>Cambio mayor en definición, fórmula, filtro o corte.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="measure">La versión vive en el <strong>encabezado del SQL</strong> del reporte (comentario <code>-- Versión: v1.2</code>), que además debe incluir la fecha del cambio y una descripción breve. Regla práctica: tocar un <code>WHERE</code>, un <code>JOIN</code> o una columna calculada es versión <strong>mayor</strong>; renombrar un alias, reordenar columnas o cambiar el formato de una fecha es versión <strong>menor</strong>.</p>
+
+  <h3 class="sub">El mismo esquema, en las vistas</h3>
+  <p class="measure">Cada vista Perspective lleva su propio <code>_meta.version</code> (<code>vX.Y</code>), <strong>independiente del reporte padre</strong> — una vista puede ir en v1.3 mientras su reporte sigue en v1.0. Las reglas de bump son análogas:</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Tipo</th><th>Disparadores</th><th>Ejemplo</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Mayor</strong> (<code>vX.Y → v(X+1).0</code>)</td><td><code>columns</code>, <code>group_by</code>, <code>split_by</code>, <code>aggregates</code>, <code>expressions</code>, <code>plugin</code>, filtro semántico</td><td>Agregar columna; Datagrid → Y Bar</td></tr>
+        <tr><td><strong>Menor</strong> (<code>vX.Y → vX.(Y+1)</code>)</td><td><code>theme</code>, <code>plugin_config</code> visual, <code>sort</code>, <code>title</code>, <code>settings</code>, formato</td><td>Pro Light → Pro Dark; renombrar</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="measure">El <code>changelog</code> dentro de <code>_meta</code> registra cada bump. Detalle control por control en la <a href="guia-perspective.html">Guía de Vistas y Dashboards Perspective</a>.</p>
+
+  <!-- ============ 06 CAPAS ============ -->
+  <h2 class="sec"><span class="num">06</span>Las capas de Steelhead — y dónde vivimos</h2>
+  <p class="sec-lead measure">Reportes SH no es todo el reporting de Steelhead: es una capa específica dentro de una arquitectura de 6, con una regla de árbitro clara para no pisar a las demás.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Capa</th><th>Qué hace</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>Consumo operativo (UI) — dashboards nativos de Steelhead.</td></tr>
+        <tr><td>2</td><td>Extracción básica — export a CSV/Excel.</td></tr>
+        <tr><td>3</td><td>Observabilidad en tiempo real — WatchTower.</td></tr>
+        <tr><td>4</td><td>Reportes estándar — cubos Perspective de fábrica.</td></tr>
+        <tr style="background:var(--ti-wash)"><td><strong>5</strong></td><td><strong>Reportes personalizados (SQL sobre DuckDB)</strong> <span class="audchip ti" style="margin-left:8px">Este proyecto</span></td></tr>
+        <tr><td>6</td><td>Integración contable — Steelhead ↔ CONTPAQi.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="measure">Cinco principios rectores sostienen esta arquitectura, independientemente de la capa:</p>
+  <ul class="measure">
+    <li>Toda métrica oficial tiene dueño, definición, fuente y versión.</li>
+    <li>Excel es canal de consumo, <strong>NO</strong> fuente primaria de un KPI oficial.</li>
+    <li>KPI operativo → fuente Steelhead (Capas 1-5); KPI contable → CONTPAQi; conciliación → Capa 6.</li>
+    <li>Ningún reporte oficial se publica sin UAT del dueño del proceso y código asignado por Sistemas.</li>
+    <li>Todo reporte oficial tiene un solo enlace oficial; las copias locales son solo de consumo.</li>
+  </ul>
+
+  <!-- ============ 07 CICLO DE VIDA ============ -->
+  <h2 class="sec"><span class="num">07</span>Reglas de ciclo de vida — y lo que sigue abierto</h2>
+  <p class="sec-lead measure">La placa y la versión describen el reporte en un instante. Estas reglas describen cómo se mantiene consistente en el tiempo, en las dos plantas, y qué falta por resolver — con honestidad sobre lo que el propio proyecto todavía tiene pendiente.</p>
+
+  <h3 class="sub">El flujo de creación</h3>
+  <ol class="stages">
+    <li><span class="k">1</span><div><h4>Solicitud</h4><p>Alguien pide el reporte.</p></div></li>
+    <li><span class="k">2</span><div><h4>Triage / priorización</h4><p>Sistemas evalúa y prioriza la solicitud.</p></div></li>
+    <li><span class="k">3</span><div><h4>Definición (ficha)</h4><p>Se documenta qué mide, de dónde sale, quién es el dueño.</p></div></li>
+    <li><span class="k">4</span><div><h4>Construcción</h4><p>Se escribe el SQL contra el snapshot DuckDB.</p></div></li>
+    <li><span class="k">5</span><div><h4>UAT</h4><p>El dueño del proceso valida el resultado.</p></div></li>
+    <li><span class="k">6</span><div><h4>Autorización</h4><p>Sistemas asigna el código <code>RPT-DEP-TIPO-NN</code>.</p></div></li>
+    <li><span class="k">7</span><div><h4>Publicación</h4><p>Se sube a Steelhead, en TLC y en MTY, en su carpeta temática con permisos.</p></div></li>
+    <li><span class="k">8</span><div><h4>Monitoreo</h4><p>Se vigila que el reporte siga sirviendo datos correctos.</p></div></li>
+  </ol>
+
+  <h3 class="sub">Carpetas, permisos y las dos plantas</h3>
+  <ul class="measure">
+    <li><strong>Nada oficial fuera de su carpeta.</strong> Un reporte oficial vive en su carpeta temática con permisos reales validados; nada oficial queda en <code>_sin_carpeta</code> — esas son referencias pendientes de refactor, no un destino válido.</li>
+    <li><strong>TLC ↔ MTY siempre espejados.</strong> Todo cambio de reporte o SQL en un dominio se aplica al otro en la misma sesión, sin excepción. El SQL no debe depender de IDs internos de un solo dominio (difieren entre plantas); se resuelve por nombre.</li>
+  </ul>
+
+  <h3 class="sub">Auditoría de nomenclatura (2026-05-15)</h3>
+  <p class="measure">Una auditoría del código detectó <strong>21 reportes</strong> donde el <code>DEP</code> del nombre visible del reporte no coincidía con el <code>DEP</code> declarado en el encabezado del SQL — mezclados entre TLC y MTY, siempre en espejo perfecto. La regla aplicada, caso por caso: el header manda por default (4 casos contables se renombraron a <code>CTB.</code>, 3 de inventario a <code>ALM.</code>), salvo cuando el nombre ya reflejaba mejor la realidad de negocio, en cuyo caso el header se corrigió al nombre (por ejemplo, 2 catálogos de usuarios se unificaron bajo el nuevo <code>RHM</code>). Es verificable con <code>python3 scripts/audit_dep_mismatches.py</code>, que debe devolver 0 mismatches tras cada refresco del snapshot.</p>
+
+  <div class="callout warn measure" style="max-width:none">
+    <p class="ct">Abierto — portabilidad completa del catálogo (anotado 2026-06-03)</p>
+    <p>Pendiente una auditoría de <strong>todo</strong> el catálogo oficial por IDs internos hardcodeados de un solo dominio (p. ej. el cubo de OTs <code>RPT-PRD-ANL-01</code> usa <code>unit_id = 3969</code>, que en MTY es otro número) y por que cada reporte tenga el <strong>mismo SQL</strong> en TLC y MTY. El entregable pendiente es una matriz reporte × dominio (id, folder, permisos, hash de SQL) con las correcciones aplicadas. No se documenta aquí como resuelto porque no lo está.</p>
+  </div>
+
+  <div class="callout warn measure" style="max-width:none">
+    <p class="ct">Abierto — numeración <code>RPT-VTA-ANL-01..05</code> divergente</p>
+    <p>El propio proyecto reconoce que la tabla de <code>docs/inventario_reportes_steelhead.md</code> y los <code>perspective_views/*/manifest.json</code> asignan códigos <code>VTA-ANL-01..05</code> a reportes <strong>distintos</strong> entre sí (p. ej. la tabla dice que <code>01</code> es Salidas y <code>03</code> es Órdenes de Venta; los manifests dicen que <code>01</code> es Facturación y <code>03</code> es Inventario). Mientras no se reconcilie, la regla es anclar por <code>reportId</code> de Steelhead — inequívoco por definición — y verificar ambas fuentes antes de asignar un código nuevo en ese bloque. Reconciliar la numeración es un trabajo aparte, no hecho todavía.</p>
+  </div>
+
+  <!-- ============ 08 QUÉ SIGNIFICA PARA TI ============ -->
+  <h2 class="sec"><span class="num">08</span>Qué significa para ti</h2>
+  <div class="roles">
+    <div class="role ti">
+      <div class="who">Jefe de TI · Administrador</div>
+      <p>Tú eres el eje de esta gobernanza: asignas el código al autorizar un reporte, verificas que el header y la carpeta coincidan, mantienes TLC y MTY espejados, y decides si un cambio es versión mayor o menor. Cuando algo no cuadre, revisa primero los dos "abierto" de la §07 antes de asumir que es un bug nuevo.</p>
+    </div>
+    <div class="role ku">
+      <div class="who">Key User · Consumidor</div>
+      <p>No necesitas memorizar el catálogo completo, pero sí leer la placa de un reporte antes de citarlo: te dice de un vistazo quién es el dueño (a quién preguntarle si algo no cuadra) y qué tipo de dato esperar. Si ves un código que no sigue este formato, probablemente es un reporte no oficial — trátalo como referencia, no como fuente de verdad.</p>
+    </div>
+  </div>
+
+  <footer class="foot">
+    <div><span class="badge perenne">Perenne</span> &nbsp; Gobernanza de datos · Reportes SH</div>
+    <div>Fuente: <code>docs/gobernanza.md</code></div>
+    <div class="doc-credit" style="flex-basis:100%;margin-top:10px;padding-top:12px;border-top:1px solid var(--hair);display:flex;align-items:center;gap:12px;font-size:.78rem;color:var(--faint)">
+      <a href="https://capazconsultoria.com" target="_blank" rel="noopener" aria-label="Capaz Consultoría" style="flex:0 0 auto;display:inline-flex"><img src="assets/capaz-c.png" alt="Capaz Consultoría" style="height:30px;width:auto;display:block"></a>
+      <span>Documento elaborado por <a href="mailto:oviazcan@capazconsultoria.com" style="color:var(--accent-ink);font-weight:600;text-decoration:none">Omar Viazcán</a> · <a href="https://capazconsultoria.com" target="_blank" rel="noopener" style="color:var(--accent-ink);text-decoration:none">Capaz Consultoría</a></span>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>

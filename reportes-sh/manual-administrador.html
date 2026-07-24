@@ -1,0 +1,437 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manual del Administrador — Reportes SH</title>
+<style>
+:root{
+  --ground:#f7f9fb;--paper:#ffffff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;
+  --hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;
+  --ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;
+  --warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7;
+  --shadow:0 1px 2px rgba(24,34,49,.05),0 6px 20px -8px rgba(24,34,49,.12);
+  --measure:68ch;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){:root{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512;--shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -10px rgba(0,0,0,.5)}}
+:root[data-theme="light"]{--ground:#f7f9fb;--paper:#fff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;--hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;--ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;--warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7}
+:root[data-theme="dark"]{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.62;-webkit-font-smoothing:antialiased}
+.wrap{max-width:920px;margin:0 auto;padding:0 24px 96px}
+.measure{max-width:var(--measure)}
+.masthead{border-bottom:2px solid var(--ti);padding:40px 0 22px}
+.brandbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.brandmark{width:28px;height:28px;border-radius:6px;background:var(--steel);display:grid;place-items:center;flex:0 0 auto}
+.brandmark span{color:#fff;font-weight:800;font-size:.72rem;font-family:var(--mono)}
+.brandname{font-weight:700;letter-spacing:.02em;font-size:.95rem}
+.brandname em{color:var(--accent-ink);font-style:normal}
+.eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.14em;color:var(--ti);font-weight:800;margin:0 0 10px}
+.masthead h1{font-size:clamp(2rem,4.6vw,2.7rem);line-height:1.06;letter-spacing:-.02em;margin:0 0 10px;font-weight:800;text-wrap:balance}
+.masthead .sub{font-size:1.12rem;color:var(--muted);margin:0;max-width:60ch}
+.audchips{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.audchip{font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.05em}
+.audchip.ti{background:var(--ti-wash);color:var(--ti)} .audchip.p{background:var(--ti-wash);color:var(--ti)}
+.tldr{background:var(--paper);border:1px solid var(--hair);border-left:4px solid var(--ti);border-radius:12px;padding:20px 22px;margin:26px 0;box-shadow:var(--shadow)}
+.tldr .ct{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--ti);margin:0 0 8px}
+.tldr p{margin:0;font-size:1.05rem;max-width:none}
+h2.sec{font-size:1.5rem;letter-spacing:-.01em;margin:54px 0 4px;font-weight:800;text-wrap:balance}
+h2.sec .num{font-family:var(--mono);font-size:.85rem;color:var(--ti);font-weight:700;border:1px solid var(--hair-2);border-radius:6px;padding:1px 7px;margin-right:10px;vertical-align:.15em}
+h3.sub{font-size:1.16rem;margin:32px 0 6px;letter-spacing:-.01em;font-weight:700}
+.sec-lead{color:var(--muted);margin:.4rem 0 1.2rem;max-width:var(--measure)}
+p{margin:0 0 1rem;max-width:var(--measure)}
+a{color:var(--accent-ink);text-underline-offset:2px}
+code{font-family:var(--mono);font-size:.85em;background:var(--hair);padding:1px 5px;border-radius:5px;word-break:break-word}
+pre{background:var(--paper);border:1px solid var(--hair);border-left:4px solid var(--steel);border-radius:10px;padding:14px 16px;overflow-x:auto;box-shadow:var(--shadow);font-family:var(--mono);font-size:.82rem;line-height:1.5;margin:18px 0}
+pre code{background:none;padding:0;font-size:1em}
+.tok-c{color:var(--faint)} .tok-k{color:var(--ti);font-weight:600} .tok-f{color:var(--accent-ink);font-weight:600} .tok-s{color:var(--ku)}
+ul,ol{max-width:var(--measure);padding-left:1.25em} li{margin:.35rem 0}
+strong{font-weight:700}
+figure.diagram{margin:26px 0;background:var(--paper);border:1px solid var(--hair);border-radius:14px;padding:20px 18px 8px;box-shadow:var(--shadow);overflow-x:auto}
+figure.diagram svg{display:block;width:100%;height:auto;min-width:600px;max-width:840px;margin:0 auto}
+figure.diagram figcaption{font-size:.85rem;color:var(--faint);text-align:center;margin-top:10px;padding:0 8px 6px}
+.svg-t{font-family:var(--sans);fill:var(--ink)} .svg-m{font-family:var(--mono)} .svg-mut{fill:var(--muted)}
+.callout{border-radius:10px;padding:15px 17px 15px 48px;position:relative;margin:22px 0;font-size:.95rem;border:1px solid var(--hair);background:var(--paper)}
+.callout .ct{font-weight:800;margin:0 0 4px;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em}
+.callout p{max-width:none;margin:.3rem 0 0}
+.callout::before{position:absolute;left:15px;top:14px;font-size:1.15rem;line-height:1}
+.callout.meta{border-left:4px solid var(--steel);background:color-mix(in srgb,var(--steel) 6%,var(--paper))} .callout.meta .ct{color:var(--steel)} .callout.meta::before{content:"💡"}
+.callout.info{border-left:4px solid var(--ti);background:var(--ti-wash)} .callout.info .ct{color:var(--ti)} .callout.info::before{content:"ℹ";color:var(--ti);font-weight:800}
+.callout.warn{border-left:4px solid var(--warn);background:var(--warn-wash)} .callout.warn .ct{color:var(--warn)} .callout.warn::before{content:"⚠"}
+.callout.danger{border-left:4px solid var(--danger);background:var(--danger-wash)} .callout.danger .ct{color:var(--danger)} .callout.danger::before{content:"⛔"}
+.callout.tip{border-left:4px solid var(--accent);background:var(--accent-wash)} .callout.tip .ct{color:var(--accent-ink)} .callout.tip::before{content:"✓";color:var(--accent-ink);font-weight:800}
+.stages{list-style:none;padding:0;margin:24px 0;display:flex;flex-direction:column;gap:2px}
+.stages li{display:grid;grid-template-columns:44px 1fr;gap:16px;padding:16px 0;border-bottom:1px solid var(--hair);align-items:start}
+.stages li:last-child{border-bottom:none}
+.stages .k{width:38px;height:38px;border-radius:9px;background:var(--ti);color:#fff;display:grid;place-items:center;font-weight:800;font-family:var(--mono);font-size:1rem}
+.stages h4{margin:0 0 3px;font-size:1.08rem}
+.stages p{margin:0;font-size:.94rem;color:var(--muted);max-width:none}
+.tablewrap{overflow-x:auto;border:1px solid var(--hair);border-radius:12px;box-shadow:var(--shadow);margin:20px 0}
+table{border-collapse:collapse;width:100%;font-size:.9rem;background:var(--paper);min-width:520px}
+thead th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:700;padding:11px 14px;border-bottom:2px solid var(--hair-2);background:var(--ground)}
+tbody td{padding:11px 14px;border-bottom:1px solid var(--hair);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+.roles{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:26px 0}
+@media (max-width:760px){.roles{grid-template-columns:1fr}}
+.role{border-radius:12px;padding:20px;border:1px solid var(--hair);background:var(--paper);box-shadow:var(--shadow)}
+.role.ti{border-top:4px solid var(--ti)} .role.ku{border-top:4px solid var(--ku)}
+.role .who{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;margin-bottom:6px}
+.role.ti .who{color:var(--ti)} .role.ku .who{color:var(--ku)}
+.role p{margin:0;font-size:.93rem;max-width:none}
+.foot{margin-top:64px;padding-top:22px;border-top:1px solid var(--hair-2);color:var(--faint);font-size:.85rem;display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:999px}
+.badge.perenne{background:var(--ti-wash);color:var(--ti)} .badge.perenne::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+@media print{:root{--ground:#fff;--paper:#fff;--shadow:none}body{font-size:11.5pt}.wrap{max-width:none;padding:0}figure.diagram,.callout,.tablewrap,.role,.stages li,pre{break-inside:avoid}figure.diagram svg{min-width:0}h2.sec,h3.sub{break-after:avoid}a{color:var(--ink);text-decoration:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brandbar">
+      <span class="brandmark"><span>RSH</span></span>
+      <span class="brandname">Reportes<em>SH</em> · Manual del Administrador</span>
+      <a href="00-mapa-empieza-aqui.html" style="margin-left:auto;font-size:.82rem;color:var(--faint);text-decoration:none;white-space:nowrap">← Índice del paquete</a>
+    </div>
+    <p class="eyebrow">Manual · Jefe de TI</p>
+    <h1>Cómo se opera Reportes SH en productivo</h1>
+    <p class="sub">La fotografía semanal, publicar un reporte, sincronizar las plantas gemelas, credenciales y qué hacer cuando Steelhead cambia la cerradura. Nivel operación — el montaje del entorno de desarrollo vive en <code>ONBOARDING.md</code>.</p>
+    <div class="audchips">
+      <span class="audchip ti">Jefe de TI</span>
+      <span class="audchip p">Documento perenne</span>
+    </div>
+  </header>
+
+  <div class="tldr measure" style="max-width:none">
+    <p class="ct">En pocas palabras</p>
+    <p>Reportes SH corre en un ciclo semanal: <strong>recoger la fotografía</strong> del ERP (snapshot DuckDB), <strong>correr y editar SQL</strong> en el banco de pruebas local, y <strong>publicar</strong> de vuelta a Steelhead en las dos plantas gemelas (TLC y MTY). Este manual documenta las cinco piezas que hay que mantener vivas: el snapshot automático, el flujo de publicación, la sincronización entre plantas, las credenciales, y qué hacer cuando Steelhead rota los hashes de sus operaciones GraphQL.</p>
+  </div>
+
+  <!-- ============ 01 EL PIPELINE ============ -->
+  <h2 class="sec"><span class="num">01</span>El pipeline de un vistazo</h2>
+  <p class="sec-lead measure">Todo lo que haces como administrador es una vuelta de esta misma rueda. Entender el ciclo completo hace que cada comando individual tenga sentido.</p>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 780 300" role="img" aria-label="Diagrama del pipeline semanal: Steelhead ERP, fotografía, banco de pruebas local, publicar, y de vuelta a Steelhead">
+      <defs>
+        <marker id="arA" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--ti)"/></marker>
+        <marker id="arB" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--faint)"/></marker>
+      </defs>
+
+      <!-- etiquetas de las flechas superiores -->
+      <text x="188" y="24" class="svg-t" font-size="11" text-anchor="middle" font-weight="700">recoger la fotografía</text>
+      <text x="188" y="37" class="svg-mut" font-size="9.5" text-anchor="middle">pull_reports / regenerate_duckdb</text>
+      <text x="382" y="24" class="svg-t" font-size="11" text-anchor="middle" font-weight="700">editar y validar</text>
+      <text x="382" y="37" class="svg-mut" font-size="9.5" text-anchor="middle">run_query.py</text>
+      <text x="576" y="24" class="svg-t" font-size="11" text-anchor="middle" font-weight="700">colgar en el tablero</text>
+      <text x="576" y="37" class="svg-mut" font-size="9.5" text-anchor="middle">push_query / push_view / push_variable</text>
+
+      <!-- caja 1: Steelhead ERP -->
+      <rect x="16" y="40" width="150" height="78" rx="10" fill="var(--paper)" stroke="var(--hair-2)" stroke-width="1.5"/>
+      <text x="91" y="70" class="svg-t" font-size="13" font-weight="700" text-anchor="middle">Steelhead ERP</text>
+      <text x="91" y="88" class="svg-mut" font-size="10.5" text-anchor="middle">línea real</text>
+      <text x="91" y="102" class="svg-mut" font-size="10.5" text-anchor="middle">TLC + MTY</text>
+
+      <!-- flecha 1 -->
+      <line x1="166" y1="79" x2="210" y2="79" stroke="var(--ti)" stroke-width="2" marker-end="url(#arA)"/>
+
+      <!-- caja 2: Fotografía semanal -->
+      <rect x="210" y="40" width="150" height="78" rx="10" fill="var(--ti-wash)" stroke="var(--ti)" stroke-width="1.5"/>
+      <text x="285" y="70" class="svg-t" font-size="13" font-weight="700" text-anchor="middle">Fotografía semanal</text>
+      <text x="285" y="88" class="svg-mut" font-size="10" text-anchor="middle">steelhead_snapshot/</text>
+      <text x="285" y="102" class="svg-mut" font-size="10" text-anchor="middle">&lt;dominio&gt;/duckdb/*.duckdb</text>
+
+      <!-- flecha 2 -->
+      <line x1="360" y1="79" x2="404" y2="79" stroke="var(--ti)" stroke-width="2" marker-end="url(#arA)"/>
+
+      <!-- caja 3: Banco de pruebas local -->
+      <rect x="404" y="40" width="150" height="78" rx="10" fill="var(--paper)" stroke="var(--hair-2)" stroke-width="1.5"/>
+      <text x="479" y="70" class="svg-t" font-size="13" font-weight="700" text-anchor="middle">Banco de pruebas</text>
+      <text x="479" y="88" class="svg-mut" font-size="10.5" text-anchor="middle">local, read-only</text>
+      <text x="479" y="102" class="svg-mut" font-size="10.5" text-anchor="middle">DuckDB 1.2.2</text>
+
+      <!-- flecha 3 -->
+      <line x1="554" y1="79" x2="598" y2="79" stroke="var(--ti)" stroke-width="2" marker-end="url(#arA)"/>
+
+      <!-- caja 4: Publicar -->
+      <rect x="598" y="40" width="150" height="78" rx="10" fill="var(--ti-wash)" stroke="var(--ti)" stroke-width="1.5"/>
+      <text x="673" y="70" class="svg-t" font-size="13" font-weight="700" text-anchor="middle">Publicar</text>
+      <text x="673" y="88" class="svg-mut" font-size="10" text-anchor="middle">re-pull → push → verificar</text>
+      <text x="673" y="102" class="svg-mut" font-size="10" text-anchor="middle">EN VIVO (línea real)</text>
+
+      <!-- arco de retorno -->
+      <path d="M673,118 C 690,225 74,225 91,118" fill="none" stroke="var(--faint)" stroke-width="2" stroke-dasharray="5 4" marker-end="url(#arB)"/>
+      <text x="382" y="252" class="svg-t" font-size="11.5" text-anchor="middle" font-weight="700">Vuelve a Steelhead: re-pull antes del siguiente push, verificar EN VIVO</text>
+      <text x="382" y="270" class="svg-mut" font-size="10.5" text-anchor="middle">El ciclo corre una vez por planta — son plantas gemelas, no una copia</text>
+    </svg>
+    <figcaption>Cuatro movimientos que se repiten cada semana (o cada vez que publicas un reporte): recoger la fotografía, editar en el banco de pruebas, publicar, y verificar en la línea real antes de dar el cambio por bueno.</figcaption>
+  </figure>
+
+  <p class="measure">Las secciones siguientes desarman cada movimiento de esta rueda: cómo correr SQL en el banco de pruebas (§02), cómo se toma la fotografía (§03), cómo se publica (§04), cómo se mantienen las dos plantas gemelas al día (§05), y qué hace que la rueda se atore — credenciales (§06) y hashes rotados (§07).</p>
+
+  <!-- ============ 02 EL ENTORNO ============ -->
+  <h2 class="sec"><span class="num">02</span>El entorno y correr SQL local</h2>
+  <p class="sec-lead measure">Antes de tocar cualquier reporte, todo pasa por el banco de pruebas: una base DuckDB local, en modo solo-lectura, que es la fotografía más reciente del ERP.</p>
+
+  <pre><code><span class="tok-c"># dominio default (el que diga STEELHEAD_DEFAULT_DOMAIN en .env, o tlc)</span>
+<span class="tok-f">python3</span> run_query.py query_facturacion.sql
+
+<span class="tok-c"># dominio explícito</span>
+<span class="tok-f">python3</span> run_query.py query_facturacion.sql <span class="tok-k">--domain</span> mty
+
+<span class="tok-c"># override de la ruta del .duckdb (para pruebas puntuales)</span>
+<span class="tok-f">python3</span> run_query.py query_facturacion.sql <span class="tok-k">--db</span> /ruta/explícita.duckdb</code></pre>
+
+  <p class="measure"><code>run_query.py</code> auto-detecta el <code>.duckdb</code> más reciente en <code>steelhead_snapshot/&lt;dominio&gt;/duckdb/</code> — no hay que apuntarlo a mano tras cada fotografía semanal. Abre la base en modo <strong>read-only</strong>: no hay <code>CREATE</code>/<code>INSERT</code> posible desde aquí, es intencional.</p>
+
+  <div class="callout warn measure" style="max-width:none">
+    <p class="ct">La trampa del intérprete</p>
+    <p>El paquete Python <code>duckdb</code> vive instalado en <strong><code>/usr/bin/python3</code> (Python 3.9.6)</strong>, NO en el <code>python3</code> que resuelve el <code>PATH</code> por Homebrew (3.14). Si corres <code>python3 run_query.py ...</code> y truena con <code>ModuleNotFoundError: No module named 'duckdb'</code>, no es que falte instalar nada — es el intérprete equivocado. Usa <code>/usr/bin/python3 run_query.py ...</code>. Aplica igual a los scripts de <code>scripts/</code> (<code>pull_reports.py</code>, <code>push_query.py</code>, etc.) si presentan el mismo síntoma.</p>
+  </div>
+
+  <div class="callout info measure" style="max-width:none">
+    <p class="ct">Una versión de DuckDB distinta en cada lado</p>
+    <p>El banco de pruebas local corre <strong>DuckDB 1.2.2</strong>; el servidor de Steelhead que ejecuta el reporte publicado corre <strong>1.5.2</strong>. La mayoría del tiempo es transparente, pero hay diferencias reales de comportamiento entre versiones (por ejemplo, la serialización de enteros grandes a JSON). Es la misma lógica de banco de pruebas contra línea real que aparece en la §08 de incidentes — un reporte que corre perfecto en local puede fallar publicado por esta razón.</p>
+  </div>
+
+  <!-- ============ 03 LA FOTOGRAFÍA SEMANAL ============ -->
+  <h2 class="sec"><span class="num">03</span>La fotografía semanal</h2>
+  <p class="sec-lead measure">El snapshot que alimenta todo el banco de pruebas se toma solo, cada semana. Rara vez hay que intervenir, pero hay que saber verificarlo y saber correrlo a mano.</p>
+
+  <h3 class="sub">Cómo corre (automático)</h3>
+  <p class="measure">Un <code>launchd</code> agendado dispara <code>scripts/weekly_snapshot.sh</code> cada <strong>lunes 07:00</strong> (si la Mac está dormida a esa hora, corre al despertar). El wrapper hace dos cosas, en orden, por los dos dominios:</p>
+  <ol class="measure">
+    <li><code>regenerate_duckdb.py --domain all --download --decrypt --prune</code> — encola la generación en Steelhead, espera a que termine (polling), descarga el archivo cifrado desde S3, lo descifra (AES-256-CBC + gunzip) y conserva solo las <strong>2 generaciones más recientes</strong> por dominio (<code>--prune</code>).</li>
+    <li><code>schema_diff.py --domain all --json</code> — compara el esquema (tablas/columnas) entre los dos snapshots más recientes y vuelca un log JSON versionado en <code>logs/schema_diff/&lt;ts&gt;_&lt;dom&gt;.diff.json</code>.</li>
+  </ol>
+  <p class="measure">La salida completa queda en <code>logs/weekly_snapshot.log</code>, y el wrapper manda una notificación nativa de macOS (sonido <code>Glass</code> si terminó bien, <code>Basso</code> si falló) para que no dependas de ir a revisar el log para enterarte.</p>
+
+  <h3 class="sub">Cómo verificar que corrió</h3>
+  <ul class="measure">
+    <li>Abre <code>logs/weekly_snapshot.log</code> y busca el bloque con la fecha más reciente — cada corrida agrega su propio bloque, no lo sobrescribe.</li>
+    <li>El bloque termina con <code>Exit code: 0</code> si ambos dominios (TLC y MTY) generaron su <code>.duckdb</code> sin problema. Cualquier otro código indica falla — ver §08.</li>
+    <li>La notificación de macOS es la señal más rápida en el momento; el log es la fuente de verdad si la notificación se perdió (Mac ocupada, pantalla apagada).</li>
+  </ul>
+
+  <h3 class="sub">Cómo correrla a mano</h3>
+  <pre><code><span class="tok-f">bash</span> scripts/weekly_snapshot.sh</code></pre>
+  <p class="measure">Corre el mismo flujo completo (regen + diff + log + notificación) fuera del calendario. Vale la pena hacerlo cuando:</p>
+  <ul class="measure">
+    <li>Ha pasado más de <strong>20 días</strong> sin actividad en el repo — la cookie de sesión dura 30 y conviene refrescarla antes de que caduque.</li>
+    <li>Steelhead acaba de desplegar un cambio que pudo tocar la generación de DuckDB.</li>
+    <li>Necesitas un <code>.duckdb</code> fresco ya mismo para un análisis puntual, sin esperar al lunes.</li>
+  </ul>
+
+  <h3 class="sub">Comandos de operación del schedule</h3>
+  <pre><code><span class="tok-c"># Estado / último run / próximo disparo</span>
+launchctl print gui/501/com.ecoplating.steelhead-weekly-snapshot \
+  | grep <span class="tok-k">-E</span> <span class="tok-s">"state|runs|last exit"</span>
+
+<span class="tok-c"># Disparar ahora, saltándose el calendario</span>
+launchctl kickstart <span class="tok-k">-k</span> gui/501/com.ecoplating.steelhead-weekly-snapshot
+
+<span class="tok-c"># Pausar / reanudar</span>
+launchctl disable gui/501/com.ecoplating.steelhead-weekly-snapshot
+launchctl enable  gui/501/com.ecoplating.steelhead-weekly-snapshot
+
+<span class="tok-c"># Re-instalar tras editar el plist</span>
+launchctl bootout  gui/501/com.ecoplating.steelhead-weekly-snapshot
+launchctl bootstrap gui/501 \
+  /Users/oviazcan/Library/LaunchAgents/com.ecoplating.steelhead-weekly-snapshot.plist</code></pre>
+  <p class="measure">El plist vive en <code>~/Library/LaunchAgents/com.ecoplating.steelhead-weekly-snapshot.plist</code>; hay una copia versionada en <code>scripts/launchd/</code> para poder reproducirlo en otra máquina.</p>
+
+  <div class="callout tip measure" style="max-width:none">
+    <p class="ct">Revisión mensual</p>
+    <p>Una vez al mes vale la pena: (1) confirmar que cada corrida del último mes cerró en <code>Exit code: 0</code> en los dos dominios; (2) auditar <code>logs/schema_diff/*.diff.json</code> por cambios en tablas núcleo (<code>invoice</code>, <code>work_order</code>, <code>part_number</code>…) que puedan afectar algún <code>query_*.sql</code>; (3) confirmar que la cookie sigue vigente (<code>ls -l .env</code>, <code>mtime</code> ≤30 días).</p>
+  </div>
+
+  <!-- ============ 04 PUBLICAR UN REPORTE ============ -->
+  <h2 class="sec"><span class="num">04</span>Publicar un reporte, paso a paso</h2>
+  <p class="sec-lead measure">"Colgar en el tablero" un reporte nuevo o modificado tiene un orden fijo. Saltarse el primer paso es la causa más común de folders y permisos borrados.</p>
+
+  <ol class="stages">
+    <li><span class="k">1</span><div><h4>Re-pull del dominio destino</h4><p><code>python3 scripts/pull_reports.py --domain &lt;d&gt;</code> (o <code>--domain all</code>). Trae el <code>folderId</code> y los permisos vigentes al snapshot local. Sin este paso, el push puede sobrescribirlos con datos viejos — es obligatorio, no opcional.</p></div></li>
+    <li><span class="k">2</span><div><h4>Editar el SQL</h4><p>Sobre el <code>query_*.sql</code> del repo, siguiendo las convenciones del proyecto (CTEs, <code>json_extract_string</code>, microdollars ÷ 1e6, patrón de <code>$start</code>/<code>$end</code>).</p></div></li>
+    <li><span class="k">3</span><div><h4>Subir el SQL</h4><p><code>push_query.py --domain &lt;d&gt; --name "&lt;título&gt;" query_x.sql</code> actualiza un reporte que ya existe (dry-run por default; agrega <code>--commit</code> para ejecutar). Si el reporte es <strong>nuevo</strong>, usa <code>create_report.py --name "..." --domain &lt;d&gt; --folder-id &lt;id&gt; --permissions &lt;lista&gt; --commit</code> (mutación con <code>reportId: null</code>).</p></div></li>
+    <li><span class="k">4</span><div><h4>Vistas Perspective</h4><p><code>push_query.py</code> invoca automáticamente <code>push_view.py</code> por cada vista hija activa del reporte tras subir el SQL. Si necesitas subir el SQL sin tocar las vistas, agrega <code>--no-views</code>.</p></div></li>
+    <li><span class="k">5</span><div><h4>Variables / dropdowns</h4><p><code>push_query.py</code> <strong>no</strong> sincroniza variables. Los dropdowns (<code>$Turno</code>, <code>$Linea</code>, <code>$Supervisor</code>…) se crean, editan o borran aparte con <code>push_variable.py</code> (<code>--create</code> / update / <code>--delete</code>).</p></div></li>
+    <li><span class="k">6</span><div><h4>"Use date range" si el SQL usa $start/$end</h4><p>Este flag tampoco viaja con el push de SQL. Actívalo a mano en la interfaz de Steelhead la primera vez, o vía <code>set_date_range.py --domain &lt;d&gt; --name "..." --on --commit</code> (mutación <code>UpdateReportDateRange</code>). Una vez encendido, queda persistido en pushes futuros.</p></div></li>
+    <li><span class="k">7</span><div><h4>Verificar EN VIVO</h4><p>Consulta <code>AllReports</code> contra el ERP (<code>nodes[].latestQuery</code>, <code>useDateRange</code>, <code>reportVariablesByReportId</code>) para confirmar que el cambio quedó. <strong>Nunca</strong> contra un re-pull inmediato: el backend de Steelhead tarda en reflejar el cambio, y un re-pull recién hecho puede mostrar todavía la versión anterior.</p></div></li>
+  </ol>
+
+  <div class="callout warn measure" style="max-width:none">
+    <p class="ct">Si el <code>folderId</code> sigue en <code>null</code> tras el re-pull</p>
+    <p>Avisa antes de publicar. Probablemente el snapshot está obsoleto, o el reporte de verdad vive en la raíz (root) de Steelhead. Empujar sin resolver esto puede mover un reporte oficial fuera de su carpeta.</p>
+  </div>
+
+  <!-- ============ 05 SINCRONIZAR PLANTAS GEMELAS ============ -->
+  <h2 class="sec"><span class="num">05</span>Sincronizar las plantas gemelas</h2>
+  <p class="sec-lead measure">TLC y MTY son <strong>plantas gemelas</strong>: mismo catálogo de reportes, mismo SQL — pero credenciales, IDs internos y folders distintos. Mantenerlas sincronizadas es una regla dura del proyecto, no una sugerencia.</p>
+
+  <p class="measure">Todo cambio de reporte o SQL en un dominio <strong>debe</strong> aplicarse también al otro, en la misma sesión de trabajo — es una autorización permanente, no hay que pedir confirmación adicional cada vez. Lo que sí exige atención:</p>
+  <ul class="measure">
+    <li><strong>Portabilidad por nombre.</strong> El SQL nunca debe depender de IDs internos de un dominio (<code>dimension_id = 349</code>, <code>unit_id = 3969</code>…) — esos IDs difieren entre TLC y MTY. Resolver siempre por nombre (<code>acct_dimension.name = 'Línea'</code>, <code>unit.name LIKE 'KGM%'</code>). Auditar esto antes de cada push.</li>
+    <li><strong>Reportes nuevos en ambos dominios.</strong> Se crean con <code>reportId: null</code> en cada uno por separado; el <code>id_in_domain</code> y el <code>reportId</code> serán distintos, pero nombre, folder y permisos deben coincidir.</li>
+    <li><strong>Verificar cobertura tras sincronizar.</strong> Los IDs y hasta los nombres pueden existir en un dominio y no en el otro — repórtalo si encuentras diferencias.</li>
+  </ul>
+
+  <h3 class="sub">Sembrar MTY desde cero (tercer tenant o catálogo faltante)</h3>
+  <p class="measure">Cuando un dominio arranca sin reportes, la siembra es una secuencia de tres scripts, en este orden:</p>
+  <pre><code><span class="tok-c"># 1. SQL padre — crea cada query_*.sql como reporte nuevo si su código RPT no existe ahí</span>
+<span class="tok-f">python3</span> scripts/push_to_mty_batch.py <span class="tok-k">--target</span> mty <span class="tok-k">--commit</span>
+<span class="tok-f">python3</span> scripts/pull_reports.py <span class="tok-k">--domain</span> mty
+
+<span class="tok-c"># 2. Vistas Perspective — resuelve el id del padre recién creado y las siembra</span>
+<span class="tok-f">python3</span> scripts/seed_views_mty.py <span class="tok-k">--target</span> mty <span class="tok-k">--commit</span>
+
+<span class="tok-c"># 3. Folder + permisos — asigna carpeta por TIPO y copia permisos del equivalente TLC</span>
+<span class="tok-f">python3</span> scripts/sync_mty_meta.py <span class="tok-k">--target</span> mty <span class="tok-k">--commit</span></code></pre>
+  <p class="measure">El paso 3 resuelve la carpeta destino por el <strong>TIPO</strong> del código RPT: <code>ANL → 456</code>, <code>CAT → 455</code>, <code>CTL → 457</code> (IDs de folder en MTY). Conviene re-pull entre pasos, sobre todo entre el 1 y el 2, porque el batch genera IDs nuevos que el manifest de vistas necesita.</p>
+
+  <div class="callout danger measure" style="max-width:none">
+    <p class="ct">Crítico — no metas una carpeta a ~50 reportes</p>
+    <p>Steelhead pagina <code>reportsByFolderId</code> con <code>onFull: ERROR</code>. Cuando <strong>una sola carpeta</strong> llega a <strong>~50 reportes</strong>, el query completo aborta — y ese mismo query es el que arma el listado de reportes personalizados en la interfaz (<em>View Reports → Custom Reports</em>). El resultado no es un error silencioso: <strong>todos</strong> los reportes personalizados desaparecen de ese listado para todos los usuarios del dominio (los dashboards que referencian el reporte por ID siguen funcionando; lo que se rompe es el listado de navegación). También revienta <code>pull_reports.py</code>.</p>
+    <p style="margin-top:8px">Incidente real (2026-06-09): publicar un reporte llevó la carpeta <code>ANL. Fuente Analítica</code> de TLC de 49 a 50 reportes → listado vacío en TLC. El arreglo fue mover ese reporte a root (<code>folderId: null</code>) para que la carpeta volviera a 49. <strong>Regla operativa:</strong> antes de crear o mover un reporte a una carpeta, confirma que se quede por debajo de ~49. Si una carpeta ANL está al borde, hazle espacio (archivar deprecados) o crea una segunda carpeta antes de seguir metiendo reportes.</p>
+  </div>
+
+  <!-- ============ 06 CREDENCIALES ============ -->
+  <h2 class="sec"><span class="num">06</span>Credenciales y accesos</h2>
+  <p class="sec-lead measure">Steelhead usa OAuth2 PKCE contra Authentik (<code>auth.gosteelhead.com</code>) más una sesión de cookie que se renueva sola mientras la uses con regularidad.</p>
+
+  <p class="measure">Las credenciales viven en <code>.env</code> (gitignorado — nunca se comitea):</p>
+  <ul class="measure">
+    <li><code>STEELHEAD_COOKIE_STRING</code> — la sesión pegada desde DevTools. El cliente la rota automáticamente en cada <code>keep-alive</code> y reescribe el valor nuevo de vuelta al <code>.env</code>; mientras corras algo al menos cada 30 días, nunca caduca.</li>
+    <li><code>STEELHEAD_REFRESH_TOKEN</code> — modo alterno vía OAuth, no requiere renovación manual.</li>
+    <li><code>STEELHEAD_DOMAIN_TLC</code> / <code>STEELHEAD_DOMAIN_MTY</code> — el <code>nanoID</code> de cada tenant. <code>STEELHEAD_DEFAULT_DOMAIN</code> decide cuál usan los scripts sin <code>--domain</code> explícito.</li>
+  </ul>
+
+  <div class="callout info measure" style="max-width:none">
+    <p class="ct">Un header por endpoint, no al revés</p>
+    <p>El header <code>x-steelhead-idp-token</code> (el JWT) va <strong>solo</strong> en <code>/graphql</code>. El endpoint <code>/api/files/&lt;archivo&gt;</code> exige <strong>cookie únicamente</strong> — si le mandas el JWT junto con la cookie, responde 401 aunque la cookie sea válida. Mezclarlos es el bug más común al depurar 401/403: el JWT viene de un <code>refresh_token</code> reciente y la cookie de un login anterior del navegador; si Steelhead los ve incongruentes, rechaza la llamada.</p>
+  </div>
+
+  <p class="measure">Cuando algo da 401/403: corre <code>python3 scripts/steelhead_auth.py</code> para ver el estado de la cookie y del <code>access_token</code> refrescado. Si la cookie realmente expiró, hay que volver a pegarla desde DevTools — el procedimiento completo (paso a paso, con capturas de dónde mirar en el navegador) vive en <code>ONBOARDING.md</code> §3, porque es un procedimiento de puesta a punto de máquina, no de operación diaria.</p>
+
+  <!-- ============ 07 HASHES ROTADOS ============ -->
+  <h2 class="sec"><span class="num">07</span>Cuando Steelhead cambia la cerradura: hashes rotados</h2>
+  <p class="sec-lead measure">Steelhead corre su <code>/graphql</code> en modo <strong>APQ-only</strong> (Automatic Persisted Queries): el cliente nunca manda la consulta completa, solo su <strong>hash</strong> — como enseñar una llave en vez de describir la cerradura. Cuando Steelhead se actualiza, a veces cambia la cerradura: rota el hash de una operación, y la llave que teníamos guardada deja de abrir.</p>
+
+  <div class="callout meta measure" style="max-width:none">
+    <p class="ct">La metáfora</p>
+    <p>Cada operación de GraphQL (<code>AllReports</code>, <code>CreateUpdateReportWithPermissions</code>…) tiene su propia llave: un hash <code>sha256</code> que Steelhead reconoce sin necesitar la consulta escrita completa. El repo guarda el llavero completo en <code>PERSISTED_QUERIES</code>, dentro de <code>scripts/steelhead_client.py</code>. Cuando Steelhead despliega una versión nueva, puede cambiar la cerradura de algunas puertas (operaciones) y dejar otras igual — no es todo o nada.</p>
+  </div>
+
+  <p class="measure">El síntoma es inconfundible: <code>/graphql</code> responde <code>HTTP 400 {"message":"Must provide a query string."}</code> (hash no registrado) o levanta <code>PersistedQueryNotFound</code> desde el cliente Python. Cuando lo veas, la llave vieja ya no sirve — toca recapturar la nueva.</p>
+
+  <h3 class="sub">Cómo se recaptura un hash</h3>
+  <p class="measure">Estando logueado en <code>app.gosteelhead.com</code>, se intercepta <code>window.fetch</code> desde la consola del navegador (o vía <code>mcp__claude-in-chrome</code>) y se dispara en la interfaz la acción que use esa operación:</p>
+  <pre><code><span class="tok-c">// Pegar en la consola de app.gosteelhead.com, logueado, SIN recargar después:</span>
+window.__cap = {};
+<span class="tok-k">const</span> _f = window.fetch;
+window.fetch = <span class="tok-k">async function</span>(...a){
+  <span class="tok-k">try</span>{ <span class="tok-k">const</span> [u,o]=a; <span class="tok-k">const</span> url=<span class="tok-k">typeof</span> u===<span class="tok-s">'string'</span>?u:u&&u.url;
+    <span class="tok-k">if</span>(url&&url.includes(<span class="tok-s">'/graphql'</span>)&&o&&o.body){
+      <span class="tok-k">for</span>(<span class="tok-k">const</span> it <span class="tok-k">of</span> [].concat(JSON.parse(o.body))){
+        <span class="tok-k">const</span> h=it.extensions&&it.extensions.persistedQuery&&it.extensions.persistedQuery.sha256Hash;
+        <span class="tok-k">if</span>(it.operationName&&h) window.__cap[it.operationName]={hash:h, variables:it.variables};
+      }}}<span class="tok-k">catch</span>(e){}
+  <span class="tok-k">return</span> _f.apply(<span class="tok-k">this</span>,a);
+};
+<span class="tok-c">// Leer: JSON.stringify(window.__cap.NombreDeLaOperacion)</span></code></pre>
+  <p class="measure">El par <code>operationName → hash</code> capturado se pega en <code>PERSISTED_QUERIES</code>. Este método (interceptor en vivo) es más confiable que depender de <code>localStorage.__sa_scan_backup</code> (un scan que deja el SteelheadAutomator): algunas mutaciones — como <code>CreateReportConfig</code> / <code>UpdateReportConfig</code> — solo se registran cuando de verdad ejecutas la acción que las dispara (guardar una vista), y un scan de navegación normal no las captura.</p>
+
+  <div class="callout warn measure" style="max-width:none">
+    <p class="ct">Caso real — rotación parcial (2026-07-20)</p>
+    <p>Un deploy de Steelhead rotó los hashes de la <strong>capa de reportería</strong> (<code>AllReports</code>, <code>GetReportingSettings</code>, <code>GetRecomputableAt</code>, <code>DuckDbContextQuery</code>…) pero dejó intactos los de la <strong>capa operativa</strong> (p. ej. <code>AllPartNumbers</code>). Mientras no se recapturaron, quedaron afectados <code>pull_reports.py</code>, <code>push_query.py</code>, los dashboards, y la regeneración de DuckDB — por eso el snapshot semanal de esa fecha no generó un <code>.duckdb</code> nuevo. Se resolvió recapturando 15 hashes desde el <code>__sa_scan_backup</code> y verificando en vivo (pull de los dos dominios, push de reportes de prueba, regeneración exitosa).</p>
+  </div>
+
+  <div class="callout info measure" style="max-width:none">
+    <p class="ct">Dependencia cruzada, con honestidad</p>
+    <p>La <strong>validación diaria</strong> de que las llaves sigan vigentes (un cron que corre cada mañana y avisa si algo rotó) vive en el repositorio hermano <strong>SteelheadAutomator</strong>, aunque usa las credenciales de este repo. No es parte de Reportes SH — es una dependencia externa que conviene tener presente si un día deja de correr.</p>
+  </div>
+
+  <!-- ============ 08 INCIDENTES ============ -->
+  <h2 class="sec"><span class="num">08</span>Incidentes y recuperación</h2>
+  <p class="sec-lead measure">El patrón que más se repite en este sistema es el mismo: algo se ve perfecto en el <strong>banco de pruebas</strong> local y falla en la <strong>línea real</strong>, publicado dentro de Steelhead. El caso de estudio de referencia para esta familia completa de bugs es la <a href="ficha-ventana-fechas.html">ficha profunda: La ventana de fechas</a> — ahí quedó la disciplina de "verifica en vivo, no en el banco" que aplica a todo lo demás.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Síntoma</th><th>Causa probable</th><th>Qué hacer</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>El reporte incluye un día de más en el límite superior del rango de fechas.</td>
+          <td><code>$end</code> llega en hora UTC; truncarlo "a secas" lee el día siguiente.</td>
+          <td>Aplicar el patrón canónico (<code>TRY_CAST(...AS TIMESTAMPTZ) AT TIME ZONE 'America/Mexico_City'</code>). Ver <a href="ficha-ventana-fechas.html">ficha profunda: La ventana de fechas</a>.</td>
+        </tr>
+        <tr>
+          <td>El reporte da 0 filas <strong>en vivo</strong> pero corre y devuelve datos bien en local.</td>
+          <td>Alguna columna <code>SUM</code>/conteo de enteros devuelve <code>HUGEINT</code>; el servidor (DuckDB 1.5.2) no puede serializarlo a JSON.</td>
+          <td><code>CAST(SUM(...) AS BIGINT)</code> en el <code>SELECT</code> final de toda columna de conteo/suma.</td>
+        </tr>
+        <tr>
+          <td>El reporte filtra <strong>todo</strong> (0 filas) cuando un dropdown se deja sin selección.</td>
+          <td>Steelhead inyecta la cadena literal <code>'null'</code> (no vacío) cuando no hay selección; el patrón <code>'$Var' LIKE '$%'</code> no la detecta.</td>
+          <td>Ampliar el hook: <code>OR lower(TRIM('$Var')) IN ('null','none')</code> tratado como sin-selección.</td>
+        </tr>
+        <tr>
+          <td>El listado de reportes personalizados aparece vacío para todo el dominio (<em>View Reports → Custom Reports</em>).</td>
+          <td>Una carpeta llegó a ~50 reportes; <code>reportsByFolderId</code> aborta el query completo.</td>
+          <td>Mover el reporte más reciente de esa carpeta a root o a otra carpeta; re-pull para confirmar que el listado volvió. Ver §05.</td>
+        </tr>
+        <tr>
+          <td>Una vista Perspective queda muda: <code>[UnknownError] Unknown column "X" in group_by</code>.</td>
+          <td>Se cambió el SQL del reporte padre y Perspective sigue cacheando el esquema viejo en el cliente.</td>
+          <td>Refrescar la pestaña del navegador. No requiere cambio de código.</td>
+        </tr>
+        <tr>
+          <td>El schedule semanal terminó con <code>Exit code: 1</code>.</td>
+          <td>Ver el bloque más reciente de <code>logs/weekly_snapshot.log</code>: cookie expirada (401/403), hash rotado (<code>PersistedQueryNotFound</code>), o el job de generación se quedó colgado (timeout).</td>
+          <td>Rotar la cookie (§06), recapturar el hash (§07), o re-correr el schedule si fue un timeout puntual.</td>
+        </tr>
+        <tr>
+          <td>Un push borró el <code>folderId</code> o los permisos de un reporte.</td>
+          <td>Se publicó sin re-pull previo, o usando <code>--report-id</code> (que no carga la metadata completa).</td>
+          <td>Revertir desde la UI de Steelhead (mover de regreso, repegar permisos) y re-pull para que el snapshot quede al día. La próxima vez: re-pull → <code>--name</code> → dry-run → <code>--commit</code>.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ============ 09 ROLLBACK ============ -->
+  <h2 class="sec"><span class="num">09</span>Rollback</h2>
+  <p class="sec-lead measure">Publicar no es un camino de un solo sentido: Steelhead guarda cada versión y se puede volver atrás sin tocar el repo.</p>
+
+  <p class="measure">Cada <code>push_query.py</code> exitoso (mutación <code>CreateUpdateReportWithPermissions</code>) crea automáticamente una <strong>versión nueva</strong> visible en <em>Version Control</em>, dentro de la propia interfaz de Steelhead, sobre el reporte. El <code>creatorId</code> se llena solo con el usuario de la sesión — no hace falta mandarlo. Para volver a una versión anterior, se hace directamente desde ahí, sin script.</p>
+
+  <div class="callout info measure" style="max-width:none">
+    <p class="ct">Una trampa de lectura, no de datos</p>
+    <p>El visor de diff lado a lado de Steelhead no siempre hace scroll automático de la columna izquierda hasta el final del SQL eliminado. Con una versión mucho más corta que la otra, puede parecer que la versión vieja "solo tenía unas líneas" cuando en realidad el cuerpo completo está más abajo. No es un bug de datos — solo hay que bajar manualmente en esa columna antes de concluir algo.</p>
+  </div>
+
+  <!-- ============ 10 QUÉ SIGNIFICA PARA TI ============ -->
+  <h2 class="sec"><span class="num">10</span>Qué significa para ti</h2>
+  <div class="roles">
+    <div class="role ti">
+      <div class="who">Jefe de TI · Administrador</div>
+      <p>Tu semana gira sobre este ciclo: confirma que el snapshot del lunes cerró en <code>Exit code: 0</code>, re-pull antes de cada push, verifica siempre EN VIVO (nunca contra el re-pull recién bajado), y recuerda que TLC y MTY se sincronizan en la misma sesión. Cuando algo falla de la nada, sospecha primero de la cookie o de un hash rotado — son las dos causas más comunes.</p>
+    </div>
+    <div class="role ku">
+      <div class="who">Key User · Consumidor</div>
+      <p>No necesitas correr nada de este manual. Si un reporte se ve raro (vacío, con un día de más, un dropdown que no filtra), repórtalo con el síntoma exacto — la tabla de la §08 casi seguro ya tiene el diagnóstico. El Manual del Operador (paquete de capacitación) es tu punto de entrada normal.</p>
+    </div>
+  </div>
+
+  <footer class="foot">
+    <div><span class="badge perenne">Perenne</span> &nbsp; Manual del Administrador · Reportes SH</div>
+    <div>Nivel operación en productivo</div>
+    <div class="doc-credit" style="flex-basis:100%;margin-top:10px;padding-top:12px;border-top:1px solid var(--hair);display:flex;align-items:center;gap:12px;font-size:.78rem;color:var(--faint)">
+      <a href="https://capazconsultoria.com" target="_blank" rel="noopener" aria-label="Capaz Consultoría" style="flex:0 0 auto;display:inline-flex"><img src="assets/capaz-c.png" alt="Capaz Consultoría" style="height:30px;width:auto;display:block"></a>
+      <span>Documento elaborado por <a href="mailto:oviazcan@capazconsultoria.com" style="color:var(--accent-ink);font-weight:600;text-decoration:none">Omar Viazcán</a> · <a href="https://capazconsultoria.com" target="_blank" rel="noopener" style="color:var(--accent-ink);text-decoration:none">Capaz Consultoría</a></span>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>

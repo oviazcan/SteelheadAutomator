@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manual del Operador — Reportes SH</title>
+<style>
+:root{
+  --ground:#f7f9fb;--paper:#ffffff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;
+  --hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;
+  --ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;
+  --warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7;
+  --shadow:0 1px 2px rgba(24,34,49,.05),0 6px 20px -8px rgba(24,34,49,.12);
+  --measure:68ch;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){:root{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512;--shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -10px rgba(0,0,0,.5)}}
+:root[data-theme="light"]{--ground:#f7f9fb;--paper:#fff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;--hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;--ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;--warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7}
+:root[data-theme="dark"]{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.62;-webkit-font-smoothing:antialiased}
+.wrap{max-width:920px;margin:0 auto;padding:0 24px 96px}
+.measure{max-width:var(--measure)}
+.masthead{border-bottom:2px solid var(--ku);padding:40px 0 22px}
+.brandbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.brandmark{width:28px;height:28px;border-radius:6px;background:var(--steel);display:grid;place-items:center;flex:0 0 auto}
+.brandmark span{color:#fff;font-weight:800;font-size:.72rem;font-family:var(--mono)}
+.brandname{font-weight:700;letter-spacing:.02em;font-size:.95rem}
+.brandname em{color:var(--accent-ink);font-style:normal}
+.eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.14em;color:var(--ku);font-weight:800;margin:0 0 10px}
+.masthead h1{font-size:clamp(2rem,4.6vw,2.7rem);line-height:1.06;letter-spacing:-.02em;margin:0 0 10px;font-weight:800;text-wrap:balance}
+.masthead .sub{font-size:1.12rem;color:var(--muted);margin:0;max-width:60ch}
+.audchips{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.audchip{font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.05em}
+.audchip.ti{background:var(--ti-wash);color:var(--ti)} .audchip.p{background:var(--ti-wash);color:var(--ti)}
+.audchip.ku{background:var(--ku-wash);color:var(--ku)}
+.tldr{background:var(--paper);border:1px solid var(--hair);border-left:4px solid var(--ku);border-radius:12px;padding:20px 22px;margin:26px 0;box-shadow:var(--shadow)}
+.tldr .ct{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--ku);margin:0 0 8px}
+.tldr p{margin:0;font-size:1.05rem;max-width:none}
+h2.sec{font-size:1.5rem;letter-spacing:-.01em;margin:54px 0 4px;font-weight:800;text-wrap:balance}
+h2.sec .num{font-family:var(--mono);font-size:.85rem;color:var(--ku);font-weight:700;border:1px solid var(--hair-2);border-radius:6px;padding:1px 7px;margin-right:10px;vertical-align:.15em}
+h3.sub{font-size:1.16rem;margin:32px 0 6px;letter-spacing:-.01em;font-weight:700}
+.sec-lead{color:var(--muted);margin:.4rem 0 1.2rem;max-width:var(--measure)}
+p{margin:0 0 1rem;max-width:var(--measure)}
+a{color:var(--accent-ink);text-underline-offset:2px}
+code{font-family:var(--mono);font-size:.85em;background:var(--hair);padding:1px 5px;border-radius:5px;word-break:break-word}
+pre{background:var(--paper);border:1px solid var(--hair);border-left:4px solid var(--steel);border-radius:10px;padding:14px 16px;overflow-x:auto;box-shadow:var(--shadow);font-family:var(--mono);font-size:.82rem;line-height:1.5;margin:18px 0}
+pre code{background:none;padding:0;font-size:1em}
+.tok-c{color:var(--faint)} .tok-k{color:var(--ti);font-weight:600} .tok-f{color:var(--accent-ink);font-weight:600} .tok-s{color:var(--ku)}
+ul,ol{max-width:var(--measure);padding-left:1.25em} li{margin:.35rem 0}
+strong{font-weight:700}
+figure.diagram{margin:26px 0;background:var(--paper);border:1px solid var(--hair);border-radius:14px;padding:20px 18px 8px;box-shadow:var(--shadow);overflow-x:auto}
+figure.diagram svg{display:block;width:100%;height:auto;min-width:600px;max-width:840px;margin:0 auto}
+figure.diagram figcaption{font-size:.85rem;color:var(--faint);text-align:center;margin-top:10px;padding:0 8px 6px}
+.svg-t{font-family:var(--sans);fill:var(--ink)} .svg-m{font-family:var(--mono)} .svg-mut{fill:var(--muted)}
+.callout{border-radius:10px;padding:15px 17px 15px 48px;position:relative;margin:22px 0;font-size:.95rem;border:1px solid var(--hair);background:var(--paper)}
+.callout .ct{font-weight:800;margin:0 0 4px;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em}
+.callout p{max-width:none;margin:.3rem 0 0}
+.callout::before{position:absolute;left:15px;top:14px;font-size:1.15rem;line-height:1}
+.callout.meta{border-left:4px solid var(--steel);background:color-mix(in srgb,var(--steel) 6%,var(--paper))} .callout.meta .ct{color:var(--steel)} .callout.meta::before{content:"💡"}
+.callout.info{border-left:4px solid var(--ti);background:var(--ti-wash)} .callout.info .ct{color:var(--ti)} .callout.info::before{content:"ℹ";color:var(--ti);font-weight:800}
+.callout.warn{border-left:4px solid var(--warn);background:var(--warn-wash)} .callout.warn .ct{color:var(--warn)} .callout.warn::before{content:"⚠"}
+.callout.danger{border-left:4px solid var(--danger);background:var(--danger-wash)} .callout.danger .ct{color:var(--danger)} .callout.danger::before{content:"⛔"}
+.callout.tip{border-left:4px solid var(--accent);background:var(--accent-wash)} .callout.tip .ct{color:var(--accent-ink)} .callout.tip::before{content:"✓";color:var(--accent-ink);font-weight:800}
+.stages{list-style:none;padding:0;margin:24px 0;display:flex;flex-direction:column;gap:2px}
+.stages li{display:grid;grid-template-columns:44px 1fr;gap:16px;padding:16px 0;border-bottom:1px solid var(--hair);align-items:start}
+.stages li:last-child{border-bottom:none}
+.stages .k{width:38px;height:38px;border-radius:9px;background:var(--ku);color:#fff;display:grid;place-items:center;font-weight:800;font-family:var(--mono);font-size:1rem}
+.stages h4{margin:0 0 3px;font-size:1.08rem}
+.stages p{margin:0;font-size:.94rem;color:var(--muted);max-width:none}
+.tablewrap{overflow-x:auto;border:1px solid var(--hair);border-radius:12px;box-shadow:var(--shadow);margin:20px 0}
+table{border-collapse:collapse;width:100%;font-size:.9rem;background:var(--paper);min-width:520px}
+thead th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:700;padding:11px 14px;border-bottom:2px solid var(--hair-2);background:var(--ground)}
+tbody td{padding:11px 14px;border-bottom:1px solid var(--hair);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+.roles{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:26px 0}
+@media (max-width:760px){.roles{grid-template-columns:1fr}}
+.role{border-radius:12px;padding:20px;border:1px solid var(--hair);background:var(--paper);box-shadow:var(--shadow)}
+.role.ti{border-top:4px solid var(--ti)} .role.ku{border-top:4px solid var(--ku)}
+.role .who{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;margin-bottom:6px}
+.role.ti .who{color:var(--ti)} .role.ku .who{color:var(--ku)}
+.role p{margin:0;font-size:.93rem;max-width:none}
+.foot{margin-top:64px;padding-top:22px;border-top:1px solid var(--hair-2);color:var(--faint);font-size:.85rem;display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:999px}
+.badge.perenne{background:var(--ti-wash);color:var(--ti)} .badge.perenne::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+@media print{:root{--ground:#fff;--paper:#fff;--shadow:none}body{font-size:11.5pt}.wrap{max-width:none;padding:0}figure.diagram,.callout,.tablewrap,.role,.stages li,pre{break-inside:avoid}figure.diagram svg{min-width:0}h2.sec,h3.sub{break-after:avoid}a{color:var(--ink);text-decoration:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brandbar">
+      <span class="brandmark"><span>RSH</span></span>
+      <span class="brandname">Reportes<em>SH</em> · Manual del Operador</span>
+      <a href="00-mapa-empieza-aqui.html" style="margin-left:auto;font-size:.82rem;color:var(--faint);text-decoration:none;white-space:nowrap">← Índice del paquete</a>
+    </div>
+    <p class="eyebrow">Manual · Key User</p>
+    <h1>Manual del Operador</h1>
+    <p class="sub">Cómo encontrar el reporte correcto, elegir su vista, filtrarlo sin trampas, leer sus columnas sin malinterpretarlas, exportarlo cuando toca y saber qué hacer cuando algo se ve raro.</p>
+    <div class="audchips">
+      <span class="audchip ku">Key User</span>
+      <span class="audchip p">Documento perenne</span>
+    </div>
+  </header>
+
+  <div class="tldr measure" style="max-width:none">
+    <p class="ct">En una frase</p>
+    <p>Este manual te enseña a moverte dentro de Steelhead como <strong>consumidor de reportes</strong>: ubicar el reporte correcto por su placa, elegir la vista que necesitas, aplicar filtros de fecha y variables sin caer en los errores más comunes, leer las columnas sin malinterpretarlas, exportar a Excel por el canal correcto, y saber qué hacer —y a quién avisar— cuando un reporte se ve vacío o raro.</p>
+  </div>
+
+  <!-- ============ 01 DÓNDE VIVEN ============ -->
+  <h2 class="sec"><span class="num">01</span>Dónde viven los reportes</h2>
+  <p class="sec-lead measure">Todos los reportes personalizados de Ecoplating viven dentro de <strong>Steelhead</strong> mismo, en su sección de Reportes — no hay un sitio aparte ni un Excel que alguien te reenvía cada semana. Se abren, se filtran y se leen ahí.</p>
+  <p class="measure">Los reportes están agrupados por bloque temático (Producción, Comercial, Calidad, Cadena de Suministro, Administrativa, Ingeniería…) y cada uno tiene un nombre en español que arranca con el código de su departamento dueño — por ejemplo <em>"PRD. Cumplimiento al Programa de Producción"</em>. Si ya conoces el nombre, búscalo directo; si no, entra al bloque temático de tu área.</p>
+  <p class="measure">Cada reporte lleva además una <strong>placa</strong> de identificación con el formato <code>RPT-DEP-TIPO-NN</code> — por ejemplo <code>RPT-PRD-CTL-01</code>. Es la misma lógica que la placa de una tina: te dice, sin necesidad de abrir nada, quién es el dueño (<code>PRD</code> = Producción), qué naturaleza tiene (<code>CTL</code> = control/cumplimiento) y su consecutivo (<code>01</code>). Usa la placa —no el nombre visible— cuando pidas soporte o compares "el mismo reporte" con otra área: el nombre puede cambiar con el tiempo, la placa no.</p>
+
+  <div class="callout info measure" style="max-width:none">
+    <p class="ct">Si no encuentras un reporte</p>
+    <p>El listado completo y actualizado de placas, nombres y departamento dueño vive en el <strong>Inventario de Reportes</strong> (documento vivo de este paquete). Consúltalo cuando la búsqueda por nombre no te dé resultado, o cuando quieras confirmar que estás viendo el reporte oficial y no una copia de trabajo.</p>
+  </div>
+
+  <!-- ============ 02 ABRIR Y ELEGIR VISTA ============ -->
+  <h2 class="sec"><span class="num">02</span>Abrir un reporte y elegir su vista</h2>
+  <p class="sec-lead measure">Un mismo reporte casi siempre ofrece más de una manera de mirar los mismos datos: eso es una <strong>vista</strong>.</p>
+  <p class="measure">Steelhead reutiliza el mismo motor (Perspective) para presentar cada reporte como tabla o como gráfica. Una tabla te da el detalle fila por fila; una gráfica de barras te deja comparar de un vistazo; un mapa de calor te muestra patrones cruzando dos dimensiones (por ejemplo, hora del día × departamento). El dato de fondo es idéntico — cambia solo la forma de mirarlo.</p>
+
+  <ol class="stages">
+    <li><span class="k">1</span><div><h4>Encuentra tu reporte</h4><p>Por nombre o por su placa, dentro del bloque temático que le corresponde.</p></div></li>
+    <li><span class="k">2</span><div><h4>Se abre en su vista por default</h4><p>La que haya quedado marcada como preferida al construirlo — normalmente la tabla o gráfica más útil para el uso diario, aunque no siempre sea la primera que se creó.</p></div></li>
+    <li><span class="k">3</span><div><h4>Cambia de vista si lo necesitas</h4><p>El panel del reporte trae un selector de vistas: ahí aparecen todas las tablas y gráficas disponibles para ese reporte en particular.</p></div></li>
+  </ol>
+
+  <div class="callout meta measure" style="max-width:none">
+    <p class="ct">Cómo distinguir una tabla de una gráfica por su nombre</p>
+    <p>Las vistas de gráfica llevan un código de tres letras al frente de su nombre (<code>GYB</code> barras verticales, <code>GHM</code> mapa de calor, <code>GYL</code> línea, entre otras); las vistas de tabla no llevan ese prefijo, van directo con el nombre del reporte.</p>
+  </div>
+
+  <!-- ============ 03 FILTRAR ============ -->
+  <h2 class="sec"><span class="num">03</span>Filtrar: la ventana de fechas y los dropdowns</h2>
+  <p class="sec-lead measure">La mayoría de los reportes analíticos se pueden acotar a un periodo y, varios de ellos, además a un valor específico — un cliente, una línea, un turno. Filtrar bien es la diferencia entre leer lo que necesitas y leer todo el histórico sin darte cuenta.</p>
+
+  <ol class="stages">
+    <li><span class="k">1</span><div><h4>Revisa si el reporte trae ventana de fechas</h4><p>La función se llama <em>Use date range</em>. Si el reporte la tiene activa, vas a ver un control de rango (inicio/fin) en la parte superior — ajústalo antes de leer cualquier cifra.</p></div></li>
+    <li><span class="k">2</span><div><h4>Abre el menú Variables ▾ si el reporte lo trae</h4><p>Ahí viven los dropdowns propios de ese reporte: Cliente, Línea, Turno, Departamento y otros, según el caso.</p></div></li>
+    <li><span class="k">3</span><div><h4>Selecciona el valor que te interesa</h4><p>Si dejas un dropdown vacío (sin selección), el reporte <strong>no filtra por esa variable</strong>: trae todos los valores. Es lo correcto cuando quieres el consolidado; es una trampa si asumías que ya estabas viendo solo tu línea o tu cliente.</p></div></li>
+  </ol>
+
+  <div class="callout warn measure" style="max-width:none">
+    <p class="ct">Revisa el rango antes de leer</p>
+    <p>Si el reporte usa fechas, el primer vistazo debe ser al <strong>rango activo</strong>, no a las cifras. Un reporte que "no cuadra" casi siempre es un rango distinto al que tenías en mente — a veces quedó abierto de una consulta anterior de otro usuario o de tu propia sesión pasada.</p>
+  </div>
+
+  <!-- ============ 04 LEER RESULTADOS ============ -->
+  <h2 class="sec"><span class="num">04</span>Leer los resultados sin malinterpretarlos</h2>
+  <p class="sec-lead measure">Antes de sacar una conclusión de un reporte, conviene conocer tres convenciones que se repiten en todo el paquete.</p>
+
+  <p class="measure"><strong>La columna Cliente puede traer la planta pegada.</strong> Cuando un cliente tiene más de una dirección de envío activa (más de una planta), el reporte agrega la planta al nombre: <em>Cliente — Planta/Ciudad</em>. Si el cliente solo tiene una planta activa, se ve con su nombre a secas, sin sufijo. El criterio completo —y qué hacer cuando el dato de origen no alcanza para saber cuál planta es— está en la <a href="ficha-cliente-combinado.html">ficha profunda: Cliente combinado</a>.</p>
+
+  <p class="measure"><strong>Montos y cantidades.</strong> Los montos se muestran en dólares americanos (USD). Las cantidades vienen en piezas o en kilogramos según lo que mida el reporte — el encabezado de la columna lo indica.</p>
+
+  <p class="measure"><strong>La frescura — "la fotografía semanal".</strong> Los reportes no leen a Steelhead en vivo: corren sobre una copia completa de los datos que se toma una vez por semana. Un movimiento que se capturó hoy en Steelhead va a aparecer en los reportes hasta el próximo corte — no es que el reporte esté mal, es que todavía no llegó la próxima fotografía.</p>
+
+  <!-- ============ 05 EXPORTAR ============ -->
+  <h2 class="sec"><span class="num">05</span>Exportar a Excel</h2>
+  <p class="sec-lead measure">Algunos reportes están pensados explícitamente para mandarse a un cliente en Excel — hoy son <strong>VTA. Entradas</strong> y <strong>VTA. Salidas (Envíos)</strong> por cliente, ambos filtrados con la variable <code>$Cliente</code>.</p>
+  <p class="measure">Para esos —y en general para cualquier reporte que exportes—, usa el filtro de cliente y la ventana de fechas para acotar el periodo, y exporta con la opción que <strong>exporta los datos del reporte</strong> (no la vista actual). Ese canal respeta los filtros y variables que aplicaste, y conserva bien los acentos.</p>
+
+  <div class="callout warn measure" style="max-width:none">
+    <p class="ct">Evita exportar "la vista actual"</p>
+    <p>El export de la vista actual (CSV) puede romper los acentos del español: <code>Línea</code> sale como <code>L√≠nea</code>, <code>Estaño</code> como <code>Esta√±o</code>. Es ilegible para mandarlo a un cliente. Usa siempre la opción de <strong>exportar los datos del reporte a Excel</strong>.</p>
+  </div>
+
+  <p class="measure">El orden y las columnas de Entradas y Envíos ya vienen fijos en un layout estándar. Si necesitas reordenar u ocultar columnas para un cliente en particular, hazlo directamente en Excel después de exportar — el layout del reporte no cambia.</p>
+
+  <!-- ============ 06 DASHBOARDS ============ -->
+  <h2 class="sec"><span class="num">06</span>Los dashboards</h2>
+  <p class="sec-lead measure">Un dashboard combina varias vistas —de uno o más reportes— en un solo tablero, pensado para una lectura directiva rápida en vez de reporte por reporte.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Dashboard</th><th>Qué muestra</th></tr></thead>
+      <tbody>
+        <tr><td><strong>PRD. Dashboard Directivo por Línea</strong></td><td>Facturación, costos de mano de obra / materia prima / maquila, cargas y kg/ft² producidos, % de OTs costeadas, y $USD por carga por acabado — todo por línea de producción y por mes.</td></tr>
+        <tr><td><strong>VTA. Pareto de Facturación por Cliente</strong></td><td>Clientes ordenados de mayor a menor facturación con la curva de % acumulado — para ver de un vistazo qué tanto concentra la cartera en pocos clientes (regla 80/20).</td></tr>
+        <tr><td><strong>PRD. Pareto de Paros por Causa</strong></td><td>Las mismas dos ventanas (barras + % acumulado) aplicadas a horas de paro de línea por causa.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="measure">Un solo control de rango de fechas, arriba del tablero, ajusta todos los paneles a la vez.</p>
+
+  <div class="callout warn measure" style="max-width:none">
+    <p class="ct">La barra de filtros por dimensión no filtra estos reportes</p>
+    <p>Los dashboards de Steelhead también ofrecen una barra de filtros por dimensión (Cliente, Estación, Orden de Venta…). Esa barra <strong>solo afecta a los paneles nativos de Steelhead</strong>; en los reportes personalizados de este paquete no tiene efecto — lo único de esa barra que sí llega a un reporte personalizado es el rango de fechas. Para filtrar un reporte personalizado por cliente, línea o turno, usa sus propias Variables (dropdowns), como se explicó en la sección 03.</p>
+  </div>
+
+  <!-- ============ 07 GUÍA POR FAMILIA ============ -->
+  <h2 class="sec"><span class="num">07</span>Guía rápida por familia</h2>
+  <p class="sec-lead measure">Una ficha breve por familia de reportes: qué preguntas responde y sus reportes estrella, con su placa. La lista completa de cada familia vive en el Inventario.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th style="width:170px">Familia</th><th>Qué preguntas responde</th><th style="width:260px">Reportes estrella</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Producción</strong></td>
+          <td>¿Cómo van las órdenes de trabajo? ¿Se cumple el programa? ¿Dónde se atora el material? ¿Cómo va el consumo de plata en tinas?</td>
+          <td><code>RPT-PRD-ANL-01</code> Órdenes de Trabajo<br><code>RPT-PRD-CTL-01</code> Cumplimiento al Programa<br><code>RPT-PRD-ANL-17</code> Seguimiento de Operaciones</td>
+        </tr>
+        <tr>
+          <td><strong>Ventas / Facturación</strong></td>
+          <td>¿Qué facturamos? ¿Qué entró y qué salió por cliente? ¿Los clientes traen buena calidad de datos en su OC?</td>
+          <td><code>RPT-VTA-ANL-04</code> Cubo de Facturación<br><code>RPT-VTA-ANL-07</code> Entradas por Cliente<br><code>RPT-VTA-ANL-08</code> Envíos por Cliente</td>
+        </tr>
+        <tr>
+          <td><strong>Calidad</strong></td>
+          <td>¿Los certificados están controlados? ¿Cuánto cuesta la no calidad? ¿Qué devoluciones o no conformidades hay?</td>
+          <td><code>RPT-CAL-CTL-01</code> Control de Certificados<br><code>RPT-CAL-ANL-02</code> Costo de No Calidad (CONQ)<br><code>RPT-CAL-CAT-02</code> Devoluciones de Cliente (RMAs)</td>
+        </tr>
+        <tr>
+          <td><strong>Inventario / Almacén</strong></td>
+          <td>¿Cuánto material hay y a qué valor? ¿Qué vales se han entregado? ¿Qué se ha embarcado?</td>
+          <td><code>RPT-ALM-ANL-04</code> Kardex Valorizado<br><code>RPT-ALM-ANL-02</code> Seguimiento a Vales de Almacén<br><code>RPT-ALM-ANL-07</code> Embarques</td>
+        </tr>
+        <tr>
+          <td><strong>Compras</strong></td>
+          <td>¿Qué compramos y a quién? ¿Cuánto gastamos por proveedor? ¿Qué insumos están por debajo del mínimo?</td>
+          <td><code>RPT-CMP-ANL-01</code> Órdenes de Compra<br><code>RPT-CMP-ANL-03</code> Gasto por Proveedor<br><code>RPT-CMP-ANL-05</code> Máximos y Mínimos de Insumos</td>
+        </tr>
+        <tr>
+          <td><strong>Mantenimiento</strong></td>
+          <td>¿Se cumple el preventivo? ¿Qué tan rápido reparamos (MTTR)? ¿Cada cuánto falla un equipo (MTBF)?</td>
+          <td><code>RPT-MNT-CTL-02</code> Cumplimiento Preventivo<br><code>RPT-MNT-ANL-03</code> MTTR<br><code>RPT-MNT-ANL-04</code> MTBF</td>
+        </tr>
+        <tr>
+          <td><strong>Contabilidad</strong></td>
+          <td>¿Cómo va el estado de resultados? ¿Qué asientos se contabilizaron? ¿Qué dice el mayor de una cuenta?</td>
+          <td><code>RPT-CTB-ANL-02</code> Estado de Resultados (NIF B-3)<br><code>RPT-CTB-ANL-01</code> Asientos Contables<br><code>RPT-CTB-ANL-03</code> Libro Mayor</td>
+        </tr>
+        <tr>
+          <td><strong>Catálogos</strong></td>
+          <td>¿Qué datos maestros tenemos y qué tan completos están? (números de parte, clientes, proveedores…) — transversales a todas las áreas.</td>
+          <td><code>RPT-ING-CAT-01</code> Catálogo de Números de Parte<br><code>RPT-VTA-CAT-01</code> Catálogo de Clientes<br><code>RPT-CMP-CAT-02</code> Catálogo de Proveedores</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ============ 08 ALGO RARO ============ -->
+  <h2 class="sec"><span class="num">08</span>Cuando algo se ve raro</h2>
+  <p class="sec-lead measure">La mayoría de las veces que "el reporte está mal" en realidad es un filtro, una planta en arranque, o una mejora que ya se publicó.</p>
+
+  <ol class="stages">
+    <li><span class="k">1</span><div><h4>Reporte vacío</h4><p>Revisa primero tus filtros: ¿el rango de fechas cae realmente sobre datos que existen? ¿algún dropdown quedó apuntando a un cliente o línea sin movimientos en ese periodo?</p></div></li>
+    <li><span class="k">2</span><div><h4>Si es la planta MTY y sale en cero o con huecos</h4><p>Puede ser esperado: MTY es la planta más nueva, y algunas columnas (por ejemplo, costos de materia prima o maquila del Dashboard Directivo) legítimamente salen en cero hasta que esas operaciones terminen de capturarse en Steelhead. No asumas error antes de confirmar con tu equipo si esa captura ya debería estar completa.</p></div></li>
+    <li><span class="k">3</span><div><h4>El reporte cambió de un día a otro sin que tú tocaras nada</h4><p>Puede ser que se haya corregido algo entre el <strong>banco de pruebas</strong> (donde se calibra un reporte) y la <strong>línea real</strong> (la versión que corre dentro de Steelhead) — no significa que tu lectura anterior estuviera mal, sino que el reporte mejoró.</p></div></li>
+    <li><span class="k">4</span><div><h4>Si sigue sin cuadrar</h4><p>Repórtalo al administrador del sistema / TI de tu organización. Dales tres datos concretos: la placa o nombre exacto del reporte, el filtro que usaste (rango + variables), y qué esperabas ver contra lo que viste.</p></div></li>
+  </ol>
+
+  <!-- ============ 09 QUÉ SIGNIFICA PARA TI ============ -->
+  <h2 class="sec"><span class="num">09</span>Qué significa para ti</h2>
+  <div class="roles">
+    <div class="role ku">
+      <div class="who">Key User · Consumidor de reportes</div>
+      <p>Usa la placa para no perder el reporte correcto entre sesiones; revisa el rango de fechas y las variables antes de leer cualquier cifra; exporta los datos del reporte (no la vista actual) cuando mandes algo a un cliente; y cuando algo no cuadre, repórtalo con la placa y el filtro exacto — así se resuelve en un mensaje en vez de tres.</p>
+    </div>
+    <div class="role ti">
+      <div class="who">Jefe de TI · Administrador</div>
+      <p>Tú administras la publicación de estos reportes: la fotografía semanal, la sincronización TLC↔MTY, las credenciales del ERP. Tu material específico es el <strong>Manual del Administrador</strong> (documento perenne de este mismo paquete).</p>
+    </div>
+  </div>
+
+  <footer class="foot">
+    <div><span class="badge perenne">Perenne</span> &nbsp; Manual del Operador · Reportes SH</div>
+    <div>Para Key User / Consumidor de reportes</div>
+    <div class="doc-credit" style="flex-basis:100%;margin-top:10px;padding-top:12px;border-top:1px solid var(--hair);display:flex;align-items:center;gap:12px;font-size:.78rem;color:var(--faint)">
+      <a href="https://capazconsultoria.com" target="_blank" rel="noopener" aria-label="Capaz Consultoría" style="flex:0 0 auto;display:inline-flex"><img src="assets/capaz-c.png" alt="Capaz Consultoría" style="height:30px;width:auto;display:block"></a>
+      <span>Documento elaborado por <a href="mailto:oviazcan@capazconsultoria.com" style="color:var(--accent-ink);font-weight:600;text-decoration:none">Omar Viazcán</a> · <a href="https://capazconsultoria.com" target="_blank" rel="noopener" style="color:var(--accent-ink);text-decoration:none">Capaz Consultoría</a></span>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>

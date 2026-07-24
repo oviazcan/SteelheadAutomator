@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ficha profunda: Cliente combinado — Reportes SH</title>
+<style>
+:root{
+  --ground:#f7f9fb;--paper:#ffffff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;
+  --hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;
+  --ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;
+  --warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7;
+  --shadow:0 1px 2px rgba(24,34,49,.05),0 6px 20px -8px rgba(24,34,49,.12);
+  --measure:68ch;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){:root{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512;--shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -10px rgba(0,0,0,.5)}}
+:root[data-theme="light"]{--ground:#f7f9fb;--paper:#fff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;--hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;--ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;--warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7}
+:root[data-theme="dark"]{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.62;-webkit-font-smoothing:antialiased}
+.wrap{max-width:920px;margin:0 auto;padding:0 24px 96px}
+.measure{max-width:var(--measure)}
+.masthead{border-bottom:2px solid var(--ku);padding:40px 0 22px}
+.brandbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.brandmark{width:28px;height:28px;border-radius:6px;background:var(--steel);display:grid;place-items:center;flex:0 0 auto}
+.brandmark span{color:#fff;font-weight:800;font-size:.72rem;font-family:var(--mono)}
+.brandname{font-weight:700;letter-spacing:.02em;font-size:.95rem}
+.brandname em{color:var(--accent-ink);font-style:normal}
+.eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.14em;color:var(--ku);font-weight:800;margin:0 0 10px}
+.masthead h1{font-size:clamp(2rem,4.6vw,2.7rem);line-height:1.06;letter-spacing:-.02em;margin:0 0 10px;font-weight:800;text-wrap:balance}
+.masthead .sub{font-size:1.12rem;color:var(--muted);margin:0;max-width:60ch}
+.audchips{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.audchip{font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.05em}
+.audchip.ti{background:var(--ti-wash);color:var(--ti)} .audchip.p{background:var(--ti-wash);color:var(--ti)}
+.audchip.ku{background:var(--ku-wash);color:var(--ku)}
+.tldr{background:var(--paper);border:1px solid var(--hair);border-left:4px solid var(--ku);border-radius:12px;padding:20px 22px;margin:26px 0;box-shadow:var(--shadow)}
+.tldr .ct{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--ku);margin:0 0 8px}
+.tldr p{margin:0;font-size:1.05rem;max-width:none}
+h2.sec{font-size:1.5rem;letter-spacing:-.01em;margin:54px 0 4px;font-weight:800;text-wrap:balance}
+h2.sec .num{font-family:var(--mono);font-size:.85rem;color:var(--ku);font-weight:700;border:1px solid var(--hair-2);border-radius:6px;padding:1px 7px;margin-right:10px;vertical-align:.15em}
+h3.sub{font-size:1.16rem;margin:32px 0 6px;letter-spacing:-.01em;font-weight:700}
+.sec-lead{color:var(--muted);margin:.4rem 0 1.2rem;max-width:var(--measure)}
+p{margin:0 0 1rem;max-width:var(--measure)}
+a{color:var(--accent-ink);text-underline-offset:2px}
+code{font-family:var(--mono);font-size:.85em;background:var(--hair);padding:1px 5px;border-radius:5px;word-break:break-word}
+pre{background:var(--paper);border:1px solid var(--hair);border-left:4px solid var(--steel);border-radius:10px;padding:14px 16px;overflow-x:auto;box-shadow:var(--shadow);font-family:var(--mono);font-size:.82rem;line-height:1.5;margin:18px 0}
+pre code{background:none;padding:0;font-size:1em}
+.tok-c{color:var(--faint)} .tok-k{color:var(--ti);font-weight:600} .tok-f{color:var(--accent-ink);font-weight:600} .tok-s{color:var(--ku)}
+ul,ol{max-width:var(--measure);padding-left:1.25em} li{margin:.35rem 0}
+strong{font-weight:700}
+figure.diagram{margin:26px 0;background:var(--paper);border:1px solid var(--hair);border-radius:14px;padding:20px 18px 8px;box-shadow:var(--shadow);overflow-x:auto}
+figure.diagram svg{display:block;width:100%;height:auto;min-width:600px;max-width:840px;margin:0 auto}
+figure.diagram figcaption{font-size:.85rem;color:var(--faint);text-align:center;margin-top:10px;padding:0 8px 6px}
+.svg-t{font-family:var(--sans);fill:var(--ink)} .svg-m{font-family:var(--mono)} .svg-mut{fill:var(--muted)}
+.callout{border-radius:10px;padding:15px 17px 15px 48px;position:relative;margin:22px 0;font-size:.95rem;border:1px solid var(--hair);background:var(--paper)}
+.callout .ct{font-weight:800;margin:0 0 4px;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em}
+.callout p{max-width:none;margin:.3rem 0 0}
+.callout::before{position:absolute;left:15px;top:14px;font-size:1.15rem;line-height:1}
+.callout.meta{border-left:4px solid var(--steel);background:color-mix(in srgb,var(--steel) 6%,var(--paper))} .callout.meta .ct{color:var(--steel)} .callout.meta::before{content:"💡"}
+.callout.info{border-left:4px solid var(--ti);background:var(--ti-wash)} .callout.info .ct{color:var(--ti)} .callout.info::before{content:"ℹ";color:var(--ti);font-weight:800}
+.callout.warn{border-left:4px solid var(--warn);background:var(--warn-wash)} .callout.warn .ct{color:var(--warn)} .callout.warn::before{content:"⚠"}
+.callout.danger{border-left:4px solid var(--danger);background:var(--danger-wash)} .callout.danger .ct{color:var(--danger)} .callout.danger::before{content:"⛔"}
+.callout.tip{border-left:4px solid var(--accent);background:var(--accent-wash)} .callout.tip .ct{color:var(--accent-ink)} .callout.tip::before{content:"✓";color:var(--accent-ink);font-weight:800}
+.stages{list-style:none;padding:0;margin:24px 0;display:flex;flex-direction:column;gap:2px}
+.stages li{display:grid;grid-template-columns:44px 1fr;gap:16px;padding:16px 0;border-bottom:1px solid var(--hair);align-items:start}
+.stages li:last-child{border-bottom:none}
+.stages .k{width:38px;height:38px;border-radius:9px;background:var(--ku);color:#fff;display:grid;place-items:center;font-weight:800;font-family:var(--mono);font-size:1rem}
+.stages h4{margin:0 0 3px;font-size:1.08rem}
+.stages p{margin:0;font-size:.94rem;color:var(--muted);max-width:none}
+.tablewrap{overflow-x:auto;border:1px solid var(--hair);border-radius:12px;box-shadow:var(--shadow);margin:20px 0}
+table{border-collapse:collapse;width:100%;font-size:.9rem;background:var(--paper);min-width:520px}
+thead th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:700;padding:11px 14px;border-bottom:2px solid var(--hair-2);background:var(--ground)}
+tbody td{padding:11px 14px;border-bottom:1px solid var(--hair);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+.roles{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:26px 0}
+@media (max-width:760px){.roles{grid-template-columns:1fr}}
+.role{border-radius:12px;padding:20px;border:1px solid var(--hair);background:var(--paper);box-shadow:var(--shadow)}
+.role.ti{border-top:4px solid var(--ti)} .role.ku{border-top:4px solid var(--ku)}
+.role .who{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;margin-bottom:6px}
+.role.ti .who{color:var(--ti)} .role.ku .who{color:var(--ku)}
+.role p{margin:0;font-size:.93rem;max-width:none}
+.foot{margin-top:64px;padding-top:22px;border-top:1px solid var(--hair-2);color:var(--faint);font-size:.85rem;display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:999px}
+.badge.perenne{background:var(--ti-wash);color:var(--ti)} .badge.perenne::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+@media print{:root{--ground:#fff;--paper:#fff;--shadow:none}body{font-size:11.5pt}.wrap{max-width:none;padding:0}figure.diagram,.callout,.tablewrap,.role,.stages li,pre{break-inside:avoid}figure.diagram svg{min-width:0}h2.sec,h3.sub{break-after:avoid}a{color:var(--ink);text-decoration:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brandbar">
+      <span class="brandmark"><span>RSH</span></span>
+      <span class="brandname">Reportes<em>SH</em> · Ficha profunda</span>
+      <a href="00-mapa-empieza-aqui.html" style="margin-left:auto;font-size:.82rem;color:var(--faint);text-decoration:none;white-space:nowrap">← Índice del paquete</a>
+    </div>
+    <p class="eyebrow">Ficha profunda · Key User</p>
+    <h1>Cliente combinado</h1>
+    <p class="sub">Cómo la columna “Cliente” distingue las plantas de un mismo cliente sin mezclar sus números — y por qué, cuando el dato de origen no alcanza, prefiere marcarlo antes que adivinar.</p>
+    <div class="audchips">
+      <span class="audchip ku">Key User</span>
+      <span class="audchip p">Documento perenne</span>
+    </div>
+  </header>
+
+  <div class="tldr measure" style="max-width:none">
+    <p class="ct">En una frase</p>
+    <p>Cuando un cliente tiene más de una planta con dirección de envío activa, el reporte le agrega la planta al nombre —por <strong>código postal curado</strong> en el caso de Schneider, por <strong>ciudad</strong> en el resto— contando siempre sobre las direcciones activas reales y nunca sobre el historial de órdenes; y si el dato de origen no permite saber cuál planta es, el reporte lo <strong>marca con ⚠</strong> en vez de adivinar.</p>
+  </div>
+
+  <!-- ============ 01 EL PROBLEMA ============ -->
+  <h2 class="sec"><span class="num">01</span>El problema: una razón social, varios domicilios</h2>
+  <p class="sec-lead measure">Un mismo cliente comercial —piensa en <strong>Schneider Electric</strong>— puede operar varias plantas físicas (Tlaxcala, Querétaro, Monterrey, Rojo Gómez, CDMX…) bajo un solo registro de cliente dentro de Steelhead. Si el reporte solo imprime el nombre comercial, los números de esas plantas se mezclan en una sola fila: no hay forma de saber cuánto facturó, recibió o embarcó <em>cada planta</em> por separado.</p>
+  <p class="measure">Es el mismo problema que resolverías con cualquier empresa que tiene varias sucursales bajo la misma razón social: el nombre en la puerta no basta para saber de cuál sucursal hablas — hace falta el <strong>domicilio</strong>. Steelhead ya guarda ese domicilio (la dirección de envío del cliente, en la tabla <code>customer_address</code>); el patrón <strong>“Cliente combinado”</strong> lo usa para desambiguar automáticamente cuando hace falta, y para no complicar la vida cuando no hace falta: un cliente con una sola planta se sigue viendo con su nombre a secas, sin sufijo alguno.</p>
+
+  <div class="callout meta measure" style="max-width:none">
+    <p class="ct">La metáfora</p>
+    <p>Es la diferencia entre leer el <strong>nombre en la fachada</strong> y leer el <strong>domicilio</strong>. Dos plantas de Schneider comparten el nombre en la fachada; solo el domicilio —convertido en código postal o ciudad— dice cuál es cuál. El reporte hace ese trabajo por ti, automáticamente, cada vez que hace falta.</p>
+  </div>
+
+  <!-- ============ 02 LA REGLA DE DECISIÓN ============ -->
+  <h2 class="sec"><span class="num">02</span>La regla de decisión</h2>
+  <p class="sec-lead measure">La columna <strong>Cliente</strong> se arma con una jerarquía de reglas que se evalúa <em>en ese orden</em> — no son alternativas sueltas, es un árbol de decisión: la primera rama que aplica gana, y ninguna rama posterior la pisa.</p>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 780 430" role="img" aria-label="Árbol de decisión del patrón Cliente combinado">
+      <defs>
+        <marker id="arm" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--muted)"/></marker>
+        <marker id="arA" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--accent)"/></marker>
+        <marker id="arW" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--warn)"/></marker>
+        <marker id="arT" markerWidth="9" markerHeight="9" refX="7" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--ti)"/></marker>
+      </defs>
+
+      <!-- start -->
+      <rect x="290" y="14" width="200" height="42" rx="10" fill="var(--paper)" stroke="var(--hair-2)" stroke-width="1.5"/>
+      <text x="390" y="32" class="svg-t" font-size="12" font-weight="700" text-anchor="middle">Cliente + ship-to</text>
+      <text x="390" y="47" class="svg-mut" font-size="10.5" text-anchor="middle">real de la transacción</text>
+
+      <line x1="390" y1="56" x2="390" y2="82" stroke="var(--hair-2)" stroke-width="2" marker-end="url(#arm)"/>
+
+      <!-- Q1 guardia -->
+      <rect x="210" y="82" width="360" height="56" rx="10" fill="var(--paper)" stroke="var(--hair-2)" stroke-width="1.5"/>
+      <text x="390" y="104" class="svg-t" font-size="12" font-weight="700" text-anchor="middle">① ¿≤1 dirección de envío activa?</text>
+      <text x="390" y="122" class="svg-mut" font-size="10" text-anchor="middle">customer_address · use_for_shipping=TRUE · archived_at IS NULL</text>
+
+      <line x1="570" y1="110" x2="604" y2="110" stroke="var(--accent)" stroke-width="2" marker-end="url(#arA)"/>
+      <text x="588" y="100" class="svg-t" font-size="11" font-weight="700" text-anchor="middle" fill="var(--accent-ink)">Sí</text>
+
+      <rect x="604" y="83" width="157" height="54" rx="10" fill="var(--accent-wash)" stroke="var(--accent)"/>
+      <text x="682" y="105" class="svg-t" font-size="12" font-weight="700" text-anchor="middle" fill="var(--accent-ink)">Nombre a secas</text>
+      <text x="682" y="121" class="svg-mut" font-size="10" text-anchor="middle">la guardia va primero</text>
+
+      <line x1="390" y1="138" x2="390" y2="164" stroke="var(--hair-2)" stroke-width="2" marker-end="url(#arm)"/>
+      <text x="407" y="154" class="svg-mut" font-size="11" text-anchor="middle">No</text>
+
+      <!-- Q2 marcador -->
+      <rect x="190" y="164" width="400" height="58" rx="10" fill="var(--paper)" stroke="var(--hair-2)" stroke-width="1.5"/>
+      <text x="390" y="186" class="svg-t" font-size="12" font-weight="700" text-anchor="middle">② ¿El ship-to NO es dirección de envío?</text>
+      <text x="390" y="204" class="svg-mut" font-size="10" text-anchor="middle">archivada o fiscal — típico Schneider USA → Laredo/Palatine</text>
+
+      <line x1="590" y1="193" x2="604" y2="193" stroke="var(--warn)" stroke-width="2" marker-end="url(#arW)"/>
+      <text x="598" y="183" class="svg-t" font-size="11" font-weight="700" text-anchor="middle" fill="var(--warn)">Sí</text>
+
+      <rect x="604" y="164" width="157" height="58" rx="10" fill="var(--warn-wash)" stroke="var(--warn)"/>
+      <text x="682" y="188" class="svg-t" font-size="12" font-weight="700" text-anchor="middle" fill="var(--warn)">⚠ Se marca</text>
+      <text x="682" y="205" class="svg-mut" font-size="10" text-anchor="middle">no se adivina la planta</text>
+
+      <line x1="390" y1="222" x2="390" y2="248" stroke="var(--hair-2)" stroke-width="2" marker-end="url(#arm)"/>
+      <text x="407" y="238" class="svg-mut" font-size="11" text-anchor="middle">No</text>
+
+      <!-- Q3 schneider -->
+      <rect x="230" y="248" width="320" height="50" rx="10" fill="var(--paper)" stroke="var(--hair-2)" stroke-width="1.5"/>
+      <text x="390" y="278" class="svg-t" font-size="12" font-weight="700" text-anchor="middle">③ ¿Es Schneider?</text>
+
+      <line x1="550" y1="273" x2="604" y2="273" stroke="var(--ti)" stroke-width="2" marker-end="url(#arT)"/>
+      <text x="578" y="263" class="svg-t" font-size="11" font-weight="700" text-anchor="middle" fill="var(--ti)">Sí</text>
+
+      <rect x="604" y="248" width="157" height="68" rx="10" fill="var(--ti-wash)" stroke="var(--ti)"/>
+      <text x="682" y="270" class="svg-t" font-size="12" font-weight="700" text-anchor="middle" fill="var(--ti)">CP curado → planta</text>
+      <text x="682" y="286" class="svg-mut" font-size="9.5" text-anchor="middle">Tlaxcala / Qro 1-2 /</text>
+      <text x="682" y="299" class="svg-mut" font-size="9.5" text-anchor="middle">Monterrey / Rojo Gómez…</text>
+
+      <line x1="390" y1="298" x2="390" y2="326" stroke="var(--accent)" stroke-width="2" marker-end="url(#arA)"/>
+      <text x="407" y="316" class="svg-mut" font-size="11" text-anchor="middle">No</text>
+
+      <!-- leaf ciudad -->
+      <rect x="270" y="326" width="240" height="56" rx="10" fill="var(--accent-wash)" stroke="var(--accent)"/>
+      <text x="390" y="350" class="svg-t" font-size="12" font-weight="700" text-anchor="middle" fill="var(--accent-ink)">④ Nombre — Ciudad</text>
+      <text x="390" y="367" class="svg-mut" font-size="10" text-anchor="middle">fallback: “Dir &lt;id&gt;” si no hay ciudad</text>
+    </svg>
+    <figcaption>Cuatro ramas, evaluadas en orden: la guardia protege a los clientes de una sola planta; el marcador atrapa el dato sucio antes que la desambiguación por nombre; Schneider se resuelve por código postal; el resto, por ciudad.</figcaption>
+  </figure>
+
+  <p class="measure">En SQL, esa jerarquía es un solo <code>CASE</code> con las cuatro ramas en el mismo orden del diagrama (versión simplificada por claridad; el patrón completo — con las siete plantas de Schneider y los detalles de limpieza de texto — vive en <code>docs/calidad.md</code>):</p>
+
+  <pre><code><span class="tok-c">-- Simplificado; el patrón completo vive en docs/calidad.md</span>
+<span class="tok-k">CASE</span>
+    <span class="tok-k">WHEN</span> COALESCE(nd.num_dir, 1) &lt;= 1 <span class="tok-k">OR</span> ca.id <span class="tok-k">IS NULL</span>
+        <span class="tok-k">THEN</span> c.name                                             <span class="tok-c">-- ① guardia: 1 sola planta</span>
+    <span class="tok-k">WHEN</span> sa.use_for_shipping <span class="tok-k">IS NOT TRUE</span> <span class="tok-k">OR</span> sa.archived_at <span class="tok-k">IS NOT NULL</span>
+        <span class="tok-k">THEN</span> c.name || <span class="tok-s">' — ⚠ '</span> || COALESCE(ca.city, <span class="tok-s">'CP '</span>||ca.zipcode)
+             || <span class="tok-s">' (ship-to no es dir. de envío)'</span>                 <span class="tok-c">-- ② se marca, no se adivina</span>
+    <span class="tok-k">WHEN</span> c.name <span class="tok-k">ILIKE</span> <span class="tok-s">'%SCHNEIDER%'</span>
+        <span class="tok-k">THEN</span> c.name || <span class="tok-s">' — '</span> || <span class="tok-k">CASE</span> ca.zipcode
+                <span class="tok-k">WHEN</span> <span class="tok-s">'90860'</span> <span class="tok-k">THEN</span> <span class="tok-s">'Planta Tlaxcala'</span>
+                <span class="tok-k">WHEN</span> <span class="tok-s">'76294'</span> <span class="tok-k">THEN</span> <span class="tok-s">'Planta Querétaro 1'</span>
+                <span class="tok-k">WHEN</span> <span class="tok-s">'76295'</span> <span class="tok-k">THEN</span> <span class="tok-s">'Planta Querétaro 2'</span>
+                <span class="tok-k">WHEN</span> <span class="tok-s">'66627'</span> <span class="tok-k">THEN</span> <span class="tok-s">'Planta Monterrey'</span>
+                <span class="tok-k">WHEN</span> <span class="tok-s">'09300'</span> <span class="tok-k">THEN</span> <span class="tok-s">'Planta Rojo Gómez'</span>
+                <span class="tok-k">ELSE</span> COALESCE(ca.city, <span class="tok-s">'CP '</span>||ca.zipcode) <span class="tok-k">END</span>       <span class="tok-c">-- ③ Schneider: CP curado</span>
+    <span class="tok-k">ELSE</span> c.name || <span class="tok-s">' — '</span> || COALESCE(ca.city, <span class="tok-s">'Dir '</span>||ca.id)      <span class="tok-c">-- ④ el resto: ciudad</span>
+<span class="tok-k">END</span></code></pre>
+
+  <ol class="stages">
+    <li><span class="k">①</span><div><h4>Guardia — ¿una sola planta?</h4><p>Si el cliente tiene una o cero direcciones de envío activas, se muestra el nombre a secas. Ninguna otra regla aplica después de esta — por eso va primera.</p></div></li>
+    <li><span class="k">②</span><div><h4>Marcador — ¿el dato de origen alcanza?</h4><p>Si el ship-to de la transacción apunta a una dirección que no es de envío (archivada o fiscal), el reporte no intenta adivinar la planta: la marca con ⚠.</p></div></li>
+    <li><span class="k">③</span><div><h4>Schneider — código postal curado</h4><p>Solo para clientes con más de una planta y cuyo nombre matchea Schneider, el código postal de la dirección resuelve a un nombre de planta ya catalogado.</p></div></li>
+    <li><span class="k">④</span><div><h4>El resto — ciudad</h4><p>Cualquier otro cliente con más de una planta se desambigua por la ciudad de su dirección de envío (o por el identificador de la dirección, si no hay ciudad capturada).</p></div></li>
+  </ol>
+
+  <!-- ============ 03 LA FUENTE CORRECTA DEL CONTEO ============ -->
+  <h2 class="sec"><span class="num">03</span>La fuente correcta del conteo</h2>
+  <p class="sec-lead measure">Todo el árbol depende de un número: cuántas direcciones de envío activas tiene el cliente. Contar mal ese número rompe las cuatro ramas — y de ahí salieron los dos primeros bugs del patrón.</p>
+  <p class="measure">La fuente correcta es la tabla <code>customer_address</code>, filtrada por <code>use_for_shipping = TRUE AND archived_at IS NULL</code> — exactamente lo mismo que muestra la pestaña “Addresses” del cliente dentro de Steelhead. La fuente <strong>incorrecta</strong>, tentadora porque parece más directa, es contar direcciones distintas dentro del historial de órdenes (<code>received_order.ship_to_address_id</code>): ese historial arrastra direcciones ya archivadas y direcciones capturadas una sola vez para un embarque excepcional, y ninguna de las dos cuenta como “planta” real del cliente.</p>
+
+  <div class="callout warn measure" style="max-width:none">
+    <p class="ct">Los dos bugs que dieron origen al patrón</p>
+    <p><strong>Conteo mal fundado.</strong> Contar sobre el historial de órdenes hacía que <strong>INDUSTRIAL TAMTO</strong> (una sola dirección real) mostrara sufijo de planta usando además una dirección ya archivada, mientras que <strong>SCHNEIDER MÉXICO</strong> (dos direcciones activas reales) contaba de menos por tener solo una en su historial.</p>
+    <p><strong>Rama Schneider sin guardia.</strong> La rama que desambigua por nombre se aplicaba a cualquier cliente que matcheara “Schneider”, sin revisar antes si de verdad tenía más de una planta. Resultado: <strong>SCHNEIDER QUERÉTARO</strong>, con una sola dirección activa, salía indebidamente con sufijo de planta. El fix fue poner la guardia (regla ①) <em>antes</em> de la rama Schneider, no después.</p>
+  </div>
+
+  <p class="measure">Un efecto colateral útil de la guardia: protege incluso a plantas Schneider cuyo código postal no está en la tabla curada. Schneider Querétaro con CP 78041 y una sola dirección activa no lleva sufijo — nunca llega a evaluar la rama ③, porque la regla ① ya resolvió el caso.</p>
+
+  <!-- ============ 04 CUANDO EL DATO VIENE SUCIO ============ -->
+  <h2 class="sec"><span class="num">04</span>Cuando el dato viene sucio: se marca, no se adivina</h2>
+  <p class="sec-lead measure">Dos situaciones reales muestran los límites del patrón — y por qué, ante la duda, prefiere avisar antes que suponer.</p>
+
+  <h3 class="sub">El marcador ⚠: cuando el ship-to no es una dirección de envío</h3>
+  <p class="measure">Algunas transacciones tienen su <em>ship-to</em> apuntando a una dirección que no es de envío — típicamente la dirección <strong>fiscal</strong>. El caso real es <strong>Schneider USA</strong>, que factura desde direcciones en Laredo y Palatine (Estados Unidos): esas direcciones no son plantas de entrega, son domicilios de facturación. Resolver la planta real por una vía indirecta (buscarla a través de la orden de venta relacionada) solo funciona en aproximadamente el <strong>57%</strong> de esos casos — el resto queda ambiguo. En vez de arriesgar un nombre de planta equivocado en el 43% restante, el patrón marca el dato completo: <code>Cliente — ⚠ Ciudad/CP (ship-to no es dir. de envío)</code>. Este marcador está activo hoy en el reporte de facturación (22 facturas de Schneider USA) y, por consistencia, en todos los reportes que desambiguan por dirección de envío.</p>
+
+  <h3 class="sub">El caso Zion: higiene en la fuente, no en el SQL</h3>
+  <p class="measure">A veces el problema no está en la regla, sino en el dato que la alimenta. <strong>ZION &amp; EBENEZER TECHNOLOGIES</strong> se duplicaba en el dropdown de cliente aunque el SQL estaba correctamente escrito: el cliente tenía <em>dos</em> direcciones marcadas como activas de envío. Una era real (Atizapán, con ~330 movimientos); la otra —una dirección en Toluca, sin ciudad ni código postal capturados, con una sola entrada asociada— resultó ser <strong>espuria</strong>: un proceso de captura automática (con apoyo de IA) había confundido un vale de recibo con un domicilio y lo dio de alta como dirección de envío.</p>
+  <p class="measure">La corrección <strong>no fue tocar el SQL</strong> — el SQL ya hacía exactamente lo que debía con los datos que tenía. La corrección fue archivar esa dirección espuria directamente en Steelhead: en cuanto se archiva, el conteo de direcciones activas del cliente baja a una, la guardia (regla ①) toma el control, y Zion vuelve a salir una sola vez, con su nombre a secas, en todos los reportes que usan el patrón.</p>
+
+  <div class="callout tip measure" style="max-width:none">
+    <p class="ct">Cómo detectar un caso Zion antes de que alguien lo reporte</p>
+    <p>La señal es simple: direcciones de envío activas <strong>con actividad real</strong>, agrupadas por cliente, buscando los que tengan más de una — y, entre esos, las direcciones sin ciudad ni código postal capturados son las candidatas más probables a ser un fantasma de captura automática.</p>
+  </div>
+
+  <!-- ============ 05 DÓNDE SE APLICA ============ -->
+  <h2 class="sec"><span class="num">05</span>Dónde se aplica y dónde no</h2>
+  <p class="sec-lead measure">El patrón resuelve un problema de <strong>entrega</strong> (a qué planta le mandas o le recibes material). Por eso aplica a los reportes operativos con dirección de envío, y deliberadamente <strong>no</strong> aplica a los reportes cuyo dato relevante es fiscal.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Reporte / uso</th><th>Estado</th><th>Nota</th></tr></thead>
+      <tbody>
+        <tr><td><strong>RPT-PRD-ANL-11 / 12</strong> · Atoramiento</td><td>Aplica</td><td>Donde nació el patrón.</td></tr>
+        <tr><td><strong>RPT-CAL-CTL-01</strong> · Certificados de Calidad</td><td>Aplica</td><td>Vistas Control OT y Certificados.</td></tr>
+        <tr><td><strong>RPT-PRD-CTL-01</strong> · Cumplimiento</td><td>Aplica</td><td>Desambigua vía <code>planta_entrega</code>.</td></tr>
+        <tr><td><strong>RPT-VTA-ANL-04</strong> · Facturación</td><td>Aplica</td><td>Con el marcador ⚠ activo.</td></tr>
+        <tr><td><strong>RPT-VTA-ANL-05</strong> · Inventario de Clientes</td><td>Aplica</td><td>Incluye el dropdown <code>$Cliente</code>.</td></tr>
+        <tr><td><strong>RPT-VTA-ANL-06</strong> · Pendiente de embarque</td><td>Aplica</td><td>Desambigua vía orden de venta.</td></tr>
+        <tr><td><strong>RPT-VTA-ANL-07</strong> · Envíos</td><td>Aplica</td><td>Retira la columna “Ship To” separada.</td></tr>
+        <tr><td>Órdenes de trabajo/venta, OTIF, RMAs, retrabajos, trazabilidad, NCR, CONQ</td><td>Pendiente</td><td>Evaluado; aún no se publica (siguiente fase).</td></tr>
+        <tr><td>CxC y columnas fiscales de facturación</td><td>No aplica</td><td>El dato relevante es fiscal, no de entrega.</td></tr>
+        <tr><td>Margen de OT / Cotizaciones</td><td>No aplica</td><td>Decisión consciente: no son reportes de entrega.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- ============ 06 QUÉ SIGNIFICA PARA TI ============ -->
+  <h2 class="sec"><span class="num">06</span>Qué significa para ti</h2>
+  <div class="roles">
+    <div class="role ku">
+      <div class="who">Key User · Consumidor</div>
+      <p>Si ves “SCHNEIDER — Planta Querétaro 1” en vez de solo “SCHNEIDER”, es intencional: ese cliente tiene más de una planta activa y el reporte te dice cuál. Si ves el símbolo ⚠ junto al nombre, es una alerta legítima — repórtala en vez de suponer tú la planta. Y si un mismo cliente aparece duplicado en un dropdown sin razón aparente, probablemente es un caso Zion: repórtalo, la corrección se hace en Steelhead, no en el reporte.</p>
+    </div>
+    <div class="role ti">
+      <div class="who">Jefe de TI · Administrador</div>
+      <p>Al aplicar el patrón a un reporte nuevo, cuenta siempre sobre <code>customer_address</code> (nunca <code>received_order</code>) y pon la guardia antes que la rama Schneider. Si un cliente se duplica en un dropdown, antes de tocar el SQL revisa si es un caso Zion — una dirección activa espuria — porque el fix casi siempre vive en archivar el dato en Steelhead, no en parchar la consulta.</p>
+    </div>
+  </div>
+
+  <footer class="foot">
+    <div><span class="badge perenne">Perenne</span> &nbsp; Ficha profunda: Cliente combinado · Reportes SH</div>
+    <div>Patrón canónico desde RPT-PRD-ANL-11 · estandarizado 2 jul 2026 · caso Zion 21 jul 2026</div>
+    <div class="doc-credit" style="flex-basis:100%;margin-top:10px;padding-top:12px;border-top:1px solid var(--hair);display:flex;align-items:center;gap:12px;font-size:.78rem;color:var(--faint)">
+      <a href="https://capazconsultoria.com" target="_blank" rel="noopener" aria-label="Capaz Consultoría" style="flex:0 0 auto;display:inline-flex"><img src="assets/capaz-c.png" alt="Capaz Consultoría" style="height:30px;width:auto;display:block"></a>
+      <span>Documento elaborado por <a href="mailto:oviazcan@capazconsultoria.com" style="color:var(--accent-ink);font-weight:600;text-decoration:none">Omar Viazcán</a> · <a href="https://capazconsultoria.com" target="_blank" rel="noopener" style="color:var(--accent-ink);text-decoration:none">Capaz Consultoría</a></span>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,320 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inventario de Reportes — Reportes SH</title>
+<style>
+:root{
+  --ground:#f7f9fb; --paper:#ffffff; --ink:#182231; --muted:#55677a;
+  --faint:#7b8a99; --hair:#e2e8ee; --hair-2:#cdd7e0; --steel:#2b3f52;
+  --accent:#0f8f61; --accent-ink:#0b6f4b; --accent-wash:#e7f5ee;
+  --ku:#c0632e; --ku-wash:#f8ede6; --ti:#2f6f9f; --ti-wash:#e8f0f7;
+  --bi:#7d4f9c; --bi-wash:#f0e9f6; --warn:#a9640c; --warn-wash:#fbf1e0;
+  --danger:#b5372b; --danger-wash:#fbe9e7;
+  --shadow:0 1px 2px rgba(24,34,49,.05), 0 6px 20px -8px rgba(24,34,49,.12);
+  --measure:68ch;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){:root{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512;--shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -10px rgba(0,0,0,.5)}}
+:root[data-theme="light"]{--ground:#f7f9fb;--paper:#fff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;--hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;--ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;--warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7}
+:root[data-theme="dark"]{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.62;-webkit-font-smoothing:antialiased}
+.wrap{max-width:960px;margin:0 auto;padding:0 24px 96px}
+.measure{max-width:var(--measure)}
+.masthead{border-bottom:2px solid var(--accent);padding:40px 0 22px}
+.brandbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.brandmark{width:28px;height:28px;border-radius:6px;background:var(--steel);display:grid;place-items:center;flex:0 0 auto}
+.brandmark span{color:#fff;font-weight:800;font-size:.72rem;font-family:var(--mono)}
+.brandname{font-weight:700;letter-spacing:.02em;font-size:.95rem}
+.brandname em{color:var(--accent-ink);font-style:normal}
+.eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.14em;color:var(--accent-ink);font-weight:800;margin:0 0 10px}
+.masthead h1{font-size:clamp(1.9rem,4.4vw,2.6rem);line-height:1.06;letter-spacing:-.02em;margin:0 0 8px;font-weight:800;text-wrap:balance}
+.masthead .sub{font-size:1.12rem;color:var(--muted);margin:0;max-width:62ch}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:999px;border:1px solid transparent}
+.badge.vivo{background:var(--accent-wash);color:var(--accent-ink);border-color:color-mix(in srgb,var(--accent) 35%,transparent)}
+.badge.dot::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.freshness{display:flex;gap:14px;align-items:flex-start;margin:24px 0 6px;background:var(--accent-wash);border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);border-left:4px solid var(--accent);border-radius:10px;padding:14px 16px;font-size:.92rem}
+.freshness .ic{flex:0 0 auto;color:var(--accent-ink);margin-top:1px}
+.freshness b{color:var(--accent-ink)}
+.freshness code{background:color-mix(in srgb,var(--accent) 14%,transparent);font-family:var(--mono);font-size:.85em;padding:1px 5px;border-radius:5px}
+h2.sec{font-size:1.5rem;letter-spacing:-.01em;margin:48px 0 4px;font-weight:800;text-wrap:balance}
+h2.sec .num{font-family:var(--mono);font-size:.9rem;color:var(--accent-ink);font-weight:700;border:1px solid var(--hair-2);border-radius:6px;padding:1px 7px;margin-right:10px;vertical-align:.15em}
+.sec-lead{color:var(--muted);margin:.4rem 0 1.4rem;max-width:var(--measure)}
+p{margin:0 0 1rem;max-width:var(--measure)}
+a{color:var(--accent-ink);text-underline-offset:2px}
+code{font-family:var(--mono);font-size:.86em;background:var(--hair);padding:1px 5px;border-radius:5px}
+/* KPIs */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin:26px 0}
+@media (max-width:760px){.kpis{grid-template-columns:repeat(2,1fr)}}
+.kpi{background:var(--paper);border:1px solid var(--hair);border-radius:12px;padding:16px 18px;box-shadow:var(--shadow)}
+.kpi .n{font-size:1.9rem;font-weight:800;letter-spacing:-.02em;color:var(--accent-ink);line-height:1;font-family:var(--mono)}
+.kpi .l{font-size:.8rem;color:var(--muted);margin-top:6px;line-height:1.3}
+/* leyenda de códigos */
+.legend{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:22px 0}
+@media (max-width:760px){.legend{grid-template-columns:1fr}}
+.legend .box{border:1px solid var(--hair);border-radius:12px;padding:16px 18px;background:var(--paper)}
+.legend h3{margin:0 0 8px;font-size:1rem}
+.legend ul{margin:0;padding-left:1.1em;font-size:.9rem}
+.codebreak{font-family:var(--mono);font-size:1.05rem;font-weight:700;letter-spacing:.02em;display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin:4px 0 12px}
+.codebreak .seg{padding:3px 8px;border-radius:6px}
+.codebreak .s1{background:var(--hair);color:var(--muted)} .codebreak .s2{background:var(--ku-wash);color:var(--ku)} .codebreak .s3{background:var(--ti-wash);color:var(--ti)} .codebreak .s4{background:var(--accent-wash);color:var(--accent-ink)}
+/* tipo tags */
+.tt{display:inline-block;font-size:.68rem;font-weight:700;padding:2px 8px;border-radius:6px;white-space:nowrap;text-transform:uppercase;letter-spacing:.04em}
+.tt.cat{background:var(--ti-wash);color:var(--ti)} .tt.anl{background:var(--accent-wash);color:var(--accent-ink)} .tt.ctl{background:var(--ku-wash);color:var(--ku)}
+/* buscador */
+.search{position:sticky;top:0;z-index:5;background:var(--ground);padding:12px 0 10px;margin:8px 0 0}
+.search input{width:100%;font-size:1rem;font-family:var(--sans);padding:12px 14px;border:1.5px solid var(--hair-2);border-radius:10px;background:var(--paper);color:var(--ink)}
+.search input:focus{outline:none;border-color:var(--accent);box-shadow:0 0 0 3px var(--accent-wash)}
+.search .hint{font-size:.78rem;color:var(--faint);margin:6px 2px 0}
+/* tabla */
+.tablewrap{overflow-x:auto;border:1px solid var(--hair);border-radius:12px;box-shadow:var(--shadow);margin:6px 0 0}
+table{border-collapse:collapse;width:100%;font-size:.9rem;background:var(--paper);min-width:640px}
+thead th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:700;padding:11px 14px;border-bottom:2px solid var(--hair-2);background:var(--ground);position:sticky;top:64px}
+tbody td{padding:10px 14px;border-bottom:1px solid var(--hair);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+tr.deph td{background:var(--ground);border-bottom:2px solid var(--hair-2);font-size:.95rem}
+tr.deph strong{color:var(--steel)}
+code.src{font-size:.82em;color:var(--faint);background:transparent;white-space:nowrap}
+.callout{border-radius:10px;padding:14px 16px 14px 46px;position:relative;margin:22px 0;font-size:.94rem;border:1px solid var(--hair);background:var(--paper)}
+.callout .ct{font-weight:700;margin:0 0 3px;font-size:.82rem;text-transform:uppercase;letter-spacing:.05em}
+.callout::before{position:absolute;left:14px;top:14px;font-size:1.1rem;line-height:1}
+.callout.info{border-left:4px solid var(--ti);background:var(--ti-wash)} .callout.info .ct{color:var(--ti)} .callout.info::before{content:"ℹ";color:var(--ti);font-weight:800}
+.callout.warn{border-left:4px solid var(--warn);background:var(--warn-wash)} .callout.warn .ct{color:var(--warn)} .callout.warn::before{content:"⚠"}
+.foot{margin-top:56px;padding-top:22px;border-top:1px solid var(--hair-2);color:var(--faint);font-size:.85rem;display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;justify-content:space-between}
+@media print{:root{--ground:#fff;--paper:#fff;--shadow:none}body{font-size:10.5pt}.wrap{max-width:none;padding:0}.search{position:static}thead th{position:static}.kpi,.tablewrap,.callout,.legend .box{break-inside:avoid}.noprint{display:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brandbar">
+      <span class="brandmark"><span>RSH</span></span>
+      <span class="brandname">Reportes<em>SH</em> · Paquete de capacitación y referencia</span>
+      <a href="00-mapa-empieza-aqui.html" style="margin-left:auto;font-size:.82rem;color:var(--faint);text-decoration:none;white-space:nowrap">← Índice del paquete</a>
+    </div>
+    <p class="eyebrow">Documento vivo · Inventario</p>
+    <h1>Inventario de Reportes</h1>
+    <p class="sub">La lista autoritativa de todos los reportes que hoy corren en las dos plantas, con su placa de identificación, su tipo y el archivo de origen.</p>
+  </header>
+
+  <div class="freshness">
+    <span class="ic" aria-hidden="true">🟢</span>
+    <div><b>Documento VIVO — corte al 23 / jul / 2026.</b> Refleja los reportes presentes en el repositorio en esa fecha (extraídos de las cabeceras de cada archivo <code>query_*.sql</code>). Se agregan reportes con regularidad: <b>verifica el corte antes de asumir vigencia.</b> Si imprimes esta hoja, anota la fecha — es una foto de un momento, no la verdad viva.</div>
+  </div>
+
+  <!-- KPIs -->
+  <div class="kpis">
+    <div class="kpi"><div class="n">~102</div><div class="l">reportes oficiales (placa <code>RPT-…</code>)</div></div>
+    <div class="kpi"><div class="n">14</div><div class="l">departamentos dueños</div></div>
+    <div class="kpi"><div class="n">3</div><div class="l">tipos: catálogo · analítica · control</div></div>
+    <div class="kpi"><div class="n">2</div><div class="l">plantas gemelas: TLC · MTY</div></div>
+    <div class="kpi"><div class="n">21</div><div class="l">reportes con vistas Perspective</div></div>
+    <div class="kpi"><div class="n">73</div><div class="l">vistas (tablas y gráficas)</div></div>
+    <div class="kpi"><div class="n">3</div><div class="l">dashboards (tableros combinados)</div></div>
+    <div class="kpi"><div class="n">9</div><div class="l">variables/filtros (dropdowns)</div></div>
+  </div>
+
+  <div class="callout info measure" style="max-width:none">
+    <p class="ct">Un matiz sobre el conteo</p>
+    La tabla de abajo lista <strong>98 placas</strong> con título depurado. El universo total ronda los <strong>~102</strong> porque algunos filtros (dropdowns) comparten la placa de su reporte padre. El número exacto se mueve con cada alta; para la verdad del día, cuenta las placas <code>RPT-</code> del repositorio.
+  </div>
+
+  <!-- Cómo leer una placa -->
+  <h2 class="sec"><span class="num">01</span>Cómo se lee la placa de un reporte</h2>
+  <p class="sec-lead measure">Cada reporte lleva una <strong>placa</strong> de cuatro segmentos. Con ella ubicas cualquier reporte sin abrirlo — igual que identificas una tina por su placa sin meter la mano.</p>
+
+  <div class="codebreak">
+    <span class="seg s1">RPT</span><span style="color:var(--faint)">-</span><span class="seg s2">PRD</span><span style="color:var(--faint)">-</span><span class="seg s3">ANL</span><span style="color:var(--faint)">-</span><span class="seg s4">17</span>
+  </div>
+  <div class="legend">
+    <div class="box">
+      <h3>Los cuatro segmentos</h3>
+      <ul>
+        <li><code>RPT</code> — es un <strong>reporte oficial</strong> autorizado.</li>
+        <li><code>PRD</code> — el <strong>departamento dueño</strong> (aquí, Producción).</li>
+        <li><code>ANL</code> — el <strong>tipo</strong> de reporte (ver la derecha).</li>
+        <li><code>17</code> — el <strong>consecutivo</strong> dentro de ese departamento y tipo.</li>
+      </ul>
+    </div>
+    <div class="box">
+      <h3>Los tres tipos</h3>
+      <ul>
+        <li><span class="tt cat">Catálogo</span> — una lista de referencia: 1 fila por entidad (clientes, números de parte, cuentas…). Atemporal.</li>
+        <li><span class="tt anl">Analítica</span> — un cubo operativo granular, que casi siempre se filtra por fechas.</li>
+        <li><span class="tt ctl">Control</span> — un indicador de cumplimiento o una conciliación (cumple / no cumple).</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Buscador + tabla -->
+  <h2 class="sec"><span class="num">02</span>Los reportes, por departamento</h2>
+  <p class="sec-lead measure">Ordenados por departamento (del que más reportes tiene al que menos). Usa el buscador para filtrar por placa, nombre, tipo o archivo.</p>
+
+  <div class="search noprint">
+    <input id="q" type="search" placeholder="Buscar: escribe una placa (PRD, cxc), un nombre (facturación, OEE) o un tipo (control)…" aria-label="Buscar reportes" autocomplete="off">
+    <div class="hint" id="hint">Mostrando los 98 reportes.</div>
+  </div>
+
+  <div class="tablewrap">
+    <table id="tbl">
+      <thead>
+        <tr><th style="width:150px">Placa</th><th style="width:96px">Tipo</th><th>Reporte</th><th>Archivo fuente</th></tr>
+      </thead>
+      <tbody>
+      <tr class="deph" data-dep="PRD"><td colspan="4"><strong>PRD · Producción</strong> <span style="color:var(--faint);font-weight:400">— 20 reportes</span></td></tr>
+      <tr data-dep="PRD"><td><code>RPT-PRD-ANL-01</code></td><td><span class="tt anl">Analítica</span></td><td>Órdenes de Trabajo</td><td><code class="src">query_ordenes_trabajo.sql</code></td></tr>
+      <tr data-dep="PRD"><td><code>RPT-PRD-ANL-02</code></td><td><span class="tt anl">Analítica</span></td><td>Programa de Producción</td><td><code class="src">query_programa_produccion.sql</code></td></tr>
+      <tr data-dep="PRD"><td><code>RPT-PRD-ANL-03</code></td><td><span class="tt anl">Analítica</span></td><td>Capacity Planning (Plan de Capacidad Ocupada)</td><td><code class="src">query_capacity_planning.sql</code></td></tr>
+      <tr data-dep="PRD"><td><code>RPT-PRD-ANL-04</code></td><td><span class="tt anl">Analítica</span></td><td>OEE por Estación y Día — formato IBMS (DuckDB)</td><td><code class="src">query_oee.sql</code></td></tr>
+      <tr data-dep="PRD"><td><code>RPT-PRD-ANL-05</code></td><td><span class="tt anl">Analítica</span></td><td>OEE por Estación y Día (versión Steelhead original)</td><td><code class="src">query_oee_steelhead.sql</code></td></tr>
+      <tr data-dep="PRD"><td><code>RPT-PRD-ANL-06</code></td><td><span class="tt anl">Analítica</span></td><td>Paros de Línea</td><td><code class="src">query_paros_linea.sql</code></td></tr>
+      <tr data-dep="PRD"><td><code>RPT-PRD-ANL-07</code></td><td><span class="tt anl">Analítica</span></td><td>Ratios de Transferencias por OT y Departamento</td><td><code class="src">query_ratios_transferencias.sql</code></td></tr>
+      <tr data-dep="PRD"><td><code>RPT-PRD-ANL-08</code></td><td><span class="tt anl">Analítica</span></td><td>Margen por Orden de Trabajo (vista ejecutiva)</td><td><code class="src">query_margen_ot.sql</code></td></tr>
+      <tr data-dep="PRD"><td><code>RPT-PRD-ANL-09</code></td><td><span class="tt anl">Analítica</span></td><td>Retrabajos (evento transaccional)</td><td><code class="src">query_retrabajos.sql</code></td></tr>
+      <tr data-dep="PRD"><td><code>RPT-PRD-ANL-10</code></td><td><span class="tt anl">Analítica</span></td><td>Consumo de Plata — Reporte Diario por Tina</td><td><code class="src">query_consumo_plata.sql</code></td></tr>
+      <tr data-dep="PRD"><td><code>RPT-PRD-ANL-11</code></td><td><span class="tt anl">Analítica</span></td><td>Estatus de OTs por Responsable (“¿en cancha de quién?”)</td><td><code class="src">query_atoramiento_responsable.sql</code></td></tr>
+      <tr data-dep="PRD"><td><code>RPT-PRD-ANL-12</code></td><td><span class="tt anl">Analítica</span></td><td>Estatus de OTs por Responsable — Detalle por Nodo</td><td><code class="src">query_atoramiento_detalle.sql</code></td></tr>
+      <tr data-dep="PRD"><td><code>RPT-PRD-ANL-13</code></td><td><span class="tt anl">Analítica</span></td><td>Arranque de Línea (eventos PAP por línea)</td><td><code class="src">query_arranque_linea.sql</code></td></tr>
+      <tr data-dep="PRD"><td><code>RPT-PRD-ANL-14</code></td><td><span class="tt anl">Analítica</span></td><td>Dashboard Directivo por Línea (línea × mes)</td><td><code class="src">query_dashboard_directivo_linea.sql</code></td></tr>
+      <tr data-dep="PRD"><td><code>RPT-PRD-ANL-15</code></td><td><span class="tt anl">Analítica</span></td><td>Carga y Acabado — $USD por carga (línea × acabado)</td><td><code class="src">query_dashboard_carga_acabado.sql</code></td></tr>
+      <tr data-dep="PRD"><td><code>RPT-PRD-ANL-17</code></td><td><span class="tt anl">Analítica</span></td><td>Seguimiento de Operaciones (“Seguimiento de Material”)</td><td><code class="src">query_seguimiento_operaciones.sql</code></td></tr>
+      <tr data-dep="PRD"><td><code>RPT-PRD-CAT-01</code></td><td><span class="tt cat">Catálogo</span></td><td>Catálogo de Workboards (Tableros de Trabajo)</td><td><code class="src">query_catalogo_workboards.sql</code></td></tr>
+      <tr data-dep="PRD"><td><code>RPT-PRD-CTL-01</code></td><td><span class="tt ctl">Control</span></td><td>Cumplimiento al Programa de Producción</td><td><code class="src">query_cumplimiento.sql</code></td></tr>
+      <tr data-dep="PRD"><td><code>RPT-PRD-CTL-02</code></td><td><span class="tt ctl">Control</span></td><td>Auditoría de Transferencias de Partes</td><td><code class="src">query_auditoria_transferencias.sql</code></td></tr>
+      <tr data-dep="PRD"><td><code>RPT-PRD-CTL-03</code></td><td><span class="tt ctl">Control</span></td><td>Adopción del Programa (Minutos por Línea/Día)</td><td><code class="src">query_adopcion_programa.sql</code></td></tr>
+      <tr class="deph" data-dep="ING"><td colspan="4"><strong>ING · Ingeniería</strong> <span style="color:var(--faint);font-weight:400">— 17 reportes</span></td></tr>
+      <tr data-dep="ING"><td><code>RPT-ING-ANL-01</code></td><td><span class="tt anl">Analítica</span></td><td>Predicción de Consumo de Inventario (Cruce de Tags)</td><td><code class="src">query_prediccion_inventario.sql</code></td></tr>
+      <tr data-dep="ING"><td><code>RPT-ING-CAT-01</code></td><td><span class="tt cat">Catálogo</span></td><td>Catálogo de Números de Parte (base, sin precios)</td><td><code class="src">query_catalogo_np.sql</code></td></tr>
+      <tr data-dep="ING"><td><code>RPT-ING-CAT-02</code></td><td><span class="tt cat">Catálogo</span></td><td>Catálogo de Números de Parte con precio unitario</td><td><code class="src">query_catalogo_np_precios.sql</code></td></tr>
+      <tr data-dep="ING"><td><code>RPT-ING-CAT-03</code></td><td><span class="tt cat">Catálogo</span></td><td>Catálogo de Especificaciones (spec × campo × parámetro)</td><td><code class="src">query_catalogo_especificaciones.sql</code></td></tr>
+      <tr data-dep="ING"><td><code>RPT-ING-CAT-04</code></td><td><span class="tt cat">Catálogo</span></td><td>Catálogo de Estaciones</td><td><code class="src">query_catalogo_estaciones.sql</code></td></tr>
+      <tr data-dep="ING"><td><code>RPT-ING-CAT-05</code></td><td><span class="tt cat">Catálogo</span></td><td>Catálogo de Procesos — árbol de nodos tabular</td><td><code class="src">query_catalogo_procesos.sql</code></td></tr>
+      <tr data-dep="ING"><td><code>RPT-ING-CAT-06</code></td><td><span class="tt cat">Catálogo</span></td><td>Catálogo de Unidades de Medida (uso, categoría, duplicados)</td><td><code class="src">query_catalogo_unidades.sql</code></td></tr>
+      <tr data-dep="ING"><td><code>RPT-ING-CAT-07</code></td><td><span class="tt cat">Catálogo</span></td><td>Catálogo de Productos (familias de proceso)</td><td><code class="src">query_catalogo_productos.sql</code></td></tr>
+      <tr data-dep="ING"><td><code>RPT-ING-CAT-08</code></td><td><span class="tt cat">Catálogo</span></td><td>Catálogo de Metales Base</td><td><code class="src">query_catalogo_metales_base.sql</code></td></tr>
+      <tr data-dep="ING"><td><code>RPT-ING-CAT-09</code></td><td><span class="tt cat">Catálogo</span></td><td>Catálogo de Etiquetas (Labels)</td><td><code class="src">query_catalogo_etiquetas.sql</code></td></tr>
+      <tr data-dep="ING"><td><code>RPT-ING-CAT-10</code></td><td><span class="tt cat">Catálogo</span></td><td>Catálogo de Grupos de Números de Parte</td><td><code class="src">query_catalogo_grupos_np.sql</code></td></tr>
+      <tr data-dep="ING"><td><code>RPT-ING-CAT-11</code></td><td><span class="tt cat">Catálogo</span></td><td>Precios por Número de Parte</td><td><code class="src">query_precios_por_np.sql</code></td></tr>
+      <tr data-dep="ING"><td><code>RPT-ING-CAT-12</code></td><td><span class="tt cat">Catálogo</span></td><td>Precios por Tratamiento</td><td><code class="src">query_precios_por_tratamiento.sql</code></td></tr>
+      <tr data-dep="ING"><td><code>RPT-ING-CAT-13</code></td><td><span class="tt cat">Catálogo</span></td><td>Precios por Producto</td><td><code class="src">query_precios_por_producto.sql</code></td></tr>
+      <tr data-dep="ING"><td><code>RPT-ING-CAT-14</code></td><td><span class="tt cat">Catálogo</span></td><td>Catálogo de Tratamientos</td><td><code class="src">query_tratamientos.sql</code></td></tr>
+      <tr data-dep="ING"><td><code>RPT-ING-CAT-15</code></td><td><span class="tt cat">Catálogo</span></td><td>Secuencia de Procesos (Árbol de Nodos)</td><td><code class="src">query_secuencia_procesos.sql</code></td></tr>
+      <tr data-dep="ING"><td><code>RPT-ING-CAT-16</code></td><td><span class="tt cat">Catálogo</span></td><td>Catálogo de Racks</td><td><code class="src">query_catalogo_racks.sql</code></td></tr>
+      <tr class="deph" data-dep="VTA"><td colspan="4"><strong>VTA · Ventas</strong> <span style="color:var(--faint);font-weight:400">— 11 reportes</span></td></tr>
+      <tr data-dep="VTA"><td><code>RPT-VTA-ANL-02</code></td><td><span class="tt anl">Analítica</span></td><td>Cotizaciones</td><td><code class="src">query_cotizaciones.sql</code></td></tr>
+      <tr data-dep="VTA"><td><code>RPT-VTA-ANL-03</code></td><td><span class="tt anl">Analítica</span></td><td>Órdenes de Venta — Detalle por Línea / Artículo</td><td><code class="src">query_ordenes_venta.sql</code></td></tr>
+      <tr data-dep="VTA"><td><code>RPT-VTA-ANL-04</code></td><td><span class="tt anl">Analítica</span></td><td>Cubo de Facturación</td><td><code class="src">query_facturacion.sql</code></td></tr>
+      <tr data-dep="VTA"><td><code>RPT-VTA-ANL-05</code></td><td><span class="tt anl">Analítica</span></td><td>Inventario en Planta (Estado por OT × NP · Inventario de Clientes)</td><td><code class="src">query_inventario.sql</code></td></tr>
+      <tr data-dep="VTA"><td><code>RPT-VTA-ANL-06</code></td><td><span class="tt anl">Analítica</span></td><td>Producido Pendiente de Embarque / Cierre</td><td><code class="src">query_pendiente_embarque.sql</code></td></tr>
+      <tr data-dep="VTA"><td><code>RPT-VTA-ANL-07</code></td><td><span class="tt anl">Analítica</span></td><td>Entradas por Cliente</td><td><code class="src">query_entradas.sql</code></td></tr>
+      <tr data-dep="VTA"><td><code>RPT-VTA-ANL-08</code></td><td><span class="tt anl">Analítica</span></td><td>Envíos por Cliente</td><td><code class="src">query_envios.sql</code></td></tr>
+      <tr data-dep="VTA"><td><code>RPT-VTA-CAT-01</code></td><td><span class="tt cat">Catálogo</span></td><td>Catálogo de Clientes (cliente × dirección)</td><td><code class="src">query_catalogo_clientes.sql</code></td></tr>
+      <tr data-dep="VTA"><td><code>RPT-VTA-CTL-01</code></td><td><span class="tt ctl">Control</span></td><td>Calidad de Nombre de OC de Cliente</td><td><code class="src">query_calidad_oc_cliente.sql</code></td></tr>
+      <tr data-dep="VTA"><td><code>RPT-VTA-CTL-02</code></td><td><span class="tt ctl">Control</span></td><td>OCs de Cliente con Nombre Inválido (Detalle Accionable)</td><td><code class="src">query_calidad_oc_cliente_detalle.sql</code></td></tr>
+      <tr data-dep="VTA"><td><code>RPT-VTA-CTL-03</code></td><td><span class="tt ctl">Control</span></td><td>OCs de Cliente Inválidas por Motivo (Pareto de Causas)</td><td><code class="src">query_calidad_oc_cliente_motivo.sql</code></td></tr>
+      <tr class="deph" data-dep="ALM"><td colspan="4"><strong>ALM · Almacén</strong> <span style="color:var(--faint);font-weight:400">— 9 reportes</span></td></tr>
+      <tr data-dep="ALM"><td><code>RPT-ALM-ANL-01</code></td><td><span class="tt anl">Analítica</span></td><td>Receptores (consolidado: proveedor + OV + huérfanos)</td><td><code class="src">query_receptores.sql</code></td></tr>
+      <tr data-dep="ALM"><td><code>RPT-ALM-ANL-02</code></td><td><span class="tt anl">Analítica</span></td><td>Seguimiento a Vales de Almacén</td><td><code class="src">query_vales_almacen.sql</code></td></tr>
+      <tr data-dep="ALM"><td><code>RPT-ALM-ANL-04</code></td><td><span class="tt anl">Analítica</span></td><td>Kardex / On-Hand Valorizado (Inventario a Fecha)</td><td><code class="src">query_kardex_valorizado.sql</code></td></tr>
+      <tr data-dep="ALM"><td><code>RPT-ALM-ANL-05</code></td><td><span class="tt anl">Analítica</span></td><td>Transacciones de Inventario (Kardex de insumos)</td><td><code class="src">query_transacciones_inventario.sql</code></td></tr>
+      <tr data-dep="ALM"><td><code>RPT-ALM-ANL-06</code></td><td><span class="tt anl">Analítica</span></td><td>Inventario por Ubicación (Insumos)</td><td><code class="src">query_inventario_por_ubicacion.sql</code></td></tr>
+      <tr data-dep="ALM"><td><code>RPT-ALM-ANL-07</code></td><td><span class="tt anl">Analítica</span></td><td>Embarques (Remisiones × Carta Porte × Lista de Empaque)</td><td><code class="src">query_embarques.sql</code></td></tr>
+      <tr data-dep="ALM"><td><code>RPT-ALM-ANL-08</code></td><td><span class="tt anl">Analítica</span></td><td>Envíos a Maquila (Vendor Shippers)</td><td><code class="src">query_envios_maquila.sql</code></td></tr>
+      <tr data-dep="ALM"><td><code>RPT-ALM-ANL-09</code></td><td><span class="tt anl">Analítica</span></td><td>Entregas de Almacén por Empleado (Vales)</td><td><code class="src">query_entregas_por_empleado.sql</code></td></tr>
+      <tr data-dep="ALM"><td><code>RPT-ALM-CAT-02</code></td><td><span class="tt cat">Catálogo</span></td><td>Catálogo de Ubicaciones</td><td><code class="src">query_catalogo_ubicaciones.sql</code></td></tr>
+      <tr class="deph" data-dep="CAL"><td colspan="4"><strong>CAL · Calidad</strong> <span style="color:var(--faint);font-weight:400">— 8 reportes</span></td></tr>
+      <tr data-dep="CAL"><td><code>RPT-CAL-ANL-01</code></td><td><span class="tt anl">Analítica</span></td><td>Mediciones Unificadas (por Orden de Trabajo)</td><td><code class="src">query_mediciones_unificadas.sql</code></td></tr>
+      <tr data-dep="CAL"><td><code>RPT-CAL-ANL-02</code></td><td><span class="tt anl">Analítica</span></td><td>Costo de No Calidad (CONQ)</td><td><code class="src">query_costo_no_calidad.sql</code></td></tr>
+      <tr data-dep="CAL"><td><code>RPT-CAL-ANL-04</code></td><td><span class="tt anl">Analítica</span></td><td>Mediciones de Materia Prima (Liberación de Lotes)</td><td><code class="src">query_mediciones_materia_prima.sql</code></td></tr>
+      <tr data-dep="CAL"><td><code>RPT-CAL-CAT-01</code></td><td><span class="tt cat">Catálogo</span></td><td>Retenciones de Calidad (Quality Holds)</td><td><code class="src">query_retenciones_calidad.sql</code></td></tr>
+      <tr data-dep="CAL"><td><code>RPT-CAL-CAT-02</code></td><td><span class="tt cat">Catálogo</span></td><td>Devoluciones de Cliente (RMAs)</td><td><code class="src">query_rmas.sql</code></td></tr>
+      <tr data-dep="CAL"><td><code>RPT-CAL-CAT-03</code></td><td><span class="tt cat">Catálogo</span></td><td>No Conformidades de Proceso (NCRs)</td><td><code class="src">query_no_conformidades.sql</code></td></tr>
+      <tr data-dep="CAL"><td><code>RPT-CAL-CAT-04</code></td><td><span class="tt cat">Catálogo</span></td><td>Acciones Correctivas (CARs)</td><td><code class="src">query_acciones_correctivas.sql</code></td></tr>
+      <tr data-dep="CAL"><td><code>RPT-CAL-CTL-01</code></td><td><span class="tt ctl">Control</span></td><td>Control de Certificados de Calidad</td><td><code class="src">query_control_certificados.sql</code></td></tr>
+      <tr class="deph" data-dep="CMP"><td colspan="4"><strong>CMP · Compras</strong> <span style="color:var(--faint);font-weight:400">— 8 reportes</span></td></tr>
+      <tr data-dep="CMP"><td><code>RPT-CMP-ANL-01</code></td><td><span class="tt anl">Analítica</span></td><td>Órdenes de Compra (cubo de líneas con TC y pago)</td><td><code class="src">query_ordenes_compra.sql</code></td></tr>
+      <tr data-dep="CMP"><td><code>RPT-CMP-ANL-02</code></td><td><span class="tt anl">Analítica</span></td><td>Facturas de Proveedor (Bills) — cubo transaccional</td><td><code class="src">query_facturas_proveedor.sql</code></td></tr>
+      <tr data-dep="CMP"><td><code>RPT-CMP-ANL-03</code></td><td><span class="tt anl">Analítica</span></td><td>Análisis de Gasto por Proveedor (proveedor × mes × divisa)</td><td><code class="src">query_gasto_proveedor.sql</code></td></tr>
+      <tr data-dep="CMP"><td><code>RPT-CMP-ANL-04</code></td><td><span class="tt anl">Analítica</span></td><td>Inventarios Diferenciales (modelo físico)</td><td><code class="src">query_inventarios_diferenciales.sql</code></td></tr>
+      <tr data-dep="CMP"><td><code>RPT-CMP-ANL-05</code></td><td><span class="tt anl">Analítica</span></td><td>Máximos y Mínimos de Insumos (Stock de Seguridad)</td><td><code class="src">query_min_max_insumos.sql</code></td></tr>
+      <tr data-dep="CMP"><td><code>RPT-CMP-CAT-01</code></td><td><span class="tt cat">Catálogo</span></td><td>Catálogo de Artículos de Inventario</td><td><code class="src">query_catalogo_inventario.sql</code></td></tr>
+      <tr data-dep="CMP"><td><code>RPT-CMP-CAT-02</code></td><td><span class="tt cat">Catálogo</span></td><td>Catálogo de Proveedores</td><td><code class="src">query_catalogo_proveedores.sql</code></td></tr>
+      <tr data-dep="CMP"><td><code>RPT-CMP-CAT-03</code></td><td><span class="tt cat">Catálogo</span></td><td>Precios de Metales</td><td><code class="src">query_precios_metales.sql</code></td></tr>
+      <tr class="deph" data-dep="MNT"><td colspan="4"><strong>MNT · Mantenimiento</strong> <span style="color:var(--faint);font-weight:400">— 8 reportes</span></td></tr>
+      <tr data-dep="MNT"><td><code>RPT-MNT-ANL-01</code></td><td><span class="tt anl">Analítica</span></td><td>Eventos de Mantenimiento (cubo por medición de sensor)</td><td><code class="src">query_mantenimiento.sql</code></td></tr>
+      <tr data-dep="MNT"><td><code>RPT-MNT-ANL-03</code></td><td><span class="tt anl">Analítica</span></td><td>MTTR — Tiempo Medio de Reparación</td><td><code class="src">query_mttr.sql</code></td></tr>
+      <tr data-dep="MNT"><td><code>RPT-MNT-ANL-04</code></td><td><span class="tt anl">Analítica</span></td><td>MTBF — Tiempo Medio Entre Fallas</td><td><code class="src">query_mtbf.sql</code></td></tr>
+      <tr data-dep="MNT"><td><code>RPT-MNT-CAT-01</code></td><td><span class="tt cat">Catálogo</span></td><td>Catálogo Jerárquico de Mantenimiento (Plan→Nodo→Recurrencia)</td><td><code class="src">query_catalogo_mantenimiento.sql</code></td></tr>
+      <tr data-dep="MNT"><td><code>RPT-MNT-CAT-02</code></td><td><span class="tt cat">Catálogo</span></td><td>Catálogo de Equipos</td><td><code class="src">query_catalogo_equipos.sql</code></td></tr>
+      <tr data-dep="MNT"><td><code>RPT-MNT-CAT-03</code></td><td><span class="tt cat">Catálogo</span></td><td>Catálogo de Sensores</td><td><code class="src">query_catalogo_sensores.sql</code></td></tr>
+      <tr data-dep="MNT"><td><code>RPT-MNT-CTL-01</code></td><td><span class="tt ctl">Control</span></td><td>Mantenimiento Correctivo Semanal (SMC + PLM)</td><td><code class="src">query_mto_semanal.sql</code></td></tr>
+      <tr data-dep="MNT"><td><code>RPT-MNT-CTL-02</code></td><td><span class="tt ctl">Control</span></td><td>Cumplimiento de Mantenimiento Preventivo Recurrente</td><td><code class="src">query_mto_cumplimiento.sql</code></td></tr>
+      <tr class="deph" data-dep="CTB"><td colspan="4"><strong>CTB · Contabilidad</strong> <span style="color:var(--faint);font-weight:400">— 7 reportes</span></td></tr>
+      <tr data-dep="CTB"><td><code>RPT-CTB-ANL-01</code></td><td><span class="tt anl">Analítica</span></td><td>Asientos Contables (Diario)</td><td><code class="src">query_asientos_contables.sql</code></td></tr>
+      <tr data-dep="CTB"><td><code>RPT-CTB-ANL-02</code></td><td><span class="tt anl">Analítica</span></td><td>Estado de Resultados (NIF B-3)</td><td><code class="src">query_estado_resultados.sql</code></td></tr>
+      <tr data-dep="CTB"><td><code>RPT-CTB-ANL-03</code></td><td><span class="tt anl">Analítica</span></td><td>Libro Mayor (Mayor Contable)</td><td><code class="src">query_libro_mayor.sql</code></td></tr>
+      <tr data-dep="CTB"><td><code>RPT-CTB-CAT-01</code></td><td><span class="tt cat">Catálogo</span></td><td>Dimensiones Contables y sus Posibles Valores</td><td><code class="src">query_dimensiones_contables.sql</code></td></tr>
+      <tr data-dep="CTB"><td><code>RPT-CTB-CAT-02</code></td><td><span class="tt cat">Catálogo</span></td><td>Tipo de Cambio (histórico MXN/USD)</td><td><code class="src">query_tipo_de_cambio.sql</code></td></tr>
+      <tr data-dep="CTB"><td><code>RPT-CTB-CAT-03</code></td><td><span class="tt cat">Catálogo</span></td><td>Catálogo de Cuentas Contables</td><td><code class="src">query_catalogo_cuentas_contables.sql</code></td></tr>
+      <tr data-dep="CTB"><td><code>RPT-CTB-CAT-04</code></td><td><span class="tt cat">Catálogo</span></td><td>Catálogo de Configuración Fiscal</td><td><code class="src">query_catalogo_impuestos.sql</code></td></tr>
+      <tr class="deph" data-dep="RHM"><td colspan="4"><strong>RHM · Recursos Humanos</strong> <span style="color:var(--faint);font-weight:400">— 3 reportes</span></td></tr>
+      <tr data-dep="RHM"><td><code>RPT-RHM-CAT-01</code></td><td><span class="tt cat">Catálogo</span></td><td>Catálogo de Usuarios</td><td><code class="src">query_catalogo_usuarios.sql</code></td></tr>
+      <tr data-dep="RHM"><td><code>RPT-RHM-CAT-02</code></td><td><span class="tt cat">Catálogo</span></td><td>Usuarios con Tarifa (horario + nómina + time-off)</td><td><code class="src">query_catalogo_usuarios_tarifa.sql</code></td></tr>
+      <tr data-dep="RHM"><td><code>RPT-RHM-CTL-01</code></td><td><span class="tt ctl">Control</span></td><td>Mapa de Calor de Actividad Operativa (hora × departamento)</td><td><code class="src">query_mapa_calor_operacion.sql</code></td></tr>
+      <tr class="deph" data-dep="CXP"><td colspan="4"><strong>CXP · Cuentas por Pagar</strong> <span style="color:var(--faint);font-weight:400">— 2 reportes</span></td></tr>
+      <tr data-dep="CXP"><td><code>RPT-CXP-ANL-01</code></td><td><span class="tt anl">Analítica</span></td><td>Antigüedad de Saldos CxP (Cuentas por Pagar)</td><td><code class="src">query_cxp.sql</code></td></tr>
+      <tr data-dep="CXP"><td><code>RPT-CXP-ANL-03</code></td><td><span class="tt anl">Analítica</span></td><td>Pagos a Proveedores (AP Payments)</td><td><code class="src">query_pagos_proveedores.sql</code></td></tr>
+      <tr class="deph" data-dep="SIS"><td colspan="4"><strong>SIS · Sistemas</strong> <span style="color:var(--faint);font-weight:400">— 2 reportes</span></td></tr>
+      <tr data-dep="SIS"><td><code>RPT-SIS-ANL-01</code></td><td><span class="tt anl">Analítica</span></td><td>Mantenimiento de Sistemas IT</td><td><code class="src">query_mantenimiento_sistemas.sql</code></td></tr>
+      <tr data-dep="SIS"><td><code>RPT-SIS-CAT-01</code></td><td><span class="tt cat">Catálogo</span></td><td>Configuración de Dominio</td><td><code class="src">query_configuracion_dominio.sql</code></td></tr>
+      <tr class="deph" data-dep="CXC"><td colspan="4"><strong>CXC · Cuentas por Cobrar</strong> <span style="color:var(--faint);font-weight:400">— 1 reporte</span></td></tr>
+      <tr data-dep="CXC"><td><code>RPT-CXC-ANL-02</code></td><td><span class="tt anl">Analítica</span></td><td>Antigüedad de Saldos CxC (Cuentas por Cobrar)</td><td><code class="src">query_cxc.sql</code></td></tr>
+      <tr class="deph" data-dep="LAB"><td colspan="4"><strong>LAB · Laboratorio</strong> <span style="color:var(--faint);font-weight:400">— 1 reporte</span></td></tr>
+      <tr data-dep="LAB"><td><code>RPT-LAB-ANL-01</code></td><td><span class="tt anl">Analítica</span></td><td>Autocontrol ALA — Análisis de Laboratorio</td><td><code class="src">query_ala_autocontrol.sql</code></td></tr>
+      <tr class="deph" data-dep="PRC"><td colspan="4"><strong>PRC · Procesos</strong> <span style="color:var(--faint);font-weight:400">— 1 reporte</span></td></tr>
+      <tr data-dep="PRC"><td><code>RPT-PRC-CAT-02</code></td><td><span class="tt cat">Catálogo</span></td><td>Catálogo de Tratamientos por Process Node</td><td><code class="src">query_catalogo_tratamientos.sql</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p id="noresults" style="display:none;color:var(--muted);text-align:center;padding:24px">Ningún reporte coincide con tu búsqueda.</p>
+
+  <div class="callout warn measure" style="max-width:none">
+    <p class="ct">Nota sobre huecos en la numeración</p>
+    Verás saltos (por ejemplo <code>RPT-PRD-ANL-16</code> o <code>RPT-VTA-ANL-01</code> no aparecen): son consecutivos retirados o reasignados durante los refactores. El consecutivo <strong>no se recicla</strong> — cada placa es única e irrepetible aunque su número quede vacante.
+  </div>
+
+  <footer class="foot">
+    <div style="display:flex;gap:16px;flex-wrap:wrap"><span><span class="badge vivo dot">Vivo</span></span><span>Inventario de Reportes · Reportes SH</span></div>
+    <div>Corte: 23 jul 2026 · extraído de las cabeceras <code>query_*.sql</code></div>
+    <div style="flex-basis:100%;margin-top:10px;padding-top:12px;border-top:1px solid var(--hair);display:flex;align-items:center;gap:12px;font-size:.78rem;color:var(--faint)"><a href="https://capazconsultoria.com" target="_blank" rel="noopener" aria-label="Capaz Consultoría" style="flex:0 0 auto;display:inline-flex"><img src="assets/capaz-c.png" alt="Capaz Consultoría" style="height:30px;width:auto;display:block"></a><span>Documento elaborado por <a href="mailto:oviazcan@capazconsultoria.com" style="color:var(--accent-ink);font-weight:600;text-decoration:none">Omar Viazcán</a> · <a href="https://capazconsultoria.com" target="_blank" rel="noopener" style="color:var(--accent-ink);text-decoration:none">Capaz Consultoría</a></span></div>
+  </footer>
+
+</div>
+<script>
+(function(){
+  var q=document.getElementById('q'), hint=document.getElementById('hint'), nr=document.getElementById('noresults');
+  var tbody=document.querySelector('#tbl tbody');
+  var rows=[].slice.call(tbody.querySelectorAll('tr[data-dep]:not(.deph)'));
+  var heads=[].slice.call(tbody.querySelectorAll('tr.deph'));
+  function norm(s){return (s||'').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'');}
+  rows.forEach(function(r){r._t=norm(r.textContent);});
+  q.addEventListener('input',function(){
+    var term=norm(q.value.trim()); var shown=0;
+    rows.forEach(function(r){var ok=!term||r._t.indexOf(term)>-1;r.style.display=ok?'':'none';if(ok)shown++;});
+    // ocultar encabezado de grupo si no tiene filas visibles
+    heads.forEach(function(h){
+      var n=h.nextElementSibling, any=false;
+      while(n && !n.classList.contains('deph')){ if(n.style.display!=='none'){any=true;break;} n=n.nextElementSibling; }
+      h.style.display=any?'':'none';
+    });
+    nr.style.display=shown?'none':'';
+    hint.textContent= term ? ('Mostrando '+shown+' de 98 reportes.') : 'Mostrando los 98 reportes.';
+  });
+})();
+</script>
+</body>
+</html>
