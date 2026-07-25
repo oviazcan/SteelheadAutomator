@@ -333,8 +333,13 @@ autopilot: `d2e1c52` SearchPartNumbers, `1bda4f9` FilterSearch).
   no gatilla el onClick de React de forma estable) → captura autónoma de ESTE op **best-effort**. Fallback
   real cuando rote: **hash-scanner** (correr el scanner HACIENDO el regen del PDF → actualizar
   `remote/config.json` a mano; probado 2026-07-24). Sentinela declarado por la regla de proceso.
-- **Follow-up (no urgente):** el reporte diario seguirá marcando `CreateInvoicePdf` como "rotada" (falso
-  positivo). Opción: meterla a una lista de "known false-stale" en el motor para silenciar el ruido.
+- **Falso positivo SILENCIADO (HECHO, commit `03d80f5`):** nueva lista `masked-ops.json`
+  `falseStaleScannerManaged: ["CreateInvoicePdf"]` (+ `_docFalseStale`). El motor la excluye de (a) el
+  intento de captura Fase C (no quema ciclo headless), y (b) `pendingMuts` + el conteo `nUrgentes` del
+  correo → queda SOLO en el log de consola (mismo patrón que las falsas alarmas probe=vigente). El
+  sentinel `invoicePdf` sigue declarado (regla de proceso) pero no se auto-intenta. Detección real de
+  rotación verdadera: el applet `invoice-auto-regen` falla, o una corrida manual del scanner muestra
+  hash nuevo. Para agregar otra op falso-stale gestionada por scanner: métela a esa lista.
 - **Incidente de concurrencia 2026-07-24 (resuelto):** el launchd del autopilot corrió un auto-deploy
   mientras había WIP sin commitear + OTRA sesión editando el hash-autopilot. La danza `stash -u` +
   `checkout gh-pages` dejó el índice de main a medias, pero **se recuperó solo** (el stash se restauró).
