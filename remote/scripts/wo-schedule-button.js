@@ -485,7 +485,10 @@ const WoScheduleButton = (() => {
         }
       }
       if (!pbtn) { fail('El modal se quedó en "Cargando…" o el dropdown de plantilla no cargó'); return null; }
-      await sleep(350);   // deja que React termine de cablear el onClick del botón
+      // Deja que el modal ASIENTE sus datos antes de imprimir: si clicamos demasiado rápido
+      // (sobre todo en 1ª plano) el render puede salir EN BLANCO. Espera red-idle + un margen.
+      await waitForGraphqlIdle(700, 7000);
+      await sleep(500);   // + margen para que React termine de cablear el onClick del botón
       const clickAt = Date.now();
       PLOG('click "' + t.buttonTextEs + '" (dropdown OK, disabled=' + !!pbtn.disabled + ')');
       clickButtonRobust(pbtn);
