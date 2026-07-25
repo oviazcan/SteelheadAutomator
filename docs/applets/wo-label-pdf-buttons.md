@@ -1,6 +1,6 @@
 # wo-label-pdf-buttons — Botones de impresión de PDF en el listado de OTs (SPEC)
 
-**Estado:** ✅ **VIVO — JobTag validado en producción (config 1.7.200, 2026-07-24).** Botón **🏷️ en la columna Acciones** del listado `/Domains/<d>/WorkOrders` (toggle "🏷️ Etiquetas" del applet `wo-listing-columns`). Genera el JobTag en un **IFRAME OCULTO** dentro del dashboard → **sin abrir pestaña (no roba foco) y sin throttle (rápido)** → auto-descarga `WO<idInDomain>.pdf`. **Fallback automático a pestaña** (`?sa_print=jobtag&sa_dl=1`, lo maneja `wo-schedule-button` invisible) si SH bloquea el enmarcado o el iframe falla. Validado en vivo por el operador: **4/5 en iframe sin pestaña; el 5º cayó a pestaña por hipo de sesión bajo carga (degradó con gracia)**. Commit del iframe `a4bff19`.
+**Estado:** ✅ **VIVO (config 1.7.201, 2026-07-24) — JobTag (🏷️) validado en producción + Verbose (📋) expuesto.** Botones **🏷️ JobTag y 📋 Verbose en la columna Acciones** del listado `/Domains/<d>/WorkOrders` (toggle "🏷️ Etiquetas" del applet `wo-listing-columns`). Genera el JobTag en un **IFRAME OCULTO** dentro del dashboard → **sin abrir pestaña (no roba foco) y sin throttle (rápido)** → auto-descarga `WO<idInDomain>.pdf`. **Fallback automático a pestaña** (`?sa_print=jobtag&sa_dl=1`, lo maneja `wo-schedule-button` invisible) si SH bloquea el enmarcado o el iframe falla. Validado en vivo por el operador: **4/5 en iframe sin pestaña; el 5º cayó a pestaña por hipo de sesión bajo carga (degradó con gracia)**. Commit del iframe `a4bff19`.
 
 ## ⚠️ Diseño FINAL VIVO (iframe) — LEE ESTO PRIMERO (supersede las "Fases" de abajo)
 
@@ -12,7 +12,12 @@ El 🏷️ del listado ya **NO abre pestaña** por default. `wo-listing-columns.
 
 **Filename:** `WoScheduleCore.buildPdfFilename` da **`WO<idInDomain>.pdf`** (verbose: `-verbose`). La URL interceptada de `GetPdfTemplateOutputV2` NO trae `?downloadName=` → se **repone** con el nombre corto.
 
-**Pendientes reales:** (a) **Verbose** — `autoPrint`/`driveLabel` ya soportan `'verbose'` por dentro; falta exponerlo en el botón (menú). (b) **WorkOrder PDF** (3er tipo) = botón nativo "Abrir PDF", flujo distinto — sin cablear. (c) **Retry del iframe** una vez antes de caer a pestaña (reduciría los fallbacks del ~5º bajo carga) — no implementado. (d) Los warnings `onFull: ERROR … predictedInventoryUsages` que se ven en consola son del **SPA de SH dentro del iframe** (no nuestros) — no suprimibles.
+**Estado de tipos y robustez (VIVO 1.7.201, commit `736e22b`):**
+- ✅ **JobTag** (🏷️) — validado en vivo.
+- ✅ **Verbose** (📋) — **EXPUESTO**: 2º botón en Acciones junto al 🏷️ (`LABEL_TYPES`, idempotente por `data-sa-print-type`). Mismo iframe con `typeKey:'verbose'` → "Imprimir Detallado" (orden 1, `GetVerboseTraveler`, template "Orden de Trabajo Completa") → descarga `WO<num>-verbose.pdf`.
+- ✅ **Retry del iframe** — `driveLabelCore` reintenta el iframe UNA vez (respiro 600ms, estado `↻`) antes de caer a pestaña → menos fallbacks por el hipo de sesión bajo carga.
+
+**Pendientes reales:** (a) **WorkOrder PDF** (3er tipo) = botón nativo "Abrir PDF", flujo distinto al modal de etiquetas — sin cablear. (b) Los warnings `onFull: ERROR … predictedInventoryUsages` en consola son del **SPA de SH dentro del iframe** (no nuestros) — no suprimibles. (c) **Bundle Safari/iPad** desactualizado (se tocaron paros/vale) — recompilar Xcode.
 
 ---
 
