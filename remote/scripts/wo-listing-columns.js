@@ -103,13 +103,13 @@ const WoListingColumns = (() => {
       '.sa-wocol-sched-meta{color:#5a6b7a;font-size:11px;display:block;}',
       '.sa-wocol-muted{color:#8a97a5;font-style:italic;font-size:12px;}',
       '.sa-wocol-err{color:#b04a3a;font-size:12px;}',
-      // Botón 🏷️ en la celda de Acciones (junto a Editar/Archivar nativos). Acento verde = extensión.
-      'button.sa-wolabel-btn{display:inline-flex;align-items:center;justify-content:center;',
+      // Botón 🏷️ (link <a>) en la celda de Acciones (junto a Editar/Archivar). Acento verde = extensión.
+      '.sa-wolabel-btn{display:inline-flex;align-items:center;justify-content:center;',
       'width:26px;height:26px;padding:0;margin-left:2px;border:1px solid #13a36f;border-radius:6px;',
-      'background:#fff;color:#0d6b49;font-size:14px;line-height:1;cursor:pointer;vertical-align:middle;}',
-      'button.sa-wolabel-btn:hover{background:#e9f7f1;}',
-      'button.sa-wolabel-btn:active{background:#d6efe4;}',
-      'button.sa-wolabel-btn[disabled]{opacity:.5;cursor:default;}',
+      'background:#fff;color:#0d6b49;font-size:14px;line-height:1;cursor:pointer;vertical-align:middle;',
+      'text-decoration:none;box-sizing:border-box;}',
+      '.sa-wolabel-btn:hover{background:#e9f7f1;text-decoration:none;}',
+      '.sa-wolabel-btn:active{background:#d6efe4;}',
       '.sa-wocol-toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:2147483600;',
       'background:#1c2430;color:#e6e9ee;border:1px solid #2b3645;border-left:4px solid #13a36f;',
       'border-radius:10px;padding:12px 18px;font-size:14px;max-width:80vw;',
@@ -631,31 +631,23 @@ const WoListingColumns = (() => {
     const tds = tr.querySelectorAll('td:not(.sa-wocol-pn):not(.sa-wocol-sched):not(.sa-wocol-lote)');
     return tds.length ? tds[tds.length - 1] : null;
   }
+  // El 🏷️ es un LINK real <a target="_blank"> → el navegador maneja la apertura nativamente:
+  // ⌘/Ctrl+clic (o clic con rueda) = pestaña en 2º PLANO SIN robar el foco (el operador marca
+  // varias seguidas); clic normal = 1ª plano. Un click sintético con ctrlKey NO engaña al
+  // navegador (solo un modificador REAL abre en 2º plano), por eso NO forzamos por JS.
   function buildLabelButton(fichaHref) {
-    const b = document.createElement('button');
-    b.type = 'button';
-    b.className = 'sa-wolabel-btn';
-    b.textContent = '🏷️';
-    b.title = 'Generar y DESCARGAR el PDF de etiquetas (JobTag) de esta OT — en 2º plano, sin salir del dashboard (marca varias seguidas).';
-    b.setAttribute('aria-label', 'Descargar etiquetas de trabajo (JobTag)');
-    b.addEventListener('click', function (e) {
-      e.preventDefault(); e.stopPropagation();
-      const url = fichaHref + (fichaHref.indexOf('?') >= 0 ? '&' : '?') + 'sa_print=jobtag&sa_dl=1';
-      openInBackground(url);
-      toast('🏷️ Generando JobTag en 2º plano — se descargará. Puedes marcar más OTs.');
-    });
-    return b;
-  }
-  // Abre la URL en una pestaña de 2º PLANO (cmd/ctrl+click sobre un <a>), sin robar el foco del
-  // dashboard → el operador marca VARIAS OTs seguidas y cada una genera+descarga su PDF en paralelo.
-  function openInBackground(url) {
-    try {
-      const a = document.createElement('a');
-      a.href = url; a.target = '_blank'; a.rel = 'noopener';
-      document.body.appendChild(a);
-      a.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window, ctrlKey: true, metaKey: true }));
-      a.remove();
-    } catch (_) { try { window.open(url, '_blank', 'noopener'); } catch (__) {} }
+    const url = fichaHref + (fichaHref.indexOf('?') >= 0 ? '&' : '?') + 'sa_print=jobtag&sa_dl=1';
+    const a = document.createElement('a');
+    a.className = 'sa-wolabel-btn';
+    a.textContent = '🏷️';
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.title = 'Descargar el JobTag de esta OT (PDF). ⌘/Ctrl+clic (o clic con la rueda) = 2º plano, sin salir del dashboard → marca varias seguidas.';
+    a.setAttribute('aria-label', 'Descargar etiquetas de trabajo (JobTag)');
+    // Toast informativo SIN preventDefault → deja que el navegador abra la pestaña (⌘/Ctrl = 2º plano).
+    a.addEventListener('click', function () { toast('🏷️ Generando JobTag → se descargará. ⌘/Ctrl+clic para 2º plano y marcar varias.'); });
+    return a;
   }
   function ensureActionButtons(table) {
     if (!isLabelsOn()) return;
