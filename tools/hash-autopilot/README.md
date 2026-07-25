@@ -333,13 +333,16 @@ autopilot: `d2e1c52` SearchPartNumbers, `1bda4f9` FilterSearch).
   no gatilla el onClick de React de forma estable) → captura autónoma de ESTE op **best-effort**. Fallback
   real cuando rote: **hash-scanner** (correr el scanner HACIENDO el regen del PDF → actualizar
   `remote/config.json` a mano; probado 2026-07-24). Sentinela declarado por la regla de proceso.
-- **Falso positivo SILENCIADO (HECHO, commit `03d80f5`):** nueva lista `masked-ops.json`
-  `falseStaleScannerManaged: ["CreateInvoicePdf"]` (+ `_docFalseStale`). El motor la excluye de (a) el
-  intento de captura Fase C (no quema ciclo headless), y (b) `pendingMuts` + el conteo `nUrgentes` del
-  correo → queda SOLO en el log de consola (mismo patrón que las falsas alarmas probe=vigente). El
-  sentinel `invoicePdf` sigue declarado (regla de proceso) pero no se auto-intenta. Detección real de
-  rotación verdadera: el applet `invoice-auto-regen` falla, o una corrida manual del scanner muestra
-  hash nuevo. Para agregar otra op falso-stale gestionada por scanner: métela a esa lista.
+- **Falso positivo del correo SILENCIADO — pero se SIGUE PROBANDO (HECHO, commits `03d80f5` + `<este>`):**
+  nueva lista `masked-ops.json` `suppressPendingReport: ["CreateInvoicePdf"]` (+ `_docSuppressPendingReport`).
+  **Importante (corrección de diseño):** el motor **NO** excluye la op del intento de captura — el
+  sentinel `invoicePdf` **SE SIGUE INTENTANDO en cada corrida COMPLETA** (best-effort; en `--masked-only`
+  no, porque `mutationsToCapture` devuelve [] ahí). Lo que se **silencia es SOLO el REPORTE del intento
+  FALLIDO**: no sale en `pendingMuts` ni suma a `nUrgentes`; el fallo queda solo en el log de consola.
+  Así se **preserva la detección** (si de verdad rota Y el modal abre, se auto-deploya y sale como
+  "CORREGIDA Y DEPLOYADA") **sin el cry-wolf diario** por el modal flaky. Fallback confiable si el
+  best-effort no cacha la rotación: el applet `invoice-auto-regen` falla en prod, o el hash-scanner
+  manual (que SÍ abre el modal). Para agregar otra op así: métela a `suppressPendingReport`.
 - **Incidente de concurrencia 2026-07-24 (resuelto):** el launchd del autopilot corrió un auto-deploy
   mientras había WIP sin commitear + OTRA sesión editando el hash-autopilot. La danza `stash -u` +
   `checkout gh-pages` dejó el índice de main a medias, pero **se recuperó solo** (el stash se restauró).
