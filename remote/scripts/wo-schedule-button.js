@@ -390,6 +390,18 @@ const WoScheduleButton = (() => {
     try { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); } catch (_) {}
   }
 
+  // Click robusto para botones MUI/React: secuencia de eventos de puntero + click nativo.
+  // (`.click()` solo a veces no dispara el handler; la secuencia completa cubre onMouseDown/
+  // onPointerDown/onClick.) Un solo evento 'click' al final → no doble-dispara el render.
+  function clickButtonRobust(b) {
+    try { if (b.focus) b.focus(); } catch (_) {}
+    const opts = { bubbles: true, cancelable: true, view: window, button: 0 };
+    ['pointerover', 'pointerenter', 'pointerdown', 'mousedown', 'pointerup', 'mouseup'].forEach(function (type) {
+      try { b.dispatchEvent(new MouseEvent(type, opts)); } catch (_) {}
+    });
+    try { b.click(); } catch (_) {}
+  }
+
   // Orquestador. openTarget: 'newtab' (gesto del usuario) | 'self' (auto-disparo remoto).
   // Devuelve la share-URL. En 'newtab' preserva el gesto abriendo la pestaña YA.
   async function autoPrint(typeKey, openTarget) {
@@ -412,17 +424,26 @@ const WoScheduleButton = (() => {
           if (!trigger) { fail('No encontré el botón "Imprimir Etiquetas de Trabajo"'); return null; }
           PLOG('abro modal (intento ' + (attempt + 1) + ')'); trigger.click();
         } else { PLOG('modal ya abierto (intento ' + (attempt + 1) + ')'); }
-        // Espera el BOTÓN del modal (no solo el shell "Cargando…"). Hasta 11s.
-        pbtn = await waitFor(function () { const d = findAnyPrintDialog(); return d ? findModalPrintButton(d, typeKey) : null; }, 11000)
-          .catch(function () { return null; });
+        // Espera a que el modal esté LISTO: sin "Cargando…", con el dropdown de plantilla YA
+        // poblado (si no, "Imprimir Regular" no tiene plantilla → no-op) y el botón habilitado.
+        pbtn = await waitFor(function () {
+          const d = findAnyPrintDialog(); if (!d) return null;
+          if (/cargando|loading/i.test(d.textContent || '')) return null;   // aún cargando su contenido
+          const val = d.querySelector('[class*="singleValue"]');
+          if (val && !btnText(val)) return null;                            // dropdown existe pero SIN valor → esperar
+          const b = findModalPrintButton(d, typeKey);
+          return (b && !b.disabled) ? b : null;
+        }, 12000).catch(function () { return null; });
         if (!pbtn && attempt === 0) {
           PLOG('modal en "Cargando…" tras 11s → cierro, espero red-idle y reintento');
           closePrintDialogs(); await sleep(900); await waitForGraphqlIdle(1000, 8000);
         }
       }
-      if (!pbtn) { fail('El modal se quedó en "Cargando…" (los botones no aparecieron)'); return null; }
+      if (!pbtn) { fail('El modal se quedó en "Cargando…" o el dropdown de plantilla no cargó'); return null; }
+      await sleep(350);   // deja que React termine de cablear el onClick del botón
       const clickAt = Date.now();
-      PLOG('click "' + t.buttonTextEs + '"'); pbtn.click();
+      PLOG('click "' + t.buttonTextEs + '" (dropdown OK, disabled=' + !!pbtn.disabled + ')');
+      clickButtonRobust(pbtn);
       // Toma la share-URL de la respuesta INTERCEPTADA de GetPdfTemplateOutputV2 (robusto, apenas
       // el server responde) O del <object> del preview (fallback DOM). Hasta 40s (render server-side).
       let url;
