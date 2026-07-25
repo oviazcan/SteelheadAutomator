@@ -399,39 +399,10 @@ const WoScheduleButton = (() => {
     printToastTimer = setTimeout(function () { const e = document.getElementById('sa-woprint-toast'); if (e) e.remove(); }, 4500);
   }
 
-  // Botones de impresión rápida en el header (junto al readout). Molde: barra clara nativa
-  // con acento verde (señal de que es de la extensión).
-  const PRINT_BTNS_ID = 'sa-woprint-btns';
-  function ensurePrintButtons() {
-    if (!onDetail()) return;
-    if (document.getElementById(PRINT_BTNS_ID)) return;
-    const pdf = document.querySelector(PDF_ANCHOR);
-    if (!pdf || !pdf.parentElement) return;
-    injectPrintStyles();
-    const wrap = document.createElement('span'); wrap.id = PRINT_BTNS_ID; wrap.className = 'sa-woprint-btns';
-    [{ k: 'jobtag', label: '🏷️ JobTag', title: 'Genera el PDF de etiquetas (Regular) de esta OT, sin preview.' },
-     { k: 'verbose', label: '📋 Verbose', title: 'Genera el PDF detallado (Verbose) de esta OT, sin preview.' }].forEach(function (o) {
-      const b = document.createElement('button'); b.type = 'button'; b.className = 'sa-woprint-btn';
-      b.textContent = o.label; b.title = o.title;
-      b.addEventListener('click', function () { autoPrint(o.k, 'newtab'); });
-      wrap.appendChild(b);
-    });
-    pdf.parentElement.insertBefore(wrap, pdf);
-  }
-  function injectPrintStyles() {
-    if (document.getElementById('sa-woprint-style')) return;
-    const s = document.createElement('style'); s.id = 'sa-woprint-style';
-    s.textContent = [
-      '.sa-woprint-btns{display:inline-flex;gap:6px;margin:0 8px;vertical-align:middle;}',
-      '.sa-woprint-btn{display:inline-flex;align-items:center;gap:4px;background:#fff;color:#0d6b49;',
-      'border:1px solid #13a36f;border-radius:6px;padding:3px 9px;font-size:12px;font-weight:600;cursor:pointer;',
-      'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;white-space:nowrap;line-height:1.3;}',
-      '.sa-woprint-btn:hover{background:#e9f7f1;}',
-      '.sa-woprint-btn:active{background:#d6efe4;}',
-    ].join('');
-    document.head.appendChild(s);
-  }
-  function removePrintButtons() { const el = document.getElementById(PRINT_BTNS_ID); if (el) el.remove(); }
+  // NOTA: la impresión NO pone botones en la ficha (decisión del usuario 2026-07-24: el
+  // botón vive SOLO en la columna Acciones del listado). Aquí el auto-manejo es INVISIBLE:
+  // se dispara por el parámetro ?sa_print= (maybeAutoPrintFromParam) cuando el botón del
+  // listado abre la ficha en pestaña nueva. `autoPrint` queda expuesto para ese disparo.
 
   // ── Montaje idempotente + observer + navegación SPA ──────────────────────────
   let obsTimer = null;
@@ -447,7 +418,6 @@ const WoScheduleButton = (() => {
           // está programada?"). Arranca YA, sin diferir ni esperar idle.
           if (woId != null) { el.setAttribute('data-sa-loading', '1'); loadInline(woId, el); }
         }
-        ensurePrintButtons();   // botones de impresión rápida junto al readout
       } catch (_) {}
     }, 120);
   }
@@ -466,8 +436,8 @@ const WoScheduleButton = (() => {
     ['pushState', 'replaceState'].forEach(function (m) { const orig = history[m]; history[m] = function () { const r = orig.apply(this, arguments); fire(); return r; }; });
     window.addEventListener('popstate', fire);
     window.addEventListener('sa-wosched-urlchange', function () {
-      removeInline(); removePrintButtons();   // se re-crean para la nueva ficha
-      window.__saWoPrintFired = false;        // permite auto-disparo en la nueva ficha (?sa_print=)
+      removeInline();                    // se re-crea para la nueva ficha
+      window.__saWoPrintFired = false;   // permite auto-disparo en la nueva ficha (?sa_print=)
       if (onDetail()) { prefetch(currentWoIdInDomain()); scheduleEnsure(); maybeAutoPrintFromParam(); }
     });
   }

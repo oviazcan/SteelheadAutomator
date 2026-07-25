@@ -15,18 +15,44 @@ El PDF se genera **server-side** (PDFGeneratorAPI) y se entrega como **share-URL
 2. Modal **"Imprimir Etiqueta de Trabajo"**: 2 filas, cada una = dropdown de plantilla + botón `MuiButton-contained` **"Imprimir Regular"** (JobTag, orden 0) / **"Imprimir Detallado"** (Verbose, orden 1). + "Cancelar".
 3. Modal preview **"Vista Previa de Etiqueta de Trabajo"** con el `<object data="…/api/pdf/share/…">` → de ahí sale la URL.
 
-## Fase 1 construida (ficha) — `wo-schedule-button.js` + `wo-schedule-core.js`
+## Diseño FINAL (decisión del usuario 2026-07-24): botón SOLO en Acciones del listado
 
-- **Botones en el header** (junto al readout de programación): **🏷️ JobTag** y **📋 Verbose** (dark-accent verde sobre la barra clara). 1 clic → `autoPrint(tipo,'newtab')`.
-- **`autoPrint(typeKey, openTarget)`**: abre la pestaña YA (preserva user-gesture vs popup-blocker) → click trigger → espera modal → click "Imprimir Regular/Detallado" (por texto ES, fallback por orden) → espera el `<object>` con la share-URL → la abre → cierra modales (sin preview). Fail-safe: ante fallo, deja el modal nativo abierto + toast.
-- **Auto-disparo remoto** `?sa_print=jobtag|verbose` (`maybeAutoPrintFromParam`): base para Fase 2 (el listado abre la ficha con el flag → genera y navega la pestaña al PDF). `window.__saWoPrintFired` evita doble disparo; se resetea en cada nav.
-- **Core puro** (`wo-schedule-core.js`): `PRINT_TYPES`, `parsePrintParam`, `isPdfShareUrl`/`parsePdfShareUrl`, `buildPdfFilename`, `isPrintDialogHeading`/`isPrintPreviewHeading`. **+5 golden tests** (share-URL real, filenames, params, headings ES). **Deuda bilingüe:** anclajes de texto ES confirmados; EN sin capturar (el anclaje primario del botón del modal es ESTRUCTURAL —order + QrCode2Icon—, el texto solo confirma).
+**En la ficha NO se pone botón** ("dentro de la WO no tiene caso"). El botón vive en la
+columna **Acciones** del dashboard general (`/Domains/<d>/WorkOrders`). La ficha solo hace
+el auto-manejo **INVISIBLE**, disparado por `?sa_print=`.
 
-**PENDIENTE:** validación EN VIVO (el timing/selectores del modal no se pueden testear headless) — deploy → operador prueba 🏷️ JobTag en una ficha. Riesgo bajo: no-destructivo (mismo PDF que el flujo nativo), aditivo, fail-safe.
+### `wo-listing-columns.js` — botón 🏷️ en Acciones (por fila)
+- **4º toggle "🏷️ Etiquetas"** (`sa_wo_labels_enabled`, persistente, default OFF). Al activar,
+  inyecta un botón 🏷️ (acento verde) en la **celda NATIVA de Acciones** de cada fila (la que
+  tiene Editar/Archivar; anclaje por `svg[data-testid="EditIcon"|"ArchiveIcon"]` idioma-agnóstico,
+  fallback última td). Re-inyecta en cada sync (idempotente por fila, sobrevive el re-render).
+- **Click** → abre `/Domains/<d>/WorkOrders/<idInDomain>?sa_print=jobtag` en **pestaña nueva**
+  (user-gesture → no lo bloquea el popup blocker). **Por-OT (una a la vez) → sin el techo ~16-20**
+  de merge de PDFGeneratorAPI en batch.
 
-## Fase 2 (listado) — pendiente DOM
+### `wo-schedule-button.js` — auto-manejo INVISIBLE en la ficha (sin botones)
+- **`maybeAutoPrintFromParam()`**: en la ficha, si `?sa_print=jobtag|verbose` → espera el botón
+  nativo "Imprimir Etiquetas de Trabajo" (hasta 15s) → `autoPrint(tipo,'self')`. `window.__saWoPrintFired`
+  evita doble disparo; se resetea en cada nav.
+- **`autoPrint(typeKey, openTarget)`**: click trigger nativo → espera modal → click "Imprimir
+  Regular/Detallado" (por texto ES, fallback por ORDEN + QrCode2Icon) → espera el `<object>` con la
+  share-URL → navega la pestaña al PDF (`'self'`) o la abre (`'newtab'`) → cierra modales (sin preview).
+  **Fail-safe:** ante fallo deja el modal nativo abierto + toast (no deja colgado al operador).
 
-Botón por fila en la columna **Acciones** de `/Domains/<d>/WorkOrders` → abre `/WorkOrders/<idInDomain>?sa_print=jobtag` en pestaña nueva → `wo-schedule-button` auto-maneja y suelta el PDF. Por-OT (una a la vez) → **sin el techo de merge ~16-20 OTs** de PDFGeneratorAPI. **Falta el HTML de una fila de la columna Acciones** para colocar el botón.
+### Core puro (`wo-schedule-core.js`) — +5 golden tests
+`PRINT_TYPES`, `parsePrintParam`, `isPdfShareUrl`/`parsePdfShareUrl`, `buildPdfFilename`,
+`isPrintDialogHeading`/`isPrintPreviewHeading`. **Deuda bilingüe:** textos del modal en ES confirmados;
+EN sin capturar (el anclaje primario del botón del modal es ESTRUCTURAL —order + QrCode2Icon—, el texto
+solo confirma). **Sin hash nuevo ni cambio de `config.json`** (el auto-manejo dispara la UI nativa; SH
+llama `GetPdfTemplateOutputV2`, nosotros no).
+
+### Estado / pendientes
+- **MVP = JobTag** (el prioritario). El toggle inyecta el botón; el flujo completo
+  (listado → pestaña nueva → ficha auto-maneja → PDF) **PENDIENTE de validación EN VIVO**
+  (el timing/selectores del modal no se testean headless). Riesgo bajo: aditivo, no-destructivo, fail-safe.
+- **Verbose**: `autoPrint` ya lo soporta (`?sa_print=verbose`); falta exponerlo en el botón (menú) tras validar JobTag.
+- **WorkOrder PDF** (3er tipo): es el botón nativo **"Abrir PDF"** del header (flujo distinto al modal de
+  etiquetas); se suma como `?sa_print=wo` (drive de "Abrir PDF") en una iteración posterior.
 
 ---
 

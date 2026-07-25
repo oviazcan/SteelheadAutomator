@@ -25,6 +25,7 @@ const WoListingColumns = (() => {
   const PN_KEY = 'sa_wo_pn_col_enabled';       // persistente, default OFF
   const SCHED_KEY = 'sa_wo_sched_col_enabled'; // persistente, default OFF
   const LOTE_KEY = 'sa_wo_lote_col_enabled';   // persistente, default OFF
+  const LABELS_KEY = 'sa_wo_labels_enabled';   // persistente, default OFF (botón 🏷️ en Acciones)
   const MAX_CONC = 4;
   const MIN_GAP_MS = 130;
   const RETRY_BACKOFF = [0, 800, 2500];
@@ -42,9 +43,10 @@ const WoListingColumns = (() => {
   function isPnOn() { return getFlag(PN_KEY); }
   function isSchedOn() { return getFlag(SCHED_KEY); }
   function isLoteOn() { return getFlag(LOTE_KEY); }
-  function anyOn() { return isPnOn() || isSchedOn() || isLoteOn(); }
-  function isOnFor(kind) { return kind === 'pn' ? isPnOn() : kind === 'sched' ? isSchedOn() : isLoteOn(); }
-  function keyFor(kind) { return kind === 'pn' ? PN_KEY : kind === 'sched' ? SCHED_KEY : LOTE_KEY; }
+  function isLabelsOn() { return getFlag(LABELS_KEY); }
+  function anyOn() { return isPnOn() || isSchedOn() || isLoteOn() || isLabelsOn(); }
+  function isOnFor(kind) { return kind === 'pn' ? isPnOn() : kind === 'sched' ? isSchedOn() : kind === 'lote' ? isLoteOn() : isLabelsOn(); }
+  function keyFor(kind) { return kind === 'pn' ? PN_KEY : kind === 'sched' ? SCHED_KEY : kind === 'lote' ? LOTE_KEY : LABELS_KEY; }
   function onIndex() { return Core().isWorkOrdersIndexPath(location.pathname); }
 
   // Cache slim por idInDomain: { pns:[{id,name}], woGlobalId }.
@@ -101,6 +103,13 @@ const WoListingColumns = (() => {
       '.sa-wocol-sched-meta{color:#5a6b7a;font-size:11px;display:block;}',
       '.sa-wocol-muted{color:#8a97a5;font-style:italic;font-size:12px;}',
       '.sa-wocol-err{color:#b04a3a;font-size:12px;}',
+      // Botón 🏷️ en la celda de Acciones (junto a Editar/Archivar nativos). Acento verde = extensión.
+      'button.sa-wolabel-btn{display:inline-flex;align-items:center;justify-content:center;',
+      'width:26px;height:26px;padding:0;margin-left:2px;border:1px solid #13a36f;border-radius:6px;',
+      'background:#fff;color:#0d6b49;font-size:14px;line-height:1;cursor:pointer;vertical-align:middle;}',
+      'button.sa-wolabel-btn:hover{background:#e9f7f1;}',
+      'button.sa-wolabel-btn:active{background:#d6efe4;}',
+      'button.sa-wolabel-btn[disabled]{opacity:.5;cursor:default;}',
       '.sa-wocol-toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:2147483600;',
       'background:#1c2430;color:#e6e9ee;border:1px solid #2b3645;border-left:4px solid #13a36f;',
       'border-radius:10px;padding:12px 18px;font-size:14px;max-width:80vw;',
@@ -134,7 +143,9 @@ const WoListingColumns = (() => {
       ? 'Muestra el Número de Parte de cada OT (1 consulta por OT visible).'
       : kind === 'sched'
         ? 'Muestra la programación (estación · fecha · estado) de cada OT (1 consulta del tablero por página).'
-        : 'Muestra el Lote de cada OT: nombre (idInDomain), PS Cliente y fecha de recibido (1 consulta por OT visible).';
+        : kind === 'lote'
+          ? 'Muestra el Lote de cada OT: nombre (idInDomain), PS Cliente y fecha de recibido (1 consulta por OT visible).'
+          : 'Agrega un botón 🏷️ en la columna Acciones que genera el PDF de etiquetas (JobTag) de esa OT en pestaña nueva.';
     const sw = document.createElement('span'); sw.className = 'sa-wocol-sw';
     const txt = document.createElement('span'); txt.textContent = icon + ' ' + label;
     const cnt = document.createElement('span'); cnt.className = 'sa-wocol-count'; cnt.id = 'sa-wocol-count-' + kind;
@@ -156,6 +167,7 @@ const WoListingColumns = (() => {
     bar.appendChild(buildToggle('pn', 'Núm. de Parte', '🔩'));
     bar.appendChild(buildToggle('sched', 'Programación', '📅'));
     bar.appendChild(buildToggle('lote', 'Lote', '📦'));
+    bar.appendChild(buildToggle('labels', 'Etiquetas', '🏷️'));
     const mem = document.createElement('span'); mem.className = 'sa-wocol-count'; mem.id = 'sa-wocol-mem'; bar.appendChild(mem);
     anchor.parentElement ? anchor.parentElement.insertBefore(bar, anchor) : anchor.insertBefore(bar, anchor.firstChild);
     refreshToggleUI();
@@ -165,6 +177,7 @@ const WoListingColumns = (() => {
     const tp = document.getElementById('sa-wocol-toggle-pn'); if (tp) tp.classList.toggle('on', isPnOn());
     const ts = document.getElementById('sa-wocol-toggle-sched'); if (ts) ts.classList.toggle('on', isSchedOn());
     const tl = document.getElementById('sa-wocol-toggle-lote'); if (tl) tl.classList.toggle('on', isLoteOn());
+    const tb = document.getElementById('sa-wocol-toggle-labels'); if (tb) tb.classList.toggle('on', isLabelsOn());
     updateCount();
   }
 
@@ -179,6 +192,8 @@ const WoListingColumns = (() => {
       const err = document.querySelectorAll('td.sa-wocol-' + k + '[data-sa-state="error"]').length;
       c.textContent = total ? '  ' + (done + err) + '/' + total : '';
     });
+    const cb = document.getElementById('sa-wocol-count-labels');
+    if (cb) { const n = document.querySelectorAll('.sa-wolabel-btn').length; cb.textContent = isLabelsOn() && n ? '  ' + n : ''; }
   }
 
   // ── Columnas (siempre al INICIO de la fila, orden canónico [pn, sched]) ───────
@@ -603,6 +618,47 @@ const WoListingColumns = (() => {
   let obsTimer = null;
   function scheduleSync() { if (obsTimer) return; obsTimer = setTimeout(function () { obsTimer = null; try { syncColumns(); } catch (_) {} }, OBS_DEBOUNCE_MS); }
 
+  // ── Botón 🏷️ Etiquetas en la celda NATIVA de Acciones (por fila) ─────────────
+  // NO es una columna nuestra: inyecta un botón en la celda de Acciones (la que tiene
+  // Editar/Archivar). Click → abre la ficha en pestaña nueva con ?sa_print=jobtag; ahí
+  // wo-schedule-button AUTO-MANEJA el flujo nativo y suelta el PDF (server-side, POR-OT
+  // → sin el techo ~16-20 de PDFGeneratorAPI en batch). Re-inyecta en cada sync (idempotente).
+  function findActionsCell(tr) {
+    // Celda de Acciones = la que tiene el botón Editar/Archivar (testids idioma-agnósticos).
+    const icon = tr.querySelector('td svg[data-testid="EditIcon"], td svg[data-testid="ArchiveIcon"]');
+    if (icon && icon.closest('td')) return icon.closest('td');
+    // Fallback: última td que no sea nuestra.
+    const tds = tr.querySelectorAll('td:not(.sa-wocol-pn):not(.sa-wocol-sched):not(.sa-wocol-lote)');
+    return tds.length ? tds[tds.length - 1] : null;
+  }
+  function buildLabelButton(fichaHref) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'sa-wolabel-btn';
+    b.textContent = '🏷️';
+    b.title = 'Generar PDF de etiquetas (JobTag) de esta OT en pestaña nueva';
+    b.setAttribute('aria-label', 'Imprimir etiquetas de trabajo');
+    b.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      const url = fichaHref + (fichaHref.indexOf('?') >= 0 ? '&' : '?') + 'sa_print=jobtag';
+      window.open(url, '_blank', 'noopener');
+      toast('🏷️ Abriendo la OT para generar el JobTag (pestaña nueva)…');
+    });
+    return b;
+  }
+  function ensureActionButtons(table) {
+    if (!isLabelsOn()) return;
+    table.querySelectorAll('tbody tr').forEach(function (tr) {
+      const link = tr.querySelector('td a[href*="/WorkOrders/"]');
+      const href = link ? (link.getAttribute('href') || link.href || '') : '';
+      if (!href || Core().parseWorkOrderIdInDomain(href) == null) return;
+      const cell = findActionsCell(tr);
+      if (!cell || cell.querySelector('.sa-wolabel-btn')) return;   // idempotente por fila
+      cell.appendChild(buildLabelButton(href));
+    });
+  }
+  function removeLabelButtons() { document.querySelectorAll('.sa-wolabel-btn').forEach(function (b) { b.remove(); }); }
+
   function syncColumns() {
     if (!anyOn() || !onIndex()) return;
     ensureToggles();
@@ -614,6 +670,7 @@ const WoListingColumns = (() => {
     if (isPnOn()) enqueueKnownDetails();   // chips para filas ya cacheadas (p.ej. al activar el toggle)
     if (isSchedOn()) { if (board().state === 'ready') fillAllSchedCells(); else maybeLoadBoard(); }
     if (isLoteOn()) enqueueVisibleLote();
+    if (isLabelsOn()) ensureActionButtons(table);
     updateCount();
   }
 
@@ -634,7 +691,7 @@ const WoListingColumns = (() => {
     const p = pool(); p.queue.length = 0;
     detailPool().queue.length = 0;
     lotePool().queue.length = 0;
-    teardownObserver(); stopMonitor(); removeColumns(); refreshToggleUI();
+    teardownObserver(); stopMonitor(); removeColumns(); removeLabelButtons(); refreshToggleUI();
   }
 
   function toggle(kind) {
@@ -642,25 +699,27 @@ const WoListingColumns = (() => {
     const next = !getFlag(key);
     setFlag(key, next);
     refreshToggleUI();
-    const label = kind === 'pn' ? '🔩 Núm. de Parte' : kind === 'sched' ? '📅 Programación' : '📦 Lote';
+    const label = kind === 'pn' ? '🔩 Núm. de Parte' : kind === 'sched' ? '📅 Programación' : kind === 'lote' ? '📦 Lote' : '🏷️ Etiquetas';
     if (next) {
-      toast(label + ': ACTIVADO — cargando…');
+      toast(label + (kind === 'labels' ? ': ACTIVADO — botón en Acciones' : ': ACTIVADO — cargando…'));
       if (kind === 'sched') { board().state = 'idle'; }  // recarga el board si hace falta
       activate();
     } else {
       toast(label + ': DESACTIVADO');
       if (kind === 'pn') detailPool().queue.length = 0;   // corta la carga de etiquetas
       if (kind === 'lote') lotePool().queue.length = 0;   // corta la carga de lotes
-      removeColumnClass('sa-wocol-' + kind);
+      if (kind === 'labels') removeLabelButtons();        // quita los botones de Acciones
+      else removeColumnClass('sa-wocol-' + kind);
       if (!anyOn()) deactivate();
       else { refreshToggleUI(); syncColumns(); }
     }
-    return { pn: isPnOn(), sched: isSchedOn(), lote: isLoteOn() };
+    return { pn: isPnOn(), sched: isSchedOn(), lote: isLoteOn(), labels: isLabelsOn() };
   }
 
   function toggleFromPopup() { return toggle('pn'); }
   function toggleSchedFromPopup() { return toggle('sched'); }
   function toggleLoteFromPopup() { return toggle('lote'); }
+  function toggleLabelsFromPopup() { return toggle('labels'); }
 
   // ── Navegación SPA ─────────────────────────────────────────────────────────
   function installUrlChangeListener() {
@@ -691,14 +750,15 @@ const WoListingColumns = (() => {
   }
 
   return {
-    init, toggle, toggleFromPopup, toggleSchedFromPopup, toggleLoteFromPopup,
+    init, toggle, toggleFromPopup, toggleSchedFromPopup, toggleLoteFromPopup, toggleLabelsFromPopup,
     _getState: function () {
       const p = pool(), b = board(), lp = lotePool();
       return {
-        pn: isPnOn(), sched: isSchedOn(), lote: isLoteOn(), onIndex: onIndex(),
+        pn: isPnOn(), sched: isSchedOn(), lote: isLoteOn(), labels: isLabelsOn(), onIndex: onIndex(),
         rows: document.querySelectorAll('td.sa-wocol-pn, td.sa-wocol-sched, td.sa-wocol-lote').length,
         cached: cache().size, queue: p.queue.length, inFlight: p.inFlight, board: b.state,
         loteCached: loteCache().size, loteQueue: lp.queue.length, loteInFlight: lp.inFlight,
+        labelBtns: document.querySelectorAll('.sa-wolabel-btn').length,
       };
     },
   };
