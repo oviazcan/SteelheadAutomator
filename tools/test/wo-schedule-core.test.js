@@ -454,11 +454,11 @@ test('isPdfShareUrl + parsePdfShareUrl: share-URL real de Steelhead', () => {
   assert.equal(Core.parsePdfShareUrl('nope'), null);
 });
 
-test('buildPdfFilename: stem por tipo + idInDomain; fallback', () => {
-  assert.equal(Core.buildPdfFilename('jobtag', 15550), 'work-order-part-number-15550.pdf');
-  assert.equal(Core.buildPdfFilename('verbose', 15550), 'work-order-part-number-verbose-15550.pdf');
-  assert.equal(Core.buildPdfFilename('desconocido', 9), 'work-order-9.pdf');
-  assert.equal(Core.buildPdfFilename('jobtag', null), 'work-order-part-number.pdf');
+test('buildPdfFilename: "WO<idInDomain>.pdf" corto; verbose con sufijo', () => {
+  assert.equal(Core.buildPdfFilename('jobtag', 15550), 'WO15550.pdf');
+  assert.equal(Core.buildPdfFilename('verbose', 15550), 'WO15550-verbose.pdf');
+  assert.equal(Core.buildPdfFilename('desconocido', 9), 'WO9.pdf');
+  assert.equal(Core.buildPdfFilename('jobtag', null), 'WO.pdf');
 });
 
 test('printType / printTypeList: config de tipos', () => {

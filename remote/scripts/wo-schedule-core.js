@@ -506,11 +506,11 @@
     if (dn) { try { downloadName = decodeURIComponent(dn[1]); } catch (_) { downloadName = dn[1]; } }
     return { shareId: m[1], token: m[2], downloadName: downloadName };
   }
-  // Nombre de archivo de respaldo si la URL no trae downloadName.
+  // Nombre de archivo del PDF: "WO<idInDomain>.pdf" (corto, pedido del operador). Verbose lleva sufijo.
   function buildPdfFilename(typeKey, woIdInDomain) {
     const t = printType(typeKey);
-    const stem = t ? t.filenameStem : 'work-order';
-    return stem + (woIdInDomain != null ? '-' + woIdInDomain : '') + '.pdf';
+    const suffix = (t && t.key === 'verbose') ? '-verbose' : '';
+    return 'WO' + (woIdInDomain != null ? woIdInDomain : '') + suffix + '.pdf';
   }
 
   // Encabezado del modal de selección de plantilla (ES confirmado; EN = deuda bilingüe).
