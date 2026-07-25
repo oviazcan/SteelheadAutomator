@@ -439,6 +439,39 @@ async function archiveReportCentinelaAborted(page, sink) {
   if (dbg) console.log(`       [dbg] Archive Report → ${sink && sink.hashes && sink.hashes.ArchiveReport ? 'CAPTURADO' : 'sin hash aún'}`);
 }
 
+// ── Mutation de INVOICE PDF (captura-y-aborta) ──────────────────────────────
+// CreateInvoicePdf (usedBy invoice-auto-regen) es VIGENTE (verificado por hash-scanner 2026-07-24:
+// aafd22aa…, count 3, errorCount 0). Ruta: /Invoices?mode=PackingSlips → flecha 'Open PDF'
+// (OpenInNewIcon) → modal → icono RestorePageOutlinedIcon → CONFIRMAR. Se marca la op en
+// sink.abortOps ANTES de disparar → el interceptor registra el sha256Hash y ABORTA → CERO efecto.
+// CAVEAT: el modal del PDF NO abre confiable en headless (abrió 1/~10) → captura best-effort;
+// fallback real = hash-scanner (ver nota en sentinels-config invoicePdf).
+async function createInvoicePdfAborted(page, { domain, sink }) {
+  const dbg = process.env.SA_DBG;
+  if (sink && sink.abortOps) sink.abortOps.add('CreateInvoicePdf');
+  await page.goto(`${BASE}/Domains/${domain}/Invoices?mode=PackingSlips&roOffset=0`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  const openPdf = page.locator('svg[data-testid="OpenInNewIcon"]').first();
+  await openPdf.waitFor({ state: 'visible', timeout: 25000 }).catch(() => {});
+  // Reintenta abrir el modal (flaky headless): clic al icono hasta que aparezca el regen icon.
+  const openDeadline = Date.now() + 30000;
+  while (Date.now() < openDeadline && !(await page.locator('svg[data-testid="RestorePageOutlinedIcon"]').count().catch(() => 0))) {
+    await openPdf.click({ force: true, timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(3000);
+  }
+  const regen = page.locator('svg[data-testid="RestorePageOutlinedIcon"]').first();
+  const deadline = Date.now() + 20000;
+  while (Date.now() < deadline && !(sink && sink.hashes && sink.hashes.CreateInvoicePdf)) {
+    await regen.click({ force: true, timeout: 5000 }).catch(() => {});
+    // El clic abre un mini-modal 'Are you sure you would like to regenerate this pdf?'
+    // → botón Confirmar/Confirm dispara CreateInvoicePdf (el interceptor lo ABORTA → NO regenera).
+    const confirm = page.locator('button').filter({ hasText: /^(Confirmar|Confirm)$/i }).first();
+    await confirm.waitFor({ state: 'visible', timeout: 6000 }).catch(() => {});
+    await confirm.click({ force: true, timeout: 5000 }).catch(() => {});
+    await page.waitForTimeout(2000);
+  }
+  if (dbg) console.log(`       [dbg] CreateInvoicePdf → ${sink && sink.hashes && sink.hashes.CreateInvoicePdf ? 'CAPTURADO' : 'sin hash (modal no abrió — usar hash-scanner)'}`);
+}
+
 // Load compartido: verifica que la fila "Centinela" del tipo dado existe (isSentinel fail-closed).
 async function loadReportingRow(page, ariaLabel) {
   await page.goto(`${BASE}${REPORTING_EDIT}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
@@ -624,6 +657,17 @@ const HANDLERS = {
     async load(page) { return loadReportingRow(page, 'Archive report'); },
     async mutate(page, { sink }) { await archiveReportCentinelaAborted(page, sink); },
     async restore(page, { sink }) { if (sink && sink.abortOps) sink.abortOps.delete('ArchiveReport'); },
+  },
+  // ── INVOICE PDF (captura-y-aborta) — VIGENTE; captura headless best-effort, fallback hash-scanner ──
+  invoicePdf: {
+    async load(page, { domain }) {
+      await page.goto(`${BASE}/Domains/${domain}/Invoices?mode=PackingSlips&roOffset=0`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+      const ok = await page.locator('svg[data-testid="OpenInNewIcon"]').first()
+        .waitFor({ state: 'visible', timeout: 20000 }).then(() => 1).catch(() => 0);
+      return { name: ok ? 'Centinela (invoice-pdf capture-abort)' : '' };
+    },
+    async mutate(page, ctx) { await createInvoicePdfAborted(page, ctx); },
+    async restore(page, { sink }) { if (sink && sink.abortOps) sink.abortOps.delete('CreateInvoicePdf'); },
   },
 };
 

@@ -123,7 +123,16 @@
       "_estrategia": "capture-abort",
       "_nota": "ArchiveReport (usedBy report-liberator) por CAPTURA-Y-ABORTA sobre el REPORTE 'Centinela' en /Reporting/Edit. Fila = div.jss24 con div.jss50 :text-is('Centinela') + svg[aria-label='Archive report']. Clic archivar → modal 'Confirmar' ('Are you sure you wish to archive this report?') → botón 'Sí'/'Yes' → aborta (NO archiva). Doble candado: fila 'Centinela' exacta + abort. Rotó 2026-07-20 (cfg 796eb308 muerto). Requiere un reporte 'Centinela' persistente en /Reporting/Edit."
     },
-    "_deprecated_CreateInvoicePdf": "CreateInvoicePdf quedó DEPRECADA en Steelhead (2026-07-24): al regenerar el PDF de un invoice el frontend YA NO dispara la op 'CreateInvoicePdf' (verificado por el operador viendo su red — aparece un PDF nuevo pero NINGÚN 'CreateInvoicePdf'). El hash del config está muerto ('Must provide a query string') porque el op ya no existe. Un op muerto NO se recaptura: no hay sentinela posible. Pendiente REAL: capturar en DevTools (Network→graphql) el operationName NUEVO que dispara la regeneración, actualizar remote/config.json (reemplazar CreateInvoicePdf por el nuevo) + remote/scripts/invoice-auto-regen.js (el waiter en :200 checa 'CreateInvoicePdf'), y dar de alta el sentinela con el nombre nuevo. El headless NO logra abrir el modal del PDF (8/8 intentos) → esta captura debe hacerse en el navegador real del operador."
+    "invoicePdf": {
+      "id": "invoice-first-in-list",
+      "screenPath": "/Domains/{domain}/Invoices?mode=PackingSlips&roOffset=0",
+      "marker": "(primer invoice de la lista, sin objeto Centinela)",
+      "_para": [
+        "CreateInvoicePdf"
+      ],
+      "_estrategia": "capture-abort",
+      "_nota": "CreateInvoicePdf (usedBy invoice-auto-regen) por CAPTURA-Y-ABORTA. VIGENTE (NO deprecada) — verificado por hash-scanner 2026-07-24: la op dispara al regenerar el PDF de un invoice (status known, count 3, errorCount 0, hash aafd22aa663f… = el del config; el 'rotada sin capturar' del reporte diario fue FALSO POSITIVO — la mutation da falso-stale al probe/ciclo, NO está muerta). Ruta REAL confirmada por el operador: /Domains/{domain}/Invoices?mode=PackingSlips → flecha 'Open PDF' (svg[data-testid=OpenInNewIcon]) de un invoice → modal con 'Invoice History' → icono svg[data-testid=RestorePageOutlinedIcon] → mini-modal 'Are you sure you would like to regenerate this pdf?' → botón CONFIRMAR/Confirm → dispara CreateInvoicePdf → el interceptor lo marca en sink.abortOps y ABORTA → NO regenera (cero efecto). SIN objeto Centinela (capture-abort = cero efecto; seguridad por el abort, igual que reportGenerateDb). El load devuelve name 'Centinela (...)' para pasar isSentinel. CAVEAT HEADLESS: el modal del PDF NO abre confiable en Chromium headless (probado exhaustivamente 2026-07-24: abrió 1/~10 con click({force}); OpenInNewIcon no gatilla el onClick de React de forma estable) → la captura AUTÓNOMA de ESTE op es best-effort. Cuando el hash rote de verdad, la ruta práctica es el HASH-SCANNER: correr el scanner haciendo el regen (probado 2026-07-24, capturó aafd22aa) → actualizar remote/config.json a mano. Sentinela declarado por la regla de proceso (todo hash con su ruta)."
+    }
   },
   "_dominio": "TLC/344 (Toluca — los centinelas viven aquí; 344 es TLC, NO MTY. MTY es otro dominio sin datos aún)"
 }
