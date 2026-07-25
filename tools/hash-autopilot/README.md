@@ -333,6 +333,17 @@ autopilot: `d2e1c52` SearchPartNumbers, `1bda4f9` FilterSearch).
   no gatilla el onClick de React de forma estable) → captura autónoma de ESTE op **best-effort**. Fallback
   real cuando rote: **hash-scanner** (correr el scanner HACIENDO el regen del PDF → actualizar
   `remote/config.json` a mano; probado 2026-07-24). Sentinela declarado por la regla de proceso.
+  - **Callejón sin salida DESCARTADO (2026-07-24 — NO re-explorar):** intenté endurecer usando la
+    **página de DETALLE** del invoice (`/Domains/{domain}/Invoices/{id}`) en vez del modal. Esa página
+    **sí** muestra el `RestorePageOutlinedIcon` de forma determinista (3/3) y su popover abre — **pero su
+    botón CONFIRMAR dispara `InvoiceByIdInDomain` + `GetPaymentLink` (refresh de datos), NO
+    `CreateInvoicePdf`** (verificado con logger pasivo de requests, `harden-v4`). El regen de la página de
+    detalle es una **acción distinta**; `CreateInvoicePdf` **solo** lo dispara el regen del **MODAL** (Open
+    PDF desde la lista), y ese modal no abre confiable headless (0/3 con click real/coords/hover).
+    **Conclusión:** la superficie que dispara el op no se automatiza headless y la que se automatiza
+    (detalle) dispara otro op → **captura autónoma NO factible** con esfuerzo razonable (probablemente
+    requiere gesto humano "trusted" o event-system no estándar). Único de ~232 hashes que no es 100%
+    autónomo; los otros 6 session-sensitive **sí** lo son. El scanner es la vía para éste.
 - **Falso positivo del correo SILENCIADO — pero se SIGUE PROBANDO (HECHO, commits `03d80f5` + `<este>`):**
   nueva lista `masked-ops.json` `suppressPendingReport: ["CreateInvoicePdf"]` (+ `_docSuppressPendingReport`).
   **Importante (corrección de diseño):** el motor **NO** excluye la op del intento de captura — el
