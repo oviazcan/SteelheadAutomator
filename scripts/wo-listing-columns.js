@@ -631,23 +631,133 @@ const WoListingColumns = (() => {
     const tds = tr.querySelectorAll('td:not(.sa-wocol-pn):not(.sa-wocol-sched):not(.sa-wocol-lote)');
     return tds.length ? tds[tds.length - 1] : null;
   }
-  // El 🏷️ es un LINK real <a target="_blank"> → el navegador maneja la apertura nativamente:
-  // ⌘/Ctrl+clic (o clic con rueda) = pestaña en 2º PLANO SIN robar el foco (el operador marca
-  // varias seguidas); clic normal = 1ª plano. Un click sintético con ctrlKey NO engaña al
-  // navegador (solo un modificador REAL abre en 2º plano), por eso NO forzamos por JS.
+  // El 🏷️ genera el JobTag en un IFRAME OCULTO dentro del dashboard → NO abre pestaña (no roba
+  // el foco) y NO se estrangula (corre a full speed). Fallback a pestaña si SH bloquea enmarcar.
   function buildLabelButton(fichaHref) {
-    const url = fichaHref + (fichaHref.indexOf('?') >= 0 ? '&' : '?') + 'sa_print=jobtag&sa_dl=1';
-    const a = document.createElement('a');
-    a.className = 'sa-wolabel-btn';
-    a.textContent = '🏷️';
-    a.href = url;
-    a.target = '_blank';
-    a.rel = 'noopener';
-    a.title = 'Descargar el JobTag de esta OT (PDF). ⌘/Ctrl+clic (o clic con la rueda) = 2º plano, sin salir del dashboard → marca varias seguidas.';
-    a.setAttribute('aria-label', 'Descargar etiquetas de trabajo (JobTag)');
-    // Toast informativo SIN preventDefault → deja que el navegador abra la pestaña (⌘/Ctrl = 2º plano).
-    a.addEventListener('click', function () { toast('🏷️ Generando JobTag → se descargará. ⌘/Ctrl+clic para 2º plano y marcar varias.'); });
-    return a;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'sa-wolabel-btn';
+    b.textContent = '🏷️';
+    b.title = 'Generar y DESCARGAR el JobTag de esta OT — en 2º plano, sin salir del dashboard.';
+    b.setAttribute('aria-label', 'Descargar etiquetas de trabajo (JobTag)');
+    b.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); driveLabel(b, fichaHref, 'jobtag'); });
+    return b;
+  }
+
+  // ── Generación via IFRAME OCULTO (same-origin → el PADRE maneja el modal dentro) ──────
+  // La extensión NO inyecta en iframes (manifest sin all_frames), pero el iframe es same-origin,
+  // así que desde el dashboard (world:MAIN) accedemos a iframe.contentDocument y manejamos su
+  // modal directo. Ventaja: sin pestaña (no roba foco) y sin throttle (rápido). Fallback: pestaña.
+  const PRINT_ANCHOR_SEL = '[data-steelhead-component-id="WORK_ORDER_PAGE_HEADER_PRINT_JOB_TAGS_BUTTON"]';
+  function isVis(el) { return !!(el && (el.offsetParent !== null || (el.getClientRects && el.getClientRects().length))); }
+  function txtOf(el) { return (el && el.textContent ? el.textContent : '').replace(/\s+/g, ' ').trim(); }
+  function sleepP(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function waitForIn(fn, timeoutMs) {
+    return new Promise(function (res) {
+      const t0 = Date.now();
+      (function tick() { let v = null; try { v = fn(); } catch (_) {} if (v) return res(v); if (Date.now() - t0 > timeoutMs) return res(null); setTimeout(tick, 200); })();
+    });
+  }
+  function findTriggerIn(doc) {
+    if (!doc) return null;
+    const a = doc.querySelector(PRINT_ANCHOR_SEL);
+    if (a) {
+      const btn = Array.prototype.slice.call(a.querySelectorAll('button')).find(isVis); if (btn) return btn;
+      const ic = Array.prototype.slice.call(a.querySelectorAll('[aria-label]')).find(function (e) { return isVis(e) && e.querySelector && e.querySelector('svg[data-testid="QrCode2Icon"]'); }); if (ic) return ic;
+      if (isVis(a)) return a;
+    }
+    return null;
+  }
+  function findDialogIn(doc) {
+    if (!doc) return null;
+    const dgs = doc.querySelectorAll('[role="dialog"]');
+    for (let i = 0; i < dgs.length; i++) {
+      const d = dgs[i]; const h = d.querySelector('h2,h6');
+      if (/imprimir\s+etiqueta\s+de\s+trabajo|print\s+(?:multiple\s+)?job\s+tag/i.test(txtOf(h))) return d;
+      if (d.querySelector('button.MuiButton-contained svg[data-testid="QrCode2Icon"]')) return d;
+    }
+    return null;
+  }
+  function findModalBtnIn(dlg, typeKey) {
+    const t = Core().printType(typeKey); if (!dlg || !t) return null;
+    const bs = Array.prototype.slice.call(dlg.querySelectorAll('button.MuiButton-contained')).filter(function (b) { return b.querySelector('svg[data-testid="QrCode2Icon"]'); });
+    const byText = bs.find(function (b) { return txtOf(b).toLowerCase() === t.buttonTextEs.toLowerCase(); });
+    return byText || bs[t.order] || null;
+  }
+  function findShareUrlIn(doc) {
+    if (!doc) return null;
+    const ns = doc.querySelectorAll('object[data*="/api/pdf/share/"],a[href*="/api/pdf/share/"],iframe[src*="/api/pdf/share/"]');
+    for (let i = 0; i < ns.length; i++) { const u = ns[i].getAttribute('data') || ns[i].getAttribute('href') || ns[i].getAttribute('src') || ''; if (Core().isPdfShareUrl(u)) return u.indexOf('http') === 0 ? u : (location.origin + u); }
+    return null;
+  }
+  function clickRobustIn(b, win) {
+    const W = win || window;
+    try { if (b.focus) b.focus(); } catch (_) {}
+    const opts = { bubbles: true, cancelable: true, view: W, button: 0 };
+    ['pointerdown', 'mousedown', 'pointerup', 'mouseup'].forEach(function (ty) { try { b.dispatchEvent(new (W.MouseEvent || MouseEvent)(ty, opts)); } catch (_) {} });
+    try { b.click(); } catch (_) {}
+  }
+  function downloadShort(url, typeKey, woIdInDomain) {
+    try {
+      const name = Core().buildPdfFilename(typeKey, woIdInDomain);
+      const dlUrl = url.split('?')[0] + '?downloadName=' + encodeURIComponent(name);
+      const a = document.createElement('a'); a.href = dlUrl; a.download = name; a.rel = 'noopener';
+      document.body.appendChild(a); a.click(); a.remove();
+      return name;
+    } catch (_) { return null; }
+  }
+  // Maneja el modal DENTRO del iframe. true si generó+descargó; false si bloqueado/no cargó.
+  async function runIframePrint(iframe, typeKey, woIdInDomain) {
+    const getDoc = function () { try { return iframe.contentDocument; } catch (_) { return null; } };
+    const getWin = function () { try { return iframe.contentWindow; } catch (_) { return null; } };
+    const trigger = await waitForIn(function () { return findTriggerIn(getDoc()); }, 30000);
+    if (!trigger) return false;   // enmarcado bloqueado (X-Frame-Options) o la ficha no cargó
+    clickRobustIn(trigger, getWin());
+    const pbtn = await waitForIn(function () {
+      const d = getDoc(); if (!d) return null;
+      const dlg = findDialogIn(d); if (!dlg) return null;
+      if (/cargando|loading/i.test(dlg.textContent || '')) return null;
+      const val = dlg.querySelector('[class*="singleValue"]'); if (val && !txtOf(val)) return null;
+      const b = findModalBtnIn(dlg, typeKey); return (b && !b.disabled) ? b : null;
+    }, 30000);
+    if (!pbtn) return false;
+    await sleepP(900);                       // margen anti-blanco
+    clickRobustIn(pbtn, getWin());
+    const url = await waitForIn(function () { return findShareUrlIn(getDoc()); }, 45000);
+    if (!url) return false;
+    downloadShort(url, typeKey, woIdInDomain);
+    return true;
+  }
+  // Tope de concurrencia: cada iframe carga un SPA completo (pesado) → máx N a la vez, encola.
+  function labelQueue() { if (!window.__saLabelQ) window.__saLabelQ = { active: 0, max: 4, waiting: [] }; return window.__saLabelQ; }
+  async function driveLabel(btn, fichaHref, typeKey) {
+    const q = labelQueue();
+    if (q.active >= q.max) { if (btn) btn.textContent = '⋯'; await new Promise(function (res) { q.waiting.push(res); }); }
+    q.active++;
+    try { await driveLabelCore(btn, fichaHref, typeKey); }
+    finally { q.active--; const next = q.waiting.shift(); if (next) next(); }
+  }
+  async function driveLabelCore(btn, fichaHref, typeKey) {
+    const woId = Core().parseWorkOrderIdInDomain(fichaHref);
+    if (btn) { btn.textContent = '⏳'; btn.style.pointerEvents = 'none'; }
+    const iframe = document.createElement('iframe');
+    iframe.setAttribute('aria-hidden', 'true');
+    // Offscreen con dimensiones REALES (no display:none, que impide render) → el SPA renderiza el
+    // modal completo (botón grande, no la versión icono chica). opacity:0 evita cualquier flash.
+    iframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:1400px;height:950px;border:0;opacity:0;pointer-events:none;';
+    iframe.src = fichaHref;   // sin ?sa_print: el applet NO corre dentro; el PADRE maneja
+    document.body.appendChild(iframe);
+    let ok = false;
+    try { ok = await runIframePrint(iframe, typeKey, woId); }
+    catch (e) { console.warn('[SA] wo-labels iframe:', e && e.message); }
+    try { iframe.remove(); } catch (_) {}
+    if (btn) { btn.textContent = ok ? '✅' : '🏷️'; btn.style.pointerEvents = ''; if (ok) setTimeout(function () { if (btn) btn.textContent = '🏷️'; }, 2500); }
+    if (ok) { toast('🏷️ WO' + (woId != null ? woId : '') + '.pdf descargado.'); }
+    else {
+      // Fallback: SH bloquea enmarcar (o no cargó) → abrir pestaña (⌘/Ctrl+clic para no perder foco).
+      toast('🏷️ No se pudo en 2º plano — abro pestaña (⌘/Ctrl+clic evita perder el foco).');
+      window.open(fichaHref + (fichaHref.indexOf('?') >= 0 ? '&' : '?') + 'sa_print=' + typeKey + '&sa_dl=1', '_blank');
+    }
   }
   function ensureActionButtons(table) {
     if (!isLabelsOn()) return;
