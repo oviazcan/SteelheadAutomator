@@ -474,19 +474,37 @@ const WoScheduleButton = (() => {
     const typeKey = Core().parsePrintParam(location.search);
     if (!typeKey || window.__saWoPrintFired) return;
     window.__saWoPrintFired = true;
-    PLOG('auto-disparo remoto: ' + typeKey);
-    (async function () {
+    PLOG('auto-disparo remoto: ' + typeKey + ' (visible=' + document.visibilityState + ')');
+    const run = async function () {
       try {
-        await waitFor(findPrintTrigger, 20000);   // el header con el botón nativo
-        if (document.readyState !== 'complete') {
-          await new Promise(function (r) { window.addEventListener('load', r, { once: true }); setTimeout(r, 4000); });
-        }
-        await waitForGraphqlIdle(1200, 15000);     // deja que la ficha termine (WorkOrderSchedule, etc.)
-        await sleep(500);
-        PLOG('red calmada → auto-imprimo ' + typeKey);
+        await waitFor(findPrintTrigger, 60000);   // generoso: el tab pudo abrir en 2º plano (throttle)
+        await waitForGraphqlIdle(1000, 12000);     // deja que la ficha termine (WorkOrderSchedule, etc.)
+        await sleep(400);
+        PLOG('página lista → auto-imprimo ' + typeKey);
         autoPrint(typeKey, 'self');
-      } catch (e) { PLOG('auto-disparo abortado: ' + (e && e.message)); }
-    })();
+      } catch (e) {
+        PLOG('auto-disparo no completó (' + (e && e.message) + ') → dejo el modal listo para 1 clic');
+        openModalForManual(typeKey);
+      }
+    };
+    // El navegador suele abrir la pestaña en 2º plano → los timers/fetch se estrangulan y la
+    // ficha no renderiza. Corremos SOLO cuando la pestaña está VISIBLE (el operador la ve).
+    if (document.visibilityState === 'visible') { run(); }
+    else {
+      PLOG('tab en 2º plano → espero a que lo veas para generar');
+      const onVis = function () {
+        if (document.visibilityState === 'visible') { document.removeEventListener('visibilitychange', onVis); run(); }
+      };
+      document.addEventListener('visibilitychange', onVis);
+    }
+  }
+  // Fallback: si el auto-manejo no completa, deja el modal nativo abierto para el último clic.
+  async function openModalForManual(typeKey) {
+    try {
+      if (!findAnyPrintDialog()) { const trg = findPrintTrigger(); if (trg) trg.click(); }
+      const t = Core().printType(typeKey);
+      printToast('🏷️ Abrí el modal de etiquetas — dale clic a "' + (t ? t.buttonTextEs : 'Imprimir Regular') + '".');
+    } catch (_) {}
   }
 
   let printToastTimer = null;
