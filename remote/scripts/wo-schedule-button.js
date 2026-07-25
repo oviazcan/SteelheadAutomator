@@ -391,6 +391,18 @@ const WoScheduleButton = (() => {
     if (byText) return byText;
     return btns[t.order] || null;
   }
+  // Descarga el PDF a la carpeta Descargas (sin navegar) — la share-URL es same-origin, así que
+  // el atributo `download` fuerza la descarga con nombre. Funciona aun en pestaña de 2º plano.
+  function downloadPdf(url, typeKey) {
+    try {
+      const parsed = Core().parsePdfShareUrl(url);
+      const name = (parsed && parsed.downloadName) ? parsed.downloadName : Core().buildPdfFilename(typeKey, currentWoIdInDomain());
+      const a = document.createElement('a');
+      a.href = url; a.download = name; a.rel = 'noopener';
+      document.body.appendChild(a); a.click(); a.remove();
+      PLOG('descarga disparada: ' + name);
+    } catch (e) { PLOG('descarga falló → navego: ' + (e && e.message)); try { location.href = url; } catch (_) {} }
+  }
   // Share-URL interceptada de GetPdfTemplateOutputV2, si es MÁS reciente que el click actual.
   function freshPdfUrl(sinceMs) {
     const s = window.__saLastPdfShare;
@@ -483,11 +495,17 @@ const WoScheduleButton = (() => {
         return null;
       }
       PLOG('PDF listo: ' + url);
-      if (win) { try { win.location.href = url; } catch (_) { window.open(url, '_blank'); } }
-      else if (openTarget === 'self') { location.href = url; }
-      else { window.open(url, '_blank'); }
-      setTimeout(closePrintDialogs, 400);   // deja que el <object> exista antes de cerrar
-      printToast('🏷️ PDF ' + t.key + ' generado.');
+      if (openTarget === 'download') {
+        downloadPdf(url, typeKey);
+        setTimeout(closePrintDialogs, 300);
+        setTimeout(function () { try { window.close(); } catch (_) {} }, 2000);   // cierra la pestaña de 2º plano (best-effort)
+      } else {
+        if (win) { try { win.location.href = url; } catch (_) { window.open(url, '_blank'); } }
+        else if (openTarget === 'self') { location.href = url; }
+        else { window.open(url, '_blank'); }
+        setTimeout(closePrintDialogs, 400);   // deja que el <object> exista antes de cerrar
+        printToast('🏷️ PDF ' + t.key + ' generado.');
+      }
       return url;
     } catch (e) {
       fail('No pude generar el PDF (' + (e && e.message ? e.message : 'error') + ')');
@@ -503,33 +521,26 @@ const WoScheduleButton = (() => {
     const typeKey = Core().parsePrintParam(location.search);
     if (!typeKey || window.__saWoPrintFired) return;
     window.__saWoPrintFired = true;
-    PLOG('auto-disparo remoto: ' + typeKey + ' (visible=' + document.visibilityState + ')');
-    const run = async function () {
+    const dl = /[?&]sa_dl=1/i.test(location.search);   // modo DESCARGA (pestaña de 2º plano)
+    PLOG('auto-disparo remoto: ' + typeKey + (dl ? ' [descarga]' : '') + ' visible=' + document.visibilityState);
+    (async function run() {
       try {
         PLOG('run(): esperando el botón "Imprimir Etiquetas" del header…');
-        try { await waitFor(findPrintTrigger, 5000); }
-        catch (_) { dumpTriggerCandidates(); await waitFor(findPrintTrigger, 55000); }
+        // La pestaña se abre en 2º PLANO (para lanzar varias en paralelo): los timers se
+        // estrangulan → damos MUCHA paciencia. El render y la descarga corren igual en 2º plano.
+        try { await waitFor(findPrintTrigger, 6000); }
+        catch (_) { dumpTriggerCandidates(); await waitFor(findPrintTrigger, 90000); }
         PLOG('trigger encontrado → espero red-idle');
-        await waitForGraphqlIdle(1000, 12000);     // deja que la ficha termine (WorkOrderSchedule, etc.)
+        await waitForGraphqlIdle(1000, 15000);
         await sleep(400);
         PLOG('página lista → auto-imprimo ' + typeKey);
-        autoPrint(typeKey, 'self');
+        autoPrint(typeKey, dl ? 'download' : 'self');
       } catch (e) {
-        PLOG('auto-disparo no completó (' + (e && e.message) + ') → dejo el modal listo para 1 clic');
+        PLOG('auto-disparo no completó (' + (e && e.message) + ')');
         dumpTriggerCandidates();
         openModalForManual(typeKey);
       }
-    };
-    // El navegador suele abrir la pestaña en 2º plano → los timers/fetch se estrangulan y la
-    // ficha no renderiza. Corremos SOLO cuando la pestaña está VISIBLE (el operador la ve).
-    if (document.visibilityState === 'visible') { run(); }
-    else {
-      PLOG('tab en 2º plano → espero a que lo veas para generar');
-      const onVis = function () {
-        if (document.visibilityState === 'visible') { document.removeEventListener('visibilitychange', onVis); run(); }
-      };
-      document.addEventListener('visibilitychange', onVis);
-    }
+    })();
   }
   // Fallback: si el auto-manejo no completa, deja el modal nativo abierto para el último clic.
   async function openModalForManual(typeKey) {

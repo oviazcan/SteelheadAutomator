@@ -636,15 +636,26 @@ const WoListingColumns = (() => {
     b.type = 'button';
     b.className = 'sa-wolabel-btn';
     b.textContent = '🏷️';
-    b.title = 'Generar PDF de etiquetas (JobTag) de esta OT en pestaña nueva';
-    b.setAttribute('aria-label', 'Imprimir etiquetas de trabajo');
+    b.title = 'Generar y DESCARGAR el PDF de etiquetas (JobTag) de esta OT — en 2º plano, sin salir del dashboard (marca varias seguidas).';
+    b.setAttribute('aria-label', 'Descargar etiquetas de trabajo (JobTag)');
     b.addEventListener('click', function (e) {
       e.preventDefault(); e.stopPropagation();
-      const url = fichaHref + (fichaHref.indexOf('?') >= 0 ? '&' : '?') + 'sa_print=jobtag';
-      window.open(url, '_blank', 'noopener');
-      toast('🏷️ Abriendo la OT para generar el JobTag (pestaña nueva)…');
+      const url = fichaHref + (fichaHref.indexOf('?') >= 0 ? '&' : '?') + 'sa_print=jobtag&sa_dl=1';
+      openInBackground(url);
+      toast('🏷️ Generando JobTag en 2º plano — se descargará. Puedes marcar más OTs.');
     });
     return b;
+  }
+  // Abre la URL en una pestaña de 2º PLANO (cmd/ctrl+click sobre un <a>), sin robar el foco del
+  // dashboard → el operador marca VARIAS OTs seguidas y cada una genera+descarga su PDF en paralelo.
+  function openInBackground(url) {
+    try {
+      const a = document.createElement('a');
+      a.href = url; a.target = '_blank'; a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window, ctrlKey: true, metaKey: true }));
+      a.remove();
+    } catch (_) { try { window.open(url, '_blank', 'noopener'); } catch (__) {} }
   }
   function ensureActionButtons(table) {
     if (!isLabelsOn()) return;
