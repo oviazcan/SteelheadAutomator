@@ -26,6 +26,11 @@ const EXPECTED = {
   // (?id=<INSIGHT>&type=insight); la ruta de pathname /Reporting/View NO las dispara.
   GetInsightsReportDetails: 'reporting-insights-detail',
   GetInsightsReportColumnConfigs: 'reporting-insights-detail',
+  // Buscadores type-ahead (2026-07-24): solo se disparan por INTERACCIÓN, no navegando.
+  // FilterSearch al ABRIR un filtro de columna de Work Orders (sin teclear); SearchPartNumbers
+  // al TECLEAR en el modal 'Agregar Filtro' de /UploadedFiles (categoría 'Número de Parte').
+  FilterSearch: 'workorders-filter-open',
+  SearchPartNumbers: 'uploadedfiles-pn-filter',
 };
 
 test('cada op manual está SOLO en su ruta dedicada (no en rutas de pathname)', () => {
@@ -35,7 +40,7 @@ test('cada op manual está SOLO en su ruta dedicada (no en rutas de pathname)', 
   }
 });
 
-test('_interactionOps + _manualRouteOps cubren exactamente las 14 ops manuales', () => {
+test('_interactionOps + _manualRouteOps cubren exactamente las 16 ops manuales', () => {
   const manual = new Set([...(cat._interactionOps || []), ...(cat._manualRouteOps || [])]);
   assert.deepEqual([...manual].sort(), Object.keys(EXPECTED).sort());
 });
@@ -68,4 +73,28 @@ test('ruta de factura (interacción por aria-label): goto PackingSlips + clickFi
   // SEGURIDAD: la receta NUNCA clica "Crear Factura" (submit) → abre el modal y cierra sin guardar.
   assert.match(r.steps[1].clickFirst, /Add Invoice/);
   assert.deepEqual(r.captures, ['GetReceivedOrdersWithReceivedOrderLineItems']);
+});
+
+test('ruta FilterSearch: abre un filtro de columna de Work Orders (clic estructural, sin teclear)', () => {
+  const r = cat.routes['workorders-filter-open'];
+  assert.equal(r.steps[0].goto, '/Domains/{domain}/WorkOrders');
+  // anclaje ESTRUCTURAL por el icono del filtro, excluyendo los MuiSelect (headless en inglés)
+  assert.match(r.steps[1].clickFirst, /ArrowDropDownIcon/);
+  assert.match(r.steps[1].clickFirst, /:not\(\.MuiSelect-icon\)/);
+  assert.deepEqual(r.captures, ['FilterSearch']);
+});
+
+test('ruta SearchPartNumbers: modal Agregar Filtro (setup once) + typeInto captura', () => {
+  const r = cat.routes['uploadedfiles-pn-filter'];
+  assert.equal(r.steps[0].goto, '/Domains/{domain}/UploadedFiles');
+  assert.match(r.steps[1].clickFirst, /FilterListIcon/);
+  // opción por VALOR estable (idioma-agnóstico), no por texto
+  assert.match(r.steps[3].clickFirst, /data-value="partNumberId"/);
+  // los 3 clics de setup son once (clic único, no re-clic que cierre el modal/menú)
+  assert.equal(r.steps[1].once, true);
+  assert.equal(r.steps[2].once, true);
+  assert.equal(r.steps[3].once, true);
+  // el paso que CAPTURA es el typeInto (search-as-you-type)
+  assert.ok(r.steps[4].typeInto);
+  assert.deepEqual(r.captures, ['SearchPartNumbers']);
 });
