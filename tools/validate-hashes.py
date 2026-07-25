@@ -130,10 +130,20 @@ def main() -> int:
     # RECAPTURA SIEMPRE (misma lista → skipeamos EXACTAMENTE lo que el motor cubre,
     # sin huecos). Fallback al viejo hash-validator-whitelist.json solo si masked-ops
     # no existe (defensa transicional).
+    #
+    # suppressPendingReport (2026-07-24): falsos positivos session-sensitive que ADEMÁS
+    # NO se pueden recapturar headless (callejón sin salida documentado en
+    # hash-autopilot/README.md — p.ej. CreateInvoicePdf: el op solo lo dispara el modal
+    # "Open PDF" que no abre confiable en Chromium headless). Se whitelistean aquí para
+    # que su falso-stale PERMANENTE no dispare el motor completo cada hora en vano (VAL_RC=1
+    # → gate abre motor → intento futil). Su rotación REAL se detecta por el fallback
+    # humano: el applet consumidor truena en prod / hash-scanner manual. Distinto de las
+    # masked de arriba, que SÍ las recaptura el motor headless.
     whitelist_ops = set()
     if MASKED_OPS_PATH.exists():
         mo = json.loads(MASKED_OPS_PATH.read_text())
-        whitelist_ops = set(mo.get("queries", [])) | set(mo.get("mutations", []))
+        whitelist_ops = (set(mo.get("queries", [])) | set(mo.get("mutations", []))
+                         | set(mo.get("suppressPendingReport", [])))
     elif WHITELIST_PATH.exists():
         wl = json.loads(WHITELIST_PATH.read_text())
         whitelist_ops = {entry["operation"] for entry in wl.get("falseStale", [])}
