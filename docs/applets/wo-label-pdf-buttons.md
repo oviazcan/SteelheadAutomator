@@ -1,6 +1,22 @@
 # wo-label-pdf-buttons — Botones de impresión de PDF en el listado de OTs (SPEC)
 
-**Estado:** 🟢 **Fase 1 (ficha) CONSTRUIDA — pendiente validación EN VIVO.** Fase 2 (listado) pendiente del DOM de la columna Acciones. Mecanismo CONFIRMADO (DOM + share-URL, 2026-07-24).
+**Estado:** ✅ **VIVO — JobTag validado en producción (config 1.7.200, 2026-07-24).** Botón **🏷️ en la columna Acciones** del listado `/Domains/<d>/WorkOrders` (toggle "🏷️ Etiquetas" del applet `wo-listing-columns`). Genera el JobTag en un **IFRAME OCULTO** dentro del dashboard → **sin abrir pestaña (no roba foco) y sin throttle (rápido)** → auto-descarga `WO<idInDomain>.pdf`. **Fallback automático a pestaña** (`?sa_print=jobtag&sa_dl=1`, lo maneja `wo-schedule-button` invisible) si SH bloquea el enmarcado o el iframe falla. Validado en vivo por el operador: **4/5 en iframe sin pestaña; el 5º cayó a pestaña por hipo de sesión bajo carga (degradó con gracia)**. Commit del iframe `a4bff19`.
+
+## ⚠️ Diseño FINAL VIVO (iframe) — LEE ESTO PRIMERO (supersede las "Fases" de abajo)
+
+El 🏷️ del listado ya **NO abre pestaña** por default. `wo-listing-columns.driveLabel()`:
+1. Crea un `<iframe>` **oculto offscreen** (1400×950, `left:-10000px`, opacity:0 — NO `display:none`, que impediría render) con `src = /Domains/<d>/WorkOrders/<idInDomain>` (sin `?sa_print`; la extensión **no** inyecta en iframes —manifest sin `all_frames`—, pero el iframe es **same-origin** → el PADRE en `world:MAIN` maneja su DOM directo).
+2. Espera el trigger dentro del iframe (`findTriggerIn` → ancla `data-steelhead-component-id="WORK_ORDER_PAGE_HEADER_PRINT_JOB_TAGS_BUTTON"`), lo clickea (`clickRobustIn` con `iframe.contentWindow.MouseEvent`), espera el botón "Imprimir Regular" del modal (dropdown poblado + no "Cargando"), `sleep(900)` anti-blanco, clickea, toma la **share-URL del `<object>`** (`findShareUrlIn`), **descarga desde el PADRE** (`downloadShort` repone `?downloadName=WO<num>.pdf`), y **quita el iframe**.
+3. **Tope de concurrencia 4** (cada iframe carga un SPA completo → pesado). Estado del botón: **⏳** generando · **✅** ok · **⋯** en cola.
+4. **Fallback:** si el trigger/share-URL no aparecen en el timeout (enmarcado bloqueado o hipo de sesión) → `window.open(... ?sa_print=jobtag&sa_dl=1)` (pestaña; `wo-schedule-button` la auto-maneja y auto-descarga + auto-cierra).
+
+**Filename:** `WoScheduleCore.buildPdfFilename` da **`WO<idInDomain>.pdf`** (verbose: `-verbose`). La URL interceptada de `GetPdfTemplateOutputV2` NO trae `?downloadName=` → se **repone** con el nombre corto.
+
+**Pendientes reales:** (a) **Verbose** — `autoPrint`/`driveLabel` ya soportan `'verbose'` por dentro; falta exponerlo en el botón (menú). (b) **WorkOrder PDF** (3er tipo) = botón nativo "Abrir PDF", flujo distinto — sin cablear. (c) **Retry del iframe** una vez antes de caer a pestaña (reduciría los fallbacks del ~5º bajo carga) — no implementado. (d) Los warnings `onFull: ERROR … predictedInventoryUsages` que se ven en consola son del **SPA de SH dentro del iframe** (no nuestros) — no suprimibles.
+
+---
+
+### (Histórico — enfoque previo de pestaña, superado por el iframe de arriba)
 
 ## Mecanismo confirmado (2026-07-24)
 
