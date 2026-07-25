@@ -48,7 +48,11 @@ const ParosLinea = (() => {
   }
 
   const LINE_LABEL_RE = /^(?:l[ií]neas?|c[eé]lulas?)$/i;
-  const ALLOWED_PATH_RE = /^\/Domains\/\d+\/(Workboards|WorkOrders)(?:\/|$)/;
+  // FAB en Workboards y en la FICHA de OT (WorkOrders/<id>), NO en el listado /WorkOrders
+  // (el dashboard general ya está muy cargado — decisión del usuario 2026-07-24).
+  const ALLOWED_PATH_RE = /^\/Domains\/\d+\/(?:Workboards(?:\/|$)|WorkOrders\/\d+)/;
+  // Pestaña de impresión headless (?sa_print=): no cargar el FAB (la pestaña es solo para generar el PDF).
+  function isPrintTab() { return /[?&]sa_print=/i.test(location.search); }
 
   let state = {
     currentUser: null,
@@ -97,7 +101,7 @@ const ParosLinea = (() => {
   }
 
   function isAllowedPath() {
-    return ALLOWED_PATH_RE.test(location.pathname);
+    return !isPrintTab() && ALLOWED_PATH_RE.test(location.pathname);
   }
 
   function syncFabVisibility() {
