@@ -65,6 +65,11 @@ function loadMaskedOps() {
 const MASKED_OPS = loadMaskedOps();
 const SESSION_SENSITIVE = maskedQueries(MASKED_OPS);
 const MASKED_MUTATIONS = maskedMutations(MASKED_OPS);
+// falseStaleScannerManaged: mutations VIGENTES que el probe marca stale por diseño (falso
+// positivo) y que NO se recapturan headless de forma confiable → se gestionan con el hash-scanner.
+// Se EXCLUYEN del intento Fase C y del reporte/conteo del correo; quedan solo en el log de consola
+// (mismo patrón que las falsas alarmas probe=vigente). Ver masked-ops.json `_docFalseStale`.
+const SCANNER_MANAGED = new Set(MASKED_OPS.falseStaleScannerManaged || []);
 
 // Lee el JSON del validator del día (lo escribe validate-hashes.py). Si no existe
 // (no corrió, o corrió sin stale), devuelve {stale:[]} → solo session-sensitive.
@@ -139,12 +144,15 @@ async function main() {
   // Filtradas a las que tienen centinela ACTIVO (id real ≠ 0); las de id:0 se omiten
   // (andamiaje pendiente de que el usuario cree el objeto Centinela).
   const capturableMuts = mutationsToCapture(validatorResult, MASKED_MUTATIONS, { maskedOnly: MASKED_ONLY })
-    .filter((op) => mutEntityType(op));
+    .filter((op) => mutEntityType(op))
+    .filter((op) => !SCANNER_MANAGED.has(op)); // falso-stale gestionado por scanner → no intentar Fase C
   console.log(`Modo: ${MASKED_ONLY ? 'MASKED-ONLY (solo enmascaradas, sin gate)' : 'completo'}`);
   console.log(`Ops a capturar (${wantOps.length}): ${wantOps.join(', ')}`);
   console.log(`Rutas seleccionadas (${plan0.routes.length}): ${plan0.routes.map((r) => r.id).join(', ') || '(ninguna)'}`);
   if (plan0.uncovered.length) console.log(`⚠️ Queries stale SIN ruta en catálogo: ${plan0.uncovered.join(', ')} (Fase B)`);
   if (staleMuts.length) console.log(`⚠️ Mutations stale (Fase C — ciclo centinela): ${staleMuts.join(', ')}`);
+  const scannerManagedStale = staleMuts.filter((op) => SCANNER_MANAGED.has(op));
+  if (scannerManagedStale.length) console.log(`ℹ️ Falso-stale gestionado por scanner (NO se reporta ni cuenta como pendiente): ${scannerManagedStale.join(', ')}`);
 
   // Ops que sabemos que aún NO tienen ruta (session-sensitive sin cobertura en el
   // catálogo) → hueco conocido pendiente de Fase B. Se loguean pero NO generan
@@ -402,7 +410,9 @@ async function main() {
   const mutVerdict = (op) => (results.find((r) => r.op === op) || {}).verdict;
   const pendingMuts = staleMuts.filter((op) => {
     const v = mutVerdict(op);
-    return !v || v === 'noCapturado';
+    // Excluye las gestionadas por scanner (falso-stale vigente conocido) → no las reporta como
+    // "MUTATIONS ROTADAS SIN CAPTURAR" ni las suma a nUrgentes; su detección real es el scanner.
+    return (!v || v === 'noCapturado') && !SCANNER_MANAGED.has(op);
   });
 
   // Escalamiento (Task 9): rutas que no capturaron → señal para el cron de Claude.
