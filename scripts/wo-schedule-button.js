@@ -298,8 +298,12 @@ const WoScheduleButton = (() => {
   // Por-OT (una a la vez) → sin el techo de merge de PDFGeneratorAPI (~16-20 en batch).
   // NO-destructivo (genera el mismo PDF que el flujo nativo). Fail-safe: ante cualquier
   // fallo, deja el modal nativo abierto para que el operador termine a mano.
-  const PRINT_TRIGGER_RE = /imprimir\s+etiquetas\s+de\s+trabajo/i;   // botón del header (ES; EN=deuda)
+  // Texto del botón del header — BILINGÜE (SH muestra locale mixto: header en EN "Print Job Tags"
+  // aunque el resto esté en ES). Solo confirma; el anclaje primario es el data-steelhead-component-id.
+  const PRINT_TRIGGER_RE = /imprimir\s+etiquetas\s+de\s+trabajo|print\s+(?:multiple\s+)?job\s+tags/i;
+  const PRINT_ANCHOR = '[data-steelhead-component-id="WORK_ORDER_PAGE_HEADER_PRINT_JOB_TAGS_BUTTON"]';
   const PRINT_POLL_MS = 250, PRINT_TIMEOUT_MS = 12000;
+  function isVisible(el) { return !!(el && (el.offsetParent !== null || (el.getClientRects && el.getClientRects().length))); }
   function PLOG(m) { try { console.log('[SA][print]', m); } catch (_) {} }
 
   function btnText(b) { return (b && b.textContent ? b.textContent : '').replace(/\s+/g, ' ').trim(); }
@@ -318,14 +322,39 @@ const WoScheduleButton = (() => {
     });
   }
 
-  // Botón nativo del header que abre el modal de impresión (outlined + QrCode2Icon + texto).
+  // Botón nativo del header que abre el modal de impresión. Anclaje PRIMARIO por el
+  // data-steelhead-component-id (idioma- y responsive-agnóstico = el mejor anclaje). Dentro
+  // del ancla, elige el elemento VISIBLE clicable: el <button> (vista normal) o la versión
+  // ICONO-solo (span con aria-label + QrCode2Icon, vista chica). Fallback legacy sin el ancla.
   function findPrintTrigger() {
+    const anchor = document.querySelector(PRINT_ANCHOR);
+    if (anchor) {
+      const btn = Array.prototype.slice.call(anchor.querySelectorAll('button')).find(isVisible);
+      if (btn) return btn;
+      // vista chica: icono-solo (span aria-label con el QrCode2Icon, cursor:pointer)
+      const icon = Array.prototype.slice.call(anchor.querySelectorAll('[aria-label]'))
+        .find(function (e) { return isVisible(e) && e.querySelector && e.querySelector('svg[data-testid="QrCode2Icon"]'); });
+      if (icon) return icon;
+      if (isVisible(anchor)) return anchor;   // último recurso: el propio contenedor (click bubbling)
+    }
+    // FALLBACK legacy (sin el ancla): botón outlined con QrCode2Icon, o texto bilingüe.
     const btns = document.querySelectorAll('button');
+    let byStruct = null;
     for (let i = 0; i < btns.length; i++) {
       const b = btns[i];
-      if (b.querySelector('svg[data-testid="QrCode2Icon"]') && PRINT_TRIGGER_RE.test(btnText(b))) return b;
+      if (!b.querySelector('svg[data-testid="QrCode2Icon"]')) continue;
+      if (PRINT_TRIGGER_RE.test(btnText(b))) return b;
+      if (/MuiButton-outlined/.test(b.className || '') && !byStruct) byStruct = b;
     }
-    return null;
+    return byStruct;
+  }
+  // Diagnóstico: vuelca el estado del ancla/botones si el trigger no aparece (para ver por qué).
+  function dumpTriggerCandidates() {
+    try {
+      const anchor = document.querySelector(PRINT_ANCHOR);
+      PLOG('ancla ' + (anchor ? ('presente, visible=' + isVisible(anchor)) : 'AUSENTE') +
+        ' · botones QrCode2Icon en página: ' + document.querySelectorAll('button svg[data-testid="QrCode2Icon"]').length);
+    } catch (_) {}
   }
   // El modal de selección de plantilla (dialog con sus 2 MuiButton-contained de impresión).
   function findPrintDialog() {
@@ -477,13 +506,17 @@ const WoScheduleButton = (() => {
     PLOG('auto-disparo remoto: ' + typeKey + ' (visible=' + document.visibilityState + ')');
     const run = async function () {
       try {
-        await waitFor(findPrintTrigger, 60000);   // generoso: el tab pudo abrir en 2º plano (throttle)
+        PLOG('run(): esperando el botón "Imprimir Etiquetas" del header…');
+        try { await waitFor(findPrintTrigger, 5000); }
+        catch (_) { dumpTriggerCandidates(); await waitFor(findPrintTrigger, 55000); }
+        PLOG('trigger encontrado → espero red-idle');
         await waitForGraphqlIdle(1000, 12000);     // deja que la ficha termine (WorkOrderSchedule, etc.)
         await sleep(400);
         PLOG('página lista → auto-imprimo ' + typeKey);
         autoPrint(typeKey, 'self');
       } catch (e) {
         PLOG('auto-disparo no completó (' + (e && e.message) + ') → dejo el modal listo para 1 clic');
+        dumpTriggerCandidates();
         openModalForManual(typeKey);
       }
     };
