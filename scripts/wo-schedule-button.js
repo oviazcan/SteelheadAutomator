@@ -397,8 +397,12 @@ const WoScheduleButton = (() => {
     try {
       const parsed = Core().parsePdfShareUrl(url);
       const name = (parsed && parsed.downloadName) ? parsed.downloadName : Core().buildPdfFilename(typeKey, currentWoIdInDomain());
+      // La URL INTERCEPTADA de GetPdfTemplateOutputV2 NO trae ?downloadName= (el <object> del
+      // preview sí lo agrega); el server nombra el archivo por ESE param → si falta, baja con el
+      // TOKEN como nombre. Reponemos el param con el nombre correcto. a.download es respaldo.
+      const dlUrl = url.split('?')[0] + '?downloadName=' + encodeURIComponent(name);
       const a = document.createElement('a');
-      a.href = url; a.download = name; a.rel = 'noopener';
+      a.href = dlUrl; a.download = name; a.rel = 'noopener';
       document.body.appendChild(a); a.click(); a.remove();
       PLOG('descarga disparada: ' + name);
     } catch (e) { PLOG('descarga falló → navego: ' + (e && e.message)); try { location.href = url; } catch (_) {} }
@@ -481,7 +485,10 @@ const WoScheduleButton = (() => {
         }
       }
       if (!pbtn) { fail('El modal se quedó en "Cargando…" o el dropdown de plantilla no cargó'); return null; }
-      await sleep(350);   // deja que React termine de cablear el onClick del botón
+      // Deja que el modal ASIENTE sus datos antes de imprimir: si clicamos demasiado rápido
+      // (sobre todo en 1ª plano) el render puede salir EN BLANCO. Espera red-idle + un margen.
+      await waitForGraphqlIdle(700, 7000);
+      await sleep(500);   // + margen para que React termine de cablear el onClick del botón
       const clickAt = Date.now();
       PLOG('click "' + t.buttonTextEs + '" (dropdown OK, disabled=' + !!pbtn.disabled + ')');
       clickButtonRobust(pbtn);
