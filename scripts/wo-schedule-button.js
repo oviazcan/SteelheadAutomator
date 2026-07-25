@@ -221,12 +221,13 @@ const WoScheduleButton = (() => {
     window.__saWoSchedFetchPatched = true;
     const orig = window.fetch;
     window.fetch = function (input, init) {
-      let isWos = false, domainId = null, isGql = false;
+      let isWos = false, domainId = null, isGql = false, isPdfOut = false;
       try {
         const url = (typeof input === 'string') ? input : (input && input.url) || '';
         const body = (init && typeof init.body === 'string') ? init.body : '';
         const hay = body || url;   // POST → body; GET APQ → url (?operationName=…)
         if (url.indexOf('/graphql') !== -1) isGql = true;
+        if (hay.indexOf('GetPdfTemplateOutputV2') !== -1 || hay.indexOf('GetPdfTemplateOutputToUserFile') !== -1) isPdfOut = true;
         if (hay.indexOf('WorkOrderSchedule') !== -1) {
           isWos = true;
           const dm = hay.match(/domainId(?:"\s*:\s*|=)(\d+)/);
@@ -236,6 +237,24 @@ const WoScheduleButton = (() => {
       if (isGql) { const g = gql(); g.inflight++; g.lastChange = Date.now(); }
       const p = orig.apply(this, arguments);
       if (isGql) { const settle = function () { const g = gql(); g.inflight = Math.max(0, g.inflight - 1); g.lastChange = Date.now(); }; p.then(settle, settle); }
+      // Intercepta la respuesta del renderizador → share-URL del PDF (sin depender del preview DOM).
+      if (isPdfOut) {
+        p.then(function (resp) {
+          try {
+            resp.clone().text().then(function (txt) {
+              try {
+                const clean = String(txt).replace(/\\\//g, '/').replace(/\\u002[fF]/g, '/');
+                const m = clean.match(/\/api\/pdf\/share\/\d+\/[a-z0-9]+(?:\?[^"'\\<> ]*)?/i);
+                if (m) {
+                  let u = m[0]; if (u.indexOf('http') !== 0) u = location.origin + u;
+                  window.__saLastPdfShare = { url: u, at: Date.now() };
+                  PLOG('GetPdfTemplateOutputV2 respondió → ' + u);
+                } else { PLOG('GetPdfTemplateOutputV2 respondió pero SIN /api/pdf/share/ (¿error?)'); }
+              } catch (_) {}
+            }).catch(function () {});
+          } catch (_) {}
+        }).catch(function () {});
+      }
       if (isWos) {
         p.then(function (resp) {
           try {
@@ -343,6 +362,11 @@ const WoScheduleButton = (() => {
     if (byText) return byText;
     return btns[t.order] || null;
   }
+  // Share-URL interceptada de GetPdfTemplateOutputV2, si es MÁS reciente que el click actual.
+  function freshPdfUrl(sinceMs) {
+    const s = window.__saLastPdfShare;
+    return (s && s.at >= sinceMs && Core().isPdfShareUrl(s.url)) ? s.url : null;
+  }
   // Share-URL del PDF en el modal de preview (o cualquier <object>/<a> que la traiga).
   function findShareUrl() {
     const nodes = document.querySelectorAll('object[data*="/api/pdf/share/"], a[href*="/api/pdf/share/"], iframe[src*="/api/pdf/share/"]');
@@ -397,8 +421,17 @@ const WoScheduleButton = (() => {
         }
       }
       if (!pbtn) { fail('El modal se quedó en "Cargando…" (los botones no aparecieron)'); return null; }
+      const clickAt = Date.now();
       PLOG('click "' + t.buttonTextEs + '"'); pbtn.click();
-      const url = await waitFor(findShareUrl, 25000);   // SH renderiza server-side (puede tardar)
+      // Toma la share-URL de la respuesta INTERCEPTADA de GetPdfTemplateOutputV2 (robusto, apenas
+      // el server responde) O del <object> del preview (fallback DOM). Hasta 40s (render server-side).
+      let url;
+      try { url = await waitFor(function () { return freshPdfUrl(clickAt) || findShareUrl(); }, 40000); }
+      catch (e) {
+        const fired = window.__saLastPdfShare && window.__saLastPdfShare.at >= clickAt;
+        fail(fired ? 'El render respondió pero no traía la URL del PDF' : 'El render (GetPdfTemplateOutputV2) no respondió tras el click');
+        return null;
+      }
       PLOG('PDF listo: ' + url);
       if (win) { try { win.location.href = url; } catch (_) { window.open(url, '_blank'); } }
       else if (openTarget === 'self') { location.href = url; }
