@@ -1,6 +1,6 @@
 {
-  "version": "1.7.189",
-  "lastUpdated": "2026-07-24T18:30",
+  "version": "1.7.190",
+  "lastUpdated": "2026-07-24T18:32",
   "extensionVersion": "1.6.6",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -141,7 +141,7 @@
         "GetSpec": "73c179574dd5de837ce721bd0e639ab94aba0796a83f0f09632efd5f1c11b520",
         "SpecFieldsAndOptions": "d6faffaeeb9ccfebf55241ba8e4ee16b3217161517264222de5b71fd7c97f1a0",
         "EmailCustomerContactsByCustomerIds": "6e377769aa06e55915c528c10e2c2f92662a78fdc34ae799610d489abaf983db",
-        "FilterSearch": "52869c2e78906b009589e441c218bcbfc60f2cf5550399b32db74fc266ffa6de",
+        "FilterSearch": "1cdd9e39a0ac44d491910f8c1727154d6859fd2eabe49d619f06d54e926d2bc9",
         "FilterSearchInventoryBatch": "1cdd9e39a0ac44d491910f8c1727154d6859fd2eabe49d619f06d54e926d2bc9",
         "InventoryBatchViewQuery": "e4fc4cdf098f41e10881a512e63ce6fb068bcd8d5bd57b8627c86e5fda025d44",
         "AllReports": "1f83add2747f8e0949a47ea4b6f95a67f8e1948a07fad9a5cf543d1ab4b8c00c",
