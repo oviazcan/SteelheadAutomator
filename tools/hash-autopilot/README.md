@@ -289,3 +289,54 @@ Mac** (en GitHub) por diseño: si viviera en el mismo launchd, moriría con lo q
 
 **No quedan pendientes de código accionables del hash-autopilot** (los 2 hallazgos de arriba son
 mejoras de UX/higiene, no bugs que rompan la autonomía).
+
+## Rutas de interacción type-ahead + CreateInvoicePdf vigente (2026-07-24)
+
+Los 3 hashes que el reporte diario del 2026-07-24 marcó "no autónomos" (2 queries type-ahead +
+`CreateInvoicePdf`). Resultado: los 2 queries quedaron **autónomos y auto-deployados por el propio
+launchd** (corrió las rutas, capturó y desplegó solo); `CreateInvoicePdf` resultó **vigente** (falso
+positivo del probe). Commits: `071076f` → `5b98a7d` → `2f027c2` (config con los hashes lo deployó el
+autopilot: `d2e1c52` SearchPartNumbers, `1bda4f9` FilterSearch).
+
+- **Causa raíz de los 3:** son *interaction ops* — NO se disparan navegando; requieren teclear en un
+  buscador (queries) o ejecutar una acción (mutation). Las rutas auto-generadas por pathname que los
+  "listaban" nunca los disparaban.
+- **`recipe-runner.mjs` — 3 capacidades nuevas** (para el flujo type-ahead multi-paso):
+  - step **`typeInto`** (`{ typeInto: <sel>, text }`): teclea char-por-char en un input →
+    search-as-you-type. Lo usa `SearchPartNumbers`.
+  - flag **`once`** en `clickFirst` (`{ clickFirst: <sel>, once: true }`): clic ÚNICO sin re-clic —
+    para pasos de setup de un modal donde la captura llega en un paso POSTERIOR (re-clicar cerraría el
+    modal/menú).
+  - **`clickFirstMatching` clica el primer elemento VISIBLE** (`matches.find(isVisible)`): los filtros
+    de columna de Work Orders matchean DUPLICADOS ocultos → clicar uno oculto hacía timeout.
+- **`workorders-filter-open` (FilterSearch):** `goto /WorkOrders` → clic en un filtro de columna
+  (`div:has(> svg[data-testid="ArrowDropDownIcon"]:not(.MuiSelect-icon))`). Dispara al ABRIR, sin
+  teclear. **La barra de filtros tarda ~10s en render headless** (a los 5s solo está el MuiSelect
+  "Search All"). VALIDADA EN VIVO: capturó `1cdd9e39…` (== la variante LEGADA `FilterSearchInventoryBatch`
+  del config; SH usa el mismo hash) → auto-deploy `1bda4f9`.
+- **`uploadedfiles-pn-filter` (SearchPartNumbers):** `goto /UploadedFiles` → botón "Filtrar Archivos"
+  (`button:has(svg[data-testid="FilterListIcon"])`, `once`) → combobox categoría (`[role=dialog]
+  div[role=button][aria-haspopup=listbox]`, `once`) → opción `li[role=option][data-value="partNumberId"]`
+  (VALOR estable, idioma-agnóstico; vive en portal MUI a nivel body, sin prefijo dialog, `once`) →
+  `typeInto` en `[role=dialog] input.MuiInputBase-inputAdornedStart`. VALIDADA EN VIVO: capturó
+  `e65235b5…` → auto-deploy `d2e1c52`.
+- Ambas ops en `_interactionOps` (excluidas del auto-agrupamiento por pathname) y REMOVIDAS de
+  `workorders-list`/`uploadedfiles-list`. Test `route-catalog-coherence` extendido (+2 ops al EXPECTED,
+  ahora 16, + tests de las 2 rutas).
+- **`CreateInvoicePdf` — VIGENTE, no rotada (falso positivo del probe).** El sentinel `invoicePdf`
+  (entity + handler `createInvoicePdfAborted`) captura por capture-abort en `/Invoices?mode=PackingSlips`
+  → flecha "Open PDF" (`OpenInNewIcon`) → modal → `RestorePageOutlinedIcon` → CONFIRMAR. Ruta VALIDADA
+  por el operador. **Verificado por hash-scanner 2026-07-24:** la op dispara (status known, count 3,
+  errorCount 0, hash `aafd22aa663f…` = el del config) → **el 'rotada sin capturar' del reporte diario es
+  FALSO POSITIVO** (la mutation da falso-stale al probe/ciclo). **CAVEAT HEADLESS:** el modal del PDF NO
+  abre confiable en Chromium headless (probado exhaustivo: 1/~10 con `click({force})`; el `OpenInNewIcon`
+  no gatilla el onClick de React de forma estable) → captura autónoma de ESTE op **best-effort**. Fallback
+  real cuando rote: **hash-scanner** (correr el scanner HACIENDO el regen del PDF → actualizar
+  `remote/config.json` a mano; probado 2026-07-24). Sentinela declarado por la regla de proceso.
+- **Follow-up (no urgente):** el reporte diario seguirá marcando `CreateInvoicePdf` como "rotada" (falso
+  positivo). Opción: meterla a una lista de "known false-stale" en el motor para silenciar el ruido.
+- **Incidente de concurrencia 2026-07-24 (resuelto):** el launchd del autopilot corrió un auto-deploy
+  mientras había WIP sin commitear + OTRA sesión editando el hash-autopilot. La danza `stash -u` +
+  `checkout gh-pages` dejó el índice de main a medias, pero **se recuperó solo** (el stash se restauró).
+  Producción nunca corrió peligro. Lección viva: al deployar desde workbench o con el launchd activo,
+  el stash compartido + el checkout de gh-pages pueden chocar con WIP; el diseño self-healing aguantó.
