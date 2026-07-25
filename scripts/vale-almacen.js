@@ -29,9 +29,12 @@ const ValeAlmacen = (() => {
   const STEP0_CACHE_KEY = 'sa_vale_step0_map_v1';
   const LAST_LINE_KEY = 'sa_vale_last_line';
 
-  // 4 familias de pantallas pedidas: Producción (Workboards/WorkOrders), Mantenimiento,
-  // Tableros de sensores e Inventario. Los segmentos exactos de SH se confirman en vivo.
-  const ALLOWED_PATH_RE = /^\/Domains\/\d+\/(Workboards|WorkOrders|Maintenance\w*|SensorDashboards?|Sensors|Inventory\w*)(?:\/|$)/i;
+  // 4 familias de pantallas pedidas: Producción (Workboards + FICHA de OT), Mantenimiento,
+  // Tableros de sensores e Inventario. NO en el LISTADO /WorkOrders (dashboard general muy
+  // cargado — decisión del usuario 2026-07-24): WorkOrders solo en la ficha (WorkOrders/<id>).
+  const ALLOWED_PATH_RE = /^\/Domains\/\d+\/(?:(?:Workboards|Maintenance\w*|SensorDashboards?|Sensors|Inventory\w*)(?:\/|$)|WorkOrders\/\d+)/i;
+  // Pestaña de impresión headless (?sa_print=): no cargar el FAB (la pestaña es solo para generar el PDF).
+  function isPrintTab() { return /[?&]sa_print=/i.test(location.search); }
   const SURT_RE = /surtimiento/i;
   // Las RAÍCES de surtimiento empiezan con un código de área en MAYÚSCULAS (SMP/EPP/SGL/MTY/MLA/LIM…)
   // seguido de espacio; los PASOS hijo ("Solicitud…", "Surtimiento de Materia Prima",
@@ -113,7 +116,7 @@ const ValeAlmacen = (() => {
     return req.every(p => user.managedPermissions.includes(p));
   }
 
-  function isAllowedPath() { return ALLOWED_PATH_RE.test(location.pathname); }
+  function isAllowedPath() { return !isPrintTab() && ALLOWED_PATH_RE.test(location.pathname); }
 
   function syncFabVisibility() {
     const should = isAllowedPath() || !!state.activeEvent;

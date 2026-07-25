@@ -201,23 +201,41 @@ const WoScheduleButton = (() => {
   }
 
   // ── Interceptor de la WorkOrderSchedule nativa (evita el doble fetch de 4.6MB) ──
+  // Gauge de /graphql en vuelo (para saber cuándo la ficha "se calmó" antes de imprimir).
+  function gql() { if (!window.__saGqlGauge) window.__saGqlGauge = { inflight: 0, lastChange: Date.now() }; return window.__saGqlGauge; }
+  function waitForGraphqlIdle(idleMs, maxWaitMs) {
+    idleMs = idleMs || 1200; maxWaitMs = maxWaitMs || 12000;
+    return new Promise(function (resolve) {
+      const t0 = Date.now();
+      (function tick() {
+        const g = gql();
+        if (g.inflight <= 0 && (Date.now() - g.lastChange) >= idleMs) return resolve(true);
+        if (Date.now() - t0 > maxWaitMs) return resolve(false);
+        setTimeout(tick, 200);
+      })();
+    });
+  }
+
   function patchFetch() {
     if (window.__saWoSchedFetchPatched) return;
     window.__saWoSchedFetchPatched = true;
     const orig = window.fetch;
     window.fetch = function (input, init) {
-      let isWos = false, domainId = null;
+      let isWos = false, domainId = null, isGql = false;
       try {
         const url = (typeof input === 'string') ? input : (input && input.url) || '';
         const body = (init && typeof init.body === 'string') ? init.body : '';
         const hay = body || url;   // POST → body; GET APQ → url (?operationName=…)
+        if (url.indexOf('/graphql') !== -1) isGql = true;
         if (hay.indexOf('WorkOrderSchedule') !== -1) {
           isWos = true;
           const dm = hay.match(/domainId(?:"\s*:\s*|=)(\d+)/);
           domainId = dm ? parseInt(dm[1], 10) : Core().parseDomainId(location.pathname);
         }
       } catch (_) {}
+      if (isGql) { const g = gql(); g.inflight++; g.lastChange = Date.now(); }
       const p = orig.apply(this, arguments);
+      if (isGql) { const settle = function () { const g = gql(); g.inflight = Math.max(0, g.inflight - 1); g.lastChange = Date.now(); }; p.then(settle, settle); }
       if (isWos) {
         p.then(function (resp) {
           try {
@@ -263,6 +281,7 @@ const WoScheduleButton = (() => {
   // fallo, deja el modal nativo abierto para que el operador termine a mano.
   const PRINT_TRIGGER_RE = /imprimir\s+etiquetas\s+de\s+trabajo/i;   // botón del header (ES; EN=deuda)
   const PRINT_POLL_MS = 250, PRINT_TIMEOUT_MS = 12000;
+  function PLOG(m) { try { console.log('[SA][print]', m); } catch (_) {} }
 
   function btnText(b) { return (b && b.textContent ? b.textContent : '').replace(/\s+/g, ' ').trim(); }
 
@@ -300,6 +319,17 @@ const WoScheduleButton = (() => {
         // confirma que es el de impresión: algún contained trae QrCode2Icon
         for (let k = 0; k < contained.length; k++) if (contained[k].querySelector('svg[data-testid="QrCode2Icon"]')) return d;
       }
+    }
+    return null;
+  }
+  // El modal de impresión aunque esté en "Cargando…" (por su encabezado o sus botones).
+  function findAnyPrintDialog() {
+    const dialogs = document.querySelectorAll('[role="dialog"]');
+    for (let i = 0; i < dialogs.length; i++) {
+      const d = dialogs[i];
+      const heading = d.querySelector('h2,h6,[id="form-dialog-title"]');
+      if (Core().isPrintDialogHeading(btnText(heading))) return d;
+      if (d.querySelector('button.MuiButton-contained svg[data-testid="QrCode2Icon"]')) return d;
     }
     return null;
   }
@@ -349,23 +379,31 @@ const WoScheduleButton = (() => {
       printToast('⚠️ ' + msg + ' — abrí el modal nativo y termina a mano.');
     };
     try {
-      // Si el modal ya está abierto (p.ej. lo abrió el operador), no re-disparamos el trigger.
-      let dialog = findPrintDialog();
-      if (!dialog) {
-        const trigger = findPrintTrigger();
-        if (!trigger) { fail('No encontré el botón "Imprimir Etiquetas de Trabajo"'); return null; }
-        trigger.click();
-        dialog = await waitFor(findPrintDialog, 6000);
+      // Hasta 2 intentos: el modal a veces se queda en "Cargando…" si se abre mientras la
+      // ficha aún baja datos → cerramos y reabrimos con la red ya calmada.
+      let pbtn = null;
+      for (let attempt = 0; attempt < 2 && !pbtn; attempt++) {
+        if (!findAnyPrintDialog()) {
+          const trigger = findPrintTrigger();
+          if (!trigger) { fail('No encontré el botón "Imprimir Etiquetas de Trabajo"'); return null; }
+          PLOG('abro modal (intento ' + (attempt + 1) + ')'); trigger.click();
+        } else { PLOG('modal ya abierto (intento ' + (attempt + 1) + ')'); }
+        // Espera el BOTÓN del modal (no solo el shell "Cargando…"). Hasta 11s.
+        pbtn = await waitFor(function () { const d = findAnyPrintDialog(); return d ? findModalPrintButton(d, typeKey) : null; }, 11000)
+          .catch(function () { return null; });
+        if (!pbtn && attempt === 0) {
+          PLOG('modal en "Cargando…" tras 11s → cierro, espero red-idle y reintento');
+          closePrintDialogs(); await sleep(900); await waitForGraphqlIdle(1000, 8000);
+        }
       }
-      const pbtn = findModalPrintButton(dialog, typeKey);
-      if (!pbtn) { fail('No encontré el botón "' + t.buttonTextEs + '" en el modal'); return null; }
-      pbtn.click();
-      const url = await waitFor(findShareUrl, PRINT_TIMEOUT_MS);   // SH renderiza server-side
-      // Suelta el PDF y oculta el preview.
+      if (!pbtn) { fail('El modal se quedó en "Cargando…" (los botones no aparecieron)'); return null; }
+      PLOG('click "' + t.buttonTextEs + '"'); pbtn.click();
+      const url = await waitFor(findShareUrl, 25000);   // SH renderiza server-side (puede tardar)
+      PLOG('PDF listo: ' + url);
       if (win) { try { win.location.href = url; } catch (_) { window.open(url, '_blank'); } }
       else if (openTarget === 'self') { location.href = url; }
       else { window.open(url, '_blank'); }
-      setTimeout(closePrintDialogs, 300);   // deja que el <object> exista antes de cerrar
+      setTimeout(closePrintDialogs, 400);   // deja que el <object> exista antes de cerrar
       printToast('🏷️ PDF ' + t.key + ' generado.');
       return url;
     } catch (e) {
@@ -375,13 +413,26 @@ const WoScheduleButton = (() => {
   }
 
   // Auto-disparo remoto: /WorkOrders/<id>?sa_print=jobtag → genera y navega al PDF (una vez).
+  // Espera a que la ficha CARGUE del todo (readyState + red /graphql calmada) antes de abrir el
+  // modal — abrirlo durante la carga pesada (WorkOrderSchedule 4.6MB) lo deja en "Cargando…".
   function maybeAutoPrintFromParam() {
     if (!onDetail()) return;
     const typeKey = Core().parsePrintParam(location.search);
     if (!typeKey || window.__saWoPrintFired) return;
     window.__saWoPrintFired = true;
-    // Espera a que el header (botón nativo) exista y dispara.
-    waitFor(findPrintTrigger, 15000).then(function () { autoPrint(typeKey, 'self'); }).catch(function () {});
+    PLOG('auto-disparo remoto: ' + typeKey);
+    (async function () {
+      try {
+        await waitFor(findPrintTrigger, 20000);   // el header con el botón nativo
+        if (document.readyState !== 'complete') {
+          await new Promise(function (r) { window.addEventListener('load', r, { once: true }); setTimeout(r, 4000); });
+        }
+        await waitForGraphqlIdle(1200, 15000);     // deja que la ficha termine (WorkOrderSchedule, etc.)
+        await sleep(500);
+        PLOG('red calmada → auto-imprimo ' + typeKey);
+        autoPrint(typeKey, 'self');
+      } catch (e) { PLOG('auto-disparo abortado: ' + (e && e.message)); }
+    })();
   }
 
   let printToastTimer = null;
