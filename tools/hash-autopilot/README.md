@@ -354,6 +354,20 @@ autopilot: `d2e1c52` SearchPartNumbers, `1bda4f9` FilterSearch).
   "CORREGIDA Y DEPLOYADA") **sin el cry-wolf diario** por el modal flaky. Fallback confiable si el
   best-effort no cacha la rotación: el applet `invoice-auto-regen` falla en prod, o el hash-scanner
   manual (que SÍ abre el modal). Para agregar otra op así: métela a `suppressPendingReport`.
+  - **ACTUALIZACIÓN 2026-07-24 (commit `8980994`): `validate-hashes.py` ahora TAMBIÉN whitelistea
+    `suppressPendingReport`.** Razón: `CreateInvoicePdf` daba falso-stale PERMANENTE al probe idp-token
+    (session-sensitive) y como NO es recapturable headless (callejón sin salida arriba), el gate del
+    launchd (`VAL_RC=1 → motor completo`) abría el motor completo **CADA hora en vano** (medido: 88 vs 38
+    corridas en el histórico; el 2026-07-24 fueron TODAS). Ahora `CreateInvoicePdf` sale `[SKIP]` en el
+    validador → `VAL_RC=1` **solo en rotaciones REALES** → el motor completo deja de correr en balde
+    (verificado: `235 ok / 0 stale / 1 skipped / exit 0`). **Consecuencia asumida:** una rotación REAL de
+    `CreateInvoicePdf` ya NO la marca el validador (queda invisible a la CAPA 2) — se detecta por el
+    fallback humano (applet truena en prod / hash-scanner). Es aceptable porque el motor tampoco la podía
+    sanar headless: el scanner ERA su única vía de todos modos. Distinto de las 6 masked (queries/mutations)
+    que el motor SÍ recaptura headless → esas siguen cubiertas sin hueco. El best-effort del sentinel
+    `invoicePdf` sigue en `capturableMuts` (se intenta cuando SÍ corre una completa por otra rotación),
+    solo que esas completas ahora son raras. **Nota operativa:** el validador necesita `/usr/bin/python3`
+    (tiene `requests`), NO el `python3` de Homebrew.
 - **Incidente de concurrencia 2026-07-24 (resuelto):** el launchd del autopilot corrió un auto-deploy
   mientras había WIP sin commitear + OTRA sesión editando el hash-autopilot. La danza `stash -u` +
   `checkout gh-pages` dejó el índice de main a medias, pero **se recuperó solo** (el stash se restauró).
