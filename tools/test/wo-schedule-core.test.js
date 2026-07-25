@@ -428,3 +428,49 @@ test('batchLink: anidado con pnId, bare sin pnId, null sin idInDomain', () => {
   assert.equal(Core.batchLink(11169), '/Inventory/Batches/11169');
   assert.equal(Core.batchLink(null, 3781602), null);
 });
+
+// ── Impresión de PDFs (parsePrintParam / parsePdfShareUrl / filenames / headings) ──
+test('parsePrintParam: jobtag/verbose válidos, resto null', () => {
+  assert.equal(Core.parsePrintParam('?sa_print=jobtag'), 'jobtag');
+  assert.equal(Core.parsePrintParam('?foo=1&sa_print=verbose'), 'verbose');
+  assert.equal(Core.parsePrintParam('?sa_print=JOBTAG'), 'jobtag'); // case-insensitive
+  assert.equal(Core.parsePrintParam('?sa_print=otro'), null);
+  assert.equal(Core.parsePrintParam('?x=1'), null);
+  assert.equal(Core.parsePrintParam(null), null);
+});
+
+test('isPdfShareUrl + parsePdfShareUrl: share-URL real de Steelhead', () => {
+  const url = 'https://app.gosteelhead.com/api/pdf/share/14798/7a01757b490e10c69927ad290707e98a?downloadName=work-order-part-number-15550.pdf';
+  assert.equal(Core.isPdfShareUrl(url), true);
+  assert.deepEqual(Core.parsePdfShareUrl(url), {
+    shareId: '14798', token: '7a01757b490e10c69927ad290707e98a',
+    downloadName: 'work-order-part-number-15550.pdf',
+  });
+  // sin downloadName
+  const u2 = 'https://app.gosteelhead.com/api/pdf/share/14798/2cd434c5c44a9e586a8b35c479621fb8';
+  assert.equal(Core.parsePdfShareUrl(u2).downloadName, '');
+  // no-share
+  assert.equal(Core.isPdfShareUrl('https://app.gosteelhead.com/api/files/123.jpg'), false);
+  assert.equal(Core.parsePdfShareUrl('nope'), null);
+});
+
+test('buildPdfFilename: stem por tipo + idInDomain; fallback', () => {
+  assert.equal(Core.buildPdfFilename('jobtag', 15550), 'work-order-part-number-15550.pdf');
+  assert.equal(Core.buildPdfFilename('verbose', 15550), 'work-order-part-number-verbose-15550.pdf');
+  assert.equal(Core.buildPdfFilename('desconocido', 9), 'work-order-9.pdf');
+  assert.equal(Core.buildPdfFilename('jobtag', null), 'work-order-part-number.pdf');
+});
+
+test('printType / printTypeList: config de tipos', () => {
+  assert.equal(Core.printType('jobtag').order, 0);
+  assert.equal(Core.printType('verbose').order, 1);
+  assert.equal(Core.printType('nope'), null);
+  assert.equal(Core.printTypeList().length, 2);
+});
+
+test('isPrintDialogHeading / isPrintPreviewHeading: ES confirmado', () => {
+  assert.equal(Core.isPrintDialogHeading('Imprimir Etiqueta de Trabajo'), true);
+  assert.equal(Core.isPrintPreviewHeading('Vista Previa de Etiqueta de Trabajo'), true);
+  assert.equal(Core.isPrintDialogHeading('Otra cosa'), false);
+  assert.equal(Core.isPrintPreviewHeading(null), false);
+});

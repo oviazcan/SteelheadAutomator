@@ -249,6 +249,190 @@ const WoScheduleButton = (() => {
     loadInline(woId, el);
   }
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // Impresión de PDFs (JobTag / Verbose) — AUTO-MANEJO del flujo nativo
+  // ══════════════════════════════════════════════════════════════════════════
+  // El `data` del renderizador lo arma el front (blob gigante, no reconstruible). Así que
+  // dejamos que SH haga TODO (fetch + ensamblado + render server-side) y solo:
+  //   1) click "Imprimir Etiquetas de Trabajo" (header)  → modal de selección
+  //   2) click "Imprimir Regular"/"Detallado" (por tipo) → SH renderiza → modal preview
+  //   3) tomamos la share-URL del <object data="…/api/pdf/share/…"> y la abrimos
+  //   4) cerramos los modales (sin mostrar el preview)
+  // Por-OT (una a la vez) → sin el techo de merge de PDFGeneratorAPI (~16-20 en batch).
+  // NO-destructivo (genera el mismo PDF que el flujo nativo). Fail-safe: ante cualquier
+  // fallo, deja el modal nativo abierto para que el operador termine a mano.
+  const PRINT_TRIGGER_RE = /imprimir\s+etiquetas\s+de\s+trabajo/i;   // botón del header (ES; EN=deuda)
+  const PRINT_POLL_MS = 250, PRINT_TIMEOUT_MS = 12000;
+
+  function btnText(b) { return (b && b.textContent ? b.textContent : '').replace(/\s+/g, ' ').trim(); }
+
+  // Espera a que `fn()` devuelva algo truthy; resuelve con ese valor o rechaza por timeout.
+  function waitFor(fn, timeoutMs) {
+    timeoutMs = timeoutMs || PRINT_TIMEOUT_MS;
+    return new Promise(function (resolve, reject) {
+      const t0 = Date.now();
+      (function tick() {
+        let v = null; try { v = fn(); } catch (_) {}
+        if (v) return resolve(v);
+        if (Date.now() - t0 > timeoutMs) return reject(new Error('timeout'));
+        setTimeout(tick, PRINT_POLL_MS);
+      })();
+    });
+  }
+
+  // Botón nativo del header que abre el modal de impresión (outlined + QrCode2Icon + texto).
+  function findPrintTrigger() {
+    const btns = document.querySelectorAll('button');
+    for (let i = 0; i < btns.length; i++) {
+      const b = btns[i];
+      if (b.querySelector('svg[data-testid="QrCode2Icon"]') && PRINT_TRIGGER_RE.test(btnText(b))) return b;
+    }
+    return null;
+  }
+  // El modal de selección de plantilla (dialog con sus 2 MuiButton-contained de impresión).
+  function findPrintDialog() {
+    const dialogs = document.querySelectorAll('[role="dialog"]');
+    for (let i = 0; i < dialogs.length; i++) {
+      const d = dialogs[i];
+      const heading = d.querySelector('h2,h6,[id="form-dialog-title"]');
+      const contained = d.querySelectorAll('button.MuiButton-contained');
+      if (contained.length >= 1 && (Core().isPrintDialogHeading(btnText(heading)) || contained.length >= 2)) {
+        // confirma que es el de impresión: algún contained trae QrCode2Icon
+        for (let k = 0; k < contained.length; k++) if (contained[k].querySelector('svg[data-testid="QrCode2Icon"]')) return d;
+      }
+    }
+    return null;
+  }
+  // Botón "Imprimir Regular/Detallado" del modal para el tipo pedido (texto ES → fallback orden).
+  function findModalPrintButton(dialog, typeKey) {
+    const t = Core().printType(typeKey); if (!dialog || !t) return null;
+    const btns = Array.prototype.slice.call(dialog.querySelectorAll('button.MuiButton-contained'))
+      .filter(function (b) { return b.querySelector('svg[data-testid="QrCode2Icon"]'); });
+    // 1) por texto exacto ES; 2) fallback por orden (0=Regular, 1=Detallado)
+    const byText = btns.find(function (b) { return btnText(b).toLowerCase() === t.buttonTextEs.toLowerCase(); });
+    if (byText) return byText;
+    return btns[t.order] || null;
+  }
+  // Share-URL del PDF en el modal de preview (o cualquier <object>/<a> que la traiga).
+  function findShareUrl() {
+    const nodes = document.querySelectorAll('object[data*="/api/pdf/share/"], a[href*="/api/pdf/share/"], iframe[src*="/api/pdf/share/"]');
+    for (let i = 0; i < nodes.length; i++) {
+      const u = nodes[i].getAttribute('data') || nodes[i].getAttribute('href') || nodes[i].getAttribute('src') || '';
+      if (Core().isPdfShareUrl(u)) return u.indexOf('http') === 0 ? u : (location.origin + u);
+    }
+    return null;
+  }
+  // Cierra los modales de impresión/preview (botón Cerrar/Cancelar, o Escape).
+  function closePrintDialogs() {
+    document.querySelectorAll('[role="dialog"]').forEach(function (d) {
+      const heading = d.querySelector('h2,h6');
+      if (Core().isPrintPreviewHeading(btnText(heading)) || Core().isPrintDialogHeading(btnText(heading)) || d.querySelector('object[data*="/api/pdf/share/"]')) {
+        const closeBtn = d.querySelector('button svg[data-testid="CloseIcon"]');
+        const cancel = Array.prototype.slice.call(d.querySelectorAll('button')).find(function (b) { return /cancelar|cerrar|close|cancel/i.test(btnText(b)); });
+        const b = (closeBtn && closeBtn.closest('button')) || cancel;
+        if (b) { try { b.click(); } catch (_) {} }
+      }
+    });
+    try { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); } catch (_) {}
+  }
+
+  // Orquestador. openTarget: 'newtab' (gesto del usuario) | 'self' (auto-disparo remoto).
+  // Devuelve la share-URL. En 'newtab' preserva el gesto abriendo la pestaña YA.
+  async function autoPrint(typeKey, openTarget) {
+    const t = Core().printType(typeKey);
+    if (!t) return null;
+    // Abre la pestaña ANTES de los awaits (preserva el user-gesture → no lo bloquea el popup blocker).
+    let win = null;
+    if (openTarget === 'newtab') { try { win = window.open('', '_blank'); } catch (_) {} }
+    const fail = function (msg) {
+      if (win) { try { win.close(); } catch (_) {} }
+      printToast('⚠️ ' + msg + ' — abrí el modal nativo y termina a mano.');
+    };
+    try {
+      // Si el modal ya está abierto (p.ej. lo abrió el operador), no re-disparamos el trigger.
+      let dialog = findPrintDialog();
+      if (!dialog) {
+        const trigger = findPrintTrigger();
+        if (!trigger) { fail('No encontré el botón "Imprimir Etiquetas de Trabajo"'); return null; }
+        trigger.click();
+        dialog = await waitFor(findPrintDialog, 6000);
+      }
+      const pbtn = findModalPrintButton(dialog, typeKey);
+      if (!pbtn) { fail('No encontré el botón "' + t.buttonTextEs + '" en el modal'); return null; }
+      pbtn.click();
+      const url = await waitFor(findShareUrl, PRINT_TIMEOUT_MS);   // SH renderiza server-side
+      // Suelta el PDF y oculta el preview.
+      if (win) { try { win.location.href = url; } catch (_) { window.open(url, '_blank'); } }
+      else if (openTarget === 'self') { location.href = url; }
+      else { window.open(url, '_blank'); }
+      setTimeout(closePrintDialogs, 300);   // deja que el <object> exista antes de cerrar
+      printToast('🏷️ PDF ' + t.key + ' generado.');
+      return url;
+    } catch (e) {
+      fail('No pude generar el PDF (' + (e && e.message ? e.message : 'error') + ')');
+      return null;
+    }
+  }
+
+  // Auto-disparo remoto: /WorkOrders/<id>?sa_print=jobtag → genera y navega al PDF (una vez).
+  function maybeAutoPrintFromParam() {
+    if (!onDetail()) return;
+    const typeKey = Core().parsePrintParam(location.search);
+    if (!typeKey || window.__saWoPrintFired) return;
+    window.__saWoPrintFired = true;
+    // Espera a que el header (botón nativo) exista y dispara.
+    waitFor(findPrintTrigger, 15000).then(function () { autoPrint(typeKey, 'self'); }).catch(function () {});
+  }
+
+  let printToastTimer = null;
+  function printToast(msg) {
+    let el = document.getElementById('sa-woprint-toast');
+    if (!el) {
+      el = document.createElement('div'); el.id = 'sa-woprint-toast';
+      el.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:2147483600;' +
+        'background:#1c2430;color:#e6e9ee;border:1px solid #2b3645;border-left:4px solid #13a36f;border-radius:10px;' +
+        'padding:12px 18px;font-size:14px;max-width:80vw;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.45);';
+      document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    if (printToastTimer) clearTimeout(printToastTimer);
+    printToastTimer = setTimeout(function () { const e = document.getElementById('sa-woprint-toast'); if (e) e.remove(); }, 4500);
+  }
+
+  // Botones de impresión rápida en el header (junto al readout). Molde: barra clara nativa
+  // con acento verde (señal de que es de la extensión).
+  const PRINT_BTNS_ID = 'sa-woprint-btns';
+  function ensurePrintButtons() {
+    if (!onDetail()) return;
+    if (document.getElementById(PRINT_BTNS_ID)) return;
+    const pdf = document.querySelector(PDF_ANCHOR);
+    if (!pdf || !pdf.parentElement) return;
+    injectPrintStyles();
+    const wrap = document.createElement('span'); wrap.id = PRINT_BTNS_ID; wrap.className = 'sa-woprint-btns';
+    [{ k: 'jobtag', label: '🏷️ JobTag', title: 'Genera el PDF de etiquetas (Regular) de esta OT, sin preview.' },
+     { k: 'verbose', label: '📋 Verbose', title: 'Genera el PDF detallado (Verbose) de esta OT, sin preview.' }].forEach(function (o) {
+      const b = document.createElement('button'); b.type = 'button'; b.className = 'sa-woprint-btn';
+      b.textContent = o.label; b.title = o.title;
+      b.addEventListener('click', function () { autoPrint(o.k, 'newtab'); });
+      wrap.appendChild(b);
+    });
+    pdf.parentElement.insertBefore(wrap, pdf);
+  }
+  function injectPrintStyles() {
+    if (document.getElementById('sa-woprint-style')) return;
+    const s = document.createElement('style'); s.id = 'sa-woprint-style';
+    s.textContent = [
+      '.sa-woprint-btns{display:inline-flex;gap:6px;margin:0 8px;vertical-align:middle;}',
+      '.sa-woprint-btn{display:inline-flex;align-items:center;gap:4px;background:#fff;color:#0d6b49;',
+      'border:1px solid #13a36f;border-radius:6px;padding:3px 9px;font-size:12px;font-weight:600;cursor:pointer;',
+      'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;white-space:nowrap;line-height:1.3;}',
+      '.sa-woprint-btn:hover{background:#e9f7f1;}',
+      '.sa-woprint-btn:active{background:#d6efe4;}',
+    ].join('');
+    document.head.appendChild(s);
+  }
+  function removePrintButtons() { const el = document.getElementById(PRINT_BTNS_ID); if (el) el.remove(); }
+
   // ── Montaje idempotente + observer + navegación SPA ──────────────────────────
   let obsTimer = null;
   function scheduleEnsure() {
@@ -263,6 +447,7 @@ const WoScheduleButton = (() => {
           // está programada?"). Arranca YA, sin diferir ni esperar idle.
           if (woId != null) { el.setAttribute('data-sa-loading', '1'); loadInline(woId, el); }
         }
+        ensurePrintButtons();   // botones de impresión rápida junto al readout
       } catch (_) {}
     }, 120);
   }
@@ -281,8 +466,9 @@ const WoScheduleButton = (() => {
     ['pushState', 'replaceState'].forEach(function (m) { const orig = history[m]; history[m] = function () { const r = orig.apply(this, arguments); fire(); return r; }; });
     window.addEventListener('popstate', fire);
     window.addEventListener('sa-wosched-urlchange', function () {
-      removeInline();   // se re-crea para la nueva ficha (evita mostrar datos de la anterior)
-      if (onDetail()) { prefetch(currentWoIdInDomain()); scheduleEnsure(); }   // fetch YA
+      removeInline(); removePrintButtons();   // se re-crean para la nueva ficha
+      window.__saWoPrintFired = false;        // permite auto-disparo en la nueva ficha (?sa_print=)
+      if (onDetail()) { prefetch(currentWoIdInDomain()); scheduleEnsure(); maybeAutoPrintFromParam(); }
     });
   }
 
@@ -294,8 +480,8 @@ const WoScheduleButton = (() => {
     observe();
     // Dato #1: dispara el fetch de programación YA en init (sin esperar al header),
     // para que sea de lo primero que carga (antes que vale-almacén / paro-de-línea).
-    if (onDetail()) { prefetch(currentWoIdInDomain()); scheduleEnsure(); }
-    console.log('[SA] WoScheduleButton activo (readout de programación inline en la ficha de OT)');
+    if (onDetail()) { prefetch(currentWoIdInDomain()); scheduleEnsure(); maybeAutoPrintFromParam(); }
+    console.log('[SA] WoScheduleButton activo (readout de programación + impresión en la ficha de OT)');
   }
 
   // Popup: informa el estado (no abre modal en Fase 1).
@@ -305,7 +491,7 @@ const WoScheduleButton = (() => {
     return { ok: true, note: 'La programación se muestra inline en el header (📅). El modal de programación intencional llega en la Fase 2.' };
   }
 
-  return { init, openFromPopup };
+  return { init, openFromPopup, autoPrint: autoPrint };
 })();
 
 if (typeof window !== 'undefined') {
