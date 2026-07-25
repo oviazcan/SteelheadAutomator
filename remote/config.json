@@ -1,6 +1,6 @@
 {
-  "version": "1.7.191",
-  "lastUpdated": "2026-07-24T20:10",
+  "version": "1.7.192",
+  "lastUpdated": "2026-07-24T20:35",
   "extensionVersion": "1.6.6",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -2660,7 +2660,7 @@
     "scripts/load-calculator-stations.js": "417ebe274fd3a649fcc70c02bc122afb3d57db5e2c53a9cb9bb24e0ecf43ef06",
     "scripts/load-calculator.js": "bf06e3cd6ed5063b62b5b62c9ef13ecf9546b2093d40320f450058576658b111",
     "scripts/ov-operations.js": "58f2fed723ba81a1f73c0bb58da934293aec5cda6cde81494682be4d9910989c",
-    "scripts/paros-linea.js": "b10074bbcb58bb1ce41d80b5333e4f75d01fbfd272d9fc37cb0134f6a0419e35",
+    "scripts/paros-linea.js": "ccf14c09e6886c1eb480014de75c86c2a54fb1f10787aeb92409c4f12ed6c126",
     "scripts/pn-lifecycle-core.js": "81a8e694132873e3176eab07167324abfa77c616adac0690e6cbbfc8b39ff0c9",
     "scripts/pn-lifecycle.js": "2b4693608fa23ecda32bd5dd6a31b988914b6c784cb6fce9100f75a457f54c52",
     "scripts/pn-specs-column-core.js": "05b8aa288daff29b82ed1dc7a23a246b5794c8912f4dfe8eaf22e816eed478a4",
@@ -2692,7 +2692,7 @@
     "scripts/unit-autoconvert-core.js": "4c43e041cc6a1c249ab1f20c0a9c089bf1a38929d82a1b5f03c89814a113d633",
     "scripts/unit-autoconvert.js": "886b971f171619e74bb250a0c076b67b7aca12006fed195a4c2c9f50d827ef11",
     "scripts/vale-almacen-engine.js": "36241da082a58d03241068bcec6fcde2131eb69a9871eb9cd2f8bce21ccdd1a0",
-    "scripts/vale-almacen.js": "a16893b2c5491349610c1e62f620b4f804bab9620ea0dcc1715e057109125a99",
+    "scripts/vale-almacen.js": "cbd6bc27c493cb703d4125211bc33ff510a15ed5061d31770cf2b128e8ea3985",
     "scripts/warehouse-location-prefill.js": "e50128e0a0d0c36279cbd85bef87597814bef20e77ea53c1c206ef44dfc2f5a0",
     "scripts/weight-quick-entry.js": "9710caa9ecc4e81f97b6aa2e68565e0de2abf720ccd7cdf7ef8e30ac5f8a2b42",
     "scripts/wo-completer-engine.js": "3101a9c8f718f9469e005a02498a89d6467b8f7c49583d7bb6f96f55a5bdfc83",
@@ -2700,7 +2700,7 @@
     "scripts/wo-deadline-changer.js": "169d0dc0c60030398a108ea73747848071159b7d4664305ad66833a0fe67265b",
     "scripts/wo-listing-columns.js": "348afc8d4bb9c3cbb67e8b391576d648d6bc02389a69d4bd634af4c6fc2dcea3",
     "scripts/wo-mover.js": "e924dfd9fb5d82ed65ab75151adcdc32cd4a94e950b8fcc2add9a9a65c78aefd",
-    "scripts/wo-schedule-button.js": "bbf3ffdfcc7fb3ff57d16d4fe13a6c7c93d2e86d01619f6659ef81c28760a67a",
+    "scripts/wo-schedule-button.js": "25226e54b143085bc4621593aa2ac1dd8ab6209d8f7f686925aed1adb8ca162f",
     "scripts/wo-schedule-core.js": "527f0a618e5f72b694bbbe6a82afef95e770c9a1e608b722ed2e292e3b555bb6"
   }
 }
