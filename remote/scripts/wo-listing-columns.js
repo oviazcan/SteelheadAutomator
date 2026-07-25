@@ -631,16 +631,23 @@ const WoListingColumns = (() => {
     const tds = tr.querySelectorAll('td:not(.sa-wocol-pn):not(.sa-wocol-sched):not(.sa-wocol-lote)');
     return tds.length ? tds[tds.length - 1] : null;
   }
-  // El 🏷️ genera el JobTag en un IFRAME OCULTO dentro del dashboard → NO abre pestaña (no roba
-  // el foco) y NO se estrangula (corre a full speed). Fallback a pestaña si SH bloquea enmarcar.
-  function buildLabelButton(fichaHref) {
+  // Botones 🏷️ (JobTag/Regular) y 📋 (Verbose/Detallado): generan el PDF en un IFRAME OCULTO
+  // dentro del dashboard → NO abren pestaña (no roban foco) y NO se estrangulan (rápido).
+  // Fallback a pestaña si SH bloquea enmarcar o el iframe falla (tras 1 reintento).
+  const LABEL_TYPES = [
+    { key: 'jobtag',  emoji: '🏷️', title: 'Descargar el JobTag (etiqueta Regular) de esta OT — en 2º plano, sin salir del dashboard.' },
+    { key: 'verbose', emoji: '📋', title: 'Descargar el Verbose (etiqueta Detallada) de esta OT — en 2º plano, sin salir del dashboard.' },
+  ];
+  function labelEmoji(typeKey) { const s = LABEL_TYPES.find(function (x) { return x.key === typeKey; }); return s ? s.emoji : '🏷️'; }
+  function buildLabelButton(fichaHref, spec) {
     const b = document.createElement('button');
     b.type = 'button';
     b.className = 'sa-wolabel-btn';
-    b.textContent = '🏷️';
-    b.title = 'Generar y DESCARGAR el JobTag de esta OT — en 2º plano, sin salir del dashboard.';
-    b.setAttribute('aria-label', 'Descargar etiquetas de trabajo (JobTag)');
-    b.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); driveLabel(b, fichaHref, 'jobtag'); });
+    b.setAttribute('data-sa-print-type', spec.key);
+    b.textContent = spec.emoji;
+    b.title = spec.title;
+    b.setAttribute('aria-label', spec.title);
+    b.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); driveLabel(b, fichaHref, spec.key); });
     return b;
   }
 
@@ -739,23 +746,29 @@ const WoListingColumns = (() => {
   }
   async function driveLabelCore(btn, fichaHref, typeKey) {
     const woId = Core().parseWorkOrderIdInDomain(fichaHref);
+    const emoji = labelEmoji(typeKey);
     if (btn) { btn.textContent = '⏳'; btn.style.pointerEvents = 'none'; }
-    const iframe = document.createElement('iframe');
-    iframe.setAttribute('aria-hidden', 'true');
-    // Offscreen con dimensiones REALES (no display:none, que impide render) → el SPA renderiza el
-    // modal completo (botón grande, no la versión icono chica). opacity:0 evita cualquier flash.
-    iframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:1400px;height:950px;border:0;opacity:0;pointer-events:none;';
-    iframe.src = fichaHref;   // sin ?sa_print: el applet NO corre dentro; el PADRE maneja
-    document.body.appendChild(iframe);
     let ok = false;
-    try { ok = await runIframePrint(iframe, typeKey, woId); }
-    catch (e) { console.warn('[SA] wo-labels iframe:', e && e.message); }
-    try { iframe.remove(); } catch (_) {}
-    if (btn) { btn.textContent = ok ? '✅' : '🏷️'; btn.style.pointerEvents = ''; if (ok) setTimeout(function () { if (btn) btn.textContent = '🏷️'; }, 2500); }
-    if (ok) { toast('🏷️ WO' + (woId != null ? woId : '') + '.pdf descargado.'); }
+    // Reintenta el IFRAME una vez antes de caer a pestaña: el hipo de sesión bajo carga
+    // (`You're not logged in`) suele resolverse en el 2º intento → menos fallbacks a pestaña.
+    for (let attempt = 0; attempt < 2 && !ok; attempt++) {
+      const iframe = document.createElement('iframe');
+      iframe.setAttribute('aria-hidden', 'true');
+      // Offscreen con dimensiones REALES (no display:none, que impide render) → el SPA renderiza el
+      // modal completo (botón grande, no la versión icono chica). opacity:0 evita cualquier flash.
+      iframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:1400px;height:950px;border:0;opacity:0;pointer-events:none;';
+      iframe.src = fichaHref;   // sin ?sa_print: el applet NO corre dentro; el PADRE maneja
+      document.body.appendChild(iframe);
+      try { ok = await runIframePrint(iframe, typeKey, woId); }
+      catch (e) { console.warn('[SA] wo-labels iframe:', e && e.message); }
+      try { iframe.remove(); } catch (_) {}
+      if (!ok && attempt === 0) { if (btn) btn.textContent = '↻'; await sleepP(600); }   // respiro + reintento
+    }
+    if (btn) { btn.textContent = ok ? '✅' : emoji; btn.style.pointerEvents = ''; if (ok) setTimeout(function () { if (btn) btn.textContent = emoji; }, 2500); }
+    if (ok) { toast('🏷️ WO' + (woId != null ? woId : '') + (typeKey === 'verbose' ? '-verbose' : '') + '.pdf descargado.'); }
     else {
-      // Fallback: SH bloquea enmarcar (o no cargó) → abrir pestaña (⌘/Ctrl+clic para no perder foco).
-      toast('🏷️ No se pudo en 2º plano — abro pestaña (⌘/Ctrl+clic evita perder el foco).');
+      // Fallback tras 2 intentos: SH bloquea enmarcar (o falló) → pestaña (⌘/Ctrl+clic no pierde foco).
+      toast('🏷️ No se pudo en 2º plano (2 intentos) — abro pestaña. ⌘/Ctrl+clic evita perder el foco.');
       window.open(fichaHref + (fichaHref.indexOf('?') >= 0 ? '&' : '?') + 'sa_print=' + typeKey + '&sa_dl=1', '_blank');
     }
   }
@@ -766,8 +779,11 @@ const WoListingColumns = (() => {
       const href = link ? (link.getAttribute('href') || link.href || '') : '';
       if (!href || Core().parseWorkOrderIdInDomain(href) == null) return;
       const cell = findActionsCell(tr);
-      if (!cell || cell.querySelector('.sa-wolabel-btn')) return;   // idempotente por fila
-      cell.appendChild(buildLabelButton(href));
+      if (!cell) return;
+      LABEL_TYPES.forEach(function (spec) {   // idempotente POR TIPO
+        if (cell.querySelector('.sa-wolabel-btn[data-sa-print-type="' + spec.key + '"]')) return;
+        cell.appendChild(buildLabelButton(href, spec));
+      });
     });
   }
   function removeLabelButtons() { document.querySelectorAll('.sa-wolabel-btn').forEach(function (b) { b.remove(); }); }
