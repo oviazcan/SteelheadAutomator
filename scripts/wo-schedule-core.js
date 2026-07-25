@@ -461,8 +461,74 @@
     };
   }
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // Impresión de PDFs (JobTag / Verbose / WorkOrder) — helpers puros
+  // ══════════════════════════════════════════════════════════════════════════
+  // El PDF se genera SERVER-SIDE (PDFGeneratorAPI) y se entrega como share-URL
+  //   https://app.gosteelhead.com/api/pdf/share/<shareId>/<token>?downloadName=<name>.pdf
+  // visible en el modal de preview como <object data="…">. NO reconstruimos el `data`
+  // del renderizador (lo arma el front, blob gigante) → el applet AUTO-MANEJA el flujo
+  // nativo (click "Imprimir Etiquetas" → modal → click "Imprimir Regular/Detallado") y
+  // toma la URL del <object>, sin mostrar el preview. Por-OT (una a la vez) = sin el
+  // techo de merge de PDFGeneratorAPI (~16-20 OTs en batch).
+  //
+  // Anclaje del botón del modal: ROBUSTO por posición (los 2 MuiButton-contained del
+  // modal "Imprimir Etiqueta de Trabajo": order 0 = Regular/JobTag, 1 = Detallado/Verbose)
+  // + confirmación por texto ES. EN = deuda bilingüe (falta el string real del otro locale;
+  // NO se adivina — el anclaje primario es estructural, el texto solo confirma).
+  const PRINT_TYPES = {
+    jobtag:  { key: 'jobtag',  order: 0, buttonTextEs: 'Imprimir Regular',   filenameStem: 'work-order-part-number' },
+    verbose: { key: 'verbose', order: 1, buttonTextEs: 'Imprimir Detallado', filenameStem: 'work-order-part-number-verbose' },
+  };
+  function printTypeList() { return Object.keys(PRINT_TYPES).map(function (k) { return PRINT_TYPES[k]; }); }
+  function printType(key) { return (key && PRINT_TYPES[key]) ? PRINT_TYPES[key] : null; }
+
+  // ?sa_print=jobtag|verbose → key válido o null. (Disparo remoto desde el listado.)
+  function parsePrintParam(search) {
+    if (typeof search !== 'string') return null;
+    const m = search.match(/[?&]sa_print=([a-z]+)/i);
+    if (!m) return null;
+    const v = m[1].toLowerCase();
+    return PRINT_TYPES[v] ? v : null;
+  }
+
+  // ¿Es una share-URL de PDF de Steelhead? (/api/pdf/share/<id>/<token>)
+  function isPdfShareUrl(url) {
+    return typeof url === 'string' && /\/api\/pdf\/share\/\d+\/[a-z0-9]+/i.test(url);
+  }
+  // Parte una share-URL → { shareId, token, downloadName }. null si no matchea.
+  function parsePdfShareUrl(url) {
+    if (typeof url !== 'string') return null;
+    const m = url.match(/\/api\/pdf\/share\/(\d+)\/([a-z0-9]+)/i);
+    if (!m) return null;
+    let downloadName = '';
+    const dn = url.match(/[?&]downloadName=([^&#]+)/i);
+    if (dn) { try { downloadName = decodeURIComponent(dn[1]); } catch (_) { downloadName = dn[1]; } }
+    return { shareId: m[1], token: m[2], downloadName: downloadName };
+  }
+  // Nombre de archivo de respaldo si la URL no trae downloadName.
+  function buildPdfFilename(typeKey, woIdInDomain) {
+    const t = printType(typeKey);
+    const stem = t ? t.filenameStem : 'work-order';
+    return stem + (woIdInDomain != null ? '-' + woIdInDomain : '') + '.pdf';
+  }
+
+  // Encabezado del modal de selección de plantilla (ES confirmado; EN = deuda bilingüe).
+  function isPrintDialogHeading(text) {
+    if (typeof text !== 'string') return false;
+    return /imprimir\s+etiqueta\s+de\s+trabajo/i.test(text);
+  }
+  // Encabezado del modal de preview (ES confirmado; EN = deuda bilingüe).
+  function isPrintPreviewHeading(text) {
+    if (typeof text !== 'string') return false;
+    return /vista\s+previa\s+de\s+etiqueta/i.test(text);
+  }
+
   const api = {
     WO_INDEX_RE, WO_DETAIL_RE, DOMAIN_RE,
+    PRINT_TYPES, printTypeList, printType, parsePrintParam,
+    isPdfShareUrl, parsePdfShareUrl, buildPdfFilename,
+    isPrintDialogHeading, isPrintPreviewHeading,
     isWorkOrdersIndexPath, isWorkOrderDetailPath, parseWorkOrderIdInDomain, parseDomainId,
     extractPartNumbers, pnLink, extractWorkOrderGlobalId, extractPartNumberDetail,
     extractWorkOrderBatches, batchLink,
