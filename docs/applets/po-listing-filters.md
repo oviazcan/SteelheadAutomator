@@ -1,7 +1,7 @@
 # `po-listing-filters` — Buscador global de OC + Toggle de empresa
 
-**Versión:** 0.1.0 · **Pantalla:** `/Domains/<d>/Purchasing/PurchaseOrders` · **`autoInject: true`**
-**Estado:** implementado y testeado (42/42 golden). **Pendiente: deploy y validación en vivo.**
+**Versión:** 0.2.0 · **Pantalla:** `/Domains/<d>/Purchasing/PurchaseOrders` · **`autoInject: true`**
+**Estado:** VIVO. Core 69/69 golden, suite 951/951.
 
 Diseño completo en [`docs/superpowers/specs/2026-07-27-po-listing-filters-design.md`](../superpowers/specs/2026-07-27-po-listing-filters-design.md).
 
@@ -17,7 +17,7 @@ agravante que descubrí midiendo, no suponiendo:
 > que es otro control de la barra.
 
 Y el filtro de Dirección de Facturación es single-select en la UI, así que no deja marcar
-Ecoplating y el dominio de un jalón.
+varias direcciones de la misma empresa de un jalón.
 
 ## Las 5 vistas
 
@@ -63,10 +63,47 @@ Panel dark-mode con secciones **PROVEEDOR / ÓRDENES DE COMPRA / FACTURAS**; cad
 badge de tipo y **en qué vista vive**. Render incremental: los proveedores pintan en cuanto
 llegan, sin esperar al resto.
 
-## Widget B — Toggle triple de empresa
+## Navegación de los resultados
+
+| Resultado | Clic en el renglón | Flechita ↗ |
+|---|---|---|
+| **Proveedor** | Listado filtrado por `vendorIdFilter`, en la **primera sección con resultados**: Draft → Issued **All** → Fulfilled **All** | `/Domains/<d>/Vendors/<idInDomain>` |
+| **OC** | **Su vista exacta** (una OC vive en UNA sola de las 5), filtrada por su PO# | `/Domains/<d>/Purchasing/PurchaseOrders/<idInDomain>` |
+| **Factura** | Listado de facturas filtrado | `/Domains/<d>/Bills/<idInDomain>` |
+
+**Siempre "All", nunca Open ni Closed** al saltar desde un proveedor: el operador quiere ver
+todas sus OCs, no la mitad. El eje de facturación tiene un tercer estado `?billing=All` que
+**omite `billingOpen`** en la query — verificado en vivo: Issued·All manda `{issuedCondition:true}`
+a secas. Hay un test que falla si alguna sección de navegación fija `billingOpen`.
+
+Los 3 conteos que resuelven la sección se consultan **al hacer clic**, no durante la búsqueda:
+así el presupuesto de la búsqueda se queda en 7 y solo paga quien salta. El `<a href>` ya
+apunta a `issued-all`, así que si los conteos fallan o el operador hace ⌘+clic, el enlace
+sigue sirviendo.
+
+**Las fichas usan `idInDomain`, no el id de BD.** Verificado en vivo: `/Vendors/6` abre ATOTECH
+DE MEXICO, mientras que su `identifier` en `FilterSearch` es `89855`. Confundirlos abriría otro
+proveedor. `parseVendorDisplay` extrae el `6` del display `"#6 - ATOTECH DE MEXICO"`. Sin
+`idInDomain` no se pinta la flechita: mejor sin ella que una que abra el documento equivocado.
+
+## Widget B — Toggle "Sólo Proquipa"
 
 Se inyecta **después del botón "New Purchase Order"** (anclaje **bilingüe** ES+EN).
-`Ecoplating | Ambos | Proquipa`, centro por defecto, no persistente.
+Binario on/off, apagado por defecto, no persistente.
+
+**Nació como toggle triple** (Ecoplating | Ambos | Proquipa) y se redujo a binario: el lado
+Ecoplating **no es expresable**. Sus OC llevan la dirección del **dominio**, que es la misma que
+la asignada a la ubicación "Ecoplating", y el filtro nativo no la acepta — por eso 79 de 129 OC
+no matchean ninguna de las 10 direcciones. **Es un bug de Steelhead**; el operador levantó
+ticket de soporte el 2026-07-27.
+
+Mientras tanto solo se ofrece lo que se puede filtrar de forma confiable. Cuando Steelhead
+corrija el filtro, reponer el lado Ecoplating es **agregar un modo** en `planProquipaFilter`:
+el descubrimiento de direcciones y la agrupación por raíz siguen clasificando ambas empresas.
+
+El toggle se enciende al recargar **solo si el filtro de la URL es exactamente el de Proquipa**
+(`isProquipaFilterActive`). Un filtro parcial o puesto a mano no lo enciende — mentiría sobre
+lo que está aplicado.
 
 ### Por qué funciona
 
@@ -85,7 +122,8 @@ del backend.**
 ### Agrupación por raíz del path
 
 Las ubicaciones de Steelhead están **anidadas por punto** y la raíz define la empresa.
-`PlantaToluca` = dominio → cuenta como Ecoplating (decisión del usuario).
+`PlantaToluca` = dominio → cuenta como Ecoplating. La agrupación se conserva completa aunque
+hoy solo se ofrezca el filtro de Proquipa (ver Widget B).
 
 | display | id | → empresa |
 |---|---|---|
@@ -104,96 +142,15 @@ de `FilterSearch` (que topa en 10 resultados por consulta y no pagina) y las agr
 `companyOfLocation` corta en el primer punto en vez de hacer prefix-match: `'EcoplatingOtra'`
 **no** es sub-ubicación de Ecoplating y debe caer en `otras`. Hay test que lo fija.
 
-### El hueco de las OCs sin dirección — estrategia adaptativa
+### El hueco de las OCs sin dirección (bug de Steelhead)
 
-En Issued·Open (129): Proquipa=50 y **las otras 9 direcciones dan 0** → 79 OCs no matchean
-ninguna. Decisión del usuario: **cuentan como Ecoplating** ("traen el dominio en la UI, por eso
-quedan vacías").
+En Issued·Open (129): Proquipa=50 y **las otras 9 direcciones dan 0** → 79 OC no matchean
+ninguna. Causa confirmada por el operador: esas OC llevan la **dirección del dominio**, que es
+la misma asignada a la ubicación "Ecoplating", y **el filtro nativo no la acepta**.
 
-Eso vuelve el lado izquierdo **"todo lo que NO es Proquipa"**, y `IN (…)` no expresa negación ni
-`NULL`. Por eso `planCompanyFilter` **decide en runtime** en vez de asumir:
-
-| Condición medida | Plan |
-|---|---|
-| `allCovered` (no hay huérfanas) | `filter` — filtro nativo puro |
-| `nullAccepted` (el server acepta `null` en el array) | `filter` con `null` incluido |
-| ninguna | **`annotate`** — filtra lo que sabe y **pide confirmación** diciendo cuántas OCs se ocultarían |
-
-`annotate` es el **fail-safe**: nunca esconde OCs por un dato que no pudo resolver. El modo
-Proquipa nunca es ambiguo (`filter` siempre); el centro limpia el parámetro.
-
-## Hashes
-
-| Op | Hash | Ruta de regeneración |
-|---|---|---|
-| `PurchaseOrders` | `32f823d3…` | `purchasing-list` (ya existía) |
-| `SearchBills` | `e50ba3ee…` | `bills-list` (ya existía) |
-| `FilterSearch` | `1cdd9e39…` | `workorders-filter-open` (ya existía) |
-
-**Los tres nacen con auto-regeneración cubierta** — el `hash-autopilot` los recaptura solo
-cuando Steelhead los rote. Cero deuda de hash.
-
-## Lección de anclaje: el DOM de SH **duplica** controles (bug del deploy 1.7.203)
-
-Primer deploy en vivo: **los dos widgets se inyectaron en el control equivocado.** La causa
-es la misma en ambos — `querySelector` devuelve el **primer** match, que no es el correcto:
-
-| Widget | Qué pasó | Por qué |
-|---|---|---|
-| Buscador | Quedó en la barra superior de SH, junto a "Buscar Todo" | Hay **4** `svg[data-testid="SearchIcon"]` en la pantalla (header global, tabla, chat…) y agarró el del header |
-| Toggle | Se inyectó pero **no se veía** (`offsetParent:null`, ancho 0) | El botón "New Purchase Order" está **duplicado en dos variantes responsive**: `css-eabxx0` (solo ícono, oculta en escritorio) y `css-165nl96` (botón completo, visible). Ancló en la oculta |
-
-**Reglas que lo arreglan** (puras y testeadas en el core, 6 tests de regresión):
-
-- `pickVisibleCandidate(cands)` — entre variantes responsive duplicadas, quédate con la que
-  tenga `offsetParent !== null` **y ancho > 0**. Un elemento puede existir y no verse.
-- `pickNearestByDepth(cands)` — el `SearchIcon` de la tabla se identifica porque **comparte
-  contenedor con el botón de exportar CSV** (`DownloadForOfflineOutlinedIcon`) al nivel más
-  cercano. Anclaje **estructural**: ni texto (cambia con el locale) ni clases generadas
-  (`css-xxxxx` cambia entre builds).
-
-> **Generalizable a cualquier applet de este repo:** antes de anclar por `data-testid`,
-> cuenta cuántos hay en la pantalla; y antes de insertar junto a un botón, verifica que ese
-> botón sea el **visible**, no su gemelo responsive. Ambos fallos son silenciosos — el applet
-> "se inyecta correctamente" y no se ve nada.
-
-## Lección operativa: el `/graphql` se cuelga bajo ráfaga
-
-Descubierto en carne propia durante la captura: **tras ~40-45 requests seguidas desde la consola,
-el endpoint deja de responder**. Las peticiones quedan **colgadas sin resolver ni fallar** — no
-devuelven 429 ni error, simplemente nunca vuelven — y **no se recuperan recargando la página**.
-
-**Peor: no es solo el applet.** Con el límite activo, la **pantalla nativa de Steelhead tampoco
-carga** — la tabla de OCs se queda vacía (verificado 2026-07-27 en pestaña nueva y sesión
-limpia). El límite es **por sesión/cuenta**, no por pestaña. Es decir, un applet manirroto no
-se rompe a sí mismo: **le tumba el ERP al operador**. De ahí que el presupuesto de consultas
-(`MAX_QUERIES_PER_SEARCH`) sea un invariante testeado y no una guía.
-
-Por eso el applet es frugal por diseño: debounce 350 ms, pool de 2, `first:5`, timeout de 12 s y
-degradación a resultados parciales **sin reintento en bucle**. Si tocas este applet, no subas la
-concurrencia "para que vaya más rápido": lo que se gana es que deje de funcionar.
-
-## Estado / pendientes
-
-- [x] Core puro + 42 golden tests · suite completa 924/924
-- [x] Registro en `config.json` (hashes + app) — rutas de hash ya cubiertas
-- [x] **Deploy a gh-pages** — vivo en **config 1.7.206** (tags `v1.7.203`…`v1.7.206`)
-- [x] **Validado en vivo (2026-07-27):**
-  1. Ambos widgets se inyectan en su lugar (tras el fix de anclajes de 1.7.204)
-  2. Buscar "ATOTECH" → **encuentra el proveedor**, que es lo que el nativo NO hace (da 0).
-     El panel muestra "1 resultado" y **eso es correcto**: por texto no hay OCs justamente
-     porque `searchQuery` ignora al proveedor. El valor está en el clic al proveedor.
-  3. `buildResultHref` genera enlaces **relativos y sin host ficticio** para los 3 tipos
-     (verificado contra el core vivo tras el fix de 1.7.206)
-  4. **Toggle → Proquipa aplica `billToLocationIdFilter=23301,23344`** — las **dos**
-     direcciones de Proquipa de un jalón, que es exactamente lo que la UI nativa no permite.
-     Confirma en vivo `discoverLocations` + agrupación por raíz + `planCompanyFilter`.
-- [ ] **Pendiente de validar** (la sesión se topó con el rate-limit del endpoint):
-  1. El conteo resultante del toggle (no alcancé a ver la tabla filtrada)
-  2. **Clic y teclado en el panel** — rehecho en 1.7.207 (ver abajo), no validado en vivo
-  3. Cuál de las 3 ramas de `planCompanyFilter` toma el lado Ecoplating en la práctica
-  4. Que el toggle refleje su estado al recargar con el parámetro puesto
-  5. `SearchBills` y el shape de sus nodos
+`IN (…)` tampoco expresa `NULL` ni negación, así que "todo lo que no es Proquipa" no se puede
+pedir. **Ticket de soporte levantado con Steelhead el 2026-07-27.** Hasta que lo corrijan, el
+toggle solo ofrece Proquipa (ver Widget B).
 
 ## Navegación del panel: por qué son `<a href>` y no listeners (1.7.207)
 

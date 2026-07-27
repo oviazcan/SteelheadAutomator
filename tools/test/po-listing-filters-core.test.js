@@ -151,81 +151,78 @@ test('groupLocationsByCompany: entrada basura no truena', () => {
   assert.equal(g.all.length, 0);
 });
 
-// ---------- planCompanyFilter (las 3 ramas) ----------
+// ---------- toggle binario: solo Proquipa ----------
+// Nació triple; el lado Ecoplating no es expresable porque sus OC llevan la dirección del
+// dominio y el filtro nativo de SH no la acepta (bug con ticket abierto, 2026-07-27).
 
 const GROUPS = Core.groupLocationsByCompany(LOCATIONS);
 
-test('planCompanyFilter: centro limpia el filtro', () => {
-  const p = Core.planCompanyFilter(Core.MODES.BOTH, GROUPS, {});
-  assert.equal(p.kind, 'clear');
-});
-
-test('planCompanyFilter: Proquipa siempre es filtro nativo puro', () => {
-  const p = Core.planCompanyFilter(Core.MODES.PROQUIPA, GROUPS, {});
+test('planProquipaFilter: encendido filtra las DOS direcciones de Proquipa', () => {
+  const p = Core.planProquipaFilter(true, GROUPS);
   assert.equal(p.kind, 'filter');
   assert.deepEqual(p.ids.sort(), ['23301', '23344'].sort());
 });
 
-test('planCompanyFilter: Ecoplating con cobertura total → filtro nativo', () => {
-  const p = Core.planCompanyFilter(Core.MODES.ECOPLATING, GROUPS, { allCovered: true });
-  assert.equal(p.kind, 'filter');
-  assert.equal(p.ids.includes('22872'), true);
-  assert.equal(p.ids.includes(null), false, 'sin huérfanas no debe mandar null');
+test('planProquipaFilter: apagado limpia el filtro', () => {
+  assert.equal(Core.planProquipaFilter(false, GROUPS).kind, 'clear');
 });
 
-test('planCompanyFilter: Ecoplating con null aceptado → filtro + null', () => {
-  const p = Core.planCompanyFilter(Core.MODES.ECOPLATING, GROUPS, { allCovered: false, nullAccepted: true });
-  assert.equal(p.kind, 'filter');
-  assert.equal(p.ids.includes(null), true);
+test('planProquipaFilter: sin direcciones de Proquipa no filtra a ciegas', () => {
+  const vacio = { ecoplating: ['1'], proquipa: [], otras: [], all: ['1'] };
+  assert.equal(Core.planProquipaFilter(true, vacio).kind, 'unavailable');
 });
 
-test('planCompanyFilter: Ecoplating sin salida limpia → annotate (NO esconde huérfanas)', () => {
-  const p = Core.planCompanyFilter(Core.MODES.ECOPLATING, GROUPS,
-    { allCovered: false, nullAccepted: false, orphanCount: 79 });
-  assert.equal(p.kind, 'annotate', 'fail-safe: nunca esconder OCs por un dato irresoluble');
-  assert.deepEqual(p.hiddenIds.sort(), ['23301', '23344'].sort());
-  assert.equal(p.orphanCount, 79);
-});
-
-test('planCompanyFilter: sin direcciones de una empresa → unavailable (no filtra a ciegas)', () => {
-  const vacio = { ecoplating: [], proquipa: [], otras: [], all: [] };
-  assert.equal(Core.planCompanyFilter(Core.MODES.PROQUIPA, vacio, {}).kind, 'unavailable');
-  assert.equal(Core.planCompanyFilter(Core.MODES.ECOPLATING, vacio, {}).kind, 'unavailable');
-});
-
-// ---------- buildCompanyFilterUrl / parseCompanyModeFromUrl ----------
-
-test('buildCompanyFilterUrl: escribe ids con coma literal y resetea offset', () => {
-  const base = 'https://app.gosteelhead.com/Domains/344/Purchasing/PurchaseOrders?category=Issued&offset=40';
-  const url = Core.buildCompanyFilterUrl(base, ['23301', '23344']);
-  assert.equal(url.includes('billToLocationIdFilter=23301,23344'), true, 'coma literal como el nativo');
-  assert.equal(url.includes('offset=0'), true);
-  assert.equal(url.includes('category=Issued'), true, 'no debe perder la vista actual');
-});
-
-test('buildCompanyFilterUrl: lista vacía limpia el parámetro', () => {
-  const base = 'https://app.gosteelhead.com/Domains/344/Purchasing/PurchaseOrders?billToLocationIdFilter=22872';
-  const url = Core.buildCompanyFilterUrl(base, []);
-  assert.equal(url.includes('billToLocationIdFilter'), false);
-});
-
-test('parseBillToFilter: lee los ids del parámetro', () => {
-  const u = 'https://app.gosteelhead.com/Domains/344/Purchasing/PurchaseOrders?billToLocationIdFilter=22872,23345';
-  assert.deepEqual(Core.parseBillToFilter(u), ['22872', '23345']);
-  assert.deepEqual(Core.parseBillToFilter('https://x.test/a'), []);
-});
-
-test('parseCompanyModeFromUrl: refleja el estado del toggle al recargar', () => {
+test('isProquipaFilterActive: solo con el set EXACTO de Proquipa', () => {
   const base = 'https://app.gosteelhead.com/Domains/344/Purchasing/PurchaseOrders';
-  assert.equal(Core.parseCompanyModeFromUrl(base, GROUPS), Core.MODES.BOTH);
-  assert.equal(Core.parseCompanyModeFromUrl(base + '?billToLocationIdFilter=23301,23344', GROUPS), Core.MODES.PROQUIPA);
-  assert.equal(Core.parseCompanyModeFromUrl(base + '?billToLocationIdFilter=22872,24863', GROUPS), Core.MODES.ECOPLATING);
+  assert.equal(Core.isProquipaFilterActive(base, GROUPS), false, 'sin filtro → apagado');
+  assert.equal(Core.isProquipaFilterActive(base + '?billToLocationIdFilter=23301,23344', GROUPS), true);
 });
 
-test('parseCompanyModeFromUrl: un set mixto o ajeno cae en centro (no miente sobre el estado)', () => {
+test('isProquipaFilterActive: un set parcial o ajeno NO enciende el toggle', () => {
   const base = 'https://app.gosteelhead.com/Domains/344/Purchasing/PurchaseOrders';
-  assert.equal(Core.parseCompanyModeFromUrl(base + '?billToLocationIdFilter=22872,23301', GROUPS), Core.MODES.BOTH);
-  assert.equal(Core.parseCompanyModeFromUrl(base + '?billToLocationIdFilter=99999', GROUPS), Core.MODES.BOTH);
+  assert.equal(Core.isProquipaFilterActive(base + '?billToLocationIdFilter=23301', GROUPS), false,
+    'parcial: mentiría sobre lo aplicado');
+  assert.equal(Core.isProquipaFilterActive(base + '?billToLocationIdFilter=23301,23344,22872', GROUPS), false,
+    'con una de Ecoplating de más');
+  assert.equal(Core.isProquipaFilterActive(base + '?billToLocationIdFilter=99999', GROUPS), false);
+});
+
+// ---------- secciones de navegación (siempre "All") ----------
+
+test('PO_NAV_SECTIONS: son 3 y las de facturación OMITEN billingOpen (= All)', () => {
+  assert.equal(Core.PO_NAV_SECTIONS.length, 3);
+  const issued = Core.PO_NAV_SECTIONS.find((s) => s.key === 'issued-all');
+  const ful = Core.PO_NAV_SECTIONS.find((s) => s.key === 'fulfilled-all');
+  assert.deepEqual(issued.queryVars, { issuedCondition: true }, 'All = sin billingOpen');
+  assert.deepEqual(ful.queryVars, { fulfilledCondition: true });
+  assert.equal(issued.urlParams.billing, 'All');
+  assert.equal(ful.urlParams.billing, 'All');
+});
+
+test('PO_NAV_SECTIONS: ninguna sección de navegación es Open ni Closed', () => {
+  for (const s of Core.PO_NAV_SECTIONS) {
+    assert.notEqual(s.urlParams.billing, 'Open');
+    assert.notEqual(s.urlParams.billing, 'Closed');
+    assert.equal('billingOpen' in s.queryVars, false, s.key + ' no debe fijar billingOpen');
+  }
+});
+
+test('resolveFirstSectionWithResults: respeta el orden Draft → Issued → Fulfilled', () => {
+  assert.equal(Core.resolveFirstSectionWithResults({ draft: 2, 'issued-all': 9, 'fulfilled-all': 4 }), 'draft');
+  assert.equal(Core.resolveFirstSectionWithResults({ draft: 0, 'issued-all': 9, 'fulfilled-all': 4 }), 'issued-all');
+  assert.equal(Core.resolveFirstSectionWithResults({ draft: 0, 'issued-all': 0, 'fulfilled-all': 4 }), 'fulfilled-all');
+});
+
+test('resolveFirstSectionWithResults: todo en cero → null (no manda a una vista vacía)', () => {
+  assert.equal(Core.resolveFirstSectionWithResults({ draft: 0, 'issued-all': 0, 'fulfilled-all': 0 }), null);
+  assert.equal(Core.resolveFirstSectionWithResults({}), null);
+  assert.equal(Core.resolveFirstSectionWithResults(null), null);
+});
+
+test('resolveFirstSectionWithResults: un conteo desconocido NO cuenta como resultado', () => {
+  // Si la consulta falló (null), saltarse esa sección es mejor que mandar al operador a ciegas.
+  assert.equal(Core.resolveFirstSectionWithResults({ draft: null, 'issued-all': 3 }), 'issued-all');
+  assert.equal(Core.resolveFirstSectionWithResults({ draft: undefined, 'issued-all': 0 }), null);
 });
 
 // ---------- parseVendorDisplay ----------
@@ -335,6 +332,62 @@ test('buildResultHref: la factura lleva a la pantalla de Bills', () => {
 test('buildResultHref: sin dominio no inventa link', () => {
   assert.equal(Core.buildResultHref({ type: 'PO' }, null), null);
   assert.equal(Core.buildResultHref(null, '344'), null);
+});
+
+test('buildResultHref: el proveedor va a "All" por defecto, nunca a Open/Closed', () => {
+  const v = Core.classifyResults(RAW).find((r) => r.type === 'VENDOR');
+  const href = Core.buildResultHref(v, '344');
+  assert.ok(href.includes('billing=All'), 'debe ser la variante All, es: ' + href);
+  assert.equal(href.includes('billing=Open'), false);
+  assert.equal(href.includes('billing=Closed'), false);
+});
+
+test('buildResultHref: el proveedor respeta la sección resuelta', () => {
+  const v = Core.classifyResults(RAW).find((r) => r.type === 'VENDOR');
+  const draft = Core.buildResultHref(v, '344', 'draft');
+  assert.ok(draft.includes('category=Draft'), 'es: ' + draft);
+  const ful = Core.buildResultHref(v, '344', 'fulfilled-all');
+  assert.ok(ful.includes('category=Fulfilled') && ful.includes('billing=All'), 'es: ' + ful);
+});
+
+test('buildResultHref: una OC va a SU vista exacta, no a All', () => {
+  // Una OC vive en UNA sola de las 5 vistas; mandarla a All la escondería entre las demás.
+  const po = Core.classifyResults(RAW).find((r) => r.categoryKey === 'issued-open');
+  const href = Core.buildResultHref(po, '344');
+  assert.ok(href.includes('category=Issued'), 'es: ' + href);
+  assert.equal(href.includes('billing=All'), false);
+});
+
+// ---------- buildDetailHref (la flechita ↗) ----------
+// Las 3 rutas usan idInDomain, verificado en vivo: /Vendors/6 abre ATOTECH DE MEXICO,
+// /Purchasing/PurchaseOrders/1897 es el PO# visible.
+
+test('buildDetailHref: ficha de cada tipo con idInDomain', () => {
+  assert.equal(Core.buildDetailHref({ type: 'PO', idInDomain: '1873' }, '344'),
+    '/Domains/344/Purchasing/PurchaseOrders/1873');
+  assert.equal(Core.buildDetailHref({ type: 'VENDOR', idInDomain: '6' }, '344'),
+    '/Domains/344/Vendors/6');
+  assert.equal(Core.buildDetailHref({ type: 'BILL', idInDomain: '553' }, '344'),
+    '/Domains/344/Bills/553');
+});
+
+test('buildDetailHref: el proveedor usa el "#6" del display, NO el id de BD', () => {
+  // FilterSearch da identifier=89855 (id de BD) y display "#6 - ATOTECH DE MEXICO".
+  // La ficha es /Vendors/6 — usar 89855 abriría otro proveedor o un 404.
+  const v = Core.classifyResults(RAW).find((r) => r.type === 'VENDOR');
+  assert.equal(v.id, '89855', 'el id de BD se conserva para el filtro del listado');
+  assert.equal(Core.buildDetailHref(v, '344'), '/Domains/344/Vendors/6');
+});
+
+test('buildDetailHref: sin idInDomain NO inventa link', () => {
+  // Mejor sin flechita que una flechita que abra otro documento.
+  assert.equal(Core.buildDetailHref({ type: 'PO', idInDomain: null }, '344'), null);
+  assert.equal(Core.buildDetailHref({ type: 'PO', idInDomain: '1' }, null), null);
+  assert.equal(Core.buildDetailHref(null, '344'), null);
+});
+
+test('buildDetailHref: tipo desconocido → null', () => {
+  assert.equal(Core.buildDetailHref({ type: 'OTRO', idInDomain: '1' }, '344'), null);
 });
 
 // ---------- navegación por teclado del panel ----------
