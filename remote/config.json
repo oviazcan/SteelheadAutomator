@@ -1,6 +1,6 @@
 {
-  "version": "1.7.205",
-  "lastUpdated": "2026-07-27T16:27",
+  "version": "1.7.206",
+  "lastUpdated": "2026-07-27T16:32",
   "extensionVersion": "1.6.6",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -2682,7 +2682,7 @@
     "scripts/pn-specs-column-core.js": "05b8aa288daff29b82ed1dc7a23a246b5794c8912f4dfe8eaf22e816eed478a4",
     "scripts/pn-specs-column.js": "1d44e2f95e1eff0c0e2e06d646ec85577f3c14a692d4e17196f6be51948c1137",
     "scripts/po-comparator.js": "4e3d620cc06665c8a6b29626ec113874f150c5f7d4472978095a25d2fc53fb1f",
-    "scripts/po-listing-filters-core.js": "757e3f21ae1e96d3ac033bf1e3d08ab0dd7d48aa28c6c7da89c66ed5370c7150",
+    "scripts/po-listing-filters-core.js": "e5b93e486004adaa576b4696083f4591940d12b8fa8df2d4084266836c9ff05b",
     "scripts/po-listing-filters.js": "fbe10b5dd2799ed62e927331bb76f1aec091e23c669072d4ffa02271fa654e1b",
     "scripts/po-reconciler.js": "6a9c20833558a3805f721c09a63511d05057b3606d3d9e12a520d5e9738839c6",
     "scripts/portal-importer.js": "c14d8ad3441f8fe087988d7a3b542cc51f075358ad3935b4f1df2af8ea57652a",

@@ -95,9 +95,23 @@
     return 'draft';
   }
 
+  // `new URL(rel, BASE)` necesita una base, pero devolver `u.toString()` PEGA esa base
+  // ficticia al resultado y produce enlaces a https://x.invalid/… (bug del deploy 1.7.205:
+  // clicar un resultado sacaba al operador de Steelhead a un host muerto). Si la entrada era
+  // relativa, el resultado DEBE volver relativo.
+  const URL_BASE = 'https://x.invalid';
+  function isAbsoluteUrl(url) {
+    return /^[a-z][a-z0-9+.-]*:\/\//i.test(String(url == null ? '' : url));
+  }
+  function serializeUrl(u, absolute) {
+    const s = absolute ? u.toString() : (u.pathname + u.search + u.hash);
+    return s.replace(/%2C/gi, ','); // coma literal, como el nativo
+  }
+
   function buildCategoryUrl(baseUrl, categoryKey, extraParams) {
     const cat = categoryByKey(categoryKey);
-    const u = new URL(baseUrl, 'https://x.invalid');
+    const absolute = isAbsoluteUrl(baseUrl);
+    const u = new URL(baseUrl, URL_BASE);
     // Limpia los ejes de vista antes de escribir los nuevos (evita ?billing residual).
     u.searchParams.delete('category');
     u.searchParams.delete('billing');
@@ -109,7 +123,7 @@
       else u.searchParams.set(k, v);
     }
     u.searchParams.set('offset', '0');
-    return u.toString().replace(/%2C/gi, ',');
+    return serializeUrl(u, absolute);
   }
 
   // ── Empresas / direcciones de facturación ──
@@ -217,12 +231,13 @@
   // serializa como la cadena vacía entre comas, que es como el server lo interpreta cuando
   // acepta huérfanas; si no lo acepta, esa rama nunca se elige (ver planCompanyFilter).
   function buildCompanyFilterUrl(currentUrl, ids) {
-    const u = new URL(currentUrl, 'https://x.invalid');
+    const absolute = isAbsoluteUrl(currentUrl);
+    const u = new URL(currentUrl, URL_BASE);
     const list = (Array.isArray(ids) ? ids : []).map((x) => (x == null ? '' : String(x)));
     if (list.length) u.searchParams.set(URL_PARAM_BILL_TO, list.join(','));
     else u.searchParams.delete(URL_PARAM_BILL_TO);
     u.searchParams.set('offset', '0');
-    return u.toString().replace(/%2C/gi, ',');
+    return serializeUrl(u, absolute);
   }
 
   function parseBillToFilter(url) {
