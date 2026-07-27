@@ -5,10 +5,14 @@
 //   Busca a la vez en las 5 vistas + proveedores + facturas, y etiqueta cada hallazgo
 //   (OC / PROVEEDOR / FACTURA) diciendo en qué vista vive. Resuelve que el `searchQuery`
 //   nativo NO busca por proveedor ('ATOTECH' → 0 resultados) y que obliga a adivinar la vista.
+//   Cada renglón tiene además una flechita ↗ que abre la FICHA en pestaña aparte.
+//   Al clicar un PROVEEDOR salta a la primera sección con resultados (Draft → Issued All →
+//   Fulfilled All), siempre a la variante "All". Una OC concreta va a SU vista exacta.
 //
-// Widget B — toggle triple de empresa: va después del botón "New Purchase Order".
-//   Izquierda=Ecoplating (incluye dominio), centro=ambos (default), derecha=Proquipa.
-//   Aplica `billToLocationIdFilter` (array, semántica OR verificada en vivo) por URL.
+// Widget B — toggle "Sólo Proquipa": va después del botón "New Purchase Order".
+//   Binario, no triple: el lado Ecoplating NO es expresable porque sus OC llevan la
+//   dirección del dominio y el filtro nativo no la acepta (bug de SH, ticket abierto por el
+//   operador 2026-07-27). Aplica `billToLocationIdFilter` (array, semántica OR) por URL.
 //
 // FRUGALIDAD OBLIGATORIA: el /graphql de SH deja de responder tras ~40-45 requests seguidas
 // (las peticiones quedan colgadas, sin 429 ni error, y no se recuperan al recargar). De ahí
@@ -33,7 +37,7 @@
   const TIMEOUT_MS = 12000;
 
   const S = (window.__saPOF = window.__saPOF || {
-    seq: 0, locations: null, groups: null, coverage: {}, discovering: false, lastResults: null,
+    seq: 0, locations: null, groups: null, discovering: false, lastResults: null,
     active: -1, // índice del resultado activo por teclado (-1 = ninguno)
   });
 
@@ -61,8 +65,11 @@
       #${PANEL_ID} .sa-pof-sec{color:#7f8b99;font-size:10px;letter-spacing:.06em;text-transform:uppercase;margin:8px 0 4px;}
       #${PANEL_ID} .sa-pof-sec:first-child{margin-top:0;}
       #${PANEL_ID} ul{list-style:none;margin:0;padding:0;max-height:150px;overflow-y:auto;}
-      #${PANEL_ID} li{border-radius:4px;overflow:hidden;}
-      #${PANEL_ID} .sa-pof-link{padding:4px 5px;border-radius:4px;color:#cfd6de;cursor:pointer;display:flex;align-items:center;gap:7px;white-space:nowrap;overflow:hidden;text-decoration:none;}
+      #${PANEL_ID} li{border-radius:4px;overflow:hidden;display:flex;align-items:center;gap:2px;}
+      #${PANEL_ID} .sa-pof-arrow{flex:0 0 auto;color:#7f8b99;text-decoration:none;padding:4px 6px;border-radius:4px;font-size:13px;line-height:1;}
+      #${PANEL_ID} .sa-pof-arrow:hover{color:#13a36f;background:#26313f;}
+      #${PANEL_ID} .sa-pof-arrow:focus-visible{outline:2px solid #13a36f;}
+      #${PANEL_ID} .sa-pof-link{flex:1 1 auto;min-width:0;padding:4px 5px;border-radius:4px;color:#cfd6de;cursor:pointer;display:flex;align-items:center;gap:7px;white-space:nowrap;overflow:hidden;text-decoration:none;}
       #${PANEL_ID} .sa-pof-link:hover,#${PANEL_ID} .sa-pof-link.sa-pof-active{background:#26313f;color:#f0f3f7;}
       #${PANEL_ID} .sa-pof-link.sa-pof-active{outline:1px solid #13a36f;outline-offset:-1px;}
       #${PANEL_ID} .sa-pof-link:focus-visible{outline:2px solid #13a36f;}
@@ -164,37 +171,8 @@
     }
   }
 
-  // ── cobertura: ¿hay OCs sin dirección? ──
-  // Decide qué rama usa planCompanyFilter. Se mide UNA vez, en la vista actual, con first:1
-  // (solo interesan los totalCount). Si algo falla, se queda en la rama conservadora
-  // ('annotate'), que nunca esconde OCs.
-  async function measureCoverage(categoryKey, groups) {
-    if (S.coverage.measured) return S.coverage;
-    const cov = { measured: true, allCovered: false, nullAccepted: false, orphanCount: null };
-    try {
-      const [todas, conDir] = await runPool([
-        () => queryPOsCount(categoryKey, {}),
-        () => queryPOsCount(categoryKey, { billToLocationIdFilter: groups.all }),
-      ], POOL);
-      if (todas != null && conDir != null) {
-        cov.orphanCount = todas - conDir;
-        cov.allCovered = cov.orphanCount === 0;
-        if (!cov.allCovered) {
-          // Sonda única: ¿el server acepta null dentro del array (= incluir huérfanas)?
-          const conNull = await queryPOsCount(categoryKey, {
-            billToLocationIdFilter: groups.ecoplating.concat([null]),
-          });
-          const soloEco = await queryPOsCount(categoryKey, {
-            billToLocationIdFilter: groups.ecoplating,
-          });
-          cov.nullAccepted = conNull != null && soloEco != null && conNull > soloEco;
-        }
-      }
-    } catch (_) { /* se queda conservador */ }
-    S.coverage = cov;
-    return cov;
-  }
-
+  // Conteo puro de una vista/sección (solo interesa totalCount, por eso first:1).
+  // Lo usa la resolución de sección al clicar un proveedor.
   function queryPOsCount(categoryKey, extraVars) {
     const cat = Core.categoryByKey(categoryKey);
     if (!cat) return Promise.resolve(null);
@@ -296,6 +274,17 @@
     const href = Core.buildResultHref(result, domainId);
     const row = document.createElement(href ? 'a' : 'span');
     if (href) { row.href = href; row.className = 'sa-pof-link'; }
+    // Al clicar un PROVEEDOR se resuelve a qué sección mandarlo (la primera con
+    // resultados). El href ya apunta a 'issued-all', así que si la resolución falla o
+    // tarda, el enlace sigue sirviendo — por eso se intercepta en vez de generar el href
+    // de forma asíncrona.
+    if (href && result.type === Core.RESULT_TYPES.VENDOR) {
+      row.addEventListener('click', (e) => {
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return; // respeta pestaña nueva
+        e.preventDefault();
+        goToVendorBestSection(result, domainId, href);
+      });
+    }
     const badge = document.createElement('span');
     badge.className = 'sa-pof-badge ' + (
       result.type === Core.RESULT_TYPES.PO ? 'sa-pof-b-po'
@@ -320,7 +309,42 @@
     row.appendChild(meta);
 
     li.appendChild(row);
+
+    // Flechita ↗ — abre la FICHA del documento en pestaña aparte, sin perder la búsqueda.
+    // Sin idInDomain no se pinta: mejor sin flechita que una que abra otro documento.
+    const detail = Core.buildDetailHref(result, domainId);
+    if (detail) {
+      const arrow = document.createElement('a');
+      arrow.className = 'sa-pof-arrow';
+      arrow.href = detail;
+      arrow.target = '_blank';
+      arrow.rel = 'noopener noreferrer';
+      arrow.textContent = '↗';
+      const que = result.type === Core.RESULT_TYPES.PO ? 'la orden de compra'
+        : result.type === Core.RESULT_TYPES.VENDOR ? 'el proveedor' : 'la factura';
+      arrow.title = `Abrir ${que} en una pestaña nueva`;
+      arrow.setAttribute('aria-label', arrow.title);
+      li.appendChild(arrow);
+    }
     return li;
+  }
+
+  // Manda al proveedor a la PRIMERA sección con resultados (Draft → Issued All →
+  // Fulfilled All), siempre a la variante "All" — nunca a Open ni a Closed.
+  // Son 3 consultas de conteo, y solo las paga quien hace clic.
+  async function goToVendorBestSection(result, domainId, fallbackHref) {
+    const counts = {};
+    try {
+      const tasks = Core.PO_NAV_SECTIONS.map((s) => () =>
+        queryPOsCount(s.key, { vendorIdFilter: [result.id] }).then((n) => [s.key, n]));
+      const res = await runPool(tasks, POOL);
+      for (const r of res) if (r) counts[r[0]] = r[1];
+    } catch (_) { /* se cae al fallback */ }
+    const section = Core.resolveFirstSectionWithResults(counts);
+    const href = section
+      ? Core.buildResultHref(result, domainId, section)
+      : fallbackHref; // ninguna sección respondió o todas vacías → el href por defecto
+    window.location.assign(href);
   }
 
   function renderPanel(term, raw, partial) {
@@ -501,21 +525,19 @@
     wrap.setAttribute('role', 'group');
     wrap.setAttribute('aria-label', 'Filtrar órdenes de compra por empresa');
 
-    const defs = [
-      [Core.MODES.ECOPLATING, 'Ecoplating'],
-      [Core.MODES.BOTH, 'Ambos'],
-      [Core.MODES.PROQUIPA, 'Proquipa'],
-    ];
-    for (const [mode, label] of defs) {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.textContent = label;
-      b.dataset.mode = mode;
-      b.setAttribute('aria-pressed', 'false');
-      b.disabled = true; // se habilita al descubrir las direcciones
-      b.addEventListener('click', () => applyMode(mode));
-      wrap.appendChild(b);
-    }
+    // Binario, no triple: el lado Ecoplating no es expresable con el filtro nativo
+    // (bug de SH con ticket abierto). Ver planProquipaFilter en el core.
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = 'Sólo Proquipa';
+    b.dataset.mode = Core.MODES.PROQUIPA;
+    b.setAttribute('aria-pressed', 'false');
+    b.disabled = true; // se habilita al descubrir las direcciones
+    b.addEventListener('click', () => {
+      const on = b.getAttribute('aria-pressed') === 'true';
+      applyProquipa(!on);
+    });
+    wrap.appendChild(b);
     anchor.parentElement.insertBefore(wrap, anchor.nextSibling);
 
     // Descubrimiento diferido: no bloquea la inyección ni la carga de la pantalla.
@@ -527,44 +549,24 @@
         el.title = 'No se pudieron leer las direcciones de facturación; el filtro por empresa no está disponible.';
         return;
       }
-      const current = Core.parseCompanyModeFromUrl(location.href, groups);
-      Array.from(el.querySelectorAll('button')).forEach((b) => {
-        b.disabled = false;
-        b.setAttribute('aria-pressed', String(b.dataset.mode === current));
-      });
+      const on = Core.isProquipaFilterActive(location.href, groups);
+      const btn = el.querySelector('button');
+      if (btn) { btn.disabled = false; btn.setAttribute('aria-pressed', String(on)); }
       el.title = S.capped
-        ? 'Aviso: puede haber direcciones de facturación sin descubrir (el filtro de Steelhead devuelve máximo 10 por consulta).'
-        : `Ecoplating: ${groups.ecoplating.length} direcciones · Proquipa: ${groups.proquipa.length}`;
+        ? 'Aviso: puede haber direcciones sin descubrir (el filtro de Steelhead devuelve máximo 10 por consulta).'
+        : `Filtra las ${groups.proquipa.length} direcciones de Proquipa a la vez. `
+          + 'Ecoplating no se puede filtrar: sus OC llevan la dirección del dominio y el filtro '
+          + 'nativo de Steelhead no la acepta (ticket de soporte abierto).';
     });
     return true;
   }
 
-  async function applyMode(mode) {
+  async function applyProquipa(enabled) {
     const groups = S.groups || await discoverLocations();
     if (!groups) return;
-    const categoryKey = Core.parseCategoryFromUrl(location.href);
-    let coverage = S.coverage;
-    if (mode === Core.MODES.ECOPLATING && !coverage.measured) {
-      coverage = await measureCoverage(categoryKey, groups);
-    }
-    const plan = Core.planCompanyFilter(mode, groups, coverage);
-
+    const plan = Core.planProquipaFilter(enabled, groups);
     if (plan.kind === 'unavailable') {
-      alertNote('No hay direcciones de facturación de esa empresa en este dominio.');
-      return;
-    }
-    if (plan.kind === 'annotate') {
-      // Fail-safe: no se puede expresar "sin dirección" en el filtro nativo, así que se
-      // avisa en vez de esconder OCs que el usuario espera ver.
-      const n = plan.orphanCount;
-      const ok = window.confirm(
-        'Steelhead no permite filtrar las OCs que no tienen dirección de facturación asignada' +
-        (n != null ? ` (${n} en esta vista)` : '') + '.\n\n' +
-        'Si continúo, se filtra por las direcciones de Ecoplating y esas OCs NO se van a ver.\n\n' +
-        '¿Aplico el filtro de todas formas?'
-      );
-      if (!ok) return;
-      window.location.assign(Core.buildCompanyFilterUrl(location.href, plan.ids));
+      alertNote('No hay direcciones de facturación de Proquipa en este dominio.');
       return;
     }
     window.location.assign(Core.buildCompanyFilterUrl(location.href, plan.ids));
@@ -634,5 +636,5 @@
   if (document.body) init();
   else document.addEventListener('DOMContentLoaded', init);
 
-  window.POListingFilters = { injectAll, removeAll, runSearch, applyMode, discoverLocations };
+  window.POListingFilters = { injectAll, removeAll, runSearch, applyProquipa, discoverLocations };
 })();
