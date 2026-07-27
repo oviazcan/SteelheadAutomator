@@ -332,7 +332,7 @@ autopilot: `d2e1c52` SearchPartNumbers, `1bda4f9` FilterSearch).
   abre confiable en Chromium headless (probado exhaustivo: 1/~10 con `click({force})`; el `OpenInNewIcon`
   no gatilla el onClick de React de forma estable) → captura autónoma de ESTE op **best-effort**. Fallback
   real cuando rote: **hash-scanner** (correr el scanner HACIENDO el regen del PDF → actualizar
-  `remote/config.json` a mano; probado 2026-07-24). Sentinela declarado por la regla de proceso.
+  `remote/config.json` a mano; probado 2026-07-24). Centinela declarado por la regla de proceso.
   - **Callejón sin salida DESCARTADO (2026-07-24 — NO re-explorar):** intenté endurecer usando la
     **página de DETALLE** del invoice (`/Domains/{domain}/Invoices/{id}`) en vez del modal. Esa página
     **sí** muestra el `RestorePageOutlinedIcon` de forma determinista (3/3) y su popover abre — **pero su
