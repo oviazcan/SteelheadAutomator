@@ -118,6 +118,30 @@ Proquipa nunca es ambiguo (`filter` siempre); el centro limpia el parámetro.
 **Los tres nacen con auto-regeneración cubierta** — el `hash-autopilot` los recaptura solo
 cuando Steelhead los rote. Cero deuda de hash.
 
+## Lección de anclaje: el DOM de SH **duplica** controles (bug del deploy 1.7.203)
+
+Primer deploy en vivo: **los dos widgets se inyectaron en el control equivocado.** La causa
+es la misma en ambos — `querySelector` devuelve el **primer** match, que no es el correcto:
+
+| Widget | Qué pasó | Por qué |
+|---|---|---|
+| Buscador | Quedó en la barra superior de SH, junto a "Buscar Todo" | Hay **4** `svg[data-testid="SearchIcon"]` en la pantalla (header global, tabla, chat…) y agarró el del header |
+| Toggle | Se inyectó pero **no se veía** (`offsetParent:null`, ancho 0) | El botón "New Purchase Order" está **duplicado en dos variantes responsive**: `css-eabxx0` (solo ícono, oculta en escritorio) y `css-165nl96` (botón completo, visible). Ancló en la oculta |
+
+**Reglas que lo arreglan** (puras y testeadas en el core, 6 tests de regresión):
+
+- `pickVisibleCandidate(cands)` — entre variantes responsive duplicadas, quédate con la que
+  tenga `offsetParent !== null` **y ancho > 0**. Un elemento puede existir y no verse.
+- `pickNearestByDepth(cands)` — el `SearchIcon` de la tabla se identifica porque **comparte
+  contenedor con el botón de exportar CSV** (`DownloadForOfflineOutlinedIcon`) al nivel más
+  cercano. Anclaje **estructural**: ni texto (cambia con el locale) ni clases generadas
+  (`css-xxxxx` cambia entre builds).
+
+> **Generalizable a cualquier applet de este repo:** antes de anclar por `data-testid`,
+> cuenta cuántos hay en la pantalla; y antes de insertar junto a un botón, verifica que ese
+> botón sea el **visible**, no su gemelo responsive. Ambos fallos son silenciosos — el applet
+> "se inyecta correctamente" y no se ve nada.
+
 ## Lección operativa: el `/graphql` se cuelga bajo ráfaga
 
 Descubierto en carne propia durante la captura: **tras ~40-45 requests seguidas desde la consola,

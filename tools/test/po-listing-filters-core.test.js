@@ -336,3 +336,48 @@ test('buildResultHref: sin dominio no inventa link', () => {
   assert.equal(Core.buildResultHref({ type: 'PO' }, null), null);
   assert.equal(Core.buildResultHref(null, '344'), null);
 });
+
+// ---------- selección de anclajes (regresión del deploy 1.7.203) ----------
+// El DOM de SH duplica controles en variantes responsive y repite iconos: tomar el primer
+// match del querySelector ancló ambos widgets en el control equivocado.
+
+test('pickVisibleCandidate: ignora la variante responsive oculta (css-eabxx0)', () => {
+  // Caso REAL medido en vivo: el botón "New Purchase Order" existe 2 veces.
+  const cands = [
+    { visible: false, width: 0, ref: 'css-eabxx0 (solo ícono, oculta en escritorio)' },
+    { visible: true, width: 199, ref: 'css-165nl96 (botón completo, visible)' },
+  ];
+  assert.equal(Core.pickVisibleCandidate(cands), 'css-165nl96 (botón completo, visible)');
+});
+
+test('pickVisibleCandidate: descarta visible pero de ancho 0', () => {
+  assert.equal(Core.pickVisibleCandidate([{ visible: true, width: 0, ref: 'a' }, { visible: true, width: 10, ref: 'b' }]), 'b');
+});
+
+test('pickVisibleCandidate: sin candidatos visibles → null (no ancla a ciegas)', () => {
+  assert.equal(Core.pickVisibleCandidate([{ visible: false, width: 0, ref: 'a' }]), null);
+  assert.equal(Core.pickVisibleCandidate([]), null);
+  assert.equal(Core.pickVisibleCandidate(null), null);
+});
+
+test('pickNearestByDepth: elige el SearchIcon de la tabla, no el del header', () => {
+  // Caso REAL: 4 SearchIcon; el de la tabla comparte contenedor con el botón de exportar
+  // al nivel 2, otro al nivel 5 (ancestro lejano), y los del header/chat no lo comparten.
+  const cands = [
+    { depth: null, ref: 'header global "Buscar..."' },
+    { depth: 5, ref: 'ancestro lejano' },
+    { depth: 2, ref: 'barra de filtros de la tabla' },
+    { depth: null, ref: 'chat' },
+  ];
+  assert.equal(Core.pickNearestByDepth(cands), 'barra de filtros de la tabla');
+});
+
+test('pickNearestByDepth: sin ninguno que comparta contenedor → null', () => {
+  assert.equal(Core.pickNearestByDepth([{ depth: null, ref: 'a' }, { depth: null, ref: 'b' }]), null);
+  assert.equal(Core.pickNearestByDepth([]), null);
+  assert.equal(Core.pickNearestByDepth(null), null);
+});
+
+test('pickNearestByDepth: depth 0 es válido (no lo confunde con ausencia)', () => {
+  assert.equal(Core.pickNearestByDepth([{ depth: 3, ref: 'lejos' }, { depth: 0, ref: 'mismo nivel' }]), 'mismo nivel');
+});
