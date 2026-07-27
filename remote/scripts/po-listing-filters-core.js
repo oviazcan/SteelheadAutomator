@@ -357,6 +357,31 @@
     };
   }
 
+  // ── Presupuesto de consultas por búsqueda ──
+  //
+  // El /graphql de SH se cae alrededor de las 40 requests y NO se recupera recargando:
+  // tumba la pantalla nativa completa, no solo al applet (visto en vivo 2026-07-27).
+  // Por eso el fan-out está ACOTADO y es un invariante testeado, no una casualidad.
+  //
+  // Diseño: 5 vistas (searchQuery) + 1 de facturas + 1 de proveedores = 7 por búsqueda.
+  // NO se hace un segundo fan-out de 5 vistas por `vendorIdFilter` — eso llevaría a 12 y
+  // con 3-4 búsquedas seguidas el operador tumba su propia pantalla. El proveedor se
+  // entrega como resultado CLICKEABLE que lleva a sus OCs (buildResultHref), así que el
+  // valor se conserva: encuentras al proveedor que el buscador nativo esconde y de un
+  // clic ves sus órdenes, pagando 1 consulta en vez de 5.
+  const MAX_QUERIES_PER_SEARCH = 7;
+
+  // Plan declarativo de lo que se va a consultar. Devuelve descriptores, no promesas, para
+  // que el conteo sea verificable sin red.
+  function planSearchQueries(term) {
+    const t = String(term == null ? '' : term).trim();
+    if (!t) return [];
+    const plan = [{ kind: 'vendors', key: FILTER_KEY_VENDOR, term: t }];
+    for (const cat of PO_CATEGORIES) plan.push({ kind: 'pos', categoryKey: cat.key, term: t });
+    plan.push({ kind: 'bills', term: t });
+    return plan;
+  }
+
   // ── Selección de anclajes (reglas puras; el glue les pasa el DOM ya medido) ──
   //
   // El DOM de Steelhead DUPLICA controles en variantes responsive: el botón "New Purchase
@@ -384,6 +409,7 @@
 
   const api = {
     PO_URL_RE, PO_CATEGORIES, MODES, RESULT_TYPES,
+    MAX_QUERIES_PER_SEARCH, planSearchQueries,
     pickVisibleCandidate, pickNearestByDepth,
     URL_PARAM_BILL_TO, FILTER_KEY_BILL_TO, FILTER_KEY_VENDOR, FILTER_SEARCH_LIMIT,
     DEFAULT_COMPANY_CONFIG,

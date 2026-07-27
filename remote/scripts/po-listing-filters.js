@@ -208,28 +208,25 @@
     const seq = ++S.seq;
     const raw = { vendors: [], poByCategory: {}, bills: [] };
 
-    // 1) proveedores primero: sus ids alimentan el fan-out de OCs, que es lo que el
-    //    searchQuery nativo no sabe hacer.
-    let vendorIds = [];
+    // El plan viene del core y está ACOTADO a MAX_QUERIES_PER_SEARCH (ver allá el porqué:
+    // el endpoint se cae ~40 requests y tumba la pantalla nativa completa). El proveedor
+    // NO dispara un segundo fan-out de 5 vistas: se entrega clickeable y lleva a sus OCs.
+    const plan = Core.planSearchQueries(term);
+
+    // 1) proveedores primero: pintan de inmediato (render incremental) porque son lo que
+    //    el searchQuery nativo no encuentra.
     try {
       const vendors = await filterSearch(Core.FILTER_KEY_VENDOR, term);
       if (seq !== S.seq) return;
       raw.vendors = vendors;
-      vendorIds = vendors.map((v) => v.identifier).filter(Boolean);
       renderPanel(term, raw, true);
     } catch (_) { /* sigue sin proveedores */ }
 
-    // 2) OCs: por texto en las 5 vistas, y por proveedor si hubo match.
-    const tasks = [];
-    for (const cat of Core.PO_CATEGORIES) {
-      tasks.push(() => queryPOs(cat.key, { searchQuery: term }).then((n) => [cat.key, n]));
-    }
-    if (vendorIds.length) {
-      for (const cat of Core.PO_CATEGORIES) {
-        tasks.push(() => queryPOs(cat.key, { vendorIdFilter: vendorIds }).then((n) => [cat.key, n]));
-      }
-    }
-    tasks.push(() => queryBills(term).then((n) => ['__bills__', n]));
+    // 2) resto del plan: las 5 vistas por texto + facturas.
+    const tasks = plan.filter((p) => p.kind !== 'vendors').map((p) => {
+      if (p.kind === 'bills') return () => queryBills(p.term).then((n) => ['__bills__', n]);
+      return () => queryPOs(p.categoryKey, { searchQuery: p.term }).then((n) => [p.categoryKey, n]);
+    });
 
     const results = await runPool(tasks, POOL);
     if (seq !== S.seq) return;
