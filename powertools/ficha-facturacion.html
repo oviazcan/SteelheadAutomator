@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ficha: Facturación de punta a punta — Steelhead Power Tools</title>
+<style>
+:root{
+  --ground:#f7f9fb;--paper:#ffffff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;
+  --hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;
+  --ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;
+  --warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7;
+  --shadow:0 1px 2px rgba(24,34,49,.05),0 6px 20px -8px rgba(24,34,49,.12);
+  --measure:70ch;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){:root{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512;--shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -10px rgba(0,0,0,.5)}}
+:root[data-theme="light"]{--ground:#f7f9fb;--paper:#fff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;--hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;--ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7}
+:root[data-theme="dark"]{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.62;-webkit-font-smoothing:antialiased}
+.wrap{max-width:920px;margin:0 auto;padding:0 24px 96px}
+.measure{max-width:var(--measure)}
+.masthead{border-bottom:2px solid var(--ku);padding:40px 0 22px}
+.brandbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.brandmark{width:26px;height:26px;border-radius:6px;background:var(--steel);display:grid;place-items:center;flex:0 0 auto}
+.brandmark span{color:#fff;font-weight:800;font-size:.9rem;font-family:var(--mono)}
+.brandname{font-weight:700;letter-spacing:.02em;font-size:.95rem}
+.brandname em{color:var(--accent-ink);font-style:normal}
+.eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.14em;color:var(--ku);font-weight:800;margin:0 0 10px}
+.masthead h1{font-size:clamp(2rem,4.6vw,2.7rem);line-height:1.06;letter-spacing:-.02em;margin:0 0 10px;font-weight:800;text-wrap:balance}
+.masthead .sub{font-size:1.12rem;color:var(--muted);margin:0;max-width:60ch}
+.audchips{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.audchip{font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.05em}
+.audchip.ku{background:var(--ku-wash);color:var(--ku)} .audchip.p{background:var(--ti-wash);color:var(--ti)}
+.tldr{background:var(--paper);border:1px solid var(--hair);border-left:4px solid var(--ku);border-radius:12px;padding:20px 22px;margin:26px 0;box-shadow:var(--shadow)}
+.tldr .ct{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--ku);margin:0 0 8px}
+.tldr p{margin:0;font-size:1.05rem;max-width:none}
+h2.sec{font-size:1.5rem;letter-spacing:-.01em;margin:54px 0 4px;font-weight:800;text-wrap:balance}
+h2.sec .num{font-family:var(--mono);font-size:.85rem;color:var(--ku);font-weight:700;border:1px solid var(--hair-2);border-radius:6px;padding:1px 7px;margin-right:10px;vertical-align:.15em}
+h3.sub{font-size:1.16rem;margin:32px 0 6px;letter-spacing:-.01em;font-weight:700}
+.sec-lead{color:var(--muted);margin:.4rem 0 1.2rem;max-width:var(--measure)}
+p{margin:0 0 1rem;max-width:var(--measure)}
+a{color:var(--accent-ink);text-underline-offset:2px}
+code{font-family:var(--mono);font-size:.85em;background:var(--hair);padding:1px 5px;border-radius:5px;word-break:break-word}
+pre{background:var(--paper);border:1px solid var(--hair);border-left:3px solid var(--ku);border-radius:10px;padding:14px 16px;overflow-x:auto;font-family:var(--mono);font-size:.83rem;line-height:1.6;margin:16px 0;box-shadow:var(--shadow)}
+pre code{background:none;padding:0;font-size:1em}
+pre .c{color:var(--faint)}
+ul,ol{max-width:var(--measure);padding-left:1.25em} li{margin:.35rem 0}
+strong{font-weight:700}
+.tablewrap{overflow-x:auto;border:1px solid var(--hair);border-radius:12px;box-shadow:var(--shadow);margin:20px 0}
+table{border-collapse:collapse;width:100%;font-size:.9rem;background:var(--paper);min-width:600px}
+thead th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:700;padding:11px 14px;border-bottom:2px solid var(--hair-2);background:var(--ground)}
+tbody td{padding:11px 14px;border-bottom:1px solid var(--hair);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+td code{white-space:nowrap}
+td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap;text-align:right}
+figure.diagram{margin:26px 0;background:var(--paper);border:1px solid var(--hair);border-radius:14px;padding:20px 18px 8px;box-shadow:var(--shadow);overflow-x:auto}
+figure.diagram svg{display:block;width:100%;height:auto;min-width:560px;max-width:820px;margin:0 auto}
+figure.diagram figcaption{font-size:.85rem;color:var(--faint);text-align:center;margin-top:10px;padding:0 8px 6px}
+.svg-t{font-family:var(--sans);fill:var(--ink)} .svg-m{font-family:var(--mono)} .svg-mut{fill:var(--muted);font-family:var(--sans)}
+.stages{list-style:none;padding:0;margin:24px 0;display:flex;flex-direction:column;gap:2px}
+.stages li{display:grid;grid-template-columns:44px 1fr;gap:16px;padding:16px 0;border-bottom:1px solid var(--hair);align-items:start}
+.stages li:last-child{border-bottom:none}
+.stages .k{width:38px;height:38px;border-radius:9px;background:var(--ku);color:#fff;display:grid;place-items:center;font-weight:800;font-family:var(--mono);font-size:1rem}
+.stages h4{margin:0 0 3px;font-size:1.08rem}
+.stages p{margin:0;font-size:.94rem;color:var(--muted);max-width:none}
+.callout{border-radius:10px;padding:15px 17px 15px 48px;position:relative;margin:22px 0;font-size:.95rem;border:1px solid var(--hair);background:var(--paper);max-width:none}
+.callout .ct{font-weight:800;margin:0 0 4px;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em}
+.callout p{max-width:none;margin:.3rem 0 0}
+.callout::before{position:absolute;left:15px;top:14px;font-size:1.15rem;line-height:1}
+.callout.meta{border-left:4px solid var(--steel);background:color-mix(in srgb,var(--steel) 6%,var(--paper))} .callout.meta .ct{color:var(--steel)} .callout.meta::before{content:"💡"}
+.callout.info{border-left:4px solid var(--ti);background:var(--ti-wash)} .callout.info .ct{color:var(--ti)} .callout.info::before{content:"ℹ";color:var(--ti);font-weight:800}
+.callout.warn{border-left:4px solid var(--warn);background:var(--warn-wash)} .callout.warn .ct{color:var(--warn)} .callout.warn::before{content:"⚠"}
+.callout.danger{border-left:4px solid var(--danger);background:var(--danger-wash)} .callout.danger .ct{color:var(--danger)} .callout.danger::before{content:"⛔"}
+.callout.tip{border-left:4px solid var(--accent);background:var(--accent-wash)} .callout.tip .ct{color:var(--accent-ink)} .callout.tip::before{content:"✓";color:var(--accent-ink);font-weight:800}
+.check{list-style:none;padding:0;margin:18px 0}
+.check li{position:relative;padding-left:30px;margin:.5rem 0}
+.check li::before{content:"☐";position:absolute;left:4px;top:0;color:var(--ku);font-size:1.05rem;font-weight:700}
+.ex{background:var(--paper);border:1px solid var(--hair);border-radius:12px;padding:0;overflow:hidden;margin:22px 0;box-shadow:var(--shadow)}
+.ex .exh{background:var(--ku-wash);color:var(--ku);font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;padding:9px 16px;border-bottom:1px solid var(--hair)}
+.ex .exb{padding:16px}
+.ex .exb p{margin:0 0 .6rem;max-width:none}
+.ex .exb p:last-child{margin:0}
+.foot{margin-top:64px;padding-top:22px;border-top:1px solid var(--hair-2);color:var(--faint);font-size:.85rem;display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:999px}
+.badge.perenne{background:var(--ti-wash);color:var(--ti)} .badge.perenne::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.doc-credit{flex-basis:100%;margin-top:10px;padding-top:12px;border-top:1px solid var(--hair);display:flex;align-items:center;gap:12px;font-size:.78rem;color:var(--faint)}
+.doc-credit a{color:var(--accent-ink);text-decoration:none} .doc-credit a.name{font-weight:600}
+.doc-credit img{height:30px;width:auto;display:block}
+@media print{
+  :root{--ground:#fff;--paper:#fff;--shadow:none}
+  body{font-size:11pt}
+  .wrap{max-width:none;padding:0}
+  figure.diagram,.callout,.tablewrap,.stages li,pre,.tldr,.ex{break-inside:avoid}
+  figure.diagram svg{min-width:0}
+  table{min-width:0;font-size:9pt}
+  h2.sec,h3.sub{break-after:avoid}
+  a{color:var(--ink);text-decoration:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brandbar">
+      <span class="brandmark"><span>PT</span></span>
+      <span class="brandname">Steelhead <em>Power Tools</em> · Ficha profunda</span>
+      <a href="00-mapa-empieza-aqui.html" style="margin-left:auto;font-size:.82rem;color:var(--faint);text-decoration:none;white-space:nowrap">← Índice del paquete</a>
+    </div>
+    <p class="eyebrow">Ficha profunda · el recorrido más largo del sistema</p>
+    <h1>Facturación de punta a punta</h1>
+    <p class="sub">De la orden de venta al comprobante fiscal y al PDF: qué calcula el sistema en cada paso, qué se configura por cliente y dónde están los límites reales.</p>
+    <div class="audchips"><span class="audchip ku">Key User · Facturación</span><span class="audchip p">Documento perenne</span></div>
+  </header>
+
+  <div class="tldr">
+    <p class="ct">Lo esencial</p>
+    <p>La facturación pasa por <strong>dos ventanillas</strong>: una calcula el contenido de cada renglón (cantidad, precio, descripción fiscal, tipo de cambio) y otra prepara el PDF. El sistema manda sobre <em>lo que dice</em> cada renglón, pero <strong>no sobre cuántos renglones hay</strong> — eso lo decide el ERP a partir de las partidas de la orden de venta.</p>
+  </div>
+
+  <!-- 01 -->
+  <h2 class="sec"><span class="num">01</span>El recorrido completo</h2>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 840 220" role="img" aria-label="Recorrido: orden de venta, partidas, editor de factura, hook de cálculo, comprobante y PDF">
+      <defs>
+        <marker id="fA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+        </marker>
+      </defs>
+      <g color="var(--faint)" font-size="11.5">
+        <rect x="15" y="55" width="140" height="80" rx="10" fill="none" stroke="var(--hair-2)" stroke-width="1.5"/>
+        <text class="svg-t" x="85" y="88" text-anchor="middle" font-size="13" font-weight="700">Orden de venta</text>
+        <text class="svg-mut" x="85" y="108" text-anchor="middle">sus partidas</text>
+
+        <rect x="190" y="55" width="150" height="80" rx="10" fill="none" stroke="var(--hair-2)" stroke-width="1.5"/>
+        <text class="svg-t" x="265" y="88" text-anchor="middle" font-size="13" font-weight="700">Editor de factura</text>
+        <text class="svg-mut" x="265" y="108" text-anchor="middle">marcas qué facturar</text>
+
+        <rect x="375" y="40" width="160" height="110" rx="10" fill="var(--ku-wash)" stroke="var(--ku)" stroke-width="2"/>
+        <text x="455" y="70" text-anchor="middle" font-size="13" font-weight="700" fill="var(--ku)">Ventanilla 1</text>
+        <text x="455" y="90" text-anchor="middle" fill="var(--ku)">cantidad · precio</text>
+        <text x="455" y="107" text-anchor="middle" fill="var(--ku)">tipo de cambio</text>
+        <text x="455" y="124" text-anchor="middle" fill="var(--ku)">descripción fiscal</text>
+
+        <rect x="570" y="20" width="150" height="72" rx="10" fill="none" stroke="var(--hair-2)" stroke-width="1.5"/>
+        <text class="svg-t" x="645" y="48" text-anchor="middle" font-size="13" font-weight="700">Comprobante</text>
+        <text class="svg-mut" x="645" y="68" text-anchor="middle">al integrador fiscal</text>
+
+        <rect x="570" y="112" width="150" height="72" rx="10" fill="var(--ku-wash)" stroke="var(--ku)" stroke-width="2"/>
+        <text x="645" y="140" text-anchor="middle" font-size="13" font-weight="700" fill="var(--ku)">Ventanilla 2</text>
+        <text x="645" y="160" text-anchor="middle" fill="var(--ku)">datos del PDF</text>
+
+        <rect x="755" y="112" width="70" height="72" rx="10" fill="none" stroke="var(--hair-2)" stroke-width="1.5"/>
+        <text class="svg-t" x="790" y="145" text-anchor="middle" font-size="12" font-weight="700">PDF</text>
+        <text class="svg-mut" x="790" y="163" text-anchor="middle" font-size="10.5">impreso</text>
+
+        <line x1="157" y1="95" x2="182" y2="95" stroke="currentColor" stroke-width="1.5" marker-end="url(#fA)"/>
+        <line x1="342" y1="95" x2="367" y2="95" stroke="currentColor" stroke-width="1.5" marker-end="url(#fA)"/>
+        <path d="M537 80 L555 80 L555 58 L562 58" fill="none" stroke="currentColor" stroke-width="1.5" marker-end="url(#fA)"/>
+        <path d="M537 112 L555 112 L555 148 L562 148" fill="none" stroke="currentColor" stroke-width="1.5" marker-end="url(#fA)"/>
+        <line x1="722" y1="148" x2="747" y2="148" stroke="currentColor" stroke-width="1.5" marker-end="url(#fA)"/>
+
+        <text class="svg-mut" x="420" y="205" text-anchor="middle" font-size="12">El número de renglones ya quedó fijado en la primera caja: una partida, un renglón.</text>
+      </g>
+    </svg>
+    <figcaption>Las dos cajas en color son las ventanillas de Power Tools. Todo lo demás es Steelhead.</figcaption>
+  </figure>
+
+  <!-- 02 -->
+  <h2 class="sec"><span class="num">02</span>Qué calcula la primera ventanilla</h2>
+  <p class="sec-lead">Se dispara cuando estás en el editor de factura. Para cada renglón que marcaste, resuelve estas seis cosas.</p>
+
+  <ol class="stages">
+    <li><span class="k">1</span><div><h4>Tipo de cambio</h4><p>Si la factura es en pesos, tipo de cambio 1. Si es en otra divisa, busca el tipo de cambio <strong>de la fecha de la factura</strong> en la tabla del dominio. Si la factura mezcla divisas, se detiene con un aviso rojo: no hay conversión posible.</p></div></li>
+    <li><span class="k">2</span><div><h4>Precio por producto</h4><p>Toma el precio vigente del producto asociado a la línea.</p></div></li>
+    <li><span class="k">3</span><div><h4>Cantidad efectiva</h4><p>Suma las piezas de todas las órdenes de trabajo de esa línea y las convierte a la unidad de venta con el factor de conversión de la parte. Es lo que evita el clásico “facturé piezas y el cliente compra kilos”.</p></div></li>
+    <li><span class="k">4</span><div><h4>Cargo de lote mínimo</h4><p>Si el pedido no alcanza el lote mínimo, reescala el precio al lote completo y pone cantidad 1. La descripción incluye la frase <strong>“Cargo de lote mínimo aplicado”</strong>, que el integrador fiscal detecta para convertir la unidad a Lote.</p></div></li>
+    <li><span class="k">5</span><div><h4>Descripción fiscal</h4><p>Arma el texto que viaja al comprobante, respetando lo que cada cliente quiere ver. Ver la sección 3.</p></div></li>
+    <li><span class="k">6</span><div><h4>Referencia de remisiones</h4><p>Junta las remisiones de Ecoplating de toda la factura y las entrega al integrador en un campo controlado, además de incluirlas en la descripción si el cliente lo pidió.</p></div></li>
+  </ol>
+
+  <!-- 03 -->
+  <h2 class="sec"><span class="num">03</span>La descripción fiscal: dos secciones, presupuesto corto</h2>
+  <p class="sec-lead">Es el campo más delicado del sistema: viaja al comprobante fiscal, lo lee el cliente, y el espacio es limitado.</p>
+
+  <p class="measure">La descripción tiene <strong>siempre dos secciones etiquetadas</strong>, aunque alguna venga vacía:</p>
+
+  <pre><code>N: &lt;descripción de la pieza&gt;   O: &lt;observaciones separadas por coma&gt;</code></pre>
+
+  <div class="ex">
+    <div class="exh">Ejemplo de una descripción real</div>
+    <div class="exb">
+      <p><code>N: SOPORTE LATERAL IZQ. O: Niquelado, Acabado Níquel Mate, OC 4500123456-10 (1180), Lote RG-M-0042, OT 10406</code></p>
+      <p style="color:var(--muted);font-size:.9rem;margin-top:.6rem">La sección <strong>N</strong> describe la pieza. La sección <strong>O</strong> lleva las observaciones en un orden fijo: producto, acabados, orden de compra (con su línea y la orden de venta entre paréntesis), lote, orden de trabajo, remisión del cliente y remisión de Ecoplating.</p>
+    </div>
+  </div>
+
+  <h3 class="sub">Qué se muestra se configura por cliente</h3>
+  <p class="measure">Cada bloque tiene su interruptor en la configuración del cliente. Si un cliente pide ver u ocultar algo, <strong>es un ajuste de configuración, no de programación</strong>.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Interruptor</th><th>Qué controla</th></tr></thead>
+      <tbody>
+        <tr><td>Mostrar número de parte</td><td>La sección N con la descripción de la pieza</td></tr>
+        <tr><td>Mostrar producto</td><td>El nombre del producto (“Niquelado”), como valor directo</td></tr>
+        <tr><td>Mostrar acabado</td><td>Los acabados de la parte</td></tr>
+        <tr><td>Mostrar orden de compra</td><td>La orden de compra del cliente</td></tr>
+        <tr><td>Mostrar línea de la orden de compra</td><td>El número de línea, con su multiplicador si el cliente numera de otra forma</td></tr>
+        <tr><td>Mostrar orden de venta</td><td>El folio de la orden de venta, entre paréntesis junto a la orden de compra</td></tr>
+        <tr><td>Mostrar lote</td><td>Los lotes — <strong>omitiendo los que repiten el nombre de la orden de compra</strong></td></tr>
+        <tr><td>Mostrar orden de trabajo</td><td>El folio de la orden de trabajo</td></tr>
+        <tr><td>Mostrar remisión del cliente</td><td>La remisión con el folio del cliente</td></tr>
+        <tr><td>Mostrar remisión</td><td>La remisión de Ecoplating</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout meta">
+    <p class="ct">Por qué el formato es tan compacto</p>
+    <p>El campo de descripción del comprobante es corto y las etiquetas largas se comían el espacio útil. Por eso se usan etiquetas de dos o tres letras y separadores mínimos, y por eso el número de parte no se repite en la descripción: ya viaja en su propio campo del comprobante. Hay una red de seguridad: si el texto rebasa los mil caracteres, se recorta con puntos suspensivos.</p>
+  </div>
+
+  <div class="callout info">
+    <p class="ct">Detalles que ahorran confusión</p>
+    <p><strong>Lote igual a orden de compra:</strong> si el lote se llama igual que la orden de compra, no se repite. <strong>Clientes Schneider:</strong> la descripción agrega el sufijo <code>VM</code> o <code>VE</code> según el prefijo del lote. <strong>Cargo de lote mínimo:</strong> va como bloque independiente al final y ya no desplaza a los demás.</p>
+  </div>
+
+  <!-- 04 -->
+  <h2 class="sec"><span class="num">04</span>El cargo de lote mínimo, con números</h2>
+  <p class="sec-lead">Es la regla comercial que más preguntas genera. Funciona igual en la captura de la orden y en la factura.</p>
+
+  <div class="ex">
+    <div class="exh">Ejemplo</div>
+    <div class="exb">
+      <p>Una parte tiene <strong>lote mínimo de 500 piezas</strong> a <strong>$2.50 por pieza</strong>. El cliente pide <strong>180 piezas</strong>.</p>
+      <p><strong>Sin la regla:</strong> 180 × $2.50 = $450 — por debajo del costo de montar el proceso.</p>
+      <p><strong>Con la regla:</strong> como 180 ≤ 500, el renglón se factura como <strong>1 lote</strong> a <strong>$1,250</strong> (500 × $2.50). La descripción lleva “Cargo de lote mínimo aplicado (500 PZA)”, y el integrador fiscal convierte la unidad a Lote.</p>
+    </div>
+  </div>
+
+  <p class="measure">El sistema avisa en dos momentos: al capturar la orden (aviso amarillo con el monto que va a cobrarse) y al facturar (aviso amarillo con cuántos renglones llevan el cargo). No es un error: es una regla de negocio funcionando.</p>
+
+  <div class="callout warn">
+    <p class="ct">Monterrey todavía no lo dispara</p>
+    <p>La regla se activa cuando la parte tiene la unidad «LO Lote» configurada. Esa unidad <strong>no existe todavía</strong> en Monterrey, así que el cargo nunca aplica ahí. No es una falla: el sistema, al no encontrar la unidad por su nombre, simplemente no aplica la regla. Cuando esa planta dé de alta la unidad con el mismo nombre, empezará a funcionar sin tocar código.</p>
+  </div>
+
+  <!-- 05 -->
+  <h2 class="sec"><span class="num">05</span>Qué agrega la segunda ventanilla al PDF</h2>
+  <p class="sec-lead">El PDF lo dibuja la plantilla de Steelhead. La ventanilla prepara los datos que esa plantilla imprime.</p>
+
+  <ul class="measure">
+    <li><strong>Direcciones limpias</strong> y el bloque fiscal formateado.</li>
+    <li><strong>Lotes y remisiones agrupados</strong> por renglón, para que no se repitan.</li>
+    <li><strong>La tabla “Relación de Lotes de Números de Parte”</strong>, con las conversiones a centímetro cuadrado, kilogramo, pie cuadrado y metro lineal <strong>ya calculadas</strong>.</li>
+    <li><strong>El aviso rojo de orden de compra provisional</strong>, cuando aplica.</li>
+  </ul>
+
+  <div class="callout meta">
+    <p class="ct">Una lección que vale contar</p>
+    <p>Esa tabla de conversiones antes se calculaba dentro de la plantilla. Cuando una parte no tenía cierto factor, la fórmula de la plantilla se quedaba sin datos y <strong>imprimía un mensaje de error dentro de la celda del PDF</strong>, a la vista del cliente. Hoy el cálculo se hace en la ventanilla —donde sí se puede manejar el caso “no hay factor”— y la plantilla solo lee un valor ya listo, que puede venir vacío sin romper nada. Es exactamente el reparto correcto: <strong>el hook surte, la plantilla coloca</strong>.</p>
+  </div>
+
+  <!-- 06 -->
+  <h2 class="sec"><span class="num">06</span>Lo que no se puede hacer desde aquí (y cómo se demostró)</h2>
+  <p class="sec-lead">Dos peticiones legítimas que se investigaron a fondo y resultaron imposibles desde la ventanilla. Vale la pena conocerlas para no volver a intentarlas.</p>
+
+  <h3 class="sub">Partir un renglón por lote</h3>
+  <p class="measure">Se probó emitir una línea de factura por cada lote, sobre una factura real con un renglón y dos lotes. <strong>El cálculo salió perfecto</strong>: las dos líneas con las cantidades correctas, sumando exactamente el total.</p>
+  <p class="measure">Pero la asociación entre las piezas físicas y la línea <strong>no la controla la ventanilla</strong>: la determina la partida de la orden de venta. Al compartir partida, las dos líneas heredaron <strong>todas</strong> las piezas, y el ERP marcó “se está facturando más cantidad que la de la partida”. No facturable.</p>
+
+  <h3 class="sub">Juntar renglones del mismo producto o de la misma parte</h3>
+  <p class="measure">Se probó lo contrario: colapsar varias líneas en una. Sobre una factura real de nueve partidas, la ventanilla consolidó correctamente a cuatro líneas y lo reportó. <strong>La factura salió con las nueve líneas originales</strong>, cada una con su descripción individual. El total fue correcto, sin duplicados, pero sin consolidar.</p>
+
+  <div class="callout danger">
+    <p class="ct">La conclusión, en una frase</p>
+    <p>El editor de facturas de Steelhead está atado <strong>uno a uno con las partidas de la orden de venta</strong>. La ventanilla controla el <em>contenido</em> de cada renglón, pero no <em>cuántos</em> renglones hay. Ni partir ni juntar. Ambos experimentos se conservan en el repositorio como evidencia, y nunca se publican.</p>
+  </div>
+
+  <div class="callout tip">
+    <p class="ct">El camino que sí funciona</p>
+    <p>Si un cliente necesita ver menos renglones, hay que <strong>unir las partidas antes de facturar</strong>, desde la vista de líneas de la orden de venta. Ahí sí baja el número de partidas y la factura sale con menos renglones. La otra opción, para clientes que concilian por número de parte: el número de parte viaja en cada renglón, así que el cliente puede agrupar de su lado.</p>
+  </div>
+
+  <div class="callout warn">
+    <p class="ct">Un ajuste que quedó sin efecto</p>
+    <p>Existe una configuración de consolidación por producto que se dejó activada para cierto cliente. Al verificar contra facturas reales se confirmó que <strong>nunca tuvo efecto</strong>: la ventanilla calcula la consolidación y la reporta, pero el ERP la descarta al facturar — el mismo muro descrito arriba. Está documentado para que nadie interprete esos avisos como que la factura sí se consolidó.</p>
+  </div>
+
+  <!-- 07 -->
+  <h2 class="sec"><span class="num">07</span>El defecto del ERP con las órdenes abiertas</h2>
+  <p class="sec-lead">Un caso donde el diagnóstico fue tan importante como la solución.</p>
+
+  <p class="measure">Desde mediados de junio de 2026 empezaron a aparecer renglones de factura <strong>con cantidad cero</strong>, en proporción creciente. El patrón: en órdenes abiertas, al facturar una entrega el ERP <strong>no marca las piezas como facturadas</strong>. Vuelven a ofrecerse como disponibles, se facturan otra vez, y el renglón nuevo sale en cero. Se llegaron a ver las <strong>mismas piezas físicas ligadas a nueve facturas distintas</strong>.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Periodo</th><th>Renglones creados</th><th>En cero</th><th>%</th></tr></thead>
+      <tbody>
+        <tr><td>9 al 18 de junio</td><td class="num">~310</td><td class="num">0</td><td class="num">0 %</td></tr>
+        <tr><td>19 de junio</td><td class="num">53</td><td class="num">5</td><td class="num">9.4 %</td></tr>
+        <tr><td>22 de junio</td><td class="num">191</td><td class="num">63</td><td class="num">33.0 %</td></tr>
+        <tr><td>23 de junio</td><td class="num">57</td><td class="num">37</td><td class="num">64.9 %</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="measure">Lo decisivo fue la cronología: <strong>cero por ciento hasta el 18 de junio</strong>, y el arranque coincide exactamente con la activación de una función de dominio del ERP — no con ninguna publicación de código. Las órdenes de cantidad fija, de una sola entrega, quedaron <strong>completamente libres</strong> del problema. Con eso se descartó la ventanilla como causa y se pudo reportar al proveedor con evidencia.</p>
+
+  <div class="callout danger">
+    <p class="ct">Qué hacer mientras esté abierto</p>
+    <p><strong>No guardar facturas con renglones en cero.</strong> Si las mismas piezas aparecen disponibles factura tras factura, detenerse y reportarlo: cada intento agrega otro borrador con las mismas piezas colgadas.</p>
+  </div>
+
+  <!-- 08 -->
+  <h2 class="sec"><span class="num">08</span>Lista de verificación del facturista</h2>
+  <ul class="check">
+    <li>La factura tiene <strong>una sola divisa</strong>.</li>
+    <li>Aparece el aviso azul con el tipo de cambio y su fecha, y es el esperado.</li>
+    <li><strong>Ningún renglón en cantidad o precio cero</strong>. Si los hay, revisar si esas piezas ya se facturaron.</li>
+    <li>Los renglones con cargo de lote mínimo son los esperados, y el monto cuadra.</li>
+    <li>La descripción de una línea de muestra trae lo que ese cliente pidió ver.</li>
+    <li>Ningún documento salió con el aviso rojo de orden de compra provisional.</li>
+  </ul>
+
+  <footer class="foot">
+    <div><span class="badge perenne">Perenne</span> &nbsp; Ficha: Facturación de punta a punta</div>
+    <div>Corte de referencia: 27 jul 2026</div>
+    <div class="doc-credit">
+      <a href="https://capazconsultoria.com" target="_blank" rel="noopener" aria-label="Capaz Consultoría" style="flex:0 0 auto;display:inline-flex"><img src="assets/capaz-c.png" alt="Capaz Consultoría"></a>
+      <span>Documento elaborado por <a class="name" href="mailto:oviazcan@capazconsultoria.com">Omar Viazcán</a> · <a href="https://capazconsultoria.com" target="_blank" rel="noopener">Capaz Consultoría</a></span>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>

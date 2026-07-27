@@ -1,0 +1,427 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Inventario de ventanillas — Steelhead Power Tools</title>
+<style>
+:root{
+  --ground:#f7f9fb;--paper:#ffffff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;
+  --hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;
+  --ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;
+  --warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7;
+  --shadow:0 1px 2px rgba(24,34,49,.05),0 6px 20px -8px rgba(24,34,49,.12);
+  --measure:68ch;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){:root{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512;--shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -10px rgba(0,0,0,.5)}}
+:root[data-theme="light"]{--ground:#f7f9fb;--paper:#fff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;--hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;--ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7}
+:root[data-theme="dark"]{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.62;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1080px;margin:0 auto;padding:0 24px 96px}
+.measure{max-width:var(--measure)}
+.masthead{border-bottom:2px solid var(--accent);padding:40px 0 22px}
+.brandbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.brandmark{width:26px;height:26px;border-radius:6px;background:var(--steel);display:grid;place-items:center;flex:0 0 auto}
+.brandmark span{color:#fff;font-weight:800;font-size:.9rem;font-family:var(--mono)}
+.brandname{font-weight:700;letter-spacing:.02em;font-size:.95rem}
+.brandname em{color:var(--accent-ink);font-style:normal}
+.eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.14em;color:var(--accent-ink);font-weight:800;margin:0 0 10px}
+.masthead h1{font-size:clamp(2rem,4.6vw,2.7rem);line-height:1.06;letter-spacing:-.02em;margin:0 0 10px;font-weight:800;text-wrap:balance}
+.masthead .sub{font-size:1.12rem;color:var(--muted);margin:0;max-width:60ch}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:999px;border:1px solid transparent;white-space:nowrap}
+.badge.vivo{background:var(--accent-wash);color:var(--accent-ink);border-color:color-mix(in srgb,var(--accent) 35%,transparent)}
+.badge.dot::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.freshness{display:flex;gap:14px;align-items:flex-start;margin:24px 0 6px;background:var(--accent-wash);border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);border-left:4px solid var(--accent);border-radius:10px;padding:14px 16px;font-size:.92rem}
+.freshness .ic{flex:0 0 auto;color:var(--accent-ink);margin-top:1px}
+.freshness b{color:var(--accent-ink)}
+.freshness p{margin:.4rem 0 0;max-width:none}
+h2.sec{font-size:1.5rem;letter-spacing:-.01em;margin:52px 0 4px;font-weight:800;text-wrap:balance}
+h2.sec .num{font-family:var(--mono);font-size:.9rem;color:var(--accent-ink);font-weight:700;border:1px solid var(--hair-2);border-radius:6px;padding:1px 7px;margin-right:10px;vertical-align:.15em}
+.sec-lead{color:var(--muted);margin:.4rem 0 1.2rem;max-width:var(--measure)}
+p{margin:0 0 1rem;max-width:var(--measure)}
+a{color:var(--accent-ink);text-underline-offset:2px}
+code{font-family:var(--mono);font-size:.85em;background:var(--hair);padding:1px 5px;border-radius:5px;word-break:break-word}
+ul,ol{max-width:var(--measure);padding-left:1.25em} li{margin:.3rem 0}
+.tablewrap{overflow-x:auto;border:1px solid var(--hair);border-radius:12px;box-shadow:var(--shadow);margin:18px 0}
+table{border-collapse:collapse;width:100%;font-size:.88rem;background:var(--paper);min-width:900px}
+thead th{text-align:left;font-size:.67rem;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:700;padding:11px 12px;border-bottom:2px solid var(--hair-2);background:var(--ground);position:sticky;top:0;z-index:1}
+tbody td{padding:10px 12px;border-bottom:1px solid var(--hair);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+tbody tr.hidden{display:none}
+td code{white-space:nowrap}
+td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap;color:var(--muted)}
+.st{display:inline-block;font-size:.68rem;font-weight:700;padding:2px 8px;border-radius:6px;white-space:nowrap}
+.st.on{background:var(--accent-wash);color:var(--accent-ink)}
+.st.off{background:var(--hair);color:var(--muted)}
+.st.diag{background:var(--warn-wash);color:var(--warn)}
+.who{display:inline-block;font-size:.68rem;font-weight:700;padding:2px 8px;border-radius:6px;white-space:nowrap}
+.who.ku{background:var(--ku-wash);color:var(--ku)} .who.ti{background:var(--ti-wash);color:var(--ti)}
+/* buscador */
+.search{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:22px 0 4px}
+.search input{font:inherit;font-size:.95rem;padding:9px 14px;border:1px solid var(--hair-2);border-radius:9px;background:var(--paper);color:var(--ink);min-width:min(360px,100%)}
+.search input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+.search .count{font-size:.85rem;color:var(--faint);font-variant-numeric:tabular-nums}
+.callout{border-radius:10px;padding:14px 16px 14px 46px;position:relative;margin:20px 0;font-size:.94rem;border:1px solid var(--hair);background:var(--paper)}
+.callout .ct{font-weight:800;margin:0 0 3px;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em}
+.callout p{max-width:none;margin:.3rem 0 0}
+.callout::before{position:absolute;left:14px;top:14px;font-size:1.1rem;line-height:1}
+.callout.info{border-left:4px solid var(--ti);background:var(--ti-wash)} .callout.info .ct{color:var(--ti)} .callout.info::before{content:"ℹ";color:var(--ti);font-weight:800}
+.callout.warn{border-left:4px solid var(--warn);background:var(--warn-wash)} .callout.warn .ct{color:var(--warn)} .callout.warn::before{content:"⚠"}
+.callout.meta{border-left:4px solid var(--steel);background:color-mix(in srgb,var(--steel) 6%,var(--paper))} .callout.meta .ct{color:var(--steel)} .callout.meta::before{content:"💡"}
+.foot{margin-top:64px;padding-top:22px;border-top:1px solid var(--hair-2);color:var(--faint);font-size:.85rem;display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between}
+.doc-credit{flex-basis:100%;margin-top:10px;padding-top:12px;border-top:1px solid var(--hair);display:flex;align-items:center;gap:12px;font-size:.78rem;color:var(--faint)}
+.doc-credit a{color:var(--accent-ink);text-decoration:none} .doc-credit a.name{font-weight:600}
+.doc-credit img{height:30px;width:auto;display:block}
+@media print{
+  :root{--ground:#fff;--paper:#fff;--shadow:none}
+  body{font-size:9.5pt}
+  .wrap{max-width:none;padding:0}
+  table{min-width:0;font-size:8.5pt} thead th{position:static}
+  .tablewrap,.callout,.freshness{break-inside:auto}
+  tbody tr{break-inside:avoid}
+  h2.sec{break-after:avoid}
+  a{color:var(--ink);text-decoration:none}
+  .noprint{display:none!important}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brandbar">
+      <span class="brandmark"><span>PT</span></span>
+      <span class="brandname">Steelhead <em>Power Tools</em> · Paquete de capacitación</span>
+      <a href="00-mapa-empieza-aqui.html" style="margin-left:auto;font-size:.82rem;color:var(--faint);text-decoration:none;white-space:nowrap">← Índice del paquete</a>
+    </div>
+    <p class="eyebrow">Documento vivo — inventario autoritativo</p>
+    <h1>Las ventanillas del ERP, una por una</h1>
+    <p class="sub">Todo lo que Power Tools hace hoy por Ecoplating: qué ventanilla está atendida, qué hace, dónde se ve el efecto y qué versión está corriendo en cada planta.</p>
+  </header>
+
+  <div class="freshness">
+    <span class="ic" aria-hidden="true">🟢</span>
+    <div>
+      <b>Documento vivo — corte del 27 de julio de 2026.</b> Los ids de versión activa que ves abajo se leyeron directamente del ERP ese día, en <strong>los dos dominios</strong> (Toluca y Monterrey). Cada vez que alguien publica un hook, el id cambia: <strong>verifica la versión viva antes de asumir vigencia</strong>.
+      <p>Comando que reproduce esta tabla: <code>python3 sync/lowcode_sync.py list</code> — y con <code>STEELHEAD_DEFAULT_DOMAIN=mty</code> delante para la columna de Monterrey.</p>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <p class="ct">Cambios de este corte respecto al anterior</p>
+    <p><strong>Toluca pasó de 19 a 21 ventanillas.</strong> Los dos renglones nuevos —<em>orden de venta</em> y <em>embarque</em>— no son ventanillas recién abiertas por el ERP: existían desde mayo de 2026 y estaban <strong>fuera del radar de la herramienta de sincronización</strong>, que solo buscaba los tipos que tenía en su lista. Al ampliarla aparecieron. Ambas están en formato de fábrica. Se sumó además la ventanilla de <strong>carga masiva de usuarios</strong>, que existe en el ERP pero todavía no tiene código publicado (ver §03).</p>
+  </div>
+
+  <div class="callout meta">
+    <p class="ct">Cómo leer esta tabla</p>
+    <p>Cada renglón es una <strong>ventanilla</strong>: un punto del proceso donde el ERP se detiene y ejecuta código de Ecoplating antes de continuar. El <strong>id de versión</strong> es el número de la capa que está arriba hoy — como la última capa depositada en un baño: es la que se ve. Los ids <strong>no coinciden entre plantas</strong> y no tienen por qué: cada dominio numera sus versiones por su cuenta.</p>
+  </div>
+
+  <!-- ============ 01 VENTANILLAS ============ -->
+  <h2 class="sec"><span class="num">01</span>Las 21 ventanillas de Power Tools</h2>
+  <p class="sec-lead">Ordenadas por el momento del proceso en que se disparan. “Atendida” significa que hay código de Ecoplating corriendo ahí; “formato de fábrica” significa que la ventanilla existe pero seguimos usando lo que trae Steelhead. Al corte: <strong>16 atendidas · 4 en formato de fábrica · 1 en diagnóstico</strong>.</p>
+
+  <div class="search noprint">
+    <input id="q" type="search" placeholder="Filtrar por nombre, documento o palabra clave…" aria-label="Filtrar ventanillas">
+    <span class="count" id="c"></span>
+  </div>
+
+  <div class="tablewrap">
+    <table id="t1">
+      <thead>
+        <tr><th>Momento del proceso</th><th>Ventanilla (slot)</th><th>Qué hace</th><th>Estado</th><th>Versión TLC</th><th>Versión MTY</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td><strong>Cotización — importar</strong><br><span style="color:var(--faint);font-size:.82rem">Wizard “Importar cotización”</span></td>
+          <td><code>file-import:QUOTE_IMPORT</code></td>
+          <td>Convierte el archivo de cotización del cliente en líneas de cotización, creando números de parte nuevos si hace falta. Tolera separador <code>;</code> o <code>,</code>, encabezados en español o inglés y archivos con acentos mal codificados.</td>
+          <td><span class="st on">Atendida</span></td>
+          <td class="num">659</td><td class="num">698</td>
+        </tr>
+        <tr>
+          <td><strong>Cotización — imprimir</strong><br><span style="color:var(--faint);font-size:.82rem">PDF de cotización</span></td>
+          <td><code>pdf:QUOTE_UNIT_PRICE_TEMPLATE</code></td>
+          <td>Arma la tabla de la cotización con los renglones ya formateados: especificaciones de cada línea, etiqueta de producto legible e IVA resuelto por nombre. Filtra las specs marcadas “No aplica”.</td>
+          <td><span class="st on">Atendida</span></td>
+          <td class="num">11164</td><td class="num">11165</td>
+        </tr>
+        <tr>
+          <td><strong>Orden de venta — captura</strong><br><span style="color:var(--faint);font-size:.82rem">“Add Parts to Sales Order”</span></td>
+          <td><code>received-order</code></td>
+          <td>El guardián de la captura. Valida número de parte desconocido, precio faltante, etiqueta de planta Schneider contra la dirección de entrega, y aplica el cargo de lote mínimo. Publica los avisos de colores que ve el capturista.</td>
+          <td><span class="st on">Atendida</span></td>
+          <td class="num">1923</td><td class="num">1924</td>
+        </tr>
+        <tr>
+          <td><strong>Recibo de material</strong><br><span style="color:var(--faint);font-size:.82rem">PDF de receptor</span></td>
+          <td><code>pdf:RECEIVER_TEMPLATE</code></td>
+          <td>Arma una sola tabla de lotes recibidos (número, orden de compra, cantidad) y un bloque colapsable de discrepancias, en vez de las tres tablas sueltas del formato original.</td>
+          <td><span class="st on">Atendida</span></td>
+          <td class="num">11168</td><td class="num">11077</td>
+        </tr>
+        <tr>
+          <td><strong>Piso — programación</strong><br><span style="color:var(--faint);font-size:.82rem">Cola de tareas de estación</span></td>
+          <td><code>schedule</code></td>
+          <td>Reordena las tareas sin programar para que las cuentas prioritarias salten la fila, y recalcula la hora estimada de arranque de cada una.</td>
+          <td><span class="st on">Atendida</span></td>
+          <td class="num">140</td><td class="num">151</td>
+        </tr>
+        <tr>
+          <td><strong>Piso — etiqueta de parte</strong><br><span style="color:var(--faint);font-size:.82rem">PDF ficha de número de parte</span></td>
+          <td><code>pdf:PART_NUMBER_TEMPLATE</code></td>
+          <td>Reúne en cada paso del proceso <em>todos</em> los parámetros de especificación que le aplican, y normaliza la lista de estaciones para que la plantilla no tenga que adivinar el formato.</td>
+          <td><span class="st on">Atendida</span></td>
+          <td class="num">10481</td><td class="num">11072</td>
+        </tr>
+        <tr>
+          <td><strong>Piso — orden de trabajo</strong><br><span style="color:var(--faint);font-size:.82rem">PDF de OT (vista general)</span></td>
+          <td><code>pdf:WORK_ORDER_TEMPLATE</code></td>
+          <td>Documento completo de la orden: datos de la orden y del cliente, membrete del dominio, receta del proceso seleccionado y firma del usuario.</td>
+          <td><span class="st on">Atendida</span></td>
+          <td class="num">11199</td><td class="num">11205</td>
+        </tr>
+        <tr>
+          <td><strong>Piso — etiqueta por contenedor</strong><br><span style="color:var(--faint);font-size:.82rem">PDF OT × número de parte</span></td>
+          <td><code>pdf:WORK_ORDER_PART_NUMBER_TEMPLATE</code></td>
+          <td>Genera una etiqueta por contenedor físico: calcula cuántos contenedores lleva cada lote y precalcula las conversiones de peso, área y longitud para cada uno.</td>
+          <td><span class="st on">Atendida</span></td>
+          <td class="num">11200</td><td class="num">11206</td>
+        </tr>
+        <tr>
+          <td><strong>Piso — OT con instrucciones</strong><br><span style="color:var(--faint);font-size:.82rem">PDF “Orden de Trabajo Completa”</span></td>
+          <td><code>pdf:WORK_ORDER_PART_NUMBER_VERBOSE_TEMPLATE</code></td>
+          <td>La versión larga: un bloque por número de parte, con acabados en chips de color, y la receta del proceso con sus ayudas visuales e imágenes de instrucción al final.</td>
+          <td><span class="st on">Atendida</span></td>
+          <td class="num">11217</td><td class="num">11218</td>
+        </tr>
+        <tr>
+          <td><strong>Piso — etiqueta de rack</strong><br><span style="color:var(--faint);font-size:.82rem">PDF de rack</span></td>
+          <td><code>pdf:RACK_TEMPLATE</code></td>
+          <td>Calcula la posición del rack dentro del juego de racks hermanos de la misma orden y la imprime como “3/8” en el encabezado.</td>
+          <td><span class="st on">Atendida</span></td>
+          <td class="num">10489</td><td class="num">11076</td>
+        </tr>
+        <tr>
+          <td><strong>Calidad — certificado</strong><br><span style="color:var(--faint);font-size:.82rem">PDF de certificación (CoC)</span></td>
+          <td><code>pdf:CERTIFICATION_TEMPLATE</code></td>
+          <td>Aplana mediciones y fotos por grupo de especificación, reconstruye el tamaño de grano y expone los datos del número de parte en campos planos —con su imagen de display— para que la plantilla los pueda pintar.</td>
+          <td><span class="st on">Atendida</span></td>
+          <td class="num">11319</td><td class="num">11320</td>
+        </tr>
+        <tr>
+          <td><strong>Embarque — remisión</strong><br><span style="color:var(--faint);font-size:.82rem">PDF de packing slip</span></td>
+          <td><code>pdf:PACKING_SLIP_TEMPLATE</code></td>
+          <td>Numera los contenedores (“2/5”) y arma el cuerpo de la remisión, incluyendo el peso en la unidad correcta y el trato especial de cuentas como Schneider.</td>
+          <td><span class="st on">Atendida</span></td>
+          <td class="num">11196</td><td class="num">11202</td>
+        </tr>
+        <tr>
+          <td><strong>Facturación — cálculo</strong><br><span style="color:var(--faint);font-size:.82rem">Editor de factura</span></td>
+          <td><code>invoice</code></td>
+          <td>Arma el contenido de cada renglón de la factura: tipo de cambio del día, precio por producto, cantidad convertida, cargo de lote mínimo y la descripción que viaja al CFDI.</td>
+          <td><span class="st on">Atendida</span></td>
+          <td class="num">5360</td><td class="num">5361</td>
+        </tr>
+        <tr>
+          <td><strong>Facturación — imprimir</strong><br><span style="color:var(--faint);font-size:.82rem">PDF de factura</span></td>
+          <td><code>pdf:INVOICE_TEMPLATE</code></td>
+          <td>Prepara el PDF de la factura: limpia direcciones, agrupa lotes y remisiones, y precalcula la tabla “Relación de Lotes” con las conversiones ya resueltas.</td>
+          <td><span class="st on">Atendida</span></td>
+          <td class="num">11208</td><td class="num">11209</td>
+        </tr>
+        <tr>
+          <td><strong>Compras — orden a proveedor</strong><br><span style="color:var(--faint);font-size:.82rem">PDF de orden de compra</span></td>
+          <td><code>pdf:PURCHASE_ORDER_TEMPLATE</code></td>
+          <td>Calcula los impuestos renglón por renglón (IVA, retención de IVA, retención de ISR) según el perfil fiscal de cada partida, y los suma. Antes todo el cálculo vivía en la plantilla con un solo esquema.</td>
+          <td><span class="st on">Atendida</span></td>
+          <td class="num">10957</td><td class="num">11073</td>
+        </tr>
+        <tr>
+          <td><strong>Inventario — consumo</strong><br><span style="color:var(--faint);font-size:.82rem">Consumo predicho de materia prima</span></td>
+          <td><code>inventory-usage</code></td>
+          <td>Predice cuánta materia prima consumirá cada pieza: metales por densidad × área × espesor, antiempañante por peso y epóxicos por metro lineal. Es el espejo del “Cálculo MP” de la plantilla de cotizaciones.</td>
+          <td><span class="st on">Atendida</span></td>
+          <td class="num">381</td><td class="num">380</td>
+        </tr>
+        <tr>
+          <td><strong>Embarque a maquila</strong><br><span style="color:var(--faint);font-size:.82rem">PDF vendor shipper</span></td>
+          <td><code>pdf:VENDOR_SHIPPER_TEMPLATE</code></td>
+          <td>Hoy solo tiene un <strong>volcado de diagnóstico</strong> —lista qué datos alimenta Steelhead a este documento— para decidir cómo armarlo. No altera el PDF que se imprime.</td>
+          <td><span class="st diag">Diagnóstico</span></td>
+          <td class="num">11166</td><td class="num">11078</td>
+        </tr>
+        <tr>
+          <td><strong>Embarque — carta porte</strong><br><span style="color:var(--faint);font-size:.82rem">PDF bill of lading</span></td>
+          <td><code>pdf:BILL_OF_LADING_TEMPLATE</code></td>
+          <td>Ventanilla disponible, sin código propio: se imprime el formato que trae Steelhead de fábrica.</td>
+          <td><span class="st off">Formato de fábrica</span></td>
+          <td class="num">10478</td><td class="num">11068</td>
+        </tr>
+        <tr>
+          <td><strong>Calidad — acción correctiva</strong><br><span style="color:var(--faint);font-size:.82rem">PDF QMS / CAR</span></td>
+          <td><code>pdf:QMS_CAR_TEMPLATE</code></td>
+          <td>Ventanilla disponible, sin código propio: se imprime el formato que trae Steelhead de fábrica.</td>
+          <td><span class="st off">Formato de fábrica</span></td>
+          <td class="num">10493</td><td class="num">11074</td>
+        </tr>
+        <tr>
+          <td><strong>Orden de venta — imprimir</strong><br><span style="color:var(--faint);font-size:.82rem">PDF de orden de venta</span></td>
+          <td><code>pdf:RECEIVED_ORDER_TEMPLATE</code></td>
+          <td>Ventanilla disponible, sin código propio: se imprime el formato que trae Steelhead de fábrica.</td>
+          <td><span class="st off">Formato de fábrica</span></td>
+          <td class="num">10487</td><td>—</td>
+        </tr>
+        <tr>
+          <td><strong>Embarque — documento de envío</strong><br><span style="color:var(--faint);font-size:.82rem">PDF de embarque</span></td>
+          <td><code>pdf:SHIPMENT_TEMPLATE</code></td>
+          <td>Ventanilla disponible, sin código propio: se imprime el formato que trae Steelhead de fábrica.</td>
+          <td><span class="st off">Formato de fábrica</span></td>
+          <td class="num">10479</td><td>—</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout info">
+    <p class="ct">Las ventanillas “de fábrica” no son un descuido</p>
+    <p>Carta porte, acción correctiva, orden de venta y embarque existen como ventanilla y se pueden atender el día que la operación lo pida. Mientras nadie escriba nada ahí, Steelhead usa su propio formato — que es exactamente el comportamiento correcto. Lo mismo pasaba con la orden de compra hasta julio de 2026, cuando se atendió para calcular impuestos por renglón.</p>
+  </div>
+
+  <div class="callout warn">
+    <p class="ct">Dos ventanillas existen en Toluca y no en Monterrey</p>
+    <p><code>RECEIVED_ORDER_TEMPLATE</code> y <code>SHIPMENT_TEMPLATE</code> tienen una versión en Toluca —el esqueleto que el ERP creó solo— y <strong>ninguna en Monterrey</strong> (columna en blanco). Como las dos están en formato de fábrica, <strong>hoy no hay diferencia de comportamiento</strong> entre plantas: ambas imprimen el formato estándar. Pero en cuanto una de las dos se atienda, habrá que publicarla también en Monterrey.</p>
+  </div>
+
+  <!-- ============ 02 DISPONIBLES SIN CÓDIGO ============ -->
+  <h2 class="sec"><span class="num">02</span>Ventanillas disponibles que todavía nadie usa</h2>
+  <p class="sec-lead">El ERP admite estos tipos, pero <strong>no tienen ninguna versión guardada</strong> en ninguna de las dos plantas: ni siquiera el esqueleto. No aparecen en la tabla de arriba porque no hay nada que listar — y aparecerán solas en cuanto alguien publique la primera versión.</p>
+
+  <div class="tablewrap">
+    <table style="min-width:520px">
+      <thead><tr><th>Tipo</th><th>Para qué serviría</th><th>Estado al corte</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Carga masiva de usuarios</strong><br><code>file-import:USER_IMPORT</code></td>
+          <td>Dar de alta usuarios en bloque desde un archivo, en vez de uno por uno — igual que hoy se importan cotizaciones.</td>
+          <td><strong>Sin código en ninguna planta.</strong> El tipo existe en el ERP; la ventanilla está lista para atenderse.</td>
+        </tr>
+        <tr>
+          <td><strong>Transformación de partes</strong><br><code>file-import:PART_TRANSFORM_IMPORT</code></td>
+          <td>Importar transformaciones de números de parte desde un archivo.</td>
+          <td>Sin código en ninguna planta.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout info">
+    <p class="ct">Cómo se descubren estas ventanillas</p>
+    <p>Steelhead <strong>no publica la lista</strong> de tipos que admite: hay que preguntarle por uno concreto y ver si lo reconoce. La herramienta de sincronización lleva su propia lista de tipos conocidos, y por eso una ventanilla puede existir meses sin que la veamos —fue el caso de <em>orden de venta</em> y <em>embarque</em>—. Cuando la operación mencione una capacidad nueva, el primer paso es sondear el tipo y darlo de alta en esa lista.</p>
+  </div>
+
+  <!-- ============ 02 PLANES DE MANTENIMIENTO ============ -->
+  <h2 class="sec"><span class="num">03</span>Los 26 planes de mantenimiento</h2>
+  <p class="sec-lead">Además de las ventanillas, Steelhead ejecuta código propio en cada <strong>plan de mantenimiento</strong>: toma las titulaciones que captura el laboratorio, calcula la concentración y devuelve la dosis de corrección como instrucción en pantalla. Detalle del funcionamiento en la <a href="ficha-maintenance-plans.html">ficha de planes de mantenimiento</a>.</p>
+  <p class="sec-lead" style="margin-top:-.6rem"><strong>24 son baños químicos</strong> de las líneas T205 y T107. Los otros dos son distintos: uno es la <em>consolidación de plata</em> generada desde la tabla de química, y el otro <strong>no es un baño</strong> — es el plan de mantenimiento preventivo de equipos informáticos, que usa la misma mecánica del ERP para otra cosa.</p>
+
+  <div class="search noprint">
+    <input id="q2" type="search" placeholder="Filtrar por línea, baño o proceso…" aria-label="Filtrar planes">
+    <span class="count" id="c2"></span>
+  </div>
+
+  <div class="tablewrap">
+    <table id="t2">
+      <thead>
+        <tr><th>#</th><th>Línea</th><th>Baño / tina</th><th>Tipo de proceso</th><th>Versiones</th><th>Mediciones</th></tr>
+      </thead>
+      <tbody>
+        <tr><td class="num">18</td><td>T205</td><td>TI00-033 AL Cobre (16.3)</td><td>Depósito metálico</td><td class="num">3</td><td class="num">3</td></tr>
+        <tr><td class="num">19</td><td>T205</td><td>TI00-008 AL Estaño (16.3)</td><td>Depósito metálico</td><td class="num">2</td><td class="num">0</td></tr>
+        <tr><td class="num">20</td><td>T205</td><td>TI00-028/029 AL Bondal (16.3)</td><td>Depósito metálico</td><td class="num">4</td><td class="num">2</td></tr>
+        <tr><td class="num">21</td><td>T205</td><td>TI00-012/013 AL Plata (16.3)</td><td>Depósito metálico</td><td class="num">6</td><td class="num">2</td></tr>
+        <tr><td class="num">22</td><td>T205</td><td>TI00-005 AL Pasivado Evabrite (16.3)</td><td>Pasivado</td><td class="num">3</td><td class="num">1</td></tr>
+        <tr><td class="num">23</td><td>T205</td><td>TI00-017 AL Ataque Alcalino Sosa (16.3)</td><td>Ataque alcalino</td><td class="num">5</td><td class="num">1</td></tr>
+        <tr><td class="num">24</td><td>T205</td><td>TI00-003 AL Pasivado Estannato (16.3)</td><td>Pasivado</td><td class="num">6</td><td class="num">2</td></tr>
+        <tr><td class="num">25</td><td>T205</td><td>TI00-024 AL Activado Ácido Nítrico (16.3)</td><td>Activado</td><td class="num">4</td><td class="num">1</td></tr>
+        <tr><td class="num">26</td><td>T205</td><td>TI00-023 Decapado Ácido Nítrico (16.3)</td><td>Decapado</td><td class="num">7</td><td class="num">1</td></tr>
+        <tr><td class="num">27</td><td>T205</td><td>TI00-022 Activado Ácido Clorhídrico (16.3)</td><td>Activado</td><td class="num">5</td><td class="num">1</td></tr>
+        <tr><td class="num">28</td><td>T205</td><td>TI00-014 Neutralizado Alcalino Cianuro (16.3)</td><td>Neutralizado</td><td class="num">3</td><td class="num">1</td></tr>
+        <tr><td class="num">29</td><td>T205</td><td>TI00-037 Abrillantador Ácido Crómico (16.3)</td><td>Abrillantador</td><td class="num">3</td><td class="num">1</td></tr>
+        <tr><td class="num">30</td><td>T205</td><td>TI00-009 Neutralizado Ácido Sulfúrico (16.3)</td><td>Neutralizado</td><td class="num">4</td><td class="num">1</td></tr>
+        <tr><td class="num">31</td><td>T205</td><td>TI00-018 Desengrase Electrolítico Metex (16.3)</td><td>Desengrase</td><td class="num">13</td><td class="num">2</td></tr>
+        <tr><td class="num">32</td><td>T205</td><td>TI00-034 Desengrase Electrolítico Enprep 576E (16.3)</td><td>Desengrase</td><td class="num">5</td><td class="num">1</td></tr>
+        <tr><td class="num">33</td><td>T205</td><td>TI00-017 Desengrase por inmersión Enprep 576E (16.3)</td><td>Desengrase</td><td class="num">6</td><td class="num">1</td></tr>
+        <tr><td class="num">34</td><td>T107</td><td>TI00-016/017/018 Plata (60)</td><td>Depósito metálico</td><td class="num">4</td><td class="num">4</td></tr>
+        <tr><td class="num">35</td><td>T107</td><td>TI00-023 Pasivado Evabrite (60)</td><td>Pasivado</td><td class="num">3</td><td class="num">1</td></tr>
+        <tr><td class="num">36</td><td>T107</td><td>TI00-011 Activado Ácido Sulfúrico (60)</td><td>Activado</td><td class="num">3</td><td class="num">1</td></tr>
+        <tr><td class="num">37</td><td>T107</td><td>TI00-015 Neutralizado Alcalino Cianuro (60)</td><td>Neutralizado</td><td class="num">2</td><td class="num">0</td></tr>
+        <tr><td class="num">38</td><td>T107</td><td>TI00-003/007 Decapado Ácido Clorhídrico (60)</td><td>Decapado</td><td class="num">5</td><td class="num">1</td></tr>
+        <tr><td class="num">39</td><td>T107</td><td>TI00-021 Neutralizado Ácido Sulfúrico (60)</td><td>Neutralizado</td><td class="num">2</td><td class="num">1</td></tr>
+        <tr><td class="num">40</td><td>T107</td><td>TI00-009 Desengrase Electrolítico Metex (60)</td><td>Desengrase</td><td class="num">3</td><td class="num">2</td></tr>
+        <tr><td class="num">41</td><td>T107</td><td>TI00-001/005 Desengrase Electrolítico Enprep 72SE (60)</td><td>Desengrase</td><td class="num">4</td><td class="num">1</td></tr>
+        <tr><td class="num">44</td><td>—</td><td>ALA Plata Consolidado</td><td>Consolidación (varias tinas de plata en un plan)</td><td class="num">—</td><td class="num">—</td></tr>
+        <tr><td class="num">45</td><td>—</td><td>IT · Mantenimiento Preventivo de Equipos Informáticos</td><td><strong>No es un baño</strong> — mantenimiento de equipo de cómputo</td><td class="num">—</td><td class="num">—</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout warn">
+    <p class="ct">Los planes de baño son de solo lectura desde el repositorio</p>
+    <p>El material se puede <em>bajar</em> del ERP (<code>python3 sync/maintenance_plans_sync.py pull</code>) para revisarlo, versionarlo y auditar su química, pero <strong>la publicación de vuelta todavía no está implementada</strong>. Cambiar un plan de baño se hace hoy en el editor de Steelhead, a mano y con confirmación explícita. La auditoría de química de la que habla la ficha se hizo sobre los <strong>24 planes de baño</strong> (105 versiones históricas, 31 mediciones registradas, Toluca, junio de 2026); los planes 44 y 45 son posteriores.</p>
+  </div>
+
+  <!-- ============ 04 QUÉ MANTIENE EL INVENTARIO ============ -->
+  <h2 class="sec"><span class="num">04</span>Cuándo se actualiza este documento</h2>
+  <p class="sec-lead">Este es el único documento del paquete que caduca rápido. Se actualiza cuando pasa alguna de estas cosas — y solo entonces.</p>
+
+  <div class="tablewrap">
+    <table style="min-width:560px">
+      <thead><tr><th>Si pasa esto…</th><th>…hay que tocar</th></tr></thead>
+      <tbody>
+        <tr><td>Se publica una versión nueva de cualquier hook</td><td>El id de la columna de esa planta + la fecha del banner de frescura</td></tr>
+        <tr><td>Se atiende una ventanilla que estaba en “formato de fábrica”</td><td>Su renglón (estado y descripción) y la ficha breve del <a href="manual-operador.html">Manual del Operador</a></td></tr>
+        <tr><td>Steelhead agrega una ventanilla nueva, o se descubre una que ya existía</td><td>El alta del tipo en el puente de sincronización <strong>primero</strong>, luego el renglón aquí</td></tr>
+        <tr><td>Se agrega, retira o renumera un plan de mantenimiento</td><td>La tabla de planes</td></tr>
+        <tr><td>Cambia la lógica interna de un hook sin cambiar lo que hace</td><td><strong>Nada.</strong> Solo el id, si te importa la trazabilidad fina</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer class="foot">
+    <div><span class="badge vivo dot">Vivo</span> &nbsp; Inventario de ventanillas · Steelhead Power Tools</div>
+    <div>Corte de referencia: 27 jul 2026 · 21 ventanillas en Toluca, 19 en Monterrey · verificado contra el ERP en ambos dominios</div>
+    <div class="doc-credit">
+      <a href="https://capazconsultoria.com" target="_blank" rel="noopener" aria-label="Capaz Consultoría" style="flex:0 0 auto;display:inline-flex"><img src="assets/capaz-c.png" alt="Capaz Consultoría"></a>
+      <span>Documento elaborado por <a class="name" href="mailto:oviazcan@capazconsultoria.com">Omar Viazcán</a> · <a href="https://capazconsultoria.com" target="_blank" rel="noopener">Capaz Consultoría</a></span>
+    </div>
+  </footer>
+
+</div>
+<script>
+(function(){
+  function wire(inputId, tableId, countId, noun){
+    var q = document.getElementById(inputId), t = document.getElementById(tableId), c = document.getElementById(countId);
+    if(!q || !t || !c) return;
+    var rows = Array.prototype.slice.call(t.tBodies[0].rows);
+    function render(){
+      var term = q.value.trim().toLowerCase(), shown = 0;
+      rows.forEach(function(r){
+        var hit = !term || r.textContent.toLowerCase().indexOf(term) !== -1;
+        r.classList.toggle('hidden', !hit);
+        if(hit) shown++;
+      });
+      c.textContent = shown + ' de ' + rows.length + ' ' + noun;
+    }
+    q.addEventListener('input', render);
+    render();
+  }
+  wire('q','t1','c','ventanillas');
+  wire('q2','t2','c2','planes');
+})();
+</script>
+</body>
+</html>

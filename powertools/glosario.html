@@ -1,0 +1,412 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Glosario — Steelhead Power Tools</title>
+<style>
+:root{
+  --ground:#f7f9fb;--paper:#ffffff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;
+  --hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;
+  --ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;
+  --warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7;
+  --shadow:0 1px 2px rgba(24,34,49,.05),0 6px 20px -8px rgba(24,34,49,.12);
+  --measure:70ch;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){:root{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512;--shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -10px rgba(0,0,0,.5)}}
+:root[data-theme="light"]{--ground:#f7f9fb;--paper:#fff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;--hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;--ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7}
+:root[data-theme="dark"]{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.62;-webkit-font-smoothing:antialiased}
+.wrap{max-width:920px;margin:0 auto;padding:0 24px 96px}
+.measure{max-width:var(--measure)}
+.masthead{border-bottom:2px solid var(--steel);padding:40px 0 22px}
+.brandbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.brandmark{width:26px;height:26px;border-radius:6px;background:var(--steel);display:grid;place-items:center;flex:0 0 auto}
+.brandmark span{color:#fff;font-weight:800;font-size:.9rem;font-family:var(--mono)}
+.brandname{font-weight:700;letter-spacing:.02em;font-size:.95rem}
+.brandname em{color:var(--accent-ink);font-style:normal}
+.eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.14em;color:var(--faint);font-weight:800;margin:0 0 10px}
+.masthead h1{font-size:clamp(2rem,4.6vw,2.7rem);line-height:1.06;letter-spacing:-.02em;margin:0 0 10px;font-weight:800;text-wrap:balance}
+.masthead .sub{font-size:1.12rem;color:var(--muted);margin:0;max-width:60ch}
+h2.sec{font-size:1.35rem;letter-spacing:-.01em;margin:48px 0 6px;font-weight:800}
+h2.sec .num{font-family:var(--mono);font-size:.85rem;color:var(--steel);font-weight:700;border:1px solid var(--hair-2);border-radius:6px;padding:1px 7px;margin-right:10px;vertical-align:.15em}
+.sec-lead{color:var(--muted);margin:.3rem 0 1rem;max-width:var(--measure)}
+p{margin:0 0 1rem;max-width:var(--measure)}
+a{color:var(--accent-ink);text-underline-offset:2px}
+code{font-family:var(--mono);font-size:.85em;background:var(--hair);padding:1px 5px;border-radius:5px;word-break:break-word}
+strong{font-weight:700}
+.search{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:26px 0 8px;position:sticky;top:0;background:var(--ground);padding:12px 0;z-index:2}
+.search input{font:inherit;font-size:.95rem;padding:10px 14px;border:1px solid var(--hair-2);border-radius:9px;background:var(--paper);color:var(--ink);min-width:min(380px,100%)}
+.search input:focus{outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent)}
+.search .count{font-size:.85rem;color:var(--faint);font-variant-numeric:tabular-nums}
+.terms{display:flex;flex-direction:column;gap:0;margin:8px 0 0}
+.term{border-bottom:1px solid var(--hair);padding:18px 0;display:grid;grid-template-columns:230px 1fr;gap:22px;align-items:start}
+@media (max-width:760px){.term{grid-template-columns:1fr;gap:6px}}
+.term.hidden{display:none}
+.term dt{font-weight:700;font-size:1.04rem;letter-spacing:-.01em}
+.term dt .alt{display:block;font-weight:400;font-size:.82rem;color:var(--faint);margin-top:3px}
+.term dd{margin:0;font-size:.96rem}
+.term dd p{margin:0 0 .5rem;max-width:none}
+.term dd p:last-child{margin:0}
+.term .mf{display:block;margin-top:8px;padding:9px 12px;border-left:3px solid var(--steel);background:color-mix(in srgb,var(--steel) 6%,var(--paper));border-radius:0 8px 8px 0;font-size:.9rem}
+.term .mf b{color:var(--steel)}
+.tag{display:inline-block;font-size:.63rem;font-weight:800;padding:2px 7px;border-radius:5px;text-transform:uppercase;letter-spacing:.06em;vertical-align:2px;margin-left:6px}
+.tag.ku{background:var(--ku-wash);color:var(--ku)} .tag.ti{background:var(--ti-wash);color:var(--ti)}
+.tag.all{background:var(--hair);color:var(--muted)}
+.callout{border-radius:10px;padding:15px 17px 15px 48px;position:relative;margin:22px 0;font-size:.95rem;border:1px solid var(--hair);background:var(--paper);max-width:none}
+.callout .ct{font-weight:800;margin:0 0 4px;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em}
+.callout p{max-width:none;margin:.3rem 0 0}
+.callout::before{position:absolute;left:15px;top:14px;font-size:1.15rem;line-height:1}
+.callout.info{border-left:4px solid var(--ti);background:var(--ti-wash)} .callout.info .ct{color:var(--ti)} .callout.info::before{content:"ℹ";color:var(--ti);font-weight:800}
+.foot{margin-top:64px;padding-top:22px;border-top:1px solid var(--hair-2);color:var(--faint);font-size:.85rem;display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:999px}
+.badge.perenne{background:var(--ti-wash);color:var(--ti)} .badge.perenne::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.doc-credit{flex-basis:100%;margin-top:10px;padding-top:12px;border-top:1px solid var(--hair);display:flex;align-items:center;gap:12px;font-size:.78rem;color:var(--faint)}
+.doc-credit a{color:var(--accent-ink);text-decoration:none} .doc-credit a.name{font-weight:600}
+.doc-credit img{height:30px;width:auto;display:block}
+@media print{
+  :root{--ground:#fff;--paper:#fff;--shadow:none}
+  body{font-size:10.5pt}
+  .wrap{max-width:none;padding:0}
+  .search{display:none!important}
+  .term{break-inside:avoid;grid-template-columns:200px 1fr}
+  h2.sec{break-after:avoid}
+  a{color:var(--ink);text-decoration:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brandbar">
+      <span class="brandmark"><span>PT</span></span>
+      <span class="brandname">Steelhead <em>Power Tools</em> · Paquete de capacitación</span>
+      <a href="00-mapa-empieza-aqui.html" style="margin-left:auto;font-size:.82rem;color:var(--faint);text-decoration:none;white-space:nowrap">← Índice del paquete</a>
+    </div>
+    <p class="eyebrow">Glosario</p>
+    <h1>Cada término, en lenguaje llano</h1>
+    <p class="sub">El vocabulario del sistema explicado sin jerga, con la metáfora que usamos en todo el paquete. Busca el término o recorre la lista.</p>
+  </header>
+
+  <div class="search">
+    <input id="q" type="search" placeholder="Buscar un término…" aria-label="Buscar término">
+    <span class="count" id="c"></span>
+  </div>
+
+  <!-- ============ CONCEPTOS DEL SISTEMA ============ -->
+  <h2 class="sec"><span class="num">01</span>Conceptos del sistema</h2>
+  <dl class="terms" id="t">
+
+    <div class="term">
+      <dt>Power Tools<span class="tag all">Todos</span><span class="alt">también: low-code</span></dt>
+      <dd>
+        <p>La parte programable del ERP Steelhead. Es la función que permite que Ecoplating meta sus propias reglas en puntos concretos del proceso, sin esperar a que el proveedor las desarrolle.</p>
+      </dd>
+    </div>
+
+    <div class="term">
+      <dt>Ventanilla<span class="tag all">Todos</span><span class="alt">técnicamente: slot</span></dt>
+      <dd>
+        <p>Cada punto del proceso donde el ERP se detiene y ejecuta código de Ecoplating antes de continuar. Hoy hay 19.</p>
+        <span class="mf"><b>La imagen:</b> una línea de producción prefabricada donde el fabricante dejó ventanillas abiertas para que metas tu propia hoja de instrucciones.</span>
+      </dd>
+    </div>
+
+    <div class="term">
+      <dt>Hook<span class="tag ti">TI</span><span class="alt">el archivo que se publica</span></dt>
+      <dd>
+        <p>El programa que atiende una ventanilla: un archivo de código que Steelhead ejecuta en ese punto. Recibe todos los datos ya resueltos y devuelve una respuesta.</p>
+      </dd>
+    </div>
+
+    <div class="term">
+      <dt>Categoría<span class="tag ti">TI</span></dt>
+      <dd>
+        <p>El tipo de ventanilla: orden de venta, factura, documento PDF, importación de archivos, consumo de inventario, programación, cuota. Cada categoría tiene su forma de leerse y publicarse.</p>
+      </dd>
+    </div>
+
+    <div class="term">
+      <dt>Versión activa<span class="tag all">Todos</span><span class="alt">también: capa</span></dt>
+      <dd>
+        <p>La versión del hook que el ERP está ejecutando hoy. Cada guardado crea una versión nueva; la más reciente es la activa. No existe forma de “editar” una versión anterior.</p>
+        <span class="mf"><b>Como un baño de recubrimiento:</b> no se despega una capa; se deposita otra encima. Lo que se ve es siempre la última.</span>
+      </dd>
+    </div>
+
+    <div class="term">
+      <dt>Revertir<span class="tag ti">TI</span><span class="alt">rollback</span></dt>
+      <dd>
+        <p>Volver a publicar el contenido de una versión anterior. No borra nada: agrega una capa más, idéntica a la buena. Cada bitácora de hook anota cuál es su <strong>versión de reversión segura</strong>.</p>
+      </dd>
+    </div>
+
+    <div class="term">
+      <dt>Formato de fábrica<span class="tag all">Todos</span><span class="alt">técnicamente: stub</span></dt>
+      <dd>
+        <p>Una ventanilla que existe pero no tiene código propio: el ERP usa su plantilla estándar. No es un descuido — es el comportamiento correcto mientras nadie necesite cambiar ese documento.</p>
+      </dd>
+    </div>
+
+    <div class="term">
+      <dt>Diagnóstico temporal<span class="tag ti">TI</span></dt>
+      <dd>
+        <p>Un hook que solo <em>lista</em> qué datos le entrega el ERP, para decidir qué se puede construir. No cambia el documento. Se retira cuando deja de servir.</p>
+      </dd>
+    </div>
+
+  </dl>
+
+  <!-- ============ EL CICLO TÉCNICO ============ -->
+  <h2 class="sec"><span class="num">02</span>El ciclo técnico</h2>
+  <dl class="terms">
+
+    <div class="term">
+      <dt>Puente de sincronización<span class="tag ti">TI</span></dt>
+      <dd>
+        <p>La herramienta de línea de comandos que baja los hooks del ERP, los compara con la copia local y publica versiones nuevas. Es lo único que toca el ERP desde fuera.</p>
+      </dd>
+    </div>
+
+    <div class="term">
+      <dt>Llave<span class="tag ti">TI</span><span class="alt">técnicamente: persisted query hash</span></dt>
+      <dd>
+        <p>Steelhead no acepta consultas libres: cada operación se abre con una huella larga que la identifica. El puente lleva las llaves de las operaciones que usa.</p>
+        <span class="mf"><b>La imagen:</b> una llave que abre una puerta concreta del ERP. Si el proveedor <b>cambia la cerradura</b> (rota la huella), la llave vieja ya no abre y hay que conseguir la nueva.</span>
+      </dd>
+    </div>
+
+    <div class="term">
+      <dt>Compilado<span class="tag ti">TI</span></dt>
+      <dd>
+        <p>La traducción del código a la forma que el ERP ejecuta. El puente la genera con la <strong>misma versión de lenguaje</strong> que entiende el editor de Steelhead — que es antigua. Si se usa sintaxis más nueva, el hook deja de correr <strong>sin dar ningún error</strong>.</p>
+      </dd>
+    </div>
+
+    <div class="term">
+      <dt>Pieza patrón<span class="tag ti">TI</span><span class="alt">la biblioteca de lógica pura</span></dt>
+      <dd>
+        <p>Cada regla de negocio vive dos veces: como pieza probada fuera del ERP —la fuente de verdad— y como copia dentro del hook, porque el editor recibe un solo archivo y no puede importar nada.</p>
+        <span class="mf"><b>Como en metrología:</b> el patrón vive en el laboratorio, con su certificado; los calibradores de piso son copias suyas. Si cambias el patrón, recalibras las copias.</span>
+      </dd>
+    </div>
+
+    <div class="term">
+      <dt>Prueba automática<span class="tag ti">TI</span><span class="alt">el certificado del patrón</span></dt>
+      <dd>
+        <p>Un caso de ejemplo con su resultado esperado, que se ejecuta en segundos. Si el resultado cambia, la prueba se pone en rojo antes de que nada llegue al ERP. Hoy hay 472.</p>
+      </dd>
+    </div>
+
+    <div class="term">
+      <dt>Anti-regresión de paridad<span class="tag ti">TI</span></dt>
+      <dd>
+        <p>Una prueba escrita a propósito para que falle si alguien vuelve a resolver por número interno en vez de por nombre. Construye un caso donde el número coincide pero el nombre no, y exige que la regla lo ignore.</p>
+      </dd>
+    </div>
+
+  </dl>
+
+  <!-- ============ DOS PLANTAS ============ -->
+  <h2 class="sec"><span class="num">03</span>Las dos plantas</h2>
+  <dl class="terms">
+
+    <div class="term">
+      <dt>Dominio<span class="tag all">Todos</span><span class="alt">TLC y MTY</span></dt>
+      <dd>
+        <p>Cada planta dentro del mismo servidor de Steelhead: Toluca y Monterrey. No son direcciones web distintas; se distinguen internamente. Comparten credenciales.</p>
+      </dd>
+    </div>
+
+    <div class="term">
+      <dt>Número interno<span class="tag ti">TI</span><span class="alt">id de catálogo</span></dt>
+      <dd>
+        <p>El número con que cada planta identifica una entidad de su catálogo. <strong>No es portable:</strong> la unidad «KGM Kilogramo» es 3969 en Toluca y 5990 en Monterrey.</p>
+        <span class="mf"><b>Número de casillero:</b> cada planta numeró el suyo en el orden en que fue guardando. Pedir “el casillero 3969” en la otra planta te da algo — pero no lo que buscabas.</span>
+      </dd>
+    </div>
+
+    <div class="term">
+      <dt>Nombre estable<span class="tag ti">TI</span></dt>
+      <dd>
+        <p>El nombre de catálogo de una entidad, capturado igual en las dos plantas. Es el criterio correcto para buscar.</p>
+        <span class="mf"><b>El letrero:</b> el letrero de la unidad es el mismo en las dos plantas. Búscalo por el letrero, no por el número.</span>
+      </dd>
+    </div>
+
+    <div class="term">
+      <dt>Paridad<span class="tag ti">TI</span></dt>
+      <dd>
+        <p>La garantía de que el mismo código corre igual en las dos plantas. Se sostiene con tres cosas: resolver por nombre, publicar siempre en ambas y probar la anti-regresión.</p>
+      </dd>
+    </div>
+
+    <div class="term">
+      <dt>Degradar suave<span class="tag ti">TI</span></dt>
+      <dd>
+        <p>Que una regla <strong>no aplique</strong> cuando falta el dato, en vez de tronar o inventar. Ejemplo: la unidad «LO Lote» no existe en Monterrey, así que el cargo de lote mínimo simplemente no dispara. Es el comportamiento correcto.</p>
+      </dd>
+    </div>
+
+  </dl>
+
+  <!-- ============ DOCUMENTOS Y OPERACIÓN ============ -->
+  <h2 class="sec"><span class="num">04</span>Documentos y operación</h2>
+  <dl class="terms">
+
+    <div class="term">
+      <dt>Plantilla de PDF<span class="tag all">Todos</span><span class="alt">lado Steelhead</span></dt>
+      <dd>
+        <p>El diseño que dibuja cada documento. Vive del lado del proveedor y no está versionado en nuestro repositorio.</p>
+        <span class="mf"><b>Surtir no es colocar:</b> el hook mide y entrega el dato listo; la plantilla decide dónde se pinta. Un cambio visual casi siempre es de dos lados.</span>
+      </dd>
+    </div>
+
+    <div class="term">
+      <dt>Partida de orden de venta<span class="tag ku">Key User</span></dt>
+      <dd>
+        <p>Cada línea de la orden de venta. Es la unidad que el ERP usa para armar la factura: <strong>una partida, un renglón</strong>. El hook llena el contenido del renglón, pero no puede juntar ni partir renglones.</p>
+      </dd>
+    </div>
+
+    <div class="term">
+      <dt>Descripción fiscal<span class="tag ku">Key User</span><span class="alt">la que viaja al CFDI</span></dt>
+      <dd>
+        <p>El texto de cada renglón de factura que llega al comprobante fiscal. Tiene dos secciones fijas —descripción de la pieza y observaciones— y su contenido <strong>se configura por cliente</strong>.</p>
+      </dd>
+    </div>
+
+    <div class="term">
+      <dt>Lote mínimo<span class="tag ku">Key User</span></dt>
+      <dd>
+        <p>Regla comercial: si el pedido no alcanza la cantidad mínima, se cobra el lote completo. El renglón sale con cantidad 1 y el precio del lote, y la descripción lo dice explícitamente para que el integrador fiscal convierta la unidad.</p>
+      </dd>
+    </div>
+
+    <div class="term">
+      <dt>Orden de compra provisional<span class="tag ku">Key User</span></dt>
+      <dd>
+        <p>Una orden de compra del cliente capturada como marcador temporal: vacía, un punto, “pendiente”, “SQRO” o “no usar”. Seis documentos salen con un aviso rojo grande cuando la detectan.</p>
+      </dd>
+    </div>
+
+    <div class="term">
+      <dt>Acabados<span class="tag ku">Key User</span><span class="alt">etiquetas del número de parte</span></dt>
+      <dd>
+        <p>Las etiquetas de color asociadas a un número de parte que describen su acabado. Aparecen en la factura, la remisión, el certificado y la orden de trabajo completa.</p>
+      </dd>
+    </div>
+
+    <div class="term">
+      <dt>Especificación<span class="tag ku">Key User</span><span class="alt">spec</span></dt>
+      <dd>
+        <p>La norma que debe cumplir una parte (recubrimiento, espesor, método de medición). El sistema la resume en un aviso azul al capturar la orden y la agrupa por condiciones en el certificado.</p>
+      </dd>
+    </div>
+
+    <div class="term">
+      <dt>Contenedor<span class="tag ku">Key User</span></dt>
+      <dd>
+        <p>Cada caja o rack físico en que se divide un lote. El sistema calcula cuántos lleva cada lote y genera una etiqueta por contenedor, numerada “2 de 5”.</p>
+      </dd>
+    </div>
+
+    <div class="term">
+      <dt>Certificado de calidad<span class="tag ku">Key User</span><span class="alt">CoC</span></dt>
+      <dd>
+        <p>El documento que acredita que la pieza cumple su especificación. El sistema le prepara las mediciones agrupadas, las fotos, el tamaño de grano y los acabados de la parte.</p>
+      </dd>
+    </div>
+
+  </dl>
+
+  <!-- ============ QUÍMICA ============ -->
+  <h2 class="sec"><span class="num">05</span>Química y planta</h2>
+  <dl class="terms">
+
+    <div class="term">
+      <dt>Plan de mantenimiento<span class="tag all">Todos</span><span class="alt">uno por tina</span></dt>
+      <dd>
+        <p>El programa de cada baño químico. Toma las titulaciones del laboratorio, calcula la concentración real y devuelve la dosis de corrección en kilos, escrita como instrucción para el operador.</p>
+      </dd>
+    </div>
+
+    <div class="term">
+      <dt>Titulación<span class="tag ku">Key User</span></dt>
+      <dd>
+        <p>La medición de laboratorio que se captura como valor de sensor. Es la entrada de todo el cálculo: los mililitros gastados en el análisis.</p>
+      </dd>
+    </div>
+
+    <div class="term">
+      <dt>Factor estequiométrico<span class="tag ku">Key User</span></dt>
+      <dd>
+        <p>El número que convierte la medición en concentración. Es propio de cada baño y reactivo. Hoy están escritos dentro de cada plan, sin tabla central — es el pendiente de trazabilidad más importante del sistema.</p>
+      </dd>
+    </div>
+
+    <div class="term">
+      <dt>Dosificación<span class="tag ku">Key User</span></dt>
+      <dd>
+        <p>Los kilos de reactivo a agregar: la diferencia entre el objetivo y lo medido, multiplicada por los litros de la tina. Es prácticamente la misma fórmula en los 24 planes de baño.</p>
+      </dd>
+    </div>
+
+    <div class="term">
+      <dt>Consumo predicho<span class="tag ti">TI</span></dt>
+      <dd>
+        <p>La estimación de cuánta materia prima consumirá cada pieza: metales por densidad, área y espesor; antiempañante por peso; epóxicos por metro lineal. Sirve para comprar con anticipación en vez de reaccionar.</p>
+      </dd>
+    </div>
+
+  </dl>
+
+  <div class="callout info">
+    <p class="ct">Términos de repositorios y colaboración</p>
+    <p>Los conceptos de Git y GitHub —repositorio, rama, guardado con nota, propuesta de cambio, integración— están explicados en el documento transversal <a href="repos-y-mantenimiento.html">Repositorios, GitHub y mantenimiento</a>, que es el mismo para los tres sistemas de la familia.</p>
+  </div>
+
+  <footer class="foot">
+    <div><span class="badge perenne">Perenne</span> &nbsp; Glosario · Steelhead Power Tools</div>
+    <div>Corte de referencia: 27 jul 2026</div>
+    <div class="doc-credit">
+      <a href="https://capazconsultoria.com" target="_blank" rel="noopener" aria-label="Capaz Consultoría" style="flex:0 0 auto;display:inline-flex"><img src="assets/capaz-c.png" alt="Capaz Consultoría"></a>
+      <span>Documento elaborado por <a class="name" href="mailto:oviazcan@capazconsultoria.com">Omar Viazcán</a> · <a href="https://capazconsultoria.com" target="_blank" rel="noopener">Capaz Consultoría</a></span>
+    </div>
+  </footer>
+
+</div>
+<script>
+(function(){
+  var q = document.getElementById('q'), c = document.getElementById('c');
+  var terms = Array.prototype.slice.call(document.querySelectorAll('.term'));
+  var heads = Array.prototype.slice.call(document.querySelectorAll('h2.sec'));
+  function render(){
+    var term = q.value.trim().toLowerCase(), shown = 0;
+    terms.forEach(function(t){
+      var hit = !term || t.textContent.toLowerCase().indexOf(term) !== -1;
+      t.classList.toggle('hidden', !hit);
+      if (hit) shown++;
+    });
+    heads.forEach(function(h){
+      var dl = h.nextElementSibling, any = false;
+      if (dl) {
+        Array.prototype.slice.call(dl.querySelectorAll('.term')).forEach(function(t){
+          if (!t.classList.contains('hidden')) any = true;
+        });
+        h.style.display = any ? '' : 'none';
+        dl.style.display = any ? '' : 'none';
+      }
+    });
+    c.textContent = shown + ' de ' + terms.length + ' términos';
+  }
+  q.addEventListener('input', render);
+  render();
+})();
+</script>
+</body>
+</html>

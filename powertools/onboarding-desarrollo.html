@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Onboarding de Desarrollo — Steelhead Power Tools</title>
+<style>
+:root{
+  --ground:#f7f9fb;--paper:#ffffff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;
+  --hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;
+  --ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;
+  --warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7;
+  --shadow:0 1px 2px rgba(24,34,49,.05),0 6px 20px -8px rgba(24,34,49,.12);
+  --measure:70ch;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){:root{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512;--shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -10px rgba(0,0,0,.5)}}
+:root[data-theme="light"]{--ground:#f7f9fb;--paper:#fff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;--hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;--ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7}
+:root[data-theme="dark"]{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.62;-webkit-font-smoothing:antialiased}
+.wrap{max-width:920px;margin:0 auto;padding:0 24px 96px}
+.measure{max-width:var(--measure)}
+.masthead{border-bottom:2px solid var(--ti);padding:40px 0 22px}
+.brandbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.brandmark{width:26px;height:26px;border-radius:6px;background:var(--steel);display:grid;place-items:center;flex:0 0 auto}
+.brandmark span{color:#fff;font-weight:800;font-size:.9rem;font-family:var(--mono)}
+.brandname{font-weight:700;letter-spacing:.02em;font-size:.95rem}
+.brandname em{color:var(--accent-ink);font-style:normal}
+.eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.14em;color:var(--ti);font-weight:800;margin:0 0 10px}
+.masthead h1{font-size:clamp(2rem,4.6vw,2.7rem);line-height:1.06;letter-spacing:-.02em;margin:0 0 10px;font-weight:800;text-wrap:balance}
+.masthead .sub{font-size:1.12rem;color:var(--muted);margin:0;max-width:60ch}
+.audchips{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.audchip{font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.05em}
+.audchip.ti{background:var(--ti-wash);color:var(--ti)}
+.tldr{background:var(--paper);border:1px solid var(--hair);border-left:4px solid var(--ti);border-radius:12px;padding:20px 22px;margin:26px 0;box-shadow:var(--shadow)}
+.tldr .ct{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--ti);margin:0 0 8px}
+.tldr p{margin:0;font-size:1.05rem;max-width:none}
+h2.sec{font-size:1.5rem;letter-spacing:-.01em;margin:54px 0 4px;font-weight:800;text-wrap:balance}
+h2.sec .num{font-family:var(--mono);font-size:.85rem;color:var(--ti);font-weight:700;border:1px solid var(--hair-2);border-radius:6px;padding:1px 7px;margin-right:10px;vertical-align:.15em}
+h3.sub{font-size:1.16rem;margin:32px 0 6px;letter-spacing:-.01em;font-weight:700}
+.sec-lead{color:var(--muted);margin:.4rem 0 1.2rem;max-width:var(--measure)}
+p{margin:0 0 1rem;max-width:var(--measure)}
+a{color:var(--accent-ink);text-underline-offset:2px}
+code{font-family:var(--mono);font-size:.85em;background:var(--hair);padding:1px 5px;border-radius:5px;word-break:break-word}
+pre{background:var(--paper);border:1px solid var(--hair);border-left:3px solid var(--ti);border-radius:10px;padding:14px 16px;overflow-x:auto;font-family:var(--mono);font-size:.83rem;line-height:1.6;margin:16px 0;box-shadow:var(--shadow)}
+pre code{background:none;padding:0;font-size:1em}
+pre .c{color:var(--faint)}
+ul,ol{max-width:var(--measure);padding-left:1.25em} li{margin:.35rem 0}
+strong{font-weight:700}
+.tablewrap{overflow-x:auto;border:1px solid var(--hair);border-radius:12px;box-shadow:var(--shadow);margin:20px 0}
+table{border-collapse:collapse;width:100%;font-size:.9rem;background:var(--paper);min-width:600px}
+thead th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:700;padding:11px 14px;border-bottom:2px solid var(--hair-2);background:var(--ground)}
+tbody td{padding:11px 14px;border-bottom:1px solid var(--hair);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+td code{white-space:nowrap}
+.stages{list-style:none;padding:0;margin:24px 0;display:flex;flex-direction:column;gap:2px}
+.stages li{display:grid;grid-template-columns:44px 1fr;gap:16px;padding:18px 0;border-bottom:1px solid var(--hair);align-items:start}
+.stages li:last-child{border-bottom:none}
+.stages .k{width:38px;height:38px;border-radius:9px;background:var(--ti);color:#fff;display:grid;place-items:center;font-weight:800;font-family:var(--mono);font-size:1rem}
+.stages h4{margin:0 0 3px;font-size:1.08rem}
+.stages p{margin:0 0 .5rem;font-size:.94rem;color:var(--muted);max-width:none}
+.stages p:last-child{margin-bottom:0}
+.stages pre{margin:10px 0 0}
+.os{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin:18px 0}
+@media (max-width:760px){.os{grid-template-columns:1fr}}
+.osc{border:1px solid var(--hair);border-radius:12px;background:var(--paper);overflow:hidden;box-shadow:var(--shadow)}
+.osc .h{font-size:.7rem;font-weight:800;text-transform:uppercase;letter-spacing:.08em;padding:9px 14px;border-bottom:1px solid var(--hair)}
+.osc.win .h{background:var(--ti-wash);color:var(--ti)}
+.osc.mac .h{background:var(--accent-wash);color:var(--accent-ink)}
+.osc .b{padding:14px}
+.osc .b pre{margin:0;border-left-width:2px;box-shadow:none;font-size:.8rem}
+.callout{border-radius:10px;padding:15px 17px 15px 48px;position:relative;margin:22px 0;font-size:.95rem;border:1px solid var(--hair);background:var(--paper);max-width:none}
+.callout .ct{font-weight:800;margin:0 0 4px;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em}
+.callout p{max-width:none;margin:.3rem 0 0}
+.callout::before{position:absolute;left:15px;top:14px;font-size:1.15rem;line-height:1}
+.callout.meta{border-left:4px solid var(--steel);background:color-mix(in srgb,var(--steel) 6%,var(--paper))} .callout.meta .ct{color:var(--steel)} .callout.meta::before{content:"💡"}
+.callout.info{border-left:4px solid var(--ti);background:var(--ti-wash)} .callout.info .ct{color:var(--ti)} .callout.info::before{content:"ℹ";color:var(--ti);font-weight:800}
+.callout.warn{border-left:4px solid var(--warn);background:var(--warn-wash)} .callout.warn .ct{color:var(--warn)} .callout.warn::before{content:"⚠"}
+.callout.danger{border-left:4px solid var(--danger);background:var(--danger-wash)} .callout.danger .ct{color:var(--danger)} .callout.danger::before{content:"⛔"}
+.callout.tip{border-left:4px solid var(--accent);background:var(--accent-wash)} .callout.tip .ct{color:var(--accent-ink)} .callout.tip::before{content:"✓";color:var(--accent-ink);font-weight:800}
+.check{list-style:none;padding:0;margin:18px 0}
+.check li{position:relative;padding-left:30px;margin:.5rem 0}
+.check li::before{content:"☐";position:absolute;left:4px;top:0;color:var(--ti);font-size:1.05rem;font-weight:700}
+.foot{margin-top:64px;padding-top:22px;border-top:1px solid var(--hair-2);color:var(--faint);font-size:.85rem;display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:999px}
+.badge.perenne{background:var(--ti-wash);color:var(--ti)} .badge.perenne::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.doc-credit{flex-basis:100%;margin-top:10px;padding-top:12px;border-top:1px solid var(--hair);display:flex;align-items:center;gap:12px;font-size:.78rem;color:var(--faint)}
+.doc-credit a{color:var(--accent-ink);text-decoration:none} .doc-credit a.name{font-weight:600}
+.doc-credit img{height:30px;width:auto;display:block}
+@media print{
+  :root{--ground:#fff;--paper:#fff;--shadow:none}
+  body{font-size:11pt}
+  .wrap{max-width:none;padding:0}
+  .callout,.tablewrap,.stages li,pre,.tldr,.osc{break-inside:avoid}
+  table{min-width:0;font-size:9pt}
+  h2.sec,h3.sub{break-after:avoid}
+  a{color:var(--ink);text-decoration:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brandbar">
+      <span class="brandmark"><span>PT</span></span>
+      <span class="brandname">Steelhead <em>Power Tools</em> · Paquete de capacitación</span>
+      <a href="00-mapa-empieza-aqui.html" style="margin-left:auto;font-size:.82rem;color:var(--faint);text-decoration:none;white-space:nowrap">← Índice del paquete</a>
+    </div>
+    <p class="eyebrow">Onboarding de Desarrollo · Windows y Mac</p>
+    <h1>Montar el entorno para modificar y publicar hooks</h1>
+    <p class="sub">De una máquina en blanco a poder publicar un cambio en las dos plantas, con las pruebas en verde. Pensado para quien va a tomar el mantenimiento del sistema.</p>
+    <div class="audchips"><span class="audchip ti">Desarrollo · Jefe de TI</span><span class="audchip ti">Documento perenne</span></div>
+  </header>
+
+  <div class="tldr">
+    <p class="ct">Lo que hay que saber antes de empezar</p>
+    <p>El entorno es ligero: Git, Node y Python. No hay base de datos, ni servidor, ni contenedores. La única complicación real es que este repositorio <strong>depende de otro</strong> —el de reportes— para la sesión con el ERP, y esa ruta hoy está escrita a mano en dos archivos. Se resuelve en el paso 3.</p>
+  </div>
+
+  <!-- 01 -->
+  <h2 class="sec"><span class="num">01</span>Qué se necesita instalar</h2>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Herramienta</th><th>Para qué</th><th>Versión</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Git</strong></td><td>Traer el código y llevar el historial de cambios</td><td>Cualquiera reciente</td></tr>
+        <tr><td><strong>Node.js</strong></td><td>Correr las pruebas y compilar el TypeScript al publicar</td><td>20 o superior (LTS)</td></tr>
+        <tr><td><strong>Python 3</strong></td><td>El puente con el ERP</td><td>3.9 o superior, <strong>con la biblioteca <code>requests</code></strong></td></tr>
+        <tr><td><strong>Editor</strong></td><td>Escribir código</td><td>Visual Studio Code recomendado</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="os">
+    <div class="osc win">
+      <div class="h">Windows</div>
+      <div class="b">
+<pre><code><span class="c">REM desde PowerShell como administrador</span>
+winget install --id Git.Git -e
+winget install --id OpenJS.NodeJS.LTS -e
+winget install --id Python.Python.3.12 -e
+winget install --id Microsoft.VisualStudioCode -e</code></pre>
+      </div>
+    </div>
+    <div class="osc mac">
+      <div class="h">macOS</div>
+      <div class="b">
+<pre><code><span class="c"># con Homebrew (brew.sh)</span>
+brew install git node python
+brew install --cask visual-studio-code</code></pre>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <p class="ct">La trampa más común de todo el onboarding</p>
+    <p>En macOS conviven varios Python. El puente necesita uno que tenga <code>requests</code> instalado, y no siempre es el que responde a <code>python3</code> en tu terminal. Si un comando falla con <em>“no pude importar steelhead_client: No module named 'requests'”</em>, no está roto el puente: estás llamando al intérprete equivocado. Comprueba cuál tiene la biblioteca e invoca ese explícitamente.</p>
+  </div>
+
+  <!-- 02 -->
+  <h2 class="sec"><span class="num">02</span>Traer el código</h2>
+  <p class="sec-lead">Son <strong>dos</strong> repositorios, y la estructura de carpetas importa (ver paso 3).</p>
+
+  <ol class="stages">
+    <li><span class="k">1</span><div>
+      <h4>Clonar los dos repositorios bajo la misma carpeta padre</h4>
+      <p>El de Power Tools es el que vas a editar. El de reportes aporta el cliente de conexión y el archivo de credenciales.</p>
+<pre><code>mkdir Ecoplating &amp;&amp; cd Ecoplating
+git clone &lt;url-del-repositorio-de-power-tools&gt;
+git clone &lt;url-del-repositorio-de-reportes&gt;</code></pre>
+      <p>Deberías terminar con dos carpetas hermanas dentro de <code>Ecoplating</code>.</p>
+    </div></li>
+    <li><span class="k">2</span><div>
+      <h4>Instalar la biblioteca de Python que usa el puente</h4>
+<pre><code>python3 -m pip install requests</code></pre>
+      <p>En Windows el comando suele ser <code>py -m pip install requests</code>.</p>
+    </div></li>
+  </ol>
+
+  <div class="callout info">
+    <p class="ct">No hay dependencias de Node que instalar</p>
+    <p>El repositorio no usa paquetes externos: las pruebas corren con el ejecutor que trae Node, y el compilador se descarga en el momento la primera vez que publicas. Por eso no hay un <code>npm install</code> en esta lista.</p>
+  </div>
+
+  <!-- 03 -->
+  <h2 class="sec"><span class="num">03</span>Ajustar la ruta al repositorio de reportes</h2>
+  <p class="sec-lead">Este paso es obligatorio en cualquier máquina que no sea la original. Sáltalo y todos los comandos del puente fallarán con “no existe”.</p>
+
+  <p class="measure">Los dos scripts del puente apuntan al repositorio de reportes con una <strong>ruta absoluta escrita a mano</strong>. Hay que cambiarla por la de tu máquina en ambos archivos:</p>
+
+  <pre><code><span class="c"># sync/lowcode_sync.py  · línea ~38</span>
+<span class="c"># sync/maintenance_plans_sync.py · línea ~40</span>
+
+REPORTES_SH_SCRIPTS = Path("/ruta/a/tu/carpeta/Reportes SH/scripts")</code></pre>
+
+  <div class="callout tip">
+    <p class="ct">Mejora recomendada al tomar el mantenimiento</p>
+    <p>Sustituir esa constante por una <strong>variable de entorno con un valor por omisión</strong> —de modo que cada máquina la configure una vez y el archivo deje de cambiar— es una mejora de media hora que elimina este paso para siempre y evita que la ruta de alguien se cuele en el historial. Es el primer cambio recomendado para quien tome el repositorio.</p>
+  </div>
+
+  <!-- 04 -->
+  <h2 class="sec"><span class="num">04</span>Primera verificación: las pruebas</h2>
+  <p class="sec-lead">Se corren <strong>sin credenciales y sin tocar el ERP</strong>. Es la forma más rápida de confirmar que el entorno quedó bien.</p>
+
+  <pre><code>cd &lt;carpeta-del-repositorio-de-power-tools&gt;
+npm test</code></pre>
+
+  <p class="measure">Deberías ver la lista de casos y, al final, el resumen con todo en verde. Al corte de este documento son <strong>472 pruebas sobre 35 módulos</strong>, y terminan en menos de un segundo.</p>
+
+  <div class="callout tip">
+    <p class="ct">Si esto pasa, el 80 % del entorno está listo</p>
+    <p>Las pruebas ejercitan toda la lógica de negocio del sistema. Lo único que falta comprobar después es la conexión con el ERP.</p>
+  </div>
+
+  <!-- 05 -->
+  <h2 class="sec"><span class="num">05</span>Credenciales y primera lectura del ERP</h2>
+  <p class="sec-lead">El puente no tiene credenciales propias: usa las del repositorio de reportes.</p>
+
+  <ol class="stages">
+    <li><span class="k">1</span><div>
+      <h4>Conseguir el archivo de entorno del repositorio de reportes</h4>
+      <p>Contiene la cookie y el token de la sesión del ERP. <strong>No está en el repositorio</strong> —es secreto— y se solicita a quien administra los accesos. Nunca se sube ni se comparte por canales abiertos.</p>
+    </div></li>
+    <li><span class="k">2</span><div>
+      <h4>Leer el catálogo de las dos plantas</h4>
+      <p>Es una operación de <strong>solo lectura</strong>: no cambia nada en producción. Si funciona, el entorno está completo.</p>
+<pre><code>python3 sync/lowcode_sync.py list
+
+<span class="c"># y la otra planta</span>
+STEELHEAD_DEFAULT_DOMAIN=mty python3 sync/lowcode_sync.py list</code></pre>
+      <p>En Windows, la variable de entorno se antepone distinto:</p>
+<pre><code><span class="c">REM PowerShell</span>
+$env:STEELHEAD_DEFAULT_DOMAIN="mty"; python sync\lowcode_sync.py list</code></pre>
+    </div></li>
+    <li><span class="k">3</span><div>
+      <h4>Bajar el estado actual</h4>
+      <p>Materializa en tu copia local lo que hoy corre en el ERP. Si sale con cambios, alguien editó desde la interfaz.</p>
+<pre><code>python3 sync/lowcode_sync.py pull
+git status</code></pre>
+    </div></li>
+  </ol>
+
+  <div class="callout danger">
+    <p class="ct">Manejo del archivo de credenciales</p>
+    <p>Nunca lo copies dentro de este repositorio, ni lo pegues en un chat, ni lo dejes en una carpeta compartida. Vive solo en el repositorio de reportes de tu máquina, fuera del control de versiones. Si sospechas que se filtró, hay que rotar la sesión de inmediato.</p>
+  </div>
+
+  <!-- 06 -->
+  <h2 class="sec"><span class="num">06</span>Cómo está organizado el trabajo</h2>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Carpeta</th><th>Qué es</th><th>Regla</th></tr></thead>
+      <tbody>
+        <tr><td><code>hooks/</code></td><td>Los archivos que se publican al ERP</td><td>Solo se editan reflejando lo que ya está en la biblioteca</td></tr>
+        <tr><td><code>lib/</code></td><td>La lógica de negocio pura, con su prueba por módulo</td><td><strong>Aquí se escribe primero.</strong> Es la fuente de verdad</td></tr>
+        <tr><td><code>sync/</code></td><td>El puente con el ERP</td><td>Se toca poco; ojo con la ruta del paso 3</td></tr>
+        <tr><td><code>docs/</code></td><td>Bitácora por hook, catálogo, especificaciones, este paquete</td><td>Se actualiza <strong>en el mismo cambio</strong> que el código</td></tr>
+        <tr><td><code>maintenance-plans/</code></td><td>Los planes de baño bajados del ERP</td><td>Solo lectura desde el puente</td></tr>
+        <tr><td><code>experiments/</code></td><td>Borradores que documentan lo que no funcionó</td><td><strong>Nunca se publican</strong></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 class="sub">La regla de las dos copias</h3>
+  <p class="measure">Cada regla de negocio existe <strong>dos veces</strong>: como módulo probado en <code>lib/</code> y como copia dentro del archivo del hook. No es descuido: el editor de Steelhead recibe <strong>un solo archivo</strong> y no puede importar nada, así que la copia es obligatoria. La biblioteca existe para poder probar esa lógica fuera del ERP.</p>
+
+  <div class="callout meta">
+    <p class="ct">El orden correcto, siempre</p>
+    <p>Primero el módulo en <code>lib/</code> con su prueba. Después la copia dentro del <code>.ts</code>. Si escribes solo en el hook, esa regla queda sin certificado — y es exactamente donde se cuelan los errores que no dan error.</p>
+  </div>
+
+  <h3 class="sub">Restricciones del lenguaje</h3>
+  <ul class="measure">
+    <li>El compilador del editor de Steelhead entiende una <strong>versión antigua</strong> del lenguaje. La configuración del proyecto la fija para que la revisión local coincida.</li>
+    <li>Si usas sintaxis más nueva, el hook <strong>deja de correr sin dar error visible</strong>. Es la falla más desconcertante del sistema si no la conoces.</li>
+    <li>La configuración de paquetes está deliberadamente sin declarar módulos globales: hay un archivo de la biblioteca que es del formato antiguo. Cambiarlo rompería ese archivo y su prueba.</li>
+  </ul>
+
+  <!-- 07 -->
+  <h2 class="sec"><span class="num">07</span>El ciclo de trabajo diario</h2>
+
+  <pre><code><span class="c"># 1. partir de lo que corre hoy</span>
+python3 sync/lowcode_sync.py pull &amp;&amp; git status
+
+<span class="c"># 2. trabajar en una rama propia</span>
+git checkout -b feat/lo-que-vas-a-hacer
+
+<span class="c"># 3. editar lib/&lt;modulo&gt;.mjs + su prueba, luego reflejar en el hook</span>
+
+<span class="c"># 4. probar</span>
+npm test
+
+<span class="c"># 5. ensayar la publicación sin tocar el ERP</span>
+python3 sync/lowcode_sync.py push hooks/&lt;cat&gt;/&lt;archivo&gt;.ts &lt;slug&gt; --dry-run
+
+<span class="c"># 6. publicar en LAS DOS plantas</span>
+python3 sync/lowcode_sync.py push hooks/&lt;cat&gt;/&lt;archivo&gt;.ts &lt;slug&gt;
+STEELHEAD_DEFAULT_DOMAIN=mty python3 sync/lowcode_sync.py push hooks/&lt;cat&gt;/&lt;archivo&gt;.ts &lt;slug&gt;
+
+<span class="c"># 7. verificar en ambas</span>
+python3 sync/lowcode_sync.py diff &lt;slug&gt;
+STEELHEAD_DEFAULT_DOMAIN=mty python3 sync/lowcode_sync.py diff &lt;slug&gt;
+
+<span class="c"># 8. registrar en la bitácora del hook y guardar el cambio</span>
+git add -A &amp;&amp; git commit -m "feat(&lt;hook&gt;): ..."</code></pre>
+
+  <h3 class="sub">Los nombres de las ventanillas</h3>
+  <p class="measure">Los identificadores que reciben los comandos son de dos formas:</p>
+  <ul class="measure">
+    <li><strong>Ventanilla única:</strong> <code>received-order</code>, <code>invoice</code>, <code>inventory-usage</code>, <code>schedule</code></li>
+    <li><strong>Ventanilla múltiple:</strong> <code>pdf:&lt;TIPO&gt;</code>, <code>file-import:&lt;TIPO&gt;</code>, <code>fee:&lt;ID&gt;</code></li>
+  </ul>
+
+  <div class="callout warn">
+    <p class="ct">Antes de publicar, la lista de paridad</p>
+    <p>Ningún criterio que dependa solo de un número interno de catálogo. Los datos de negocio que asume el hook deben existir con el mismo nombre en la otra planta. La lógica nueva debe traer su prueba de anti-regresión. Está detallado en la <a href="ficha-paridad-mty.html">ficha «Dos plantas, un solo código»</a>.</p>
+  </div>
+
+  <!-- 08 -->
+  <h2 class="sec"><span class="num">08</span>Diferencias entre Windows y Mac</h2>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Tema</th><th>Windows</th><th>macOS</th></tr></thead>
+      <tbody>
+        <tr><td>Intérprete de Python</td><td><code>py</code> o <code>python</code></td><td><code>python3</code> — <strong>verifica cuál tiene <code>requests</code></strong></td></tr>
+        <tr><td>Variables de entorno en un comando</td><td><code>$env:VAR="valor"; comando</code> (PowerShell)</td><td><code>VAR=valor comando</code></td></tr>
+        <tr><td>Separador de rutas</td><td><code>\</code></td><td><code>/</code></td></tr>
+        <tr><td>Rutas con espacios</td><td>Entrecomillar siempre (la carpeta de reportes tiene un espacio en el nombre)</td><td>Igual: entrecomillar o escapar</td></tr>
+        <tr><td>Fin de línea</td><td>Configura Git para no convertirlos, o los archivos aparecerán como modificados enteros</td><td>Sin problema</td></tr>
+        <tr><td>Terminal recomendada</td><td>Windows Terminal con PowerShell</td><td>Terminal o iTerm</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout info">
+    <p class="ct">Fin de línea en Windows</p>
+    <p>Si al clonar ves todos los archivos marcados como modificados sin haber tocado nada, es la conversión automática de fin de línea. Se desactiva con <code>git config --global core.autocrlf false</code> y se vuelve a clonar.</p>
+  </div>
+
+  <!-- 09 -->
+  <h2 class="sec"><span class="num">09</span>Problemas comunes al arrancar</h2>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Mensaje o síntoma</th><th>Causa</th><th>Solución</th></tr></thead>
+      <tbody>
+        <tr><td><em>no existe /…/Reportes SH/scripts</em></td><td>La ruta escrita a mano no coincide con tu máquina</td><td>Paso 3: ajústala en los dos archivos del puente</td></tr>
+        <tr><td><em>no pude importar steelhead_client: No module named 'requests'</em></td><td>El intérprete que estás usando no tiene la biblioteca</td><td>Instálala en ese intérprete, o llama al que sí la tiene</td></tr>
+        <tr><td>401 o 403 en cualquier comando</td><td>La sesión del ERP expiró</td><td>Renovar el archivo de credenciales del repositorio de reportes</td></tr>
+        <tr><td>Error de consulta desconocida</td><td>Steelhead rotó la huella de esa operación: cambió la cerradura</td><td>Capturar la huella nueva y actualizarla en el puente</td></tr>
+        <tr><td>La publicación falla al compilar</td><td>El compilador se descarga en el momento la primera vez</td><td>Verificar que hay salida a internet; reintentar</td></tr>
+        <tr><td>Las pruebas no corren</td><td>Versión de Node demasiado antigua</td><td>Actualizar a la versión LTS</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 10 -->
+  <h2 class="sec"><span class="num">10</span>Lista de verificación del primer día</h2>
+  <ul class="check">
+    <li>Git, Node y Python instalados, y <code>requests</code> disponible en el intérprete que vas a usar.</li>
+    <li>Los dos repositorios clonados como carpetas hermanas.</li>
+    <li>La ruta al repositorio de reportes ajustada en los dos archivos del puente.</li>
+    <li><code>npm test</code> en verde.</li>
+    <li>El archivo de credenciales en su lugar, obtenido por canal seguro.</li>
+    <li>Lectura del catálogo funcionando en <strong>las dos</strong> plantas.</li>
+    <li>Una bajada completa hecha, sin cambios pendientes en el control de versiones.</li>
+    <li>Leídos: el <a href="manual-administrador.html">Manual del Administrador</a> y la <a href="ficha-paridad-mty.html">ficha de paridad</a>.</li>
+    <li>Localizada la bitácora del hook que vas a tocar, y su versión de reversión segura.</li>
+  </ul>
+
+  <div class="callout tip">
+    <p class="ct">Primer cambio recomendado</p>
+    <p>Algo de bajo riesgo y con recompensa visible: ajustar el texto de un aviso, o corregir el spanglish de las instrucciones de un plan de baño. Te obliga a recorrer el ciclo completo —editar, probar, publicar en dos plantas, verificar, documentar— sin poner en riesgo nada.</p>
+  </div>
+
+  <footer class="foot">
+    <div><span class="badge perenne">Perenne</span> &nbsp; Onboarding de Desarrollo · Steelhead Power Tools</div>
+    <div>Corte de referencia: 27 jul 2026</div>
+    <div class="doc-credit">
+      <a href="https://capazconsultoria.com" target="_blank" rel="noopener" aria-label="Capaz Consultoría" style="flex:0 0 auto;display:inline-flex"><img src="assets/capaz-c.png" alt="Capaz Consultoría"></a>
+      <span>Documento elaborado por <a class="name" href="mailto:oviazcan@capazconsultoria.com">Omar Viazcán</a> · <a href="https://capazconsultoria.com" target="_blank" rel="noopener">Capaz Consultoría</a></span>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manual del Administrador — Steelhead Power Tools</title>
+<style>
+:root{
+  --ground:#f7f9fb;--paper:#ffffff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;
+  --hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;
+  --ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;
+  --warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7;
+  --shadow:0 1px 2px rgba(24,34,49,.05),0 6px 20px -8px rgba(24,34,49,.12);
+  --measure:70ch;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){:root{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512;--shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -10px rgba(0,0,0,.5)}}
+:root[data-theme="light"]{--ground:#f7f9fb;--paper:#fff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;--hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;--ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7}
+:root[data-theme="dark"]{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.62;-webkit-font-smoothing:antialiased}
+.wrap{max-width:960px;margin:0 auto;padding:0 24px 96px}
+.measure{max-width:var(--measure)}
+.masthead{border-bottom:2px solid var(--ti);padding:40px 0 22px}
+.brandbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.brandmark{width:26px;height:26px;border-radius:6px;background:var(--steel);display:grid;place-items:center;flex:0 0 auto}
+.brandmark span{color:#fff;font-weight:800;font-size:.9rem;font-family:var(--mono)}
+.brandname{font-weight:700;letter-spacing:.02em;font-size:.95rem}
+.brandname em{color:var(--accent-ink);font-style:normal}
+.eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.14em;color:var(--ti);font-weight:800;margin:0 0 10px}
+.masthead h1{font-size:clamp(2rem,4.6vw,2.7rem);line-height:1.06;letter-spacing:-.02em;margin:0 0 10px;font-weight:800;text-wrap:balance}
+.masthead .sub{font-size:1.12rem;color:var(--muted);margin:0;max-width:60ch}
+.audchips{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.audchip{font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.05em}
+.audchip.ti{background:var(--ti-wash);color:var(--ti)} .audchip.p{background:var(--ti-wash);color:var(--ti)}
+.tldr{background:var(--paper);border:1px solid var(--hair);border-left:4px solid var(--ti);border-radius:12px;padding:20px 22px;margin:26px 0;box-shadow:var(--shadow)}
+.tldr .ct{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--ti);margin:0 0 8px}
+.tldr p{margin:0;font-size:1.05rem;max-width:none}
+h2.sec{font-size:1.5rem;letter-spacing:-.01em;margin:54px 0 4px;font-weight:800;text-wrap:balance}
+h2.sec .num{font-family:var(--mono);font-size:.85rem;color:var(--ti);font-weight:700;border:1px solid var(--hair-2);border-radius:6px;padding:1px 7px;margin-right:10px;vertical-align:.15em}
+h3.sub{font-size:1.16rem;margin:32px 0 6px;letter-spacing:-.01em;font-weight:700}
+.sec-lead{color:var(--muted);margin:.4rem 0 1.2rem;max-width:var(--measure)}
+p{margin:0 0 1rem;max-width:var(--measure)}
+a{color:var(--accent-ink);text-underline-offset:2px}
+code{font-family:var(--mono);font-size:.85em;background:var(--hair);padding:1px 5px;border-radius:5px;word-break:break-word}
+pre{background:var(--paper);border:1px solid var(--hair);border-left:3px solid var(--ti);border-radius:10px;padding:14px 16px;overflow-x:auto;font-family:var(--mono);font-size:.83rem;line-height:1.6;margin:16px 0;box-shadow:var(--shadow)}
+pre code{background:none;padding:0;font-size:1em}
+pre .c{color:var(--faint)}
+ul,ol{max-width:var(--measure);padding-left:1.25em} li{margin:.35rem 0}
+strong{font-weight:700}
+.tablewrap{overflow-x:auto;border:1px solid var(--hair);border-radius:12px;box-shadow:var(--shadow);margin:20px 0}
+table{border-collapse:collapse;width:100%;font-size:.9rem;background:var(--paper);min-width:620px}
+thead th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:700;padding:11px 14px;border-bottom:2px solid var(--hair-2);background:var(--ground)}
+tbody td{padding:11px 14px;border-bottom:1px solid var(--hair);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+td code{white-space:nowrap}
+.stages{list-style:none;padding:0;margin:24px 0;display:flex;flex-direction:column;gap:2px}
+.stages li{display:grid;grid-template-columns:44px 1fr;gap:16px;padding:16px 0;border-bottom:1px solid var(--hair);align-items:start}
+.stages li:last-child{border-bottom:none}
+.stages .k{width:38px;height:38px;border-radius:9px;background:var(--ti);color:#fff;display:grid;place-items:center;font-weight:800;font-family:var(--mono);font-size:1rem}
+.stages h4{margin:0 0 3px;font-size:1.08rem}
+.stages p{margin:0;font-size:.94rem;color:var(--muted);max-width:none}
+.stages pre{margin:10px 0 0}
+figure.diagram{margin:26px 0;background:var(--paper);border:1px solid var(--hair);border-radius:14px;padding:20px 18px 8px;box-shadow:var(--shadow);overflow-x:auto}
+figure.diagram svg{display:block;width:100%;height:auto;min-width:560px;max-width:820px;margin:0 auto}
+figure.diagram figcaption{font-size:.85rem;color:var(--faint);text-align:center;margin-top:10px;padding:0 8px 6px}
+.svg-t{font-family:var(--sans);fill:var(--ink)} .svg-m{font-family:var(--mono)} .svg-mut{fill:var(--muted);font-family:var(--sans)}
+.callout{border-radius:10px;padding:15px 17px 15px 48px;position:relative;margin:22px 0;font-size:.95rem;border:1px solid var(--hair);background:var(--paper);max-width:none}
+.callout .ct{font-weight:800;margin:0 0 4px;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em}
+.callout p{max-width:none;margin:.3rem 0 0}
+.callout::before{position:absolute;left:15px;top:14px;font-size:1.15rem;line-height:1}
+.callout.meta{border-left:4px solid var(--steel);background:color-mix(in srgb,var(--steel) 6%,var(--paper))} .callout.meta .ct{color:var(--steel)} .callout.meta::before{content:"💡"}
+.callout.info{border-left:4px solid var(--ti);background:var(--ti-wash)} .callout.info .ct{color:var(--ti)} .callout.info::before{content:"ℹ";color:var(--ti);font-weight:800}
+.callout.warn{border-left:4px solid var(--warn);background:var(--warn-wash)} .callout.warn .ct{color:var(--warn)} .callout.warn::before{content:"⚠"}
+.callout.danger{border-left:4px solid var(--danger);background:var(--danger-wash)} .callout.danger .ct{color:var(--danger)} .callout.danger::before{content:"⛔"}
+.callout.tip{border-left:4px solid var(--accent);background:var(--accent-wash)} .callout.tip .ct{color:var(--accent-ink)} .callout.tip::before{content:"✓";color:var(--accent-ink);font-weight:800}
+.check{list-style:none;padding:0;margin:18px 0}
+.check li{position:relative;padding-left:30px;margin:.5rem 0}
+.check li::before{content:"☐";position:absolute;left:4px;top:0;color:var(--ti);font-size:1.05rem;font-weight:700}
+.foot{margin-top:64px;padding-top:22px;border-top:1px solid var(--hair-2);color:var(--faint);font-size:.85rem;display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:999px}
+.badge.perenne{background:var(--ti-wash);color:var(--ti)} .badge.perenne::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.doc-credit{flex-basis:100%;margin-top:10px;padding-top:12px;border-top:1px solid var(--hair);display:flex;align-items:center;gap:12px;font-size:.78rem;color:var(--faint)}
+.doc-credit a{color:var(--accent-ink);text-decoration:none} .doc-credit a.name{font-weight:600}
+.doc-credit img{height:30px;width:auto;display:block}
+@media print{
+  :root{--ground:#fff;--paper:#fff;--shadow:none}
+  body{font-size:11pt}
+  .wrap{max-width:none;padding:0}
+  figure.diagram,.callout,.tablewrap,.stages li,.tldr,pre{break-inside:avoid}
+  figure.diagram svg{min-width:0}
+  table{min-width:0;font-size:9pt}
+  h2.sec,h3.sub{break-after:avoid}
+  a{color:var(--ink);text-decoration:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brandbar">
+      <span class="brandmark"><span>PT</span></span>
+      <span class="brandname">Steelhead <em>Power Tools</em> · Paquete de capacitación</span>
+      <a href="00-mapa-empieza-aqui.html" style="margin-left:auto;font-size:.82rem;color:var(--faint);text-decoration:none;white-space:nowrap">← Índice del paquete</a>
+    </div>
+    <p class="eyebrow">Manual del Administrador</p>
+    <h1>Operar el sistema: publicar, revertir y responder cuando algo falla</h1>
+    <p class="sub">Todo lo que hay que saber para mantener Power Tools en producción sin sustos: el ciclo de publicación, la paridad entre plantas, los modos de falla conocidos y qué hacer con cada uno.</p>
+    <div class="audchips"><span class="audchip ti">Jefe de TI · Infraestructura</span><span class="audchip p">Documento perenne</span></div>
+  </header>
+
+  <div class="tldr">
+    <p class="ct">El resumen operativo</p>
+    <p>Los hooks viven en un repositorio Git y se publican al ERP con un puente de línea de comandos. Publicar <strong>siempre crea una versión nueva</strong>: nada se sobrescribe, revertir es volver a publicar una versión anterior. La única regla que no se negocia es que <strong>todo se publica en las dos plantas</strong>, y que el código nunca dependa de números internos del catálogo de un dominio.</p>
+  </div>
+
+  <!-- 01 -->
+  <h2 class="sec"><span class="num">01</span>El modelo, en cinco minutos</h2>
+  <p class="sec-lead">Tres hechos determinan todo lo demás.</p>
+
+  <ol class="stages">
+    <li><span class="k">1</span><div><h4>El código corre dentro de Steelhead</h4><p>No hay servidor, contenedor ni proceso propio que mantener. Steelhead ejecuta el hook en el momento de la operación y sigue. Si el ERP está arriba, los hooks están arriba.</p></div></li>
+    <li><span class="k">2</span><div><h4>Cada guardado crea una versión; la última es la activa</h4><p>No existe mutación de “actualizar” ni de “activar”. El ERP conserva el historial completo y ejecuta la más reciente — como una capa de recubrimiento: no se despega la anterior, se deposita otra encima.</p></div></li>
+    <li><span class="k">3</span><div><h4>El mismo archivo sirve a dos dominios</h4><p>Toluca y Monterrey viven en el mismo servidor y se distinguen por dominio, no por dirección web. El mismo <code>.ts</code> se publica en los dos. Por eso el código no puede depender de números internos del catálogo de ninguno.</p></div></li>
+  </ol>
+
+  <h3 class="sub">Cómo está organizado el repositorio</h3>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Carpeta</th><th>Qué contiene</th><th>Se publica al ERP</th></tr></thead>
+      <tbody>
+        <tr><td><code>hooks/</code></td><td>Los archivos <code>.ts</code> que se suben al editor de Steelhead, por categoría, con su archivo de metadatos (versión activa, fecha, autor).</td><td><strong>Sí</strong></td></tr>
+        <tr><td><code>lib/</code></td><td>La lógica de negocio pura, probada fuera del ERP. Es la fuente de verdad; una copia idéntica vive dentro de cada <code>.ts</code>.</td><td>No — es el patrón de calibración</td></tr>
+        <tr><td><code>sync/</code></td><td>El puente con Steelhead: bajar, comparar, publicar. Y el puente de solo lectura de los planes de mantenimiento.</td><td>No</td></tr>
+        <tr><td><code>maintenance-plans/</code></td><td>El código de los planes de mantenimiento, bajado del ERP, con su química y el generador de consolidaciones.</td><td>No (publicación manual, ver §8)</td></tr>
+        <tr><td><code>docs/</code></td><td>Bitácora por hook, catálogo, especificaciones, planes y este paquete de capacitación.</td><td>No</td></tr>
+        <tr><td><code>experiments/</code></td><td>Borradores que documentan lo que <em>no</em> funcionó. Nunca se publican.</td><td>Nunca</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout meta">
+    <p class="ct">Por qué la lógica está escrita dos veces</p>
+    <p>El editor de Steelhead recibe <strong>un solo archivo</strong>: el hook no puede importar nada. Así que cada regla vive como <strong>pieza patrón</strong> en <code>lib/</code> —con su prueba automática, que es su certificado— y como <strong>copia</strong> dentro del <code>.ts</code>. Si cambias una, cambias la otra. Es el mismo principio de metrología: el patrón se verifica en el laboratorio, los calibradores de piso son copias suyas.</p>
+  </div>
+
+  <!-- 02 -->
+  <h2 class="sec"><span class="num">02</span>Credenciales y sesión</h2>
+  <p class="sec-lead">El puente no tiene credenciales propias: reutiliza la sesión del proyecto de reportes, que es la fuente única.</p>
+
+  <ul class="measure">
+    <li>La cookie y el token viven en el archivo de entorno del proyecto <strong>Reportes SH</strong>. El puente los lee de ahí por ruta absoluta.</li>
+    <li>Toluca y Monterrey <strong>comparten host y credenciales</strong>: cambiar de planta es una variable de entorno, no otro login.</li>
+    <li>Si el ERP responde 401 o 403, la sesión expiró. Se renueva con el procedimiento de autenticación del proyecto de reportes; no hay nada que reconfigurar en este repositorio.</li>
+  </ul>
+
+  <div class="callout info">
+    <p class="ct">Las llaves de cada operación</p>
+    <p>Steelhead no acepta consultas libres: cada operación se abre con una <strong>llave</strong> —una huella larga que identifica esa consulta exacta—. El puente trae hardcodeadas las llaves de las operaciones que usa. Si Steelhead <strong>cambia la cerradura</strong> (rota esas huellas), la llave vieja deja de abrir y la operación falla con un error de consulta desconocida. La solución es capturar la llave nueva y actualizarla en el puente; está documentado en el catálogo interno del repositorio.</p>
+  </div>
+
+  <div class="callout warn">
+    <p class="ct">Diferencia con la extensión de navegador</p>
+    <p>En el otro sistema de la familia hay un mecanismo automático que detecta y repara esas rotaciones. <strong>Aquí no</strong>, y no hace falta: el puente lo corre una persona a mano de vez en cuando, no miles de veces al día. Si un comando falla con error de consulta, es señal de cerradura cambiada — no de sistema roto.</p>
+  </div>
+
+  <!-- 03 -->
+  <h2 class="sec"><span class="num">03</span>El ciclo de publicación</h2>
+  <p class="sec-lead">Cinco pasos. Ninguno es opcional, y el primero es el que más se olvida.</p>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 820 170" role="img" aria-label="Ciclo: bajar, editar, probar, publicar en dos dominios, verificar">
+      <defs>
+        <marker id="mA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+          <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+        </marker>
+      </defs>
+      <g color="var(--faint)" font-size="12">
+        <g>
+          <circle cx="70" cy="60" r="24" fill="var(--ti-wash)" stroke="var(--ti)" stroke-width="1.8"/>
+          <text x="70" y="66" text-anchor="middle" font-size="14" font-weight="700" fill="var(--ti)">1</text>
+          <text class="svg-t" x="70" y="108" text-anchor="middle" font-weight="700" font-size="12.5">Bajar</text>
+          <text class="svg-mut" x="70" y="125" text-anchor="middle" font-size="11">pull</text>
+        </g>
+        <g>
+          <circle cx="240" cy="60" r="24" fill="var(--ti-wash)" stroke="var(--ti)" stroke-width="1.8"/>
+          <text x="240" y="66" text-anchor="middle" font-size="14" font-weight="700" fill="var(--ti)">2</text>
+          <text class="svg-t" x="240" y="108" text-anchor="middle" font-weight="700" font-size="12.5">Editar</text>
+          <text class="svg-mut" x="240" y="125" text-anchor="middle" font-size="11">lib/ + copia inline</text>
+        </g>
+        <g>
+          <circle cx="410" cy="60" r="24" fill="var(--ti-wash)" stroke="var(--ti)" stroke-width="1.8"/>
+          <text x="410" y="66" text-anchor="middle" font-size="14" font-weight="700" fill="var(--ti)">3</text>
+          <text class="svg-t" x="410" y="108" text-anchor="middle" font-weight="700" font-size="12.5">Probar</text>
+          <text class="svg-mut" x="410" y="125" text-anchor="middle" font-size="11">npm test</text>
+        </g>
+        <g>
+          <circle cx="580" cy="60" r="24" fill="var(--accent-wash)" stroke="var(--accent)" stroke-width="1.8"/>
+          <text x="580" y="66" text-anchor="middle" font-size="14" font-weight="700" fill="var(--accent-ink)">4</text>
+          <text class="svg-t" x="580" y="108" text-anchor="middle" font-weight="700" font-size="12.5">Publicar ×2</text>
+          <text class="svg-mut" x="580" y="125" text-anchor="middle" font-size="11">TLC y MTY</text>
+        </g>
+        <g>
+          <circle cx="750" cy="60" r="24" fill="var(--accent-wash)" stroke="var(--accent)" stroke-width="1.8"/>
+          <text x="750" y="66" text-anchor="middle" font-size="14" font-weight="700" fill="var(--accent-ink)">5</text>
+          <text class="svg-t" x="750" y="108" text-anchor="middle" font-weight="700" font-size="12.5">Verificar</text>
+          <text class="svg-mut" x="750" y="125" text-anchor="middle" font-size="11">diff en ambos</text>
+        </g>
+        <line x1="98" y1="60" x2="210" y2="60" stroke="currentColor" stroke-width="1.5" marker-end="url(#mA)"/>
+        <line x1="268" y1="60" x2="380" y2="60" stroke="currentColor" stroke-width="1.5" marker-end="url(#mA)"/>
+        <line x1="438" y1="60" x2="550" y2="60" stroke="currentColor" stroke-width="1.5" marker-end="url(#mA)"/>
+        <line x1="608" y1="60" x2="720" y2="60" stroke="currentColor" stroke-width="1.5" marker-end="url(#mA)"/>
+      </g>
+    </svg>
+    <figcaption>Publicar es idempotente en el sentido de que nunca destruye: siempre agrega una versión. Lo que sí puede perderse es el trabajo de alguien que editó desde la interfaz — por eso el paso 1.</figcaption>
+  </figure>
+
+  <ol class="stages">
+    <li><span class="k">1</span><div>
+      <h4>Bajar lo que está corriendo hoy</h4>
+      <p>Alguien pudo haber editado desde la interfaz del ERP. Si tu copia local está vieja y publicas encima, borras ese trabajo. Baja primero, siempre.</p>
+<pre><code>python3 sync/lowcode_sync.py list           <span class="c"># qué hay y con qué versión</span>
+python3 sync/lowcode_sync.py pull          <span class="c"># baja todos los slots activos</span>
+git status                                 <span class="c"># ¿el pull trajo cambios? alguien editó</span></code></pre>
+    </div></li>
+    <li><span class="k">2</span><div>
+      <h4>Editar la pieza patrón y su copia</h4>
+      <p>La lógica nueva se escribe primero en <code>lib/</code>, con su prueba. Después se refleja dentro del <code>.ts</code>. Nunca al revés: si escribes solo en el hook, esa regla queda sin certificado.</p>
+    </div></li>
+    <li><span class="k">3</span><div>
+      <h4>Probar antes de tocar producción</h4>
+      <p>La suite completa corre en menos de un segundo. No hay excusa para saltarla.</p>
+<pre><code>npm test          <span class="c"># todas las pruebas de lib/</span></code></pre>
+    </div></li>
+    <li><span class="k">4</span><div>
+      <h4>Publicar — a las dos plantas</h4>
+      <p>El puente compila el TypeScript con la versión de lenguaje que entiende el editor de Steelhead y sube fuente y compilado juntos. La prueba en seco compila y muestra el resultado sin tocar el ERP.</p>
+<pre><code><span class="c"># ensayo: compila y enseña, no publica</span>
+python3 sync/lowcode_sync.py push hooks/invoice/invoice.ts invoice --dry-run
+
+<span class="c"># publicar en Toluca</span>
+python3 sync/lowcode_sync.py push hooks/invoice/invoice.ts invoice
+
+<span class="c"># publicar en Monterrey — el MISMO archivo</span>
+STEELHEAD_DEFAULT_DOMAIN=mty python3 sync/lowcode_sync.py push hooks/invoice/invoice.ts invoice</code></pre>
+    </div></li>
+    <li><span class="k">5</span><div>
+      <h4>Verificar que quedó igual en los dos</h4>
+      <p>La comparación confirma que lo que corre en el ERP es exactamente tu archivo local.</p>
+<pre><code>python3 sync/lowcode_sync.py diff invoice
+STEELHEAD_DEFAULT_DOMAIN=mty python3 sync/lowcode_sync.py diff invoice</code></pre>
+      <p>Después de eso, valida el flujo real en la interfaz de Steelhead: abre una orden o imprime un documento de prueba. La comparación confirma el <em>texto</em>; solo el flujo confirma el <em>comportamiento</em>.</p>
+    </div></li>
+  </ol>
+
+  <div class="callout danger">
+    <p class="ct">Publicar en una sola planta es una divergencia</p>
+    <p>Si publicas en Toluca y no en Monterrey, las plantas quedan con código distinto y nadie se entera hasta que un documento sale diferente. No hay alerta automática que lo detecte. <strong>Los dos comandos van juntos, siempre.</strong></p>
+  </div>
+
+  <!-- 04 -->
+  <h2 class="sec"><span class="num">04</span>Revertir</h2>
+  <p class="sec-lead">Es la operación más tranquilizadora del sistema: nada se perdió nunca, así que volver atrás es solo volver a publicar.</p>
+
+  <pre><code><span class="c"># 1. traer todo el historial del slot (versiones inactivas incluidas)</span>
+python3 sync/lowcode_sync.py pull --all-versions
+
+<span class="c"># 2. localizar la versión buena y publicarla de nuevo, en ambas plantas</span>
+python3 sync/lowcode_sync.py push &lt;ruta-de-la-version-vieja&gt;.ts invoice
+STEELHEAD_DEFAULT_DOMAIN=mty python3 sync/lowcode_sync.py push &lt;ruta-de-la-version-vieja&gt;.ts invoice</code></pre>
+
+  <div class="callout info">
+    <p class="ct">Revertir crea una versión nueva</p>
+    <p>El historial no retrocede: queda una capa más, idéntica a la buena anterior. Eso es lo correcto — la trazabilidad se conserva y se ve exactamente cuándo y por qué se volvió atrás.</p>
+  </div>
+
+  <p class="measure">Cada bitácora de hook, en <code>docs/</code>, anota su <strong>versión de reversión segura</strong>: el número de versión conocido-bueno al que volver si algo se rompe. Es el primer dato que hay que buscar en una emergencia.</p>
+
+  <!-- 05 -->
+  <h2 class="sec"><span class="num">05</span>La regla que no se negocia: nombres, no números</h2>
+  <p class="sec-lead">Es el error más caro que puede cometer este sistema, y el único que falla en silencio.</p>
+
+  <p class="measure">Los catálogos del ERP (unidades, tipos, etiquetas, plantillas, usuarios) tienen un <strong>número interno por dominio</strong>. Ese número es una numeración local: la unidad «KGM Kilogramo» es <code>3969</code> en Toluca y <code>5990</code> en Monterrey. Filtrar por el número de Toluca en Monterrey no da error — da <strong>vacío</strong> (falta el dato en el documento) o, peor, <strong>otra entidad</strong> (dato incorrecto en un documento fiscal).</p>
+
+  <pre><code><span class="c">// ❌ NO — número de dominio: rompe en silencio en la otra planta</span>
+const lote = conversions.find((c) =&gt; c.unit.id === 5348);
+
+<span class="c">// ✅ SÍ — nombre estable: funciona igual en las dos</span>
+const lote = conversions.find((c) =&gt; c.unit?.name === "LO Lote");</code></pre>
+
+  <div class="callout tip">
+    <p class="ct">La degradación correcta</p>
+    <p>«LO Lote» <strong>no existe</strong> en Monterrey. Al resolver por nombre, la búsqueda devuelve vacío y la regla de lote mínimo simplemente no aplica — que es el comportamiento correcto. Al resolver por número, habría matcheado con lo que sea que tenga ese número allá. Esa es toda la diferencia entre degradar suave y mentir.</p>
+  </div>
+
+  <p class="measure">El detalle completo —catálogo de equivalencias, el patrón intermedio de “número o nombre”, cómo conseguir los números de la otra planta y la lista de datos de negocio que deben existir en ambas— está en la <a href="ficha-paridad-mty.html">ficha «Dos plantas, un solo código»</a> y en el documento de paridad del repositorio.</p>
+
+  <h3 class="sub">Lista de verificación antes de publicar</h3>
+  <ul class="check">
+    <li>Ningún filtro o comparación depende <strong>solo</strong> de un número interno de catálogo.</li>
+    <li>Ningún identificador de dominio quedó escrito a mano.</li>
+    <li>Los datos de negocio que asume el hook (razones sociales, plantas, perfiles de impuesto, unidades) existen en la otra planta <strong>con el nombre idéntico</strong>.</li>
+    <li>Si el hook introdujo un número nuevo, quedó registrado en la tabla de equivalencias con su nombre estable.</li>
+    <li>La lógica nueva en <code>lib/</code> tiene una prueba con anti-regresión: “no matchea por número si el nombre es otro”.</li>
+    <li><code>npm test</code> en verde.</li>
+    <li>Publicado y comparado en <strong>las dos</strong> plantas.</li>
+  </ul>
+
+  <!-- 06 -->
+  <h2 class="sec"><span class="num">06</span>Modos de falla conocidos</h2>
+  <p class="sec-lead">Todos estos ya ocurrieron, se diagnosticaron y quedaron documentados. Reconocer el síntoma ahorra el día.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Síntoma</th><th>Causa</th><th>Qué hacer</th></tr></thead>
+      <tbody>
+        <tr>
+          <td>Un comando del puente falla con error de consulta desconocida</td>
+          <td>Steelhead rotó la huella de esa operación: <strong>cambió la cerradura</strong> y la llave del puente ya no abre.</td>
+          <td>Capturar la huella nueva y actualizarla en el puente. No afecta a los hooks publicados, solo a las herramientas.</td>
+        </tr>
+        <tr>
+          <td>401 / 403 en cualquier comando</td>
+          <td>La sesión del ERP expiró.</td>
+          <td>Renovarla con el procedimiento de autenticación del proyecto de reportes. No hay nada que cambiar aquí.</td>
+        </tr>
+        <tr>
+          <td>El hook deja de hacer efecto sin ningún error visible</td>
+          <td>Sintaxis de una versión del lenguaje más nueva de la que entiende el compilador del editor. <strong>Falla en silencio.</strong></td>
+          <td>Compilar con la versión fijada (el puente lo hace solo) y evitar azúcar sintáctica moderna en los hooks.</td>
+        </tr>
+        <tr>
+          <td>El panel de alertas de la orden de venta se queda mudo: ni verde ni rojo</td>
+          <td>El hook devolvió una respuesta incompleta. El ERP exige que la respuesta traiga <strong>todas</strong> sus llaves, aunque vayan vacías; si falta alguna, descarta todos los mensajes en silencio.</td>
+          <td>Verificar que la respuesta incluya las seis llaves, aunque sean listas vacías. Es una trampa clásica de este hook.</td>
+        </tr>
+        <tr>
+          <td>Un bloque entero sale en blanco en un PDF</td>
+          <td>El componente contenedor del motor de PDF <strong>no pinta su contenido</strong> en el archivo final, aunque sí en la vista previa.</td>
+          <td>Exponer los datos en campos planos y enlazarlos directo, fuera de contenedores. Es el patrón que se aplicó al certificado.</td>
+        </tr>
+        <tr>
+          <td>Impresión en lote de etiquetas: se queda cargando a partir de ~16 órdenes</td>
+          <td>Límite del lado del generador de PDF al unir documentos. <strong>Escala con el número de órdenes, no con el tamaño</strong>, lo que descarta que el cuello sea el volumen de datos.</td>
+          <td>Imprimir en tandas más chicas. Del lado del hook ya se recortó el envío a solo lo que la plantilla usa; el resto está fuera de nuestro alcance.</td>
+        </tr>
+        <tr>
+          <td>Renglones de factura en cero; las mismas piezas reaparecen como disponibles</td>
+          <td>Defecto del ERP en órdenes abiertas: al facturar no cierra las piezas, así que vuelven a ofrecerse y el siguiente renglón sale en cero. <strong>No es el hook</strong> — se demostró con datos.</td>
+          <td>No guardar facturas con renglones en cero. Está reportado al proveedor con evidencia (cronología, piezas afectadas y facturas involucradas).</td>
+        </tr>
+        <tr>
+          <td>Un dato correcto no aparece en el PDF</td>
+          <td>El hook lo emite, la plantilla no lo enlaza. Son dos lados distintos.</td>
+          <td>Confirmar con la prueba del editor que el dato sale del hook; si sale, el pendiente es de plantilla — lado Steelhead, no versionado aquí.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <!-- 07 -->
+  <h2 class="sec"><span class="num">07</span>Dónde termina la responsabilidad del hook</h2>
+  <p class="sec-lead">Saber el límite evita perseguir soluciones imposibles. Tres cosas quedan fuera, por diseño del ERP.</p>
+
+  <ul class="measure">
+    <li><strong>El dibujo de los PDF.</strong> Las plantillas viven del lado de Steelhead y no están versionadas en este repositorio. El hook entrega los datos; la plantilla decide dónde se pintan.</li>
+    <li><strong>El número de renglones de una factura.</strong> El ERP lo determina a partir de las partidas de la orden de venta. El hook llena el contenido de cada renglón, pero no puede juntarlos ni partirlos: se comprobó con dos experimentos sobre facturas reales, ambos conservados como evidencia.</li>
+    <li><strong>Las funciones de dominio del ERP.</strong> Ajustes como “cada lote en su propia línea de orden” son configuración global de Steelhead. Cambian el comportamiento de todo y no se controlan desde un hook.</li>
+  </ul>
+
+  <div class="callout meta">
+    <p class="ct">Cómo usar este límite a favor</p>
+    <p>Cuando la operación pida algo, la primera pregunta es <strong>de qué lado de la ventanilla vive</strong>. Si es cálculo o validación, se resuelve aquí en horas. Si es colocación visual o estructura de la factura, la conversación es con el proveedor — y conviene empezarla temprano, con la evidencia ya en la mano.</p>
+  </div>
+
+  <!-- 08 -->
+  <h2 class="sec"><span class="num">08</span>Los planes de mantenimiento de baños</h2>
+  <p class="sec-lead">Una superficie aparte, con reglas propias.</p>
+
+  <ul class="measure">
+    <li>Son <strong>24 planes de baño</strong>, uno por tina de las líneas T205 y T107, más los que se han ido sumando después —una consolidación de plata y uno de mantenimiento de equipo informático, que no es un baño—. Cada uno tiene su propio código, versionado con el mismo modelo de capas.</li>
+    <li>El repositorio los baja para poder revisarlos, versionarlos y auditar su química:
+      <pre><code>python3 sync/maintenance_plans_sync.py list
+python3 sync/maintenance_plans_sync.py pull</code></pre>
+    </li>
+    <li><strong>La publicación de vuelta no está implementada</strong>, y es deliberado: mutar un plan de baño productivo es una operación de alto impacto que hoy se hace en el editor de Steelhead, a mano y con confirmación explícita.</li>
+    <li>Los factores químicos están escritos dentro de cada plan, sin tabla central. Hay un generador que permite construir un plan consolidado a partir de una tabla de química versionada; ya se aplicó a la familia de plata.</li>
+  </ul>
+
+  <div class="callout warn">
+    <p class="ct">Riesgo documentado</p>
+    <p>Los mismos cinco ayudantes de código están copiados palabra por palabra en 23 de los 24 planes, y hay tres generaciones distintas de estilo conviviendo. Corregir algo hoy significa corregirlo 23 veces. La consolidación propuesta —un núcleo compartido más una tabla de química— es la que cierra ese riesgo. Detalle en la <a href="ficha-maintenance-plans.html">ficha correspondiente</a>.</p>
+  </div>
+
+  <!-- 09 -->
+  <h2 class="sec"><span class="num">09</span>Cuando el problema es del ERP: cómo se escala</h2>
+  <p class="sec-lead">Distinguir “nuestro” de “del proveedor” con evidencia es lo que hace que un reporte avance.</p>
+
+  <ol class="stages">
+    <li><span class="k">1</span><div><h4>Reproducir y acotar</h4><p>¿Ocurre en las dos plantas? ¿Desde cuándo? ¿Con qué tipo de orden sí y con cuál no? Un patrón acotado vale más que veinte capturas de pantalla.</p></div></li>
+    <li><span class="k">2</span><div><h4>Descartar el hook con datos</h4><p>Si el síntoma aparece en un periodo sin cambios de código, dígase con fechas. En el caso de los renglones en cero de junio de 2026, la fecha de inicio coincidió exactamente con la activación de una función de dominio, no con ninguna publicación nuestra.</p></div></li>
+    <li><span class="k">3</span><div><h4>Cuantificar el impacto</h4><p>Cuántos documentos, cuántas piezas, cuánto dinero. Un reporte con cifras se atiende; uno con adjetivos, no.</p></div></li>
+    <li><span class="k">4</span><div><h4>Entregar el reporte por escrito</h4><p>Los reportes al proveedor se redactan como documento autocontenido —resumen, cronología, impacto, evidencia y causa raíz propuesta— y quedan archivados en <code>docs/</code>. El del defecto de facturación de junio de 2026 es el modelo a imitar.</p></div></li>
+  </ol>
+
+  <!-- 10 -->
+  <h2 class="sec"><span class="num">10</span>Rutina de mantenimiento</h2>
+  <p class="sec-lead">Poco trabajo, en momentos concretos. Este sistema no requiere vigilancia diaria.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Cuándo</th><th>Qué hacer</th><th>Por qué</th></tr></thead>
+      <tbody>
+        <tr><td>Antes de cualquier cambio</td><td>Bajar y revisar si hubo ediciones desde la interfaz</td><td>Publicar sobre una copia vieja borra trabajo ajeno</td></tr>
+        <tr><td>Después de cualquier cambio</td><td>Comparar en las dos plantas y validar el flujo real</td><td>Confirma texto y comportamiento, que son cosas distintas</td></tr>
+        <tr><td>Cada mes, o cuando algo se sienta raro</td><td>Bajar todo y revisar si el proveedor inyectó versiones propias</td><td>El pipeline interno de Steelhead también publica versiones; conviene enterarse</td></tr>
+        <tr><td>Al arrancar operación en la segunda planta</td><td>Recorrer la lista de datos de negocio que deben existir con el mismo nombre</td><td>El código ya está ahí; lo que puede faltar son los catálogos</td></tr>
+        <tr><td>Cuando cambie una regla de negocio</td><td>Actualizar la pieza patrón, su prueba, la copia inline y la bitácora del hook</td><td>La bitácora es lo que hace que el siguiente cambio cueste horas y no días</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout tip">
+    <p class="ct">El activo más valioso no es el código</p>
+    <p>Es la <strong>bitácora por hook</strong>: qué se intentó, qué no funcionó y por qué, con la versión de reversión segura anotada. Ahí está registrado, por ejemplo, que consolidar renglones de factura desde el hook es imposible — con los dos experimentos y las facturas reales que lo demuestran. Sin eso, alguien lo volvería a intentar cada año.</p>
+  </div>
+
+  <footer class="foot">
+    <div><span class="badge perenne">Perenne</span> &nbsp; Manual del Administrador · Steelhead Power Tools</div>
+    <div>Corte de referencia: 27 jul 2026</div>
+    <div class="doc-credit">
+      <a href="https://capazconsultoria.com" target="_blank" rel="noopener" aria-label="Capaz Consultoría" style="flex:0 0 auto;display:inline-flex"><img src="assets/capaz-c.png" alt="Capaz Consultoría"></a>
+      <span>Documento elaborado por <a class="name" href="mailto:oviazcan@capazconsultoria.com">Omar Viazcán</a> · <a href="https://capazconsultoria.com" target="_blank" rel="noopener">Capaz Consultoría</a></span>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>

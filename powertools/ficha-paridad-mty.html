@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ficha: Dos plantas, un solo código — Steelhead Power Tools</title>
+<style>
+:root{
+  --ground:#f7f9fb;--paper:#ffffff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;
+  --hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;
+  --ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;
+  --warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7;
+  --shadow:0 1px 2px rgba(24,34,49,.05),0 6px 20px -8px rgba(24,34,49,.12);
+  --measure:70ch;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){:root{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512;--shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -10px rgba(0,0,0,.5)}}
+:root[data-theme="light"]{--ground:#f7f9fb;--paper:#fff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;--hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;--ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7}
+:root[data-theme="dark"]{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.62;-webkit-font-smoothing:antialiased}
+.wrap{max-width:920px;margin:0 auto;padding:0 24px 96px}
+.measure{max-width:var(--measure)}
+.masthead{border-bottom:2px solid var(--ti);padding:40px 0 22px}
+.brandbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.brandmark{width:26px;height:26px;border-radius:6px;background:var(--steel);display:grid;place-items:center;flex:0 0 auto}
+.brandmark span{color:#fff;font-weight:800;font-size:.9rem;font-family:var(--mono)}
+.brandname{font-weight:700;letter-spacing:.02em;font-size:.95rem}
+.brandname em{color:var(--accent-ink);font-style:normal}
+.eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.14em;color:var(--ti);font-weight:800;margin:0 0 10px}
+.masthead h1{font-size:clamp(2rem,4.6vw,2.7rem);line-height:1.06;letter-spacing:-.02em;margin:0 0 10px;font-weight:800;text-wrap:balance}
+.masthead .sub{font-size:1.12rem;color:var(--muted);margin:0;max-width:60ch}
+.audchips{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.audchip{font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.05em}
+.audchip.ti{background:var(--ti-wash);color:var(--ti)}
+.tldr{background:var(--paper);border:1px solid var(--hair);border-left:4px solid var(--ti);border-radius:12px;padding:20px 22px;margin:26px 0;box-shadow:var(--shadow)}
+.tldr .ct{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--ti);margin:0 0 8px}
+.tldr p{margin:0;font-size:1.05rem;max-width:none}
+h2.sec{font-size:1.5rem;letter-spacing:-.01em;margin:54px 0 4px;font-weight:800;text-wrap:balance}
+h2.sec .num{font-family:var(--mono);font-size:.85rem;color:var(--ti);font-weight:700;border:1px solid var(--hair-2);border-radius:6px;padding:1px 7px;margin-right:10px;vertical-align:.15em}
+h3.sub{font-size:1.16rem;margin:32px 0 6px;letter-spacing:-.01em;font-weight:700}
+.sec-lead{color:var(--muted);margin:.4rem 0 1.2rem;max-width:var(--measure)}
+p{margin:0 0 1rem;max-width:var(--measure)}
+a{color:var(--accent-ink);text-underline-offset:2px}
+code{font-family:var(--mono);font-size:.85em;background:var(--hair);padding:1px 5px;border-radius:5px;word-break:break-word}
+pre{background:var(--paper);border:1px solid var(--hair);border-left:3px solid var(--ti);border-radius:10px;padding:14px 16px;overflow-x:auto;font-family:var(--mono);font-size:.83rem;line-height:1.6;margin:16px 0;box-shadow:var(--shadow)}
+pre code{background:none;padding:0;font-size:1em}
+pre .c{color:var(--faint)} pre .bad{color:var(--danger)} pre .good{color:var(--accent-ink)}
+ul,ol{max-width:var(--measure);padding-left:1.25em} li{margin:.35rem 0}
+strong{font-weight:700}
+.tablewrap{overflow-x:auto;border:1px solid var(--hair);border-radius:12px;box-shadow:var(--shadow);margin:20px 0}
+table{border-collapse:collapse;width:100%;font-size:.9rem;background:var(--paper);min-width:600px}
+thead th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:700;padding:11px 14px;border-bottom:2px solid var(--hair-2);background:var(--ground)}
+tbody td{padding:11px 14px;border-bottom:1px solid var(--hair);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+td code{white-space:nowrap}
+td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+figure.diagram{margin:26px 0;background:var(--paper);border:1px solid var(--hair);border-radius:14px;padding:20px 18px 8px;box-shadow:var(--shadow);overflow-x:auto}
+figure.diagram svg{display:block;width:100%;height:auto;min-width:560px;max-width:820px;margin:0 auto}
+figure.diagram figcaption{font-size:.85rem;color:var(--faint);text-align:center;margin-top:10px;padding:0 8px 6px}
+.svg-t{font-family:var(--sans);fill:var(--ink)} .svg-m{font-family:var(--mono)} .svg-mut{fill:var(--muted);font-family:var(--sans)}
+.callout{border-radius:10px;padding:15px 17px 15px 48px;position:relative;margin:22px 0;font-size:.95rem;border:1px solid var(--hair);background:var(--paper);max-width:none}
+.callout .ct{font-weight:800;margin:0 0 4px;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em}
+.callout p{max-width:none;margin:.3rem 0 0}
+.callout::before{position:absolute;left:15px;top:14px;font-size:1.15rem;line-height:1}
+.callout.meta{border-left:4px solid var(--steel);background:color-mix(in srgb,var(--steel) 6%,var(--paper))} .callout.meta .ct{color:var(--steel)} .callout.meta::before{content:"💡"}
+.callout.info{border-left:4px solid var(--ti);background:var(--ti-wash)} .callout.info .ct{color:var(--ti)} .callout.info::before{content:"ℹ";color:var(--ti);font-weight:800}
+.callout.warn{border-left:4px solid var(--warn);background:var(--warn-wash)} .callout.warn .ct{color:var(--warn)} .callout.warn::before{content:"⚠"}
+.callout.danger{border-left:4px solid var(--danger);background:var(--danger-wash)} .callout.danger .ct{color:var(--danger)} .callout.danger::before{content:"⛔"}
+.callout.tip{border-left:4px solid var(--accent);background:var(--accent-wash)} .callout.tip .ct{color:var(--accent-ink)} .callout.tip::before{content:"✓";color:var(--accent-ink);font-weight:800}
+.check{list-style:none;padding:0;margin:18px 0}
+.check li{position:relative;padding-left:30px;margin:.5rem 0}
+.check li::before{content:"☐";position:absolute;left:4px;top:0;color:var(--ti);font-size:1.05rem;font-weight:700}
+.modes{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin:24px 0}
+@media (max-width:820px){.modes{grid-template-columns:1fr}}
+.mode{border:1px solid var(--hair);border-radius:12px;padding:18px;background:var(--paper);border-top:4px solid var(--c);box-shadow:var(--shadow)}
+.mode.a{--c:var(--warn)} .mode.b{--c:var(--danger)} .mode.c{--c:var(--accent)}
+.mode .lbl{font-size:.68rem;text-transform:uppercase;letter-spacing:.09em;font-weight:800;color:var(--c);margin-bottom:6px}
+.mode h4{margin:0 0 6px;font-size:1.04rem}
+.mode p{margin:0;font-size:.91rem;color:var(--muted);max-width:none}
+.foot{margin-top:64px;padding-top:22px;border-top:1px solid var(--hair-2);color:var(--faint);font-size:.85rem;display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:999px}
+.badge.perenne{background:var(--ti-wash);color:var(--ti)} .badge.perenne::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.doc-credit{flex-basis:100%;margin-top:10px;padding-top:12px;border-top:1px solid var(--hair);display:flex;align-items:center;gap:12px;font-size:.78rem;color:var(--faint)}
+.doc-credit a{color:var(--accent-ink);text-decoration:none} .doc-credit a.name{font-weight:600}
+.doc-credit img{height:30px;width:auto;display:block}
+@media print{
+  :root{--ground:#fff;--paper:#fff;--shadow:none}
+  body{font-size:11pt}
+  .wrap{max-width:none;padding:0}
+  figure.diagram,.callout,.tablewrap,.mode,pre,.tldr{break-inside:avoid}
+  figure.diagram svg{min-width:0}
+  table{min-width:0;font-size:9pt}
+  h2.sec,h3.sub{break-after:avoid}
+  a{color:var(--ink);text-decoration:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brandbar">
+      <span class="brandmark"><span>PT</span></span>
+      <span class="brandname">Steelhead <em>Power Tools</em> · Ficha profunda</span>
+      <a href="00-mapa-empieza-aqui.html" style="margin-left:auto;font-size:.82rem;color:var(--faint);text-decoration:none;white-space:nowrap">← Índice del paquete</a>
+    </div>
+    <p class="eyebrow">Ficha profunda · el error más caro del sistema</p>
+    <h1>Dos plantas, un solo código</h1>
+    <p class="sub">Por qué un número interno de Toluca miente en Monterrey, cómo se previene y qué hay que verificar antes de publicar.</p>
+    <div class="audchips"><span class="audchip ti">Jefe de TI · Desarrollo</span><span class="audchip ti">Documento perenne</span></div>
+  </header>
+
+  <div class="tldr">
+    <p class="ct">La regla en una línea</p>
+    <p>Los <strong>nombres</strong> de catálogo son iguales en las dos plantas; los <strong>números internos</strong> no. Resuelve siempre por nombre. Cuando un número parece inevitable, derívalo en el momento buscando por nombre — nunca lo escribas a mano.</p>
+  </div>
+
+  <!-- 01 -->
+  <h2 class="sec"><span class="num">01</span>El montaje: mismo servidor, dos plantas</h2>
+  <p class="sec-lead">Toluca y Monterrey no son dos instalaciones distintas de Steelhead. Viven en el <strong>mismo servidor</strong> y se distinguen internamente por dominio, no por dirección web.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Planta</th><th>Estado</th><th>Papel en el flujo de trabajo</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Toluca (TLC)</strong></td><td>Activa, con datos completos</td><td>Es de donde se baja el código por omisión. La referencia operativa.</td></tr>
+        <tr><td><strong>Monterrey (MTY)</strong></td><td>Arrancando</td><td>Debe quedar <strong>idéntica</strong> a Toluca sin editar una sola línea de código. Ya tiene publicadas todas las ventanillas que se usan en operación.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <p class="measure">El hook recibe un paquete de datos que el ERP del dominio <strong>ya resolvió</strong>: trae las entidades —unidades, partes, tratamientos, especificaciones, ubicaciones— con su número interno <em>y</em> con su nombre. Ahí está la trampa y también la solución.</p>
+
+  <!-- 02 -->
+  <h2 class="sec"><span class="num">02</span>Por qué los números no son portables</h2>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 800 250" role="img" aria-label="La misma unidad tiene número interno distinto en cada planta">
+      <g color="var(--faint)">
+        <rect x="20" y="40" width="340" height="170" rx="12" fill="none" stroke="var(--hair-2)" stroke-width="1.5"/>
+        <text class="svg-t" x="190" y="70" text-anchor="middle" font-size="15" font-weight="700">Toluca</text>
+        <rect x="55" y="90" width="270" height="40" rx="8" fill="var(--ti-wash)" stroke="var(--ti)" stroke-width="1.6"/>
+        <text x="190" y="116" text-anchor="middle" font-size="13.5" font-weight="700" fill="var(--ti)">«KGM Kilogramo»</text>
+        <text class="svg-mut" x="190" y="118" text-anchor="middle" font-size="0"> </text>
+        <text class="svg-m svg-mut" x="190" y="160" text-anchor="middle" font-size="13">número interno · 3969</text>
+        <text class="svg-mut" x="190" y="186" text-anchor="middle" font-size="11.5">el letrero es el mismo…</text>
+
+        <rect x="440" y="40" width="340" height="170" rx="12" fill="none" stroke="var(--hair-2)" stroke-width="1.5"/>
+        <text class="svg-t" x="610" y="70" text-anchor="middle" font-size="15" font-weight="700">Monterrey</text>
+        <rect x="475" y="90" width="270" height="40" rx="8" fill="var(--ti-wash)" stroke="var(--ti)" stroke-width="1.6"/>
+        <text x="610" y="116" text-anchor="middle" font-size="13.5" font-weight="700" fill="var(--ti)">«KGM Kilogramo»</text>
+        <text class="svg-m" x="610" y="160" text-anchor="middle" font-size="13" font-weight="700" fill="var(--danger)">número interno · 5990</text>
+        <text class="svg-mut" x="610" y="186" text-anchor="middle" font-size="11.5">…el número, no</text>
+
+        <text x="400" y="122" text-anchor="middle" font-size="22" fill="var(--danger)" font-weight="700">≠</text>
+        <text class="svg-mut" x="400" y="236" text-anchor="middle" font-size="12.5">Y en Toluca el 3969 es el kilogramo; en Monterrey el 3969 es alguna otra cosa.</text>
+      </g>
+    </svg>
+    <figcaption>Cada planta numeró su catálogo por su cuenta, en el orden en que lo fue capturando. Los nombres, en cambio, se capturaron iguales a propósito.</figcaption>
+  </figure>
+
+  <div class="callout meta">
+    <p class="ct">La metáfora</p>
+    <p>El <strong>letrero</strong> de la unidad («KGM Kilogramo») es el mismo en las dos plantas. El <strong>número de casillero</strong> lo asignó cada planta en el orden en que fue guardando cosas. Si pides “lo que está en el casillero 3969” en la otra planta, te van a dar algo — pero no lo que buscabas.</p>
+  </div>
+
+  <!-- 03 -->
+  <h2 class="sec"><span class="num">03</span>Los tres desenlaces posibles</h2>
+  <p class="sec-lead">Lo que hace peligrosa esta clase de error es que <strong>ninguno de los tres produce una excepción</strong>. El documento se imprime igual.</p>
+
+  <div class="modes">
+    <div class="mode a">
+      <div class="lbl">Desenlace 1</div>
+      <h4>El número no existe allá</h4>
+      <p>La búsqueda no encuentra nada. El dato simplemente <strong>falta</strong> en el documento: una columna vacía, un peso que no aparece. Nadie lo nota si no lo estaba buscando.</p>
+    </div>
+    <div class="mode b">
+      <div class="lbl">Desenlace 2 — el grave</div>
+      <h4>El número existe, pero es otra cosa</h4>
+      <p>La búsqueda <strong>sí encuentra</strong> — la entidad equivocada. Sale un dato <strong>incorrecto</strong> en una factura, un certificado o una etiqueta. Se ve perfectamente normal.</p>
+    </div>
+    <div class="mode c">
+      <div class="lbl">Con la regla aplicada</div>
+      <h4>Degrada suave y correcto</h4>
+      <p>Al buscar por nombre, si la entidad no existe la búsqueda devuelve vacío y la regla <strong>no aplica</strong> — que es exactamente lo que debe pasar. Sin datos inventados.</p>
+    </div>
+  </div>
+
+  <div class="callout danger">
+    <p class="ct">El costo real</p>
+    <p>Una unidad de peso confundida con otra en un comprobante fiscal, o un espesor atribuido a la especificación equivocada en un certificado de calidad. Es el tipo de defecto que no detecta ninguna prueba de humo y que suele descubrir el cliente.</p>
+  </div>
+
+  <!-- 04 -->
+  <h2 class="sec"><span class="num">04</span>La regla, en sus tres formas</h2>
+
+  <h3 class="sub">Forma preferida: solo por nombre</h3>
+  <pre><code><span class="c">// ❌ NO — número de dominio escrito a mano</span>
+<span class="bad">const LOTE_ID = 5348;
+const lote = conversions.find((c) =&gt; c.unit.id === LOTE_ID);</span>
+
+<span class="c">// ✅ SÍ — nombre estable</span>
+<span class="good">const lote = conversions.find((c) =&gt; c.unit?.name === "LO Lote");</span></code></pre>
+
+  <h3 class="sub">Cuando el nombre no es una igualdad exacta: prefijo o patrón</h3>
+  <p class="measure">Varias unidades comparten familia (peso, área, longitud). El prefijo del nombre también es estable, así que sirve igual de bien:</p>
+  <pre><code><span class="good">const esMedible = /^(KGM|LBR|LM|CMK) /.test(String(u.unit.name || ""));</span></code></pre>
+
+  <h3 class="sub">Forma de transición: número <em>o</em> nombre</h3>
+  <p class="measure">Existe en varios hooks como puente histórico: el número acelera en Toluca, el nombre garantiza Monterrey.</p>
+  <pre><code>const esMedible =
+  u.unit.id === 3969 || u.unit.id === 3972 || u.unit.id === 5150 || u.unit.id === 4907 ||
+  /^(KGM|LBR|LM|CMK) /.test(String(u.unit.name || ""));</code></pre>
+
+  <div class="callout warn">
+    <p class="ct">Riesgo residual de la forma de transición</p>
+    <p>Es un <em>o</em>: si en la otra planta ese número resulta ser <strong>otra</strong> entidad, la comparación por número la haría coincidir por accidente aunque su nombre no cumpla. Es aceptable como puente —no rompe Toluca— pero <strong>en código nuevo, resuelve solo por nombre</strong>. El día que se confirme que ningún número de Toluca colisiona en Monterrey, se pueden quitar todos.</p>
+  </div>
+
+  <h3 class="sub">Cuando de verdad necesitas el número</h3>
+  <p class="measure">A veces hace falta el número para armar una escritura o una clave. En ese caso, <strong>derívalo en el momento</strong>: busca por nombre y toma su número. Nunca lo escribas como literal.</p>
+  <pre><code><span class="good">const unidad = (inputs.units || []).find((u) =&gt; u.name === "KGM Kilogramo");
+const unidadId = unidad ? unidad.id : null;   <span class="c">// resuelto en runtime, por dominio</span></span></code></pre>
+
+  <!-- 05 -->
+  <h2 class="sec"><span class="num">05</span>Catálogo de equivalencias verificado</h2>
+  <p class="sec-lead">Estos números aparecen en los hooks. Son de Toluca. <strong>No los uses como criterio único.</strong> La tabla existe para diagnóstico, no para copiarla al código.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Entidad (nombre estable)</th><th>Significado</th><th>Toluca</th><th>Monterrey</th></tr></thead>
+      <tbody>
+        <tr><td><em>el dominio en sí</em></td><td>Identificador de planta</td><td class="num">11082</td><td class="num">11083</td></tr>
+        <tr><td><code>KGM Kilogramo</code></td><td>Peso (kg)</td><td class="num">3969</td><td class="num">5990</td></tr>
+        <tr><td><code>LBR Libra</code></td><td>Peso (lb)</td><td class="num">3972</td><td class="num">5988</td></tr>
+        <tr><td><code>DMK Decímetro Cuadrado</code></td><td>Área (dm²)</td><td class="num">3975</td><td class="num">5985</td></tr>
+        <tr><td><code>CMK Centímetro Cuadrado</code></td><td>Área (cm²)</td><td class="num">4907</td><td class="num">5957</td></tr>
+        <tr><td><code>LM Metro Lineal</code></td><td>Longitud</td><td class="num">5150</td><td class="num">5951</td></tr>
+        <tr><td><code>LO Lote</code></td><td>Disparador del lote mínimo</td><td class="num">5348</td><td><strong>no existe</strong> en Monterrey</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout tip">
+    <p class="ct">Las dos lecciones de esta tabla</p>
+    <p><strong>«KGM: 3969 aquí, 5990 allá»</strong> es la prueba viva de que los números no viajan. Y <strong>«LO Lote no existe en Monterrey»</strong> es la prueba de que resolver por nombre es doblemente correcto: cuando la entidad falta, la búsqueda devuelve vacío, el cargo de lote mínimo simplemente no aplica, y nadie inventó un dato.</p>
+  </div>
+
+  <p class="measure" style="color:var(--faint);font-size:.9rem">Números de Monterrey verificados contra el respaldo de datos de esa planta el 13 de julio de 2026. Los nombres son idénticos en ambos dominios. <strong>Regla de mantenimiento:</strong> cada vez que confirmes una equivalencia nueva, agrégala aquí y en el documento de paridad del repositorio.</p>
+
+  <!-- 06 -->
+  <h2 class="sec"><span class="num">06</span>No todo es código: los datos que deben existir en ambas</h2>
+  <p class="sec-lead">Hay catálogos de negocio que el hook <strong>asume presentes</strong>. Si Monterrey no los tiene con el mismo nombre, el hook no truena: produce un documento incompleto.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Qué debe existir</th><th>Dónde se usa</th><th>Qué pasa si falta</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Razones sociales y empresas</strong> con el nombre idéntico</td><td>Captura de orden de venta</td><td>La regla que depende de la razón social no dispara</td></tr>
+        <tr><td><strong>Plantas Schneider</strong> detectables por su dirección de entrega</td><td>Validación de etiqueta de planta</td><td>El aviso “planta no identificada” sale siempre</td></tr>
+        <tr><td><strong>Unidades de medida</strong> con los mismos nombres</td><td>Conversiones en facturación, etiquetas, remisión</td><td>Faltan cantidades convertidas en los documentos</td></tr>
+        <tr><td><strong>Perfiles de impuesto</strong> con los mismos nombres</td><td>Orden de compra a proveedores, IVA de cotización</td><td>Los impuestos no se resuelven y el documento avisa</td></tr>
+        <tr><td><strong>Etiqueta “Lote”</strong></td><td>Cargo de lote mínimo → orden de trabajo</td><td>El dato no viaja a la orden de trabajo; el aviso lo señala</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout info">
+    <p class="ct">Pendientes conocidos del arranque de Monterrey</p>
+    <p>Son <strong>de datos, no de código</strong>: faltan por dar de alta los códigos fiscales y de impuestos, y la etiqueta “Lote”. Además, las cuentas prioritarias de la cola de programación están definidas por número y falta confirmar a qué corresponden en cada planta. El código ya está publicado y es idéntico en ambas; lo que falta es catálogo.</p>
+  </div>
+
+  <!-- 07 -->
+  <h2 class="sec"><span class="num">07</span>Cómo conseguir las equivalencias tú mismo</h2>
+  <p class="sec-lead">Las dos plantas comparten servidor y credenciales. Cambiar de dominio es una variable de entorno: no hace falta otro acceso ni preguntar la dirección.</p>
+
+  <pre><code><span class="c"># mismo comando, planta Monterrey</span>
+STEELHEAD_DEFAULT_DOMAIN=mty python3 sync/lowcode_sync.py list
+STEELHEAD_DEFAULT_DOMAIN=mty python3 sync/lowcode_sync.py diff &lt;slug&gt;</code></pre>
+
+  <p class="measure">Para confirmar la equivalencia de una entidad de catálogo (unidad, tratamiento, código fiscal):</p>
+  <ol class="measure">
+    <li>Consulta ese catálogo en <strong>los dos</strong> dominios y <strong>empareja por nombre</strong>.</li>
+    <li>Registra el par en la tabla de equivalencias del repositorio.</li>
+    <li>En el hook, resuelve por nombre. Usa el número solo como aceleración opcional, nunca como criterio único.</li>
+  </ol>
+
+  <!-- 08 -->
+  <h2 class="sec"><span class="num">08</span>El certificado: la prueba anti-regresión</h2>
+  <p class="sec-lead">La regla escrita no basta: alguien la va a olvidar. Por eso cada regla de negocio lleva una prueba que falla si alguien vuelve a resolver por número.</p>
+
+  <pre><code><span class="c">// El patrón a imitar (de la prueba de la unidad de lote):</span>
+<span class="good">test("NO matchea por número si el nombre es otro", () =&gt; {
+  const conversions = [{ unit: { id: 5348, name: "Otra Unidad" }, factor: 0.04 }];
+  assert.equal(factorUnidadLote(conversions), null);   <span class="c">// ← ignora el 5348</span>
+});</span></code></pre>
+
+  <p class="measure">La prueba construye a propósito un caso donde el <strong>número coincide pero el nombre no</strong>, y exige que la función lo ignore. Si alguien reintroduce una comparación por número, esa prueba se pone en rojo antes de llegar al ERP. Hoy hay <strong>35 módulos con 472 pruebas</strong>, y varias existen únicamente para esto.</p>
+
+  <div class="callout meta">
+    <p class="ct">Por qué la prueba vive fuera del hook</p>
+    <p>El editor de Steelhead recibe un solo archivo y no puede importar nada, así que dentro del hook no se puede probar nada. La regla vive como <strong>pieza patrón</strong> en la biblioteca —donde sí se prueba— y como <strong>copia</strong> dentro del hook. Cambiar una obliga a cambiar la otra: es la disciplina que hace que el patrón sirva de algo.</p>
+  </div>
+
+  <!-- 09 -->
+  <h2 class="sec"><span class="num">09</span>Lista de verificación antes de publicar</h2>
+  <ul class="check">
+    <li>Ningún filtro o comparación depende <strong>solo</strong> de un número interno de catálogo; todo número crítico tiene respaldo por nombre o se deriva por nombre.</li>
+    <li>Ningún identificador de dominio quedó escrito a mano.</li>
+    <li>Los catálogos de negocio que el hook asume (razones sociales, plantas, perfiles de impuesto, unidades) existen en la otra planta con el nombre idéntico.</li>
+    <li>Si el hook introdujo un número nuevo, está en la tabla de equivalencias con su nombre estable.</li>
+    <li>La lógica nueva tiene su prueba con anti-regresión de paridad.</li>
+    <li><code>npm test</code> en verde.</li>
+    <li>Publicado <strong>y comparado</strong> en las dos plantas.</li>
+  </ul>
+
+  <!-- 10 -->
+  <h2 class="sec"><span class="num">10</span>Estado al corte</h2>
+  <p class="sec-lead">Dónde está la paridad hoy.</p>
+
+  <ul class="measure">
+    <li><strong>Todas las ventanillas atendidas están publicadas en las dos plantas</strong>, con el mismo código. Verificado el 27 de julio de 2026 leyendo el catálogo activo de ambos dominios. Las dos únicas que existen solo en Toluca están en formato de fábrica, así que hoy no hay diferencia de comportamiento — pero habrá que publicarlas en Monterrey el día que se atiendan (ver el Inventario).</li>
+    <li>Se hizo una auditoría completa de todos los hooks buscando dependencias de números internos; los casos encontrados se corrigieron para resolver por nombre y se republicaron a ambas plantas.</li>
+    <li>Lo que queda pendiente es <strong>dato, no código</strong>: catálogos fiscales, la etiqueta “Lote” y la confirmación de las cuentas prioritarias de la cola.</li>
+    <li>Dos comportamientos <strong>no aplican</strong> en Monterrey por diseño de datos: el cargo de lote mínimo (falta la unidad «LO Lote») y el bloque informativo de especificación (esa planta no usa specs todavía). Ambos degradan sin error.</li>
+  </ul>
+
+  <footer class="foot">
+    <div><span class="badge perenne">Perenne</span> &nbsp; Ficha: Dos plantas, un solo código</div>
+    <div>Corte de referencia: 27 jul 2026</div>
+    <div class="doc-credit">
+      <a href="https://capazconsultoria.com" target="_blank" rel="noopener" aria-label="Capaz Consultoría" style="flex:0 0 auto;display:inline-flex"><img src="assets/capaz-c.png" alt="Capaz Consultoría"></a>
+      <span>Documento elaborado por <a class="name" href="mailto:oviazcan@capazconsultoria.com">Omar Viazcán</a> · <a href="https://capazconsultoria.com" target="_blank" rel="noopener">Capaz Consultoría</a></span>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>

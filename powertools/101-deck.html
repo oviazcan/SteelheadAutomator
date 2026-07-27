@@ -1,0 +1,499 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Steelhead Power Tools 101 — presentación</title>
+<style>
+:root{
+  --ground:#f7f9fb;--paper:#ffffff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;
+  --hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;
+  --ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;
+  --warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){:root{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512}}
+:root[data-theme="light"]{--ground:#f7f9fb;--paper:#fff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;--hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;--ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7}
+:root[data-theme="dark"]{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512}
+*{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);-webkit-font-smoothing:antialiased;overflow:hidden}
+.deck{position:fixed;inset:0 0 56px 0;display:grid;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:clamp(20px,4vw,64px)}
+.slide{display:none;width:100%;max-width:980px;margin:auto;animation:fade .32s ease}
+.slide.active{display:block}
+@media (max-width:820px){
+  html{height:auto} body{height:auto;overflow-x:hidden;overflow-y:auto}
+  .deck{position:static;inset:auto;min-height:calc(100vh - 56px);padding:56px 18px 88px}
+  .hint{display:none}
+}
+@media (prefers-reduced-motion:reduce){.slide{animation:none}}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+.kicker{font-size:.74rem;text-transform:uppercase;letter-spacing:.16em;font-weight:800;color:var(--faint);margin:0 0 14px;display:flex;gap:12px;align-items:center}
+.kicker .no{font-family:var(--mono);color:var(--accent-ink)}
+.kicker.ku{color:var(--ku)} .kicker.ti{color:var(--ti)}
+h1.title{font-size:clamp(2.4rem,6vw,4rem);line-height:1.02;letter-spacing:-.03em;margin:0 0 18px;font-weight:800;text-wrap:balance}
+h2.head{font-size:clamp(1.6rem,4.2vw,2.6rem);line-height:1.08;letter-spacing:-.02em;margin:0 0 22px;font-weight:800;text-wrap:balance;max-width:22ch}
+.lead{font-size:clamp(1.05rem,2vw,1.35rem);color:var(--muted);max-width:52ch;margin:0}
+ul.pts{list-style:none;padding:0;margin:8px 0 0;display:flex;flex-direction:column;gap:14px;max-width:46ch}
+ul.pts li{position:relative;padding-left:32px;font-size:clamp(1rem,1.9vw,1.22rem);line-height:1.4}
+ul.pts li::before{content:"";position:absolute;left:0;top:.5em;width:12px;height:12px;border-radius:3px;background:var(--accent)}
+ul.pts.ti li::before{background:var(--ti)} ul.pts.ku li::before{background:var(--ku)}
+ul.pts b{font-weight:800}
+code{font-family:var(--mono);font-size:.86em;background:var(--hair);padding:1px 6px;border-radius:5px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:clamp(20px,4vw,44px);align-items:center}
+@media (max-width:820px){.two{grid-template-columns:1fr;gap:22px}}
+.meta-strip{margin-top:26px;display:flex;gap:12px;align-items:flex-start;background:color-mix(in srgb,var(--steel) 6%,var(--paper));border-left:4px solid var(--steel);border-radius:10px;padding:13px 16px;max-width:62ch}
+.meta-strip .ic{font-size:1.1rem;flex:0 0 auto}
+.meta-strip .tx{font-size:.98rem;color:var(--ink)}
+.meta-strip .tx b{color:var(--steel)}
+.warn-strip{margin-top:24px;display:flex;gap:12px;align-items:flex-start;background:var(--warn-wash);border-left:4px solid var(--warn);border-radius:10px;padding:13px 16px;max-width:62ch}
+.warn-strip .tx{font-size:.98rem} .warn-strip .tx b{color:var(--warn)}
+figure{margin:0;background:var(--paper);border:1px solid var(--hair);border-radius:14px;padding:18px;box-shadow:0 8px 30px -14px rgba(24,34,49,.25)}
+figure svg{display:block;width:100%;height:auto}
+figcaption{font-size:.82rem;color:var(--faint);text-align:center;margin-top:10px}
+.svg-t{fill:var(--ink);font-family:var(--sans)} .svg-mut{fill:var(--muted);font-family:var(--sans)} .svg-m{font-family:var(--mono)}
+.slide.cover{text-align:left}
+.cover .brand{display:flex;align-items:center;gap:12px;margin-bottom:30px}
+.cover .bm{width:40px;height:40px;border-radius:9px;background:var(--steel);display:grid;place-items:center}
+.cover .bm span{color:#fff;font-weight:800;font-family:var(--mono)}
+.cover .bn{font-weight:700;letter-spacing:.02em}
+.cover .foot{margin-top:34px;color:var(--faint);font-size:.95rem;display:flex;gap:18px;flex-wrap:wrap}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:4px 11px;border-radius:999px;background:var(--ti-wash);color:var(--ti)}
+.fam{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-top:8px}
+@media (max-width:820px){.fam{grid-template-columns:repeat(2,1fr)}}
+.fam .f{background:var(--paper);border:1px solid var(--hair);border-radius:11px;padding:14px;font-size:.95rem;font-weight:600}
+.fam .f small{display:block;font-weight:400;color:var(--faint);font-size:.8rem;margin-top:3px}
+.fam .f .ig{font-size:1.3rem;display:block;margin-bottom:6px}
+.auds{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-top:8px}
+@media (max-width:820px){.auds{grid-template-columns:1fr}}
+.aud{background:var(--paper);border:1px solid var(--hair);border-top:4px solid var(--c);border-radius:12px;padding:18px}
+.aud.ku{--c:var(--ku)} .aud.ti{--c:var(--ti)}
+.aud h3{margin:0 0 4px;font-size:1.12rem} .aud .w{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--c);margin-bottom:8px}
+.aud ol{margin:0;padding-left:1.1em;font-size:.92rem;color:var(--muted)} .aud li{margin:.25rem 0}
+.takes{display:grid;grid-template-columns:repeat(2,1fr);gap:16px;margin-top:8px}
+@media (max-width:820px){.takes{grid-template-columns:1fr}}
+.take{background:var(--paper);border:1px solid var(--hair);border-radius:12px;padding:18px;display:flex;gap:14px}
+.take .n{font-family:var(--mono);font-weight:800;font-size:1.4rem;color:var(--accent-ink);flex:0 0 auto}
+.take b{display:block;margin-bottom:2px}
+.take span{color:var(--muted);font-size:.95rem}
+.chrome{position:fixed;left:0;right:0;bottom:0;height:56px;background:var(--paper);border-top:1px solid var(--hair);display:flex;align-items:center;gap:14px;padding:0 18px;z-index:5}
+.chrome .name{font-size:.82rem;color:var(--faint);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.chrome .spacer{flex:1}
+.chrome .count{font-family:var(--mono);font-size:.85rem;color:var(--muted);font-variant-numeric:tabular-nums}
+.chrome button{font:inherit;font-size:.9rem;font-weight:600;border:1px solid var(--hair-2);background:var(--ground);color:var(--ink);border-radius:8px;padding:7px 14px;cursor:pointer}
+.chrome button:hover{border-color:var(--accent);color:var(--accent-ink)}
+.chrome button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.progress{position:fixed;top:0;left:0;height:3px;background:var(--accent);width:0;z-index:6;transition:width .3s ease}
+.hint{position:fixed;top:10px;right:14px;font-size:.72rem;color:var(--faint);z-index:6}
+@media print{
+  :root{--ground:#fff;--paper:#fff}
+  body{overflow:visible}
+  .deck{position:static;inset:auto;display:block;padding:0}
+  .slide{display:block!important;max-width:none;break-inside:avoid;break-after:page;padding:24px 0;border-bottom:1px solid #ccc;animation:none}
+  .chrome,.progress,.hint{display:none!important}
+  figure{box-shadow:none;break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<div class="progress" id="prog"></div>
+<div class="hint">← → para navegar</div>
+
+<div class="deck" id="deck">
+
+  <!-- 1 COVER -->
+  <section class="slide active cover">
+    <div class="brand" style="flex-wrap:wrap"><span class="bm"><span>PT</span></span><span class="bn">Steelhead Power Tools</span><a href="https://capazconsultoria.com" target="_blank" rel="noopener" aria-label="Capaz Consultoría" style="margin-left:auto;background:#fff;border:1px solid #dbe1e8;border-radius:9px;padding:7px 13px;display:inline-flex;align-items:center;box-shadow:0 2px 8px rgba(0,0,0,.12)"><img src="assets/capaz-wordmark.png" alt="Capaz Consultoría" style="height:44px;width:auto;display:block"></a></div>
+    <h1 class="title">Power Tools<br>101</h1>
+    <p class="lead">Cómo el ERP hace cosas que no venían de fábrica — y quién decide cuáles.</p>
+    <div class="foot"><span class="badge">Presentación · perenne</span><span>Sesión de capacitación · 30–40 min</span><span style="flex-basis:100%;margin-top:14px;display:flex;align-items:center;gap:10px;font-size:.82rem;color:var(--faint)"><a href="https://capazconsultoria.com" target="_blank" rel="noopener" aria-label="Capaz Consultoría" style="display:inline-flex"><img src="assets/capaz-c.png" alt="Capaz Consultoría" style="height:28px;width:auto;display:block"></a><span>Elaborado por <a href="mailto:oviazcan@capazconsultoria.com" style="color:var(--accent-ink);font-weight:600;text-decoration:none">Omar Viazcán</a> · <a href="https://capazconsultoria.com" target="_blank" rel="noopener" style="color:var(--accent-ink);text-decoration:none">Capaz Consultoría</a></span></span></div>
+  </section>
+
+  <!-- 2 EL PUNTO DE PARTIDA -->
+  <section class="slide">
+    <p class="kicker"><span class="no">02</span> El punto de partida</p>
+    <h2 class="head">Ningún ERP viene hecho a la medida de una planta</h2>
+    <div class="two">
+      <ul class="pts">
+        <li>Steelhead trae su forma de facturar, de imprimir y de calcular — <b>la forma promedio</b></li>
+        <li>Ecoplating tiene reglas propias: lote mínimo, descripción para el SAT, plantas Schneider, impuestos por renglón</li>
+        <li>Pedirle al proveedor cada regla cuesta <b>meses</b> y hace el sistema de todos, de nadie</li>
+      </ul>
+      <div class="meta-strip"><span class="ic">💡</span><span class="tx"><b>El dilema:</b> o adaptas la planta al sistema, o adaptas el sistema a la planta. La segunda es la que conserva la ventaja competitiva.</span></div>
+    </div>
+  </section>
+
+  <!-- 3 QUÉ SON -->
+  <section class="slide">
+    <p class="kicker"><span class="no">03</span> La herramienta</p>
+    <h2 class="head">Power Tools: una veintena de ventanillas abiertas en el ERP</h2>
+    <div class="two">
+      <ul class="pts">
+        <li>Steelhead dejó <b>una veintena de puntos</b> donde se detiene y ejecuta código de Ecoplating antes de continuar</li>
+        <li>Cada punto es una <b>ventanilla</b>; la hoja de instrucciones que dejamos ahí es un <b>hook</b></li>
+        <li>Hoy <b>casi todas están atendidas</b> — la mayoría con lógica de negocio completa, unas cuantas con el formato de fábrica a propósito</li>
+        <li>Todo corre <b>dentro</b> de Steelhead: no hay servidor aparte que mantener</li>
+      </ul>
+      <div class="meta-strip"><span class="ic">💡</span><span class="tx"><b>La imagen:</b> una línea de producción prefabricada, con ventanillas donde el fabricante te deja meter tu propia hoja de instrucciones.</span></div>
+    </div>
+  </section>
+
+  <!-- 4 CÓMO FUNCIONA UNA VENTANILLA -->
+  <section class="slide">
+    <p class="kicker"><span class="no">04</span> El mecanismo</p>
+    <h2 class="head">Qué pasa exactamente en una ventanilla</h2>
+    <figure>
+      <svg viewBox="0 0 900 250" role="img" aria-label="Diagrama: Steelhead entrega los datos al hook, el hook responde y Steelhead continúa">
+        <defs>
+          <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+          </marker>
+        </defs>
+        <g color="var(--faint)">
+          <rect x="20" y="70" width="210" height="100" rx="12" fill="none" stroke="var(--hair-2)" stroke-width="1.5"/>
+          <text class="svg-t" x="125" y="105" text-anchor="middle" font-size="15" font-weight="700">Steelhead</text>
+          <text class="svg-mut" x="125" y="128" text-anchor="middle" font-size="12.5">junta todo el contexto:</text>
+          <text class="svg-mut" x="125" y="146" text-anchor="middle" font-size="12.5">orden, partes, precios, unidades</text>
+
+          <rect x="330" y="55" width="230" height="130" rx="12" fill="var(--accent-wash)" stroke="var(--accent)" stroke-width="2"/>
+          <text x="445" y="92" text-anchor="middle" font-size="15" font-weight="700" fill="var(--accent-ink)">La ventanilla</text>
+          <text x="445" y="115" text-anchor="middle" font-size="12.5" fill="var(--accent-ink)">tu código lee los datos,</text>
+          <text x="445" y="133" text-anchor="middle" font-size="12.5" fill="var(--accent-ink)">calcula, valida y responde</text>
+          <text class="svg-m" x="445" y="160" text-anchor="middle" font-size="11.5" fill="var(--accent-ink)">hooks/invoice/invoice.ts</text>
+
+          <rect x="660" y="70" width="215" height="100" rx="12" fill="none" stroke="var(--hair-2)" stroke-width="1.5"/>
+          <text class="svg-t" x="767" y="105" text-anchor="middle" font-size="15" font-weight="700">Steelhead</text>
+          <text class="svg-mut" x="767" y="128" text-anchor="middle" font-size="12.5">continúa con tu respuesta:</text>
+          <text class="svg-mut" x="767" y="146" text-anchor="middle" font-size="12.5">guarda, imprime, avisa</text>
+
+          <line x1="232" y1="120" x2="322" y2="120" stroke="currentColor" stroke-width="1.6" marker-end="url(#a1)"/>
+          <text class="svg-m svg-mut" x="277" y="110" text-anchor="middle" font-size="11">inputs</text>
+          <line x1="562" y1="120" x2="652" y2="120" stroke="currentColor" stroke-width="1.6" marker-end="url(#a1)"/>
+          <text class="svg-m svg-mut" x="607" y="110" text-anchor="middle" font-size="11">result</text>
+
+          <text class="svg-mut" x="445" y="215" text-anchor="middle" font-size="12">Todo ocurre en menos de un segundo, dentro de la misma pantalla del ERP.</text>
+        </g>
+      </svg>
+      <figcaption>El hook nunca sale a buscar datos: Steelhead se los entrega ya resueltos y espera una respuesta.</figcaption>
+    </figure>
+  </section>
+
+  <!-- 5 QUÉ PUEDE HACER -->
+  <section class="slide">
+    <p class="kicker"><span class="no">05</span> El alcance</p>
+    <h2 class="head">Tres cosas que hace un hook — y una que no</h2>
+    <div class="fam">
+      <div class="f"><span class="ig">🛡️</span>Validar<small>Avisar al capturista que algo no cuadra, antes de guardar</small></div>
+      <div class="f"><span class="ig">🧮</span>Calcular<small>Precios, conversiones, impuestos, dosis químicas</small></div>
+      <div class="f"><span class="ig">📄</span>Enriquecer<small>Preparar los datos que se imprimen en un documento</small></div>
+      <div class="f" style="border-color:var(--danger);background:var(--danger-wash)"><span class="ig">⛔</span>Reescribir el ERP<small>No puede cambiar cómo Steelhead arma una factura o guarda una orden</small></div>
+    </div>
+    <div class="warn-strip"><span class="ic">⚠</span><span class="tx"><b>El límite importa:</b> el hook manda <em>dentro</em> de la ventanilla y nada más. Cuando algo no se puede hacer, no es falta de esfuerzo: es que esa decisión vive fuera de la ventanilla. Está documentado caso por caso.</span></div>
+  </section>
+
+  <!-- 6 EL REPARTO -->
+  <section class="slide">
+    <p class="kicker"><span class="no">06</span> El reparto de responsabilidades</p>
+    <h2 class="head">El hook surte los datos; la plantilla los coloca</h2>
+    <figure>
+      <svg viewBox="0 0 900 230" role="img" aria-label="Diagrama: el hook prepara datos, la plantilla los coloca en el PDF">
+        <defs>
+          <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+          </marker>
+        </defs>
+        <g color="var(--faint)">
+          <rect x="20" y="60" width="235" height="110" rx="12" fill="var(--accent-wash)" stroke="var(--accent)" stroke-width="2"/>
+          <text x="137" y="95" text-anchor="middle" font-size="15" font-weight="700" fill="var(--accent-ink)">El hook</text>
+          <text x="137" y="118" text-anchor="middle" font-size="12.5" fill="var(--accent-ink)">mide, convierte y deja</text>
+          <text x="137" y="136" text-anchor="middle" font-size="12.5" fill="var(--accent-ink)">cada dato listo y con nombre</text>
+          <text class="svg-m" x="137" y="158" text-anchor="middle" font-size="11" fill="var(--accent-ink)">additionalPayload</text>
+
+          <rect x="335" y="60" width="235" height="110" rx="12" fill="var(--ti-wash)" stroke="var(--ti)" stroke-width="2"/>
+          <text x="452" y="95" text-anchor="middle" font-size="15" font-weight="700" fill="var(--ti)">La plantilla</text>
+          <text x="452" y="118" text-anchor="middle" font-size="12.5" fill="var(--ti)">decide dónde se pinta cada</text>
+          <text x="452" y="136" text-anchor="middle" font-size="12.5" fill="var(--ti)">dato, con qué tamaño y color</text>
+          <text class="svg-m" x="452" y="158" text-anchor="middle" font-size="11" fill="var(--ti)">PDFGeneratorAPI · lado Steelhead</text>
+
+          <rect x="650" y="60" width="225" height="110" rx="12" fill="none" stroke="var(--hair-2)" stroke-width="1.5"/>
+          <text class="svg-t" x="762" y="105" text-anchor="middle" font-size="15" font-weight="700">El PDF impreso</text>
+          <text class="svg-mut" x="762" y="128" text-anchor="middle" font-size="12.5">factura, remisión, etiqueta,</text>
+          <text class="svg-mut" x="762" y="146" text-anchor="middle" font-size="12.5">certificado, orden de compra</text>
+
+          <line x1="257" y1="115" x2="327" y2="115" stroke="currentColor" stroke-width="1.6" marker-end="url(#a2)"/>
+          <line x1="572" y1="115" x2="642" y2="115" stroke="currentColor" stroke-width="1.6" marker-end="url(#a2)"/>
+          <text class="svg-mut" x="450" y="205" text-anchor="middle" font-size="12">Un cambio visual casi siempre es de dos lados: el hook emite el dato, la plantilla lo coloca.</text>
+        </g>
+      </svg>
+      <figcaption>Si un dato existe pero no se ve, falta el lado de la plantilla. Si se ve mal calculado, falta el lado del hook.</figcaption>
+    </figure>
+  </section>
+
+  <!-- 7 VERSIONADO -->
+  <section class="slide">
+    <p class="kicker"><span class="no">07</span> Cómo se guarda el trabajo</p>
+    <h2 class="head">Cada cambio es una capa nueva; la última es la que corre</h2>
+    <div class="two">
+      <figure>
+        <svg viewBox="0 0 420 250" role="img" aria-label="Diagrama de capas apiladas: la última capa es la activa">
+          <defs>
+            <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" fill="var(--accent)"/>
+            </marker>
+          </defs>
+          <g color="var(--faint)">
+            <rect x="60" y="190" width="300" height="30" rx="6" fill="none" stroke="var(--hair-2)" stroke-width="1.5"/>
+            <text class="svg-mut svg-m" x="210" y="210" text-anchor="middle" font-size="12">versión 10480 · 26 may</text>
+            <rect x="60" y="152" width="300" height="30" rx="6" fill="none" stroke="var(--hair-2)" stroke-width="1.5"/>
+            <text class="svg-mut svg-m" x="210" y="172" text-anchor="middle" font-size="12">versión 11142 · 15 jul</text>
+            <rect x="60" y="114" width="300" height="30" rx="6" fill="none" stroke="var(--hair-2)" stroke-width="1.5"/>
+            <text class="svg-mut svg-m" x="210" y="134" text-anchor="middle" font-size="12">versión 11155 · 16 jul</text>
+            <rect x="60" y="70" width="300" height="36" rx="7" fill="var(--accent-wash)" stroke="var(--accent)" stroke-width="2.2"/>
+            <text class="svg-m" x="210" y="93" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--accent-ink)">versión 11164 · activa</text>
+            <text class="svg-mut" x="210" y="45" text-anchor="middle" font-size="12.5">lo que el ERP ejecuta hoy</text>
+            <path d="M210 52 L210 66" stroke="var(--accent)" stroke-width="1.8" marker-end="url(#a3)"/>
+          </g>
+        </svg>
+      </figure>
+      <div>
+        <ul class="pts">
+          <li>Guardar <b>no reemplaza</b>: deposita una capa encima</li>
+          <li>La capa de arriba es la que el ERP ejecuta</li>
+          <li>Nada se borra: el historial completo queda</li>
+          <li>Revertir = <b>volver a depositar</b> el contenido de una capa vieja</li>
+        </ul>
+        <div class="meta-strip"><span class="ic">💡</span><span class="tx"><b>Como un baño de recubrimiento:</b> no se despega una capa anterior; se deposita otra encima. Lo que se ve es siempre la última.</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- 8 DOS PLANTAS -->
+  <section class="slide">
+    <p class="kicker ti"><span class="no">08</span> La trampa más cara</p>
+    <h2 class="head">Dos plantas, un solo código: letreros contra casilleros</h2>
+    <figure>
+      <svg viewBox="0 0 900 250" role="img" aria-label="Diagrama: la misma unidad tiene distinto número interno en cada planta">
+        <g color="var(--faint)">
+          <rect x="40" y="45" width="360" height="165" rx="12" fill="none" stroke="var(--hair-2)" stroke-width="1.5"/>
+          <text class="svg-t" x="220" y="75" text-anchor="middle" font-size="15" font-weight="700">Toluca (TLC)</text>
+          <rect x="70" y="95" width="300" height="42" rx="8" fill="var(--ti-wash)" stroke="var(--ti)" stroke-width="1.6"/>
+          <text x="220" y="122" text-anchor="middle" font-size="13.5" font-weight="700" fill="var(--ti)">«KGM Kilogramo»</text>
+          <text class="svg-mut svg-m" x="220" y="163" text-anchor="middle" font-size="12.5">número interno: 3969</text>
+          <text class="svg-mut" x="220" y="186" text-anchor="middle" font-size="11.5">el letrero es el mismo…</text>
+
+          <rect x="500" y="45" width="360" height="165" rx="12" fill="none" stroke="var(--hair-2)" stroke-width="1.5"/>
+          <text class="svg-t" x="680" y="75" text-anchor="middle" font-size="15" font-weight="700">Monterrey (MTY)</text>
+          <rect x="530" y="95" width="300" height="42" rx="8" fill="var(--ti-wash)" stroke="var(--ti)" stroke-width="1.6"/>
+          <text x="680" y="122" text-anchor="middle" font-size="13.5" font-weight="700" fill="var(--ti)">«KGM Kilogramo»</text>
+          <text class="svg-m" x="680" y="163" text-anchor="middle" font-size="12.5" font-weight="700" fill="var(--danger)">número interno: 5990</text>
+          <text class="svg-mut" x="680" y="186" text-anchor="middle" font-size="11.5">…el número, no</text>
+
+          <text x="450" y="128" text-anchor="middle" font-size="20" fill="var(--danger)" font-weight="700">≠</text>
+          <text class="svg-mut" x="450" y="236" text-anchor="middle" font-size="12.5">Buscar por número en la otra planta abre el casillero equivocado — y no avisa.</text>
+        </g>
+      </svg>
+      <figcaption>Regla de oro del sistema: <strong>resuelve siempre por el nombre</strong>, nunca por el número interno.</figcaption>
+    </figure>
+  </section>
+
+  <!-- 9 POR QUÉ FALLA CALLADO -->
+  <section class="slide">
+    <p class="kicker ti"><span class="no">09</span> Por qué esa trampa importa tanto</p>
+    <h2 class="head">Ese error no truena: miente</h2>
+    <div class="two">
+      <ul class="pts ti">
+        <li>Si el número no existe en la otra planta, el dato simplemente <b>no sale</b> en el documento</li>
+        <li>Si el número existe pero es <b>otra cosa</b>, sale un dato incorrecto en una factura o un certificado</li>
+        <li>Nadie ve un error rojo: el documento se imprime tan campante</li>
+        <li>Por eso hay una regla escrita, una prueba automática por módulo y una lista de verificación antes de publicar</li>
+      </ul>
+      <div class="warn-strip"><span class="ic">⚠</span><span class="tx"><b>Costo del error:</b> un kilogramo confundido con otra unidad en un documento fiscal. Es exactamente el tipo de falla que no se detecta hasta que la detecta el cliente.</span></div>
+    </div>
+  </section>
+
+  <!-- 10 EL PATRÓN DE METROLOGÍA -->
+  <section class="slide">
+    <p class="kicker ti"><span class="no">10</span> Cómo se evita</p>
+    <h2 class="head">Un calibrador patrón para cada regla de negocio</h2>
+    <div class="two">
+      <ul class="pts ti">
+        <li>Cada regla vive <b>dos veces</b>: como pieza patrón probada fuera del ERP, y como copia dentro del hook</li>
+        <li>La pieza patrón trae su <b>certificado</b>: una prueba automática que la verifica</li>
+        <li>Hoy: <b>35 piezas patrón, 472 pruebas</b>, todas en verde antes de publicar</li>
+        <li>Varias pruebas existen solo para gritar si alguien vuelve a resolver por número interno</li>
+      </ul>
+      <div class="meta-strip"><span class="ic">💡</span><span class="tx"><b>Como en metrología:</b> el patrón vive en el laboratorio y se verifica; los calibradores de piso son copias suyas. Si cambias el patrón, recalibras las copias — nunca al revés.</span></div>
+    </div>
+  </section>
+
+  <!-- 11 EL EDITOR VIEJO -->
+  <section class="slide">
+    <p class="kicker ti"><span class="no">11</span> Una restricción heredada</p>
+    <h2 class="head">El editor del ERP habla un idioma de hace unos años</h2>
+    <div class="two">
+      <ul class="pts ti">
+        <li>El compilador que trae Steelhead entiende una versión antigua del lenguaje</li>
+        <li>Si le escribes con modismos nuevos, <b>no protesta: se queda callado</b> y el hook deja de correr</li>
+        <li>Por eso el proyecto fija esa versión en su configuración y la revisa antes de publicar</li>
+        <li>Es la clase de detalle que cuesta un día encontrar la primera vez y cero las siguientes, porque está escrito</li>
+      </ul>
+      <div class="meta-strip"><span class="ic">💡</span><span class="tx"><b>Regla práctica:</b> todo lo que se publica se compila primero con esa misma versión. El puente de publicación lo hace solo.</span></div>
+    </div>
+  </section>
+
+  <!-- 12 CÓMO SE PUBLICA -->
+  <section class="slide">
+    <p class="kicker ti"><span class="no">12</span> El ciclo de trabajo</p>
+    <h2 class="head">Cómo se cambia un hook sin sustos</h2>
+    <figure>
+      <svg viewBox="0 0 900 200" role="img" aria-label="Diagrama del ciclo: bajar, editar, probar, publicar, verificar en las dos plantas">
+        <defs>
+          <marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+          </marker>
+        </defs>
+        <g color="var(--faint)">
+          <g font-size="12.5">
+            <circle cx="80" cy="80" r="26" fill="var(--ti-wash)" stroke="var(--ti)" stroke-width="1.8"/>
+            <text x="80" y="86" text-anchor="middle" font-size="15" font-weight="700" fill="var(--ti)">1</text>
+            <text class="svg-t" x="80" y="132" text-anchor="middle" font-weight="700">Bajar</text>
+            <text class="svg-mut" x="80" y="150" text-anchor="middle" font-size="11.5">lo que corre hoy</text>
+
+            <circle cx="270" cy="80" r="26" fill="var(--ti-wash)" stroke="var(--ti)" stroke-width="1.8"/>
+            <text x="270" y="86" text-anchor="middle" font-size="15" font-weight="700" fill="var(--ti)">2</text>
+            <text class="svg-t" x="270" y="132" text-anchor="middle" font-weight="700">Editar</text>
+            <text class="svg-mut" x="270" y="150" text-anchor="middle" font-size="11.5">patrón + copia</text>
+
+            <circle cx="455" cy="80" r="26" fill="var(--ti-wash)" stroke="var(--ti)" stroke-width="1.8"/>
+            <text x="455" y="86" text-anchor="middle" font-size="15" font-weight="700" fill="var(--ti)">3</text>
+            <text class="svg-t" x="455" y="132" text-anchor="middle" font-weight="700">Probar</text>
+            <text class="svg-mut" x="455" y="150" text-anchor="middle" font-size="11.5">472 pruebas en verde</text>
+
+            <circle cx="640" cy="80" r="26" fill="var(--accent-wash)" stroke="var(--accent)" stroke-width="1.8"/>
+            <text x="640" y="86" text-anchor="middle" font-size="15" font-weight="700" fill="var(--accent-ink)">4</text>
+            <text class="svg-t" x="640" y="132" text-anchor="middle" font-weight="700">Publicar</text>
+            <text class="svg-mut" x="640" y="150" text-anchor="middle" font-size="11.5">a las dos plantas</text>
+
+            <circle cx="825" cy="80" r="26" fill="var(--accent-wash)" stroke="var(--accent)" stroke-width="1.8"/>
+            <text x="825" y="86" text-anchor="middle" font-size="15" font-weight="700" fill="var(--accent-ink)">5</text>
+            <text class="svg-t" x="825" y="132" text-anchor="middle" font-weight="700">Verificar</text>
+            <text class="svg-mut" x="825" y="150" text-anchor="middle" font-size="11.5">comparar contra el ERP</text>
+          </g>
+          <line x1="110" y1="80" x2="238" y2="80" stroke="currentColor" stroke-width="1.5" marker-end="url(#a4)"/>
+          <line x1="300" y1="80" x2="423" y2="80" stroke="currentColor" stroke-width="1.5" marker-end="url(#a4)"/>
+          <line x1="485" y1="80" x2="608" y2="80" stroke="currentColor" stroke-width="1.5" marker-end="url(#a4)"/>
+          <line x1="670" y1="80" x2="793" y2="80" stroke="currentColor" stroke-width="1.5" marker-end="url(#a4)"/>
+        </g>
+      </svg>
+      <figcaption>Publicar a las dos plantas no es opcional: es parte del mismo paso. Un hook publicado solo en una planta es una divergencia esperando a doler.</figcaption>
+    </figure>
+  </section>
+
+  <!-- 13 QUÉ VE EL OPERADOR -->
+  <section class="slide">
+    <p class="kicker ku"><span class="no">13</span> Del lado del operador</p>
+    <h2 class="head">La cara visible: los avisos de colores</h2>
+    <div class="two">
+      <ul class="pts ku">
+        <li><b>Rojo</b> — algo está mal y hay que corregirlo antes de seguir (parte desconocida, planta que no coincide)</li>
+        <li><b>Amarillo</b> — algo merece tu atención pero puede ser normal (sin precio, cargo de lote mínimo)</li>
+        <li><b>Azul</b> — información útil: la especificación aplicada, el tipo de cambio del día</li>
+        <li><b>Verde “Todo en Orden”</b> — el sistema revisó y no encontró nada. Su ausencia también dice algo</li>
+      </ul>
+      <div class="meta-strip"><span class="ic">💡</span><span class="tx"><b>El verde es un latido:</b> confirma que el sistema sí revisó. Si no aparece ni verde ni rojo, algo dejó de correr — repórtalo.</span></div>
+    </div>
+  </section>
+
+  <!-- 14 PLANES DE BAÑO -->
+  <section class="slide">
+    <p class="kicker"><span class="no">14</span> Más allá de las ventanillas</p>
+    <h2 class="head">La química de la planta también es Power Tools</h2>
+    <div class="two">
+      <ul class="pts">
+        <li><b>24 planes de baño</b>, uno por tina de las líneas T205 y T107</li>
+        <li>El laboratorio captura la titulación; el plan calcula la <b>concentración</b> y la <b>dosis de corrección</b></li>
+        <li>El operador ve “agrega N kg de tal reactivo”, no una fórmula</li>
+        <li>Los factores químicos están hoy escritos dentro de cada plan; hay un camino trazado para centralizarlos</li>
+      </ul>
+      <div class="meta-strip"><span class="ic">💡</span><span class="tx"><b>En una frase:</b> análisis de laboratorio más receta de ajuste del baño, automatizados tina por tina.</span></div>
+    </div>
+  </section>
+
+  <!-- 15 RUTAS -->
+  <section class="slide">
+    <p class="kicker"><span class="no">15</span> Cómo sigue</p>
+    <h2 class="head">Después de esta sesión</h2>
+    <div class="auds">
+      <div class="aud ku">
+        <div class="w">Key User · Operador</div>
+        <h3>Tu ruta</h3>
+        <ol>
+          <li>Manual del Operador — el catálogo de avisos</li>
+          <li>Ficha: Facturación de punta a punta</li>
+          <li>Inventario y Glosario, de consulta</li>
+        </ol>
+      </div>
+      <div class="aud ti">
+        <div class="w">Jefe de TI · Infraestructura</div>
+        <h3>Tu ruta</h3>
+        <ol>
+          <li>Manual del Administrador — publicar y revertir</li>
+          <li>Ficha: Dos plantas, un solo código</li>
+          <li>Onboarding de Desarrollo, si vas a mantener el código</li>
+        </ol>
+      </div>
+    </div>
+  </section>
+
+  <!-- 16 TAKEAWAYS -->
+  <section class="slide">
+    <p class="kicker"><span class="no">16</span> Para llevarse</p>
+    <h2 class="head">Cuatro ideas</h2>
+    <div class="takes">
+      <div class="take"><span class="n">01</span><div><b>Ventanilla</b><span>El ERP se detiene en una veintena de puntos y ejecuta código de Ecoplating antes de continuar.</span></div></div>
+      <div class="take"><span class="n">02</span><div><b>Capa</b><span>Cada cambio se deposita encima. La última capa es la que corre; nada se pierde.</span></div></div>
+      <div class="take"><span class="n">03</span><div><b>Letrero, no casillero</b><span>El mismo código sirve a dos plantas porque busca por nombre, nunca por número interno.</span></div></div>
+      <div class="take"><span class="n">04</span><div><b>Surtir no es colocar</b><span>El hook deja el dato listo; la plantilla decide dónde se pinta. Un cambio visual es de dos lados.</span></div></div>
+    </div>
+    <div class="meta-strip"><span class="ic">📘</span><span class="tx">Todo lo demás — avisos, versiones, comandos, incidentes — está en el paquete. Empieza por el <b>Mapa</b>.</span></div>
+  </section>
+
+</div>
+
+<div class="chrome">
+  <span class="name">Steelhead Power Tools 101 · Capaz Consultoría</span>
+  <span class="spacer"></span>
+  <button id="prev" type="button">← Anterior</button>
+  <span class="count" id="cnt">1 / 16</span>
+  <button id="next" type="button">Siguiente →</button>
+</div>
+
+<script>
+(function(){
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var i = 0;
+  var cnt = document.getElementById('cnt');
+  var prog = document.getElementById('prog');
+  function show(k){
+    i = Math.max(0, Math.min(slides.length - 1, k));
+    slides.forEach(function(s, n){ s.classList.toggle('active', n === i); });
+    cnt.textContent = (i + 1) + ' / ' + slides.length;
+    prog.style.width = ((i + 1) / slides.length * 100) + '%';
+    document.getElementById('deck').scrollTop = 0;
+  }
+  function next(){ show(i + 1); }
+  function prev(){ show(i - 1); }
+  document.getElementById('next').addEventListener('click', next);
+  document.getElementById('prev').addEventListener('click', prev);
+  document.addEventListener('keydown', function(e){
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { next(); e.preventDefault(); }
+    if (e.key === 'ArrowLeft' || e.key === 'PageUp') { prev(); e.preventDefault(); }
+    if (e.key === 'Home') { show(0); }
+    if (e.key === 'End') { show(slides.length - 1); }
+  });
+  show(0);
+})();
+</script>
+</body>
+</html>
