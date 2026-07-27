@@ -195,8 +195,38 @@ Además hay **navegación por teclado**: `↑`/`↓` con wrap-around, `Enter` ab
 > **Lección:** si la navegación de un widget depende de qué temporizador gana, no es un bug de
 > timing que se arregle subiendo el `setTimeout` — es la señal de que el elemento debería ser un
 > control nativo (`<a>`, `<button>`) en vez de un `div` con listeners.
+
+## Estado
+
+**VIVO en config 1.7.209** (tags `v1.7.203` … `v1.7.209`). Core 73/73, suite 955/955.
+Rollback: `tools/rollback.sh v1.7.208`.
+
+### Validado en vivo (2026-07-27)
+
+- [x] Ambos widgets se inyectan en su lugar (tras el fix de anclajes de 1.7.204)
+- [x] El buscador **encuentra el proveedor**, que es lo que el nativo NO hace (da 0).
+      "1 resultado" para "ATOTECH" es **correcto**: por texto no hay OC justamente porque
+      `searchQuery` ignora al proveedor. El valor está en el salto.
+- [x] Enlaces **relativos y sin host ficticio** en los 3 tipos (fix de 1.7.206)
+- [x] Toggle → aplica `billToLocationIdFilter=23301,23344`: las **dos** direcciones de
+      Proquipa de un jalón, que es lo que la UI nativa no permite
+- [x] Toggle binario "Sólo Proquipa" visible tras "New Purchase Order"; flechita ↗ en cada
+      renglón; hint de teclado en el pie
+- [x] Clic en proveedor produce `?category=Issued&billing=All&vendorIdFilter=…` — siempre
+      la variante **All**
+- [x] **Resolución de sección funcionando** tras el fix de ids enteros (1.7.209): para
+      ATOTECH los conteos dan `draft=0, issued-all=0, fulfilled-all=35` → resuelve a
+      **fulfilled-all**, que es donde efectivamente están sus 35 OC
+
+### Pendientes
+
+- [ ] Recorrido end-to-end del clic y del teclado hecho por el operador (la automatización
+      del navegador no logra enfocar el input de forma confiable, y el rate-limit cortó
+      varios intentos; la lógica sí quedó verificada contra el código vivo)
 - [ ] Confirmar si hay **>10 direcciones** de facturación (el descubrimiento en runtime lo
       resuelve, pero conviene saberlo; `S.capped` lo advierte en el `title` del toggle)
 - [ ] Confirmar el shape exacto de los nodos de `SearchBills` (el glue lo localiza de forma
       defensiva; la primera corrida en vivo lo confirma)
+- [ ] **Reponer el lado Ecoplating** cuando Steelhead corrija el filtro (ticket abierto por
+      el operador 2026-07-27) — es agregar un modo en `planProquipaFilter`
 - [ ] Integrar al bundle Safari/iPad si el operador lo usa desde ahí
