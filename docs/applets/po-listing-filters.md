@@ -177,12 +177,25 @@ concurrencia "para que vaya más rápido": lo que se gana es que deje de funcion
 
 - [x] Core puro + 42 golden tests · suite completa 924/924
 - [x] Registro en `config.json` (hashes + app) — rutas de hash ya cubiertas
-- [ ] **Deploy a gh-pages** (`tools/deploy.sh`)
-- [ ] **Validación en vivo:**
-  1. Buscar "ATOTECH" → debe encontrar el proveedor **y sus OCs**, que es lo que el nativo no hace
-  2. Toggle a Proquipa → 50 en Issued·Open; centro → 129; Ecoplating → según la rama que aplique
-  3. Confirmar cuál de las 3 ramas de `planCompanyFilter` toma en la práctica
-  4. Verificar que el toggle refleja su estado al recargar con el parámetro puesto
+- [x] **Deploy a gh-pages** — vivo en **config 1.7.206** (tags `v1.7.203`…`v1.7.206`)
+- [x] **Validado en vivo (2026-07-27):**
+  1. Ambos widgets se inyectan en su lugar (tras el fix de anclajes de 1.7.204)
+  2. Buscar "ATOTECH" → **encuentra el proveedor**, que es lo que el nativo NO hace (da 0).
+     El panel muestra "1 resultado" y **eso es correcto**: por texto no hay OCs justamente
+     porque `searchQuery` ignora al proveedor. El valor está en el clic al proveedor.
+  3. `buildResultHref` genera enlaces **relativos y sin host ficticio** para los 3 tipos
+     (verificado contra el core vivo tras el fix de 1.7.206)
+  4. **Toggle → Proquipa aplica `billToLocationIdFilter=23301,23344`** — las **dos**
+     direcciones de Proquipa de un jalón, que es exactamente lo que la UI nativa no permite.
+     Confirma en vivo `discoverLocations` + agrupación por raíz + `planCompanyFilter`.
+- [ ] **Pendiente de validar** (la sesión se topó con el rate-limit del endpoint):
+  1. El conteo resultante del toggle (no alcancé a ver la tabla filtrada)
+  2. Que clicar un resultado del panel **navegue**: el `href` es correcto, pero el handler
+     está en `mousedown` y compite con el `blur` a 200 ms — zona delicada, no vi la
+     navegación ocurrir en la prueba
+  3. Cuál de las 3 ramas de `planCompanyFilter` toma el lado Ecoplating en la práctica
+  4. Que el toggle refleje su estado al recargar con el parámetro puesto
+  5. `SearchBills` y el shape de sus nodos
 - [ ] Confirmar si hay **>10 direcciones** de facturación (el descubrimiento en runtime lo
       resuelve, pero conviene saberlo; `S.capped` lo advierte en el `title` del toggle)
 - [ ] Confirmar el shape exacto de los nodos de `SearchBills` (el glue lo localiza de forma
