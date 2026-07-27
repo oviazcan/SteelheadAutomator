@@ -337,6 +337,40 @@ test('buildResultHref: sin dominio no inventa link', () => {
   assert.equal(Core.buildResultHref(null, '344'), null);
 });
 
+// ---------- el host ficticio NUNCA se filtra (regresión del deploy 1.7.205) ----------
+// new URL(rel, BASE) exige una base; devolver u.toString() la PEGA al resultado y genera
+// enlaces a https://x.invalid/… que sacan al operador de Steelhead a un host muerto.
+// Los tests originales solo comprobaban `includes(path)` y no lo detectaron.
+
+test('buildResultHref: NUNCA devuelve el host ficticio (los 3 tipos)', () => {
+  for (const r of Core.classifyResults(RAW)) {
+    const href = Core.buildResultHref(r, '344');
+    assert.ok(href, 'debe generar link para ' + r.type);
+    assert.equal(/x\.invalid/.test(href), false, `${r.type} filtró el host ficticio: ${href}`);
+    assert.ok(href.startsWith('/'), `${r.type} debe ser relativo, es: ${href}`);
+  }
+});
+
+test('buildCategoryUrl: entrada relativa → salida relativa', () => {
+  const url = Core.buildCategoryUrl('/Domains/344/Purchasing/PurchaseOrders', 'issued-open');
+  assert.equal(/x\.invalid/.test(url), false);
+  assert.ok(url.startsWith('/Domains/344/'), 'es: ' + url);
+});
+
+test('buildCategoryUrl: entrada absoluta → salida absoluta (conserva el host real)', () => {
+  const url = Core.buildCategoryUrl('https://app.gosteelhead.com/Domains/344/Purchasing/PurchaseOrders', 'issued-open');
+  assert.ok(url.startsWith('https://app.gosteelhead.com/'), 'es: ' + url);
+  assert.equal(/x\.invalid/.test(url), false);
+});
+
+test('buildCompanyFilterUrl: respeta relativo y absoluto', () => {
+  const rel = Core.buildCompanyFilterUrl('/Domains/344/Purchasing/PurchaseOrders?category=Issued', ['23301']);
+  assert.ok(rel.startsWith('/Domains/344/'), 'es: ' + rel);
+  assert.equal(/x\.invalid/.test(rel), false);
+  const abs = Core.buildCompanyFilterUrl('https://app.gosteelhead.com/Domains/344/Purchasing/PurchaseOrders', ['23301']);
+  assert.ok(abs.startsWith('https://app.gosteelhead.com/'), 'es: ' + abs);
+});
+
 // ---------- presupuesto de consultas (invariante de seguridad) ----------
 // El /graphql se cae ~40 requests y tumba la pantalla nativa completa. El fan-out DEBE
 // estar acotado: si alguien vuelve a meter un segundo fan-out por proveedor, esto truena.
