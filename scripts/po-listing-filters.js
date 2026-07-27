@@ -34,6 +34,7 @@
 
   const S = (window.__saPOF = window.__saPOF || {
     seq: 0, locations: null, groups: null, coverage: {}, discovering: false, lastResults: null,
+    active: -1, // índice del resultado activo por teclado (-1 = ninguno)
   });
 
   // ── estilos ──
@@ -60,8 +61,11 @@
       #${PANEL_ID} .sa-pof-sec{color:#7f8b99;font-size:10px;letter-spacing:.06em;text-transform:uppercase;margin:8px 0 4px;}
       #${PANEL_ID} .sa-pof-sec:first-child{margin-top:0;}
       #${PANEL_ID} ul{list-style:none;margin:0;padding:0;max-height:150px;overflow-y:auto;}
-      #${PANEL_ID} li{padding:4px 5px;border-radius:4px;color:#cfd6de;cursor:pointer;display:flex;align-items:center;gap:7px;white-space:nowrap;overflow:hidden;}
-      #${PANEL_ID} li:hover{background:#26313f;}
+      #${PANEL_ID} li{border-radius:4px;overflow:hidden;}
+      #${PANEL_ID} .sa-pof-link{padding:4px 5px;border-radius:4px;color:#cfd6de;cursor:pointer;display:flex;align-items:center;gap:7px;white-space:nowrap;overflow:hidden;text-decoration:none;}
+      #${PANEL_ID} .sa-pof-link:hover,#${PANEL_ID} .sa-pof-link.sa-pof-active{background:#26313f;color:#f0f3f7;}
+      #${PANEL_ID} .sa-pof-link.sa-pof-active{outline:1px solid #13a36f;outline-offset:-1px;}
+      #${PANEL_ID} .sa-pof-link:focus-visible{outline:2px solid #13a36f;}
       #${PANEL_ID} .sa-pof-badge{flex:0 0 auto;font-size:9px;padding:1px 5px;border-radius:8px;font-weight:600;letter-spacing:.03em;}
       #${PANEL_ID} .sa-pof-b-po{background:#1d4b6e;color:#8ecbff;}
       #${PANEL_ID} .sa-pof-b-vendor{background:#134d3a;color:#6fe0b0;}
@@ -248,21 +252,57 @@
   }
   function ensurePanel(anchor) {
     let p = document.getElementById(PANEL_ID);
-    if (!p) { p = document.createElement('div'); p.id = PANEL_ID; document.body.appendChild(p); }
+    if (!p) {
+      p = document.createElement('div');
+      p.id = PANEL_ID;
+      // Un mousedown DENTRO del panel no debe quitarle el foco al input: si lo quita, el
+      // blur programa hidePanel y el panel puede desaparecer antes de que el clic complete.
+      // Con esto el <a> recibe su clic con el panel todavía montado.
+      p.addEventListener('mousedown', (e) => e.preventDefault());
+      document.body.appendChild(p);
+    }
     positionPanel(anchor, p);
     return p;
   }
-  function hidePanel() { const p = document.getElementById(PANEL_ID); if (p) p.remove(); }
+  function hidePanel() {
+    const p = document.getElementById(PANEL_ID);
+    if (p) p.remove();
+    S.active = -1;
+  }
 
+  function currentLinks() {
+    const p = document.getElementById(PANEL_ID);
+    return p ? Array.from(p.querySelectorAll('a.sa-pof-link')) : [];
+  }
+
+  function highlightActive(links) {
+    const list = links || currentLinks();
+    list.forEach((a, i) => {
+      const on = i === S.active;
+      a.classList.toggle('sa-pof-active', on);
+      if (on && a.scrollIntoView) a.scrollIntoView({ block: 'nearest' });
+    });
+  }
+
+  // Cada renglón es un <a href> REAL, no un <li> con listener de mousedown.
+  //
+  // El patrón mousedown+preventDefault era frágil: dependía de que el panel siguiera vivo
+  // entre mousedown y la navegación (el render incremental RECREA los renglones cuando
+  // llegan las OCs), competía con el hidePanel del blur, no funcionaba con teclado y no
+  // dejaba abrir en pestaña nueva. Un <a href> lo maneja el navegador: sobrevive al
+  // re-render, soporta ⌘/ctrl+clic y clic medio, y es accesible.
   function mkRow(result, domainId) {
     const li = document.createElement('li');
+    const href = Core.buildResultHref(result, domainId);
+    const row = document.createElement(href ? 'a' : 'span');
+    if (href) { row.href = href; row.className = 'sa-pof-link'; }
     const badge = document.createElement('span');
     badge.className = 'sa-pof-badge ' + (
       result.type === Core.RESULT_TYPES.PO ? 'sa-pof-b-po'
         : result.type === Core.RESULT_TYPES.VENDOR ? 'sa-pof-b-vendor' : 'sa-pof-b-bill');
     badge.textContent = result.type === Core.RESULT_TYPES.PO ? 'OC'
       : result.type === Core.RESULT_TYPES.VENDOR ? 'PROV' : 'FACT';
-    li.appendChild(badge);
+    row.appendChild(badge);
 
     const main = document.createElement('span');
     main.className = 'sa-pof-main';
@@ -272,15 +312,14 @@
     if (result.type === Core.RESULT_TYPES.BILL && result.poIdInDomain) txt += ' · OC ' + result.poIdInDomain;
     main.textContent = txt;
     main.title = txt;
-    li.appendChild(main);
+    row.appendChild(main);
 
     const meta = document.createElement('span');
     meta.className = 'sa-pof-meta';
     meta.textContent = result.categoryLabel || (result.idInDomain ? '#' + result.idInDomain : '');
-    li.appendChild(meta);
+    row.appendChild(meta);
 
-    const href = Core.buildResultHref(result, domainId);
-    if (href) li.addEventListener('mousedown', (e) => { e.preventDefault(); window.location.assign(href); });
+    li.appendChild(row);
     return li;
   }
 
@@ -330,9 +369,15 @@
     } else if (!partial) {
       const n = document.createElement('div');
       n.className = 'sa-pof-note';
-      n.textContent = 'Busca en las 5 vistas a la vez · clic para ir';
+      n.textContent = 'Busca en las 5 vistas a la vez · ↑↓ y Enter, o clic';
       p.appendChild(n);
     }
+
+    // El render incremental RECREA los renglones; hay que reponer el resaltado sobre los
+    // nuevos nodos y recortar el índice si ahora hay menos resultados que antes.
+    const links = currentLinks();
+    if (S.active >= links.length) S.active = links.length ? links.length - 1 : -1;
+    if (S.active >= 0) highlightActive(links);
   }
 
   // ── anclajes DOM (bilingües ES+EN donde dependen de texto) ──
@@ -416,11 +461,27 @@
       if (timer) clearTimeout(timer);
       S.seq++;
       S.rotated = null;
+      S.active = -1; // término nuevo → la selección anterior ya no aplica
       if (!term) { hidePanel(); return; }
       timer = setTimeout(() => runSearch(term), DEBOUNCE_MS);
     });
-    inp.addEventListener('keydown', (e) => { if (e.key === 'Escape') hidePanel(); });
-    inp.addEventListener('blur', () => setTimeout(hidePanel, 200));
+    // Teclado: ↑/↓ recorren los resultados, Enter abre el activo, Esc cierra.
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { hidePanel(); return; }
+      const links = currentLinks();
+      if (!links.length) return;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        S.active = Core.moveActiveIndex(S.active, links.length, e.key === 'ArrowDown' ? 1 : -1);
+        highlightActive(links);
+      } else if (e.key === 'Enter') {
+        const a = links[S.active];
+        if (a) { e.preventDefault(); window.location.assign(a.getAttribute('href')); }
+      }
+    });
+    // Sin timeout-race: el mousedown del panel ya evita este blur, así que cuando el blur
+    // SÍ ocurre es porque el foco se fue de verdad y el panel debe cerrarse.
+    inp.addEventListener('blur', hidePanel);
     inp.addEventListener('focus', () => { if (inp.value.trim() && S.lastResults) renderPanel(inp.value.trim(), S.lastResults, false); });
 
     box.appendChild(inp);

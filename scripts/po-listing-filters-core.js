@@ -397,6 +397,17 @@
     return plan;
   }
 
+  // ── Navegación por teclado del panel ──
+  // Índice activo con wrap-around. -1 = nada seleccionado (estado inicial: el primer ↓
+  // debe caer en el 0, y el primer ↑ en el último).
+  function moveActiveIndex(current, total, delta) {
+    const n = Math.max(0, Number(total) || 0);
+    if (!n) return -1;
+    const cur = Number.isInteger(current) ? current : -1;
+    if (cur < 0) return delta > 0 ? 0 : n - 1;
+    return ((cur + delta) % n + n) % n;
+  }
+
   // ── Selección de anclajes (reglas puras; el glue les pasa el DOM ya medido) ──
   //
   // El DOM de Steelhead DUPLICA controles en variantes responsive: el botón "New Purchase
@@ -424,7 +435,7 @@
 
   const api = {
     PO_URL_RE, PO_CATEGORIES, MODES, RESULT_TYPES,
-    MAX_QUERIES_PER_SEARCH, planSearchQueries,
+    MAX_QUERIES_PER_SEARCH, planSearchQueries, moveActiveIndex,
     pickVisibleCandidate, pickNearestByDepth,
     URL_PARAM_BILL_TO, FILTER_KEY_BILL_TO, FILTER_KEY_VENDOR, FILTER_SEARCH_LIMIT,
     DEFAULT_COMPANY_CONFIG,
