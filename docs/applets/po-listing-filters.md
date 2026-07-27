@@ -37,12 +37,27 @@ Ecoplating y el dominio de un jalón.
 Se inyecta **después del buscador nativo** (anclado por `svg[data-testid="SearchIcon"]`, no por
 el placeholder, que sí cambia con el locale) → queda antes de los filtros "Creado Por"…
 
-Fan-out por término, con pool ≤2:
+Fan-out por término, **acotado a 7 consultas** (`MAX_QUERIES_PER_SEARCH`), con pool ≤2:
 
-1. `FilterSearch(vendorIdFilter, q)` → proveedores. **Sus ids alimentan el paso 2**, que es
-   justo lo que el buscador nativo no hace.
-2. `PurchaseOrders` × 5 vistas, con `searchQuery` **y** con `vendorIdFilter`, `first:5`.
-3. `SearchBills(searchQuery)` → facturas.
+1. `FilterSearch(vendorIdFilter, q)` → proveedores — **1 consulta**
+2. `PurchaseOrders` × 5 vistas con `searchQuery`, `first:5` — **5 consultas**
+3. `SearchBills(searchQuery)` → facturas — **1 consulta**
+
+**Por qué NO hay un segundo fan-out por proveedor.** La versión inicial expandía los ids del
+proveedor a las 5 vistas otra vez → **12 consultas por búsqueda**. Con el endpoint cayéndose
+alrededor de las 40 (ver §Lección operativa), 3-4 búsquedas seguidas dejan al operador **sin la
+pantalla nativa**. El proveedor se entrega como **resultado clickeable** que lleva a sus OCs
+(`buildResultHref` → `?vendorIdFilter=<id>`), así que el valor se conserva —encuentras al
+proveedor que el nativo esconde y de un clic ves sus órdenes— pagando **1 consulta en vez de 5**.
+
+`planSearchQueries` devuelve el plan como descriptores (no promesas) para que el conteo sea
+**verificable sin red**; hay 5 tests que fijan el invariante, incluido uno que truena si alguien
+reintroduce el fan-out por proveedor.
+
+> **`vendorIdFilter` CONFIRMADO** por el operador (2026-07-27): el filtro nativo de Proveedor
+> genera `?category=Issued&offset=0&vendorIdFilter=89855`, y `89855` es exactamente el
+> `identifier` que devuelve `FilterSearch` para "ATOTECH DE MEXICO". El nombre de la variable y
+> el id son los correctos.
 
 Panel dark-mode con secciones **PROVEEDOR / ÓRDENES DE COMPRA / FACTURAS**; cada renglón lleva
 badge de tipo y **en qué vista vive**. Render incremental: los proveedores pintan en cuanto
@@ -147,6 +162,12 @@ es la misma en ambos — `querySelector` devuelve el **primer** match, que no es
 Descubierto en carne propia durante la captura: **tras ~40-45 requests seguidas desde la consola,
 el endpoint deja de responder**. Las peticiones quedan **colgadas sin resolver ni fallar** — no
 devuelven 429 ni error, simplemente nunca vuelven — y **no se recuperan recargando la página**.
+
+**Peor: no es solo el applet.** Con el límite activo, la **pantalla nativa de Steelhead tampoco
+carga** — la tabla de OCs se queda vacía (verificado 2026-07-27 en pestaña nueva y sesión
+limpia). El límite es **por sesión/cuenta**, no por pestaña. Es decir, un applet manirroto no
+se rompe a sí mismo: **le tumba el ERP al operador**. De ahí que el presupuesto de consultas
+(`MAX_QUERIES_PER_SEARCH`) sea un invariante testeado y no una guía.
 
 Por eso el applet es frugal por diseño: debounce 350 ms, pool de 2, `first:5`, timeout de 12 s y
 degradación a resultados parciales **sin reintento en bucle**. Si tocas este applet, no subas la

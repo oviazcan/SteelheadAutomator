@@ -337,6 +337,42 @@ test('buildResultHref: sin dominio no inventa link', () => {
   assert.equal(Core.buildResultHref(null, '344'), null);
 });
 
+// ---------- presupuesto de consultas (invariante de seguridad) ----------
+// El /graphql se cae ~40 requests y tumba la pantalla nativa completa. El fan-out DEBE
+// estar acotado: si alguien vuelve a meter un segundo fan-out por proveedor, esto truena.
+
+test('planSearchQueries: nunca excede el presupuesto por búsqueda', () => {
+  const plan = Core.planSearchQueries('ATOTECH');
+  assert.ok(plan.length <= Core.MAX_QUERIES_PER_SEARCH,
+    `el fan-out son ${plan.length} consultas, tope ${Core.MAX_QUERIES_PER_SEARCH}`);
+});
+
+test('planSearchQueries: 1 de proveedores + 5 vistas + 1 de facturas = 7', () => {
+  const plan = Core.planSearchQueries('ATOTECH');
+  assert.equal(plan.filter((p) => p.kind === 'vendors').length, 1);
+  assert.equal(plan.filter((p) => p.kind === 'pos').length, 5);
+  assert.equal(plan.filter((p) => p.kind === 'bills').length, 1);
+  assert.equal(plan.length, 7);
+});
+
+test('planSearchQueries: NO hace un segundo fan-out por proveedor (12 consultas)', () => {
+  // Invariante explícito: el proveedor se entrega clickeable, no se expande a 5 vistas más.
+  const plan = Core.planSearchQueries('ATOTECH');
+  const porVendor = plan.filter((p) => p.kind === 'pos' && p.vendorIds);
+  assert.equal(porVendor.length, 0, 'el fan-out por vendorIdFilter costaría 5 consultas extra');
+});
+
+test('planSearchQueries: cubre las 5 vistas, sin repetir ni faltar', () => {
+  const keys = Core.planSearchQueries('x').filter((p) => p.kind === 'pos').map((p) => p.categoryKey);
+  assert.deepEqual(keys.sort(), Core.PO_CATEGORIES.map((c) => c.key).sort());
+});
+
+test('planSearchQueries: término vacío no consulta nada', () => {
+  assert.deepEqual(Core.planSearchQueries(''), []);
+  assert.deepEqual(Core.planSearchQueries('   '), []);
+  assert.deepEqual(Core.planSearchQueries(null), []);
+});
+
 // ---------- selección de anclajes (regresión del deploy 1.7.203) ----------
 // El DOM de SH duplica controles en variantes responsive y repite iconos: tomar el primer
 // match del querySelector ancló ambos widgets en el control equivocado.
