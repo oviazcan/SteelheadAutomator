@@ -337,6 +337,39 @@ test('buildResultHref: sin dominio no inventa link', () => {
   assert.equal(Core.buildResultHref(null, '344'), null);
 });
 
+// ---------- navegación por teclado del panel ----------
+
+test('moveActiveIndex: desde "nada seleccionado", ↓ cae en el primero y ↑ en el último', () => {
+  assert.equal(Core.moveActiveIndex(-1, 4, 1), 0);
+  assert.equal(Core.moveActiveIndex(-1, 4, -1), 3);
+});
+
+test('moveActiveIndex: avanza y retrocede', () => {
+  assert.equal(Core.moveActiveIndex(0, 4, 1), 1);
+  assert.equal(Core.moveActiveIndex(2, 4, -1), 1);
+});
+
+test('moveActiveIndex: da la vuelta en ambos extremos', () => {
+  assert.equal(Core.moveActiveIndex(3, 4, 1), 0, 'del último al primero');
+  assert.equal(Core.moveActiveIndex(0, 4, -1), 3, 'del primero al último');
+});
+
+test('moveActiveIndex: sin resultados no selecciona nada', () => {
+  assert.equal(Core.moveActiveIndex(-1, 0, 1), -1);
+  assert.equal(Core.moveActiveIndex(2, 0, -1), -1);
+});
+
+test('moveActiveIndex: un solo resultado se queda en él', () => {
+  assert.equal(Core.moveActiveIndex(0, 1, 1), 0);
+  assert.equal(Core.moveActiveIndex(0, 1, -1), 0);
+});
+
+test('moveActiveIndex: índice fuera de rango no truena ni devuelve negativo', () => {
+  const r = Core.moveActiveIndex(99, 3, 1);
+  assert.ok(r >= 0 && r < 3, 'debe caer dentro del rango, es: ' + r);
+  assert.equal(Core.moveActiveIndex(null, 3, 1), 0);
+});
+
 // ---------- el host ficticio NUNCA se filtra (regresión del deploy 1.7.205) ----------
 // new URL(rel, BASE) exige una base; devolver u.toString() la PEGA al resultado y genera
 // enlaces a https://x.invalid/… que sacan al operador de Steelhead a un host muerto.
