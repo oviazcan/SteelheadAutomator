@@ -424,6 +424,24 @@
     return plan;
   }
 
+  // ── Ids: string en la URL, ENTERO en GraphQL ──
+  //
+  // `FilterSearch` devuelve `identifier` como STRING ("89855"), y en la URL los filtros
+  // viajan como texto — ambas cosas están bien. Pero el schema declara estos filtros como
+  // listas de Int y GraphQL NO coacciona: mandar ["89855"] revienta con
+  //   Variable "$vendorIdFilter" got invalid value …
+  // y la consulta falla ENTERA (HTTP 400). Pasó en el deploy 1.7.208: los 3 conteos que
+  // resuelven a qué sección mandar al proveedor fallaban todos, así que siempre caía al
+  // fallback (Issued All) — mandando al operador a una vista vacía aunque el proveedor
+  // tuviera 35 OC en Fulfilled.
+  //
+  // Descarta lo que no sea numérico en vez de mandar NaN, que rompería igual.
+  function toIdList(ids) {
+    return (Array.isArray(ids) ? ids : [])
+      .map((x) => (typeof x === 'number' ? x : parseInt(String(x), 10)))
+      .filter((n) => Number.isInteger(n));
+  }
+
   // ── Navegación por teclado del panel ──
   // Índice activo con wrap-around. -1 = nada seleccionado (estado inicial: el primer ↓
   // debe caer en el 0, y el primer ↑ en el último).
@@ -462,7 +480,7 @@
 
   const api = {
     PO_URL_RE, PO_CATEGORIES, PO_NAV_SECTIONS, MODES, RESULT_TYPES,
-    MAX_QUERIES_PER_SEARCH, planSearchQueries, moveActiveIndex,
+    MAX_QUERIES_PER_SEARCH, planSearchQueries, moveActiveIndex, toIdList,
     pickVisibleCandidate, pickNearestByDepth,
     resolveFirstSectionWithResults, buildDetailHref,
     planProquipaFilter, isProquipaFilterActive,
