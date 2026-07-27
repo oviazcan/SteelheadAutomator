@@ -112,7 +112,7 @@ td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:now
 
   <div class="callout warn">
     <p class="ct">Cambios de este corte respecto al anterior</p>
-    <p><strong>Toluca pasó de 19 a 21 ventanillas.</strong> Los dos renglones nuevos —<em>orden de venta</em> y <em>embarque</em>— no son ventanillas recién abiertas por el ERP: existían desde mayo de 2026 y estaban <strong>fuera del radar de la herramienta de sincronización</strong>, que solo buscaba los tipos que tenía en su lista. Al ampliarla aparecieron. Ambas están en formato de fábrica. Se sumó además la ventanilla de <strong>carga masiva de usuarios</strong>, que existe en el ERP pero todavía no tiene código publicado (ver §03).</p>
+    <p><strong>Toluca pasó de 19 a 21 ventanillas.</strong> Los dos renglones nuevos —<em>orden de venta</em> y <em>embarque</em>— no son ventanillas recién abiertas por el ERP: existían desde mayo de 2026 y estaban <strong>fuera del radar de la herramienta de sincronización</strong>, que solo buscaba los tipos que tenía en su lista. Al ampliarla aparecieron. Ambas están en formato de fábrica. Aparte, Steelhead <strong>liberó en julio la ventanilla de carga masiva de usuarios</strong>, que aún está por llenarse (ver §02).</p>
   </div>
 
   <div class="callout meta">
@@ -307,7 +307,7 @@ td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:now
         <tr>
           <td><strong>Carga masiva de usuarios</strong><br><code>file-import:USER_IMPORT</code></td>
           <td>Dar de alta usuarios en bloque desde un archivo, en vez de uno por uno — igual que hoy se importan cotizaciones.</td>
-          <td><strong>Sin código en ninguna planta.</strong> El tipo existe en el ERP; la ventanilla está lista para atenderse.</td>
+          <td><strong>Recién liberada por Steelhead (julio de 2026) y todavía sin llenar.</strong> El tipo ya existe en el ERP y la herramienta de sincronización ya lo reconoce; falta escribir el hook. En cuanto se publique la primera versión aparecerá sola en la tabla de arriba.</td>
         </tr>
         <tr>
           <td><strong>Transformación de partes</strong><br><code>file-import:PART_TRANSFORM_IMPORT</code></td>
