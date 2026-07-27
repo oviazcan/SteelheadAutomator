@@ -390,6 +390,36 @@ test('buildDetailHref: tipo desconocido → null', () => {
   assert.equal(Core.buildDetailHref({ type: 'OTRO', idInDomain: '1' }, '344'), null);
 });
 
+// ---------- ids enteros en GraphQL (regresión del deploy 1.7.208) ----------
+// FilterSearch entrega `identifier` como STRING ("89855") pero el schema declara los filtros
+// como [Int] y GraphQL no coacciona: mandar strings revienta la consulta ENTERA (HTTP 400
+// 'Variable "$vendorIdFilter" got invalid value'). Los 3 conteos que resuelven la sección
+// fallaban todos y siempre se caía al fallback.
+
+test('toIdList: convierte los strings de FilterSearch a enteros', () => {
+  assert.deepEqual(Core.toIdList(['89855']), [89855]);
+  assert.deepEqual(Core.toIdList(['23301', '23344']), [23301, 23344]);
+});
+
+test('toIdList: deja pasar los que ya son enteros', () => {
+  assert.deepEqual(Core.toIdList([22872, 23301]), [22872, 23301]);
+  assert.deepEqual(Core.toIdList([22872, '23301']), [22872, 23301]);
+});
+
+test('toIdList: descarta lo no numérico en vez de mandar NaN', () => {
+  // Un NaN rompería la consulta igual que un string.
+  assert.deepEqual(Core.toIdList(['abc', '123', null, undefined, '']), [123]);
+  assert.deepEqual(Core.toIdList([]), []);
+  assert.deepEqual(Core.toIdList(null), []);
+});
+
+test('toIdList: el resultado son enteros de verdad, no strings', () => {
+  for (const n of Core.toIdList(['1', '2'])) {
+    assert.equal(typeof n, 'number');
+    assert.equal(Number.isInteger(n), true);
+  }
+});
+
 // ---------- navegación por teclado del panel ----------
 
 test('moveActiveIndex: desde "nada seleccionado", ↓ cae en el primero y ↑ en el último', () => {

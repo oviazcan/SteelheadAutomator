@@ -152,6 +152,26 @@ la misma asignada a la ubicación "Ecoplating", y **el filtro nativo no la acept
 pedir. **Ticket de soporte levantado con Steelhead el 2026-07-27.** Hasta que lo corrijan, el
 toggle solo ofrece Proquipa (ver Widget B).
 
+## Ids: string en la URL, ENTERO en GraphQL (bug del deploy 1.7.208)
+
+`FilterSearch` devuelve `identifier` como **string** (`"89855"`) y en la URL los filtros viajan
+como texto — ambas cosas correctas. Pero el schema declara estos filtros como listas de `Int` y
+**GraphQL no coacciona**: mandar `["89855"]` revienta la consulta entera con HTTP 400
+`Variable "$vendorIdFilter" got invalid value`.
+
+Síntoma en producción: los **3 conteos** que resuelven a qué sección mandar al proveedor
+fallaban **todos**, así que `resolveFirstSectionWithResults` devolvía `null` y siempre se caía al
+fallback (Issued All) — mandando al operador a una vista **vacía** aunque el proveedor tuviera
+35 OC en Fulfilled. Se veía como "no me mueve a la sección correcta", no como un error.
+
+`toIdList` coacciona a entero y **descarta lo no numérico** (un `NaN` rompería igual).
+`coerceIdFilters` la aplica a `vendorIdFilter`, `billToLocationIdFilter` y
+`purchaseOrderStatusIdFilter` antes de cada consulta.
+
+> **Por qué no se detectó antes:** mis pruebas manuales de `billToLocationIdFilter` usaron
+> literales numéricos (`[22872]`), y el toggle funciona porque va **por URL**, no por GraphQL.
+> El único camino que pasa ids de `FilterSearch` directo a GraphQL es el conteo por proveedor.
+
 ## Navegación del panel: por qué son `<a href>` y no listeners (1.7.207)
 
 La primera versión navegaba con `mousedown` + `preventDefault()` + `location.assign()`.
