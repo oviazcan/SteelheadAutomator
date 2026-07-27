@@ -116,6 +116,16 @@
     ).then((d) => (d && d.tableFilterSearch) || []);
   }
 
+  // Los filtros de id van como ENTERO por GraphQL (el schema los declara [Int] y no
+  // coacciona; FilterSearch los entrega como string). Ver toIdList en el core.
+  function coerceIdFilters(extraVars) {
+    const v = Object.assign({}, extraVars || {});
+    for (const k of ['vendorIdFilter', 'billToLocationIdFilter', 'purchaseOrderStatusIdFilter']) {
+      if (v[k] != null) v[k] = Core.toIdList(v[k]);
+    }
+    return v;
+  }
+
   function queryPOs(categoryKey, extraVars) {
     const cat = Core.categoryByKey(categoryKey);
     if (!cat) return Promise.resolve([]);
@@ -127,7 +137,7 @@
       offset: 0,
       first: PER_CATEGORY,
       searchQuery: '',
-    }, cat.queryVars, extraVars || {});
+    }, cat.queryVars, coerceIdFilters(extraVars));
     return withTimeout(api().query('PurchaseOrders', vars, 'PurchaseOrders'), TIMEOUT_MS)
       .then((d) => (d && d.pagedData && d.pagedData.nodes) || []);
   }
@@ -179,7 +189,7 @@
     const vars = Object.assign({
       includeArchived: 'NO', filterDraftStageById: null, purchaseOrderStatusIdFilter: null,
       orderBy: ['ID_IN_DOMAIN_DESC'], offset: 0, first: 1, searchQuery: '',
-    }, cat.queryVars, extraVars || {});
+    }, cat.queryVars, coerceIdFilters(extraVars));
     return withTimeout(api().query('PurchaseOrders', vars, 'PurchaseOrders'), TIMEOUT_MS)
       .then((d) => (d && d.pagedData && d.pagedData.totalCount != null ? d.pagedData.totalCount : null))
       .catch(() => null);
