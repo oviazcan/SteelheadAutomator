@@ -1,6 +1,6 @@
 {
-  "version": "1.7.202",
-  "lastUpdated": "2026-07-27T09:32",
+  "version": "1.7.203",
+  "lastUpdated": "2026-07-27T16:07",
   "extensionVersion": "1.6.6",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -196,7 +196,9 @@
         "JobQuery": "86432972dfe6ea75c523515801993374044dc99e909778024904a02e9ef1b4e3",
         "WorkOrder": "fc41042ebaacfbfcc09a57d171a1c0f87580921bbdbb0cec86fa34a24a39255e",
         "WorkOrderSchedule": "7b1b11275a49fde330dfbfecc8d403d6f16646ac48e9b12f19284abaf6ddbae8",
-        "GetWorkOrderPartsTransfers": "da4e8740973139bb23f3f0d37a0ea83a05b6d67cdab2c1bea1e154dff37aa284"
+        "GetWorkOrderPartsTransfers": "da4e8740973139bb23f3f0d37a0ea83a05b6d67cdab2c1bea1e154dff37aa284",
+        "PurchaseOrders": "32f823d324b6b91e78fe43c93ab82042b931797f5592d088c4f1563051210d84",
+        "SearchBills": "e50ba3ee7d2e694476d5180abdd978fa21f5147251c02d4cef051973b408bd8a"
       }
     },
     "domain": {
@@ -1891,6 +1893,20 @@
           "message": "run-pn-lifecycle"
         }
       ]
+    },
+    {
+      "id": "po-listing-filters",
+      "name": "Buscador global de OC + Empresa",
+      "subtitle": "Busca OC, proveedor o factura en las 5 vistas a la vez y filtra por Ecoplating/Proquipa",
+      "icon": "🔎",
+      "category": "Compras",
+      "autoInject": true,
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/po-listing-filters-core.js",
+        "scripts/po-listing-filters.js"
+      ],
+      "requiredPermissions": []
     }
   ],
   "knownOperations": {
@@ -2666,6 +2682,8 @@
     "scripts/pn-specs-column-core.js": "05b8aa288daff29b82ed1dc7a23a246b5794c8912f4dfe8eaf22e816eed478a4",
     "scripts/pn-specs-column.js": "1d44e2f95e1eff0c0e2e06d646ec85577f3c14a692d4e17196f6be51948c1137",
     "scripts/po-comparator.js": "4e3d620cc06665c8a6b29626ec113874f150c5f7d4472978095a25d2fc53fb1f",
+    "scripts/po-listing-filters-core.js": "ab28da04deb75036cf0eda74943c5e40ee164f896bfffc68322b5675b2f761e1",
+    "scripts/po-listing-filters.js": "5b1ef99f9e137d1f2f3f7fa0a67c2c64c40c80dd2be54defba1b626a2011a619",
     "scripts/po-reconciler.js": "6a9c20833558a3805f721c09a63511d05057b3606d3d9e12a520d5e9738839c6",
     "scripts/portal-importer.js": "c14d8ad3441f8fe087988d7a3b542cc51f075358ad3935b4f1df2af8ea57652a",
     "scripts/price-confirm-core.js": "ff1f019a0379a253fb7616e815c625d91a6876da2cc91df6a3e6c2a38c275cda",
