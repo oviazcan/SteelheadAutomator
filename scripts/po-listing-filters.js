@@ -343,28 +343,60 @@
 
   // El buscador nativo se ancla por su ícono (data-testid, idioma-agnóstico), no por el
   // placeholder, que sí cambia con el locale.
+  //
+  // OJO: hay 4 `SearchIcon` en la pantalla (el global del header de SH, el de la tabla, el
+  // del chat…). El de la tabla se identifica porque COMPARTE CONTENEDOR con el botón de
+  // exportar CSV (`DownloadForOfflineOutlinedIcon`) al nivel más cercano — anclaje
+  // estructural, sin depender de textos ni de clases generadas.
+  const EXPORT_ICON_SEL = 'svg[data-testid="DownloadForOfflineOutlinedIcon"]';
+
   function findNativeSearchBox() {
-    const icon = document.querySelector('svg[data-testid="SearchIcon"]');
-    if (!icon) return null;
-    let el = icon.parentElement;
-    for (let i = 0; i < 5 && el; i++) {
-      if (el.querySelector('input')) return el;
-      el = el.parentElement;
-    }
-    return null;
+    const icons = Array.from(document.querySelectorAll('svg[data-testid="SearchIcon"]'));
+    const cands = icons.map((icon) => {
+      // contenedor del input al que pertenece este ícono
+      let box = null;
+      let el = icon.parentElement;
+      for (let i = 0; i < 5 && el; i++) {
+        if (el.querySelector('input')) { box = el; break; }
+        el = el.parentElement;
+      }
+      if (!box) return { depth: null, ref: null };
+      // ¿a qué distancia comparte ancestro con el botón de exportar?
+      let depth = null;
+      let anc = icon.parentElement;
+      for (let k = 0; k < 6 && anc; k++) {
+        if (anc.querySelector(EXPORT_ICON_SEL)) { depth = k; break; }
+        anc = anc.parentElement;
+      }
+      return { depth, ref: box };
+    });
+    const hit = Core.pickNearestByDepth(cands);
+    if (hit) return hit;
+    // Fallback: el primero visible que no esté pegado al tope de la ventana (header de SH).
+    return Core.pickVisibleCandidate(icons.map((icon) => {
+      let el = icon.parentElement;
+      for (let i = 0; i < 5 && el; i++) { if (el.querySelector('input')) break; el = el.parentElement; }
+      const r = el ? el.getBoundingClientRect() : null;
+      return { visible: !!(el && el.offsetParent !== null && r && r.top > 80), width: r ? r.width : 0, ref: el };
+    }));
   }
 
+  // El botón "New Purchase Order" está DUPLICADO en dos variantes responsive: css-eabxx0
+  // (solo ícono, oculta en escritorio) y css-165nl96 (botón completo, visible). Hay que
+  // quedarse con la VISIBLE — anclar en la oculta mete el toggle en un contenedor de
+  // ancho 0 (bug del deploy 1.7.203: el toggle se inyectaba pero no se veía).
   function findNewPoButton() {
-    const btns = document.querySelectorAll('button, [aria-label]');
-    for (const b of btns) {
+    const cands = [];
+    for (const b of document.querySelectorAll('button, [aria-label]')) {
       const label = (b.getAttribute('aria-label') || '') + ' ' + (b.textContent || '');
-      if (NEW_PO_LABEL_RE.test(label)) {
-        // El aria-label vive en un <span> que envuelve al botón; se sube al contenedor
-        // que sí está en el flujo del header.
-        return b.closest('span[aria-label]') || b;
-      }
+      if (!NEW_PO_LABEL_RE.test(label)) continue;
+      // El aria-label vive en un <span> que envuelve al botón; se sube al contenedor
+      // que sí está en el flujo del header.
+      const ref = b.closest('span[aria-label]') || b;
+      const r = ref.getBoundingClientRect();
+      cands.push({ visible: ref.offsetParent !== null, width: r.width, ref });
     }
-    return null;
+    return Core.pickVisibleCandidate(cands);
   }
 
   // ── inyección: buscador ──
