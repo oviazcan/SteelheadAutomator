@@ -190,12 +190,34 @@ concurrencia "para que vaya más rápido": lo que se gana es que deje de funcion
      Confirma en vivo `discoverLocations` + agrupación por raíz + `planCompanyFilter`.
 - [ ] **Pendiente de validar** (la sesión se topó con el rate-limit del endpoint):
   1. El conteo resultante del toggle (no alcancé a ver la tabla filtrada)
-  2. Que clicar un resultado del panel **navegue**: el `href` es correcto, pero el handler
-     está en `mousedown` y compite con el `blur` a 200 ms — zona delicada, no vi la
-     navegación ocurrir en la prueba
+  2. **Clic y teclado en el panel** — rehecho en 1.7.207 (ver abajo), no validado en vivo
   3. Cuál de las 3 ramas de `planCompanyFilter` toma el lado Ecoplating en la práctica
   4. Que el toggle refleje su estado al recargar con el parámetro puesto
   5. `SearchBills` y el shape de sus nodos
+
+## Navegación del panel: por qué son `<a href>` y no listeners (1.7.207)
+
+La primera versión navegaba con `mousedown` + `preventDefault()` + `location.assign()`.
+Es frágil de raíz:
+
+- **Depende de que el panel siga montado** entre el `mousedown` y la navegación — y el
+  render incremental **recrea los renglones** cuando llegan las OCs después de los proveedores.
+- **Competía con el `blur`**, que programaba `hidePanel` con `setTimeout(…, 200)`: una carrera
+  de temporizadores decidiendo si el clic alcanza a completarse.
+- No funcionaba con teclado ni permitía ⌘/ctrl+clic ni clic medio (abrir en pestaña nueva).
+
+Ahora cada renglón es un **`<a href>` real**: la navegación la hace el navegador, sobrevive al
+re-render y es accesible. El `mousedown` se conserva **solo a nivel del panel** para que un clic
+dentro no le quite el foco al input (que dispararía el `blur`), y por eso el `blur` ya **no
+necesita timeout**: cuando ocurre, es porque el foco se fue de verdad.
+
+Además hay **navegación por teclado**: `↑`/`↓` con wrap-around, `Enter` abre, `Esc` cierra. El
+índice activo se repone tras cada re-render y se recorta si llegan menos resultados
+(`moveActiveIndex`, puro, 6 tests).
+
+> **Lección:** si la navegación de un widget depende de qué temporizador gana, no es un bug de
+> timing que se arregle subiendo el `setTimeout` — es la señal de que el elemento debería ser un
+> control nativo (`<a>`, `<button>`) en vez de un `div` con listeners.
 - [ ] Confirmar si hay **>10 direcciones** de facturación (el descubrimiento en runtime lo
       resuelve, pero conviene saberlo; `S.capped` lo advierte en el `title` del toggle)
 - [ ] Confirmar el shape exacto de los nodos de `SearchBills` (el glue lo localiza de forma
