@@ -75,8 +75,39 @@
     },
   ];
 
+  // ── Secciones de NAVEGACIÓN (distintas de las 5 vistas de arriba) ──
+  //
+  // El eje de facturación tiene un tercer estado, "All" (`?billing=All`), que simplemente
+  // OMITE `billingOpen` en la query — verificado en vivo: Issued·All manda
+  // {issuedCondition:true} a secas.
+  //
+  // Al saltar desde un PROVEEDOR se navega SIEMPRE a la variante All, nunca a Open ni a
+  // Closed: el operador quiere ver todas sus OCs, no la mitad. Se elige la PRIMERA sección
+  // que traiga resultados, en este orden. (Una OC concreta es otra cosa: esa vive en UNA
+  // vista específica y ahí se manda — ver buildResultHref.)
+  const PO_NAV_SECTIONS = [
+    { key: 'draft', label: 'Borrador', urlParams: { category: 'Draft' }, queryVars: { issuedAt: true, fulfilledCondition: false } },
+    { key: 'issued-all', label: 'Emitidas (todas)', urlParams: { category: 'Issued', billing: 'All' }, queryVars: { issuedCondition: true } },
+    { key: 'fulfilled-all', label: 'Surtidas (todas)', urlParams: { category: 'Fulfilled', billing: 'All' }, queryVars: { fulfilledCondition: true } },
+  ];
+
   function categoryByKey(key) {
-    return PO_CATEGORIES.find((c) => c.key === key) || null;
+    return PO_CATEGORIES.find((c) => c.key === key)
+      || PO_NAV_SECTIONS.find((c) => c.key === key)
+      || null;
+  }
+
+  // counts: { draft:n, 'issued-all':n, 'fulfilled-all':n } → key de la PRIMERA sección con
+  // resultados, respetando el orden de PO_NAV_SECTIONS. null si ninguna trae nada.
+  // Un conteo desconocido (null/undefined) NO cuenta como resultado: mandar al operador a
+  // una sección vacía es peor que dejarlo donde está.
+  function resolveFirstSectionWithResults(counts) {
+    const c = counts || {};
+    for (const s of PO_NAV_SECTIONS) {
+      const n = c[s.key];
+      if (typeof n === 'number' && n > 0) return s.key;
+    }
+    return null;
   }
 
   // ¿En qué vista estoy? Sin `category` la pantalla cae en Draft (verificado en vivo).
@@ -185,55 +216,32 @@
     return out;
   }
 
-  // ── Estrategia del toggle ──
-  // El lado Ecoplating es "todo lo que NO es Proquipa" (las OCs sin dirección cuentan como
-  // Ecoplating, por decisión del usuario). `IN (…)` no expresa NULL ni negación, así que la
-  // estrategia se DECIDE EN RUNTIME según lo que el glue haya podido medir:
+  // ── Toggle de empresa: SOLO Proquipa (binario) ──
   //
-  //   coverage = { allCovered:boolean, nullAccepted:boolean, orphanCount:number|null }
+  // Nació como toggle triple (Ecoplating | ambos | Proquipa), pero el lado Ecoplating NO es
+  // expresable: las OCs del dominio llevan la dirección del dominio, que es la MISMA que la
+  // asignada a la ubicación "Ecoplating", y el filtro nativo no la acepta (por eso 79 de 129
+  // OCs no matchean ninguna de las 10 direcciones). Es un **bug de Steelhead**, con ticket
+  // de soporte levantado por el operador el 2026-07-27.
   //
-  //   · allCovered   → no hay OCs huérfanas → filtro nativo puro.
-  //   · nullAccepted → el server acepta null dentro del array → filtro nativo + null.
-  //   · si no        → 'annotate': filtra lo que sabe y AVISA; nunca esconde OCs por un dato
-  //                    que no pudo resolver (fail-safe).
-  const MODES = { ECOPLATING: 'ecoplating', BOTH: 'both', PROQUIPA: 'proquipa' };
+  // Mientras tanto el toggle es binario: **solo Proquipa**, que es lo único filtrable de
+  // forma confiable. Cuando Steelhead corrija el filtro, reponer el lado Ecoplating es
+  // agregar un modo aquí — el descubrimiento y la agrupación por raíz ya existen y siguen
+  // clasificando ambas empresas.
+  const MODES = { OFF: 'off', PROQUIPA: 'proquipa' };
 
-  function planCompanyFilter(mode, groups, coverage) {
-    const g = groups || { ecoplating: [], proquipa: [], otras: [], all: [] };
-    const cov = coverage || {};
-
-    if (mode === MODES.BOTH) return { kind: 'clear', ids: [] };
-
-    if (mode === MODES.PROQUIPA) {
-      // Sin ambigüedad: Proquipa es exactamente sus direcciones.
-      if (!g.proquipa.length) return { kind: 'unavailable', reason: 'sin-direcciones-proquipa' };
-      return { kind: 'filter', ids: g.proquipa.slice() };
-    }
-
-    if (mode === MODES.ECOPLATING) {
-      if (!g.ecoplating.length && !cov.allCovered) {
-        return { kind: 'unavailable', reason: 'sin-direcciones-ecoplating' };
-      }
-      if (cov.allCovered) return { kind: 'filter', ids: g.ecoplating.slice() };
-      if (cov.nullAccepted) return { kind: 'filter', ids: g.ecoplating.concat([null]) };
-      return {
-        kind: 'annotate',
-        ids: g.ecoplating.slice(),
-        hiddenIds: g.proquipa.slice(),
-        orphanCount: cov.orphanCount == null ? null : cov.orphanCount,
-      };
-    }
-
-    return { kind: 'clear', ids: [] };
+  function planProquipaFilter(enabled, groups) {
+    const g = groups || { proquipa: [] };
+    if (!enabled) return { kind: 'clear', ids: [] };
+    if (!g.proquipa.length) return { kind: 'unavailable', reason: 'sin-direcciones-proquipa' };
+    return { kind: 'filter', ids: g.proquipa.slice() };
   }
 
-  // Escribe (o limpia) el parámetro de dirección de facturación. `null` dentro de ids se
-  // serializa como la cadena vacía entre comas, que es como el server lo interpreta cuando
-  // acepta huérfanas; si no lo acepta, esa rama nunca se elige (ver planCompanyFilter).
+  // Escribe (o limpia) el parámetro de dirección de facturación.
   function buildCompanyFilterUrl(currentUrl, ids) {
     const absolute = isAbsoluteUrl(currentUrl);
     const u = new URL(currentUrl, URL_BASE);
-    const list = (Array.isArray(ids) ? ids : []).map((x) => (x == null ? '' : String(x)));
+    const list = (Array.isArray(ids) ? ids : []).map(String).filter(Boolean);
     if (list.length) u.searchParams.set(URL_PARAM_BILL_TO, list.join(','));
     else u.searchParams.delete(URL_PARAM_BILL_TO);
     u.searchParams.set('offset', '0');
@@ -250,21 +258,17 @@
     }
   }
 
-  // Refleja el estado del toggle al recargar: compara el parámetro contra los grupos.
-  // Sin parámetro → centro. Coincide con Proquipa → derecha. Cualquier otra cosa que
-  // incluya alguna de Ecoplating → izquierda. Un set ajeno (filtro puesto a mano) → centro.
-  function parseCompanyModeFromUrl(url, groups) {
+  // ¿El toggle debe verse encendido al recargar? Solo si el filtro de la URL es
+  // exactamente el de Proquipa. Un filtro puesto a mano (o que incluya otras direcciones)
+  // NO enciende el toggle: mentiría sobre lo que está aplicado.
+  function isProquipaFilterActive(url, groups) {
     const ids = parseBillToFilter(url);
-    if (!ids.length) return MODES.BOTH;
-    const g = groups || { ecoplating: [], proquipa: [] };
+    if (!ids.length) return false;
+    const pro = ((groups || {}).proquipa || []).map(String);
+    if (!pro.length) return false;
     const setIds = new Set(ids);
-    const eco = (g.ecoplating || []).map(String);
-    const pro = (g.proquipa || []).map(String);
-    const hasEco = eco.some((id) => setIds.has(id));
-    const hasPro = pro.some((id) => setIds.has(id));
-    if (hasPro && !hasEco) return MODES.PROQUIPA;
-    if (hasEco && !hasPro) return MODES.ECOPLATING;
-    return MODES.BOTH;
+    const setPro = new Set(pro);
+    return ids.length === pro.length && pro.every((id) => setIds.has(id)) && ids.every((id) => setPro.has(id));
   }
 
   // ── Clasificación de resultados del buscador global ──
@@ -345,7 +349,13 @@
     return out;
   }
 
-  function buildResultHref(result, domainId, baseUrl) {
+  // Salto al LISTADO filtrado.
+  //  · OC   → su vista exacta (una OC vive en UNA sola de las 5), filtrada por su PO#.
+  //  · PROV → listado por `vendorIdFilter`. `sectionKey` decide la sección; por defecto
+  //           'issued-all' (la más poblada) para que el <a href> sirva aunque los conteos
+  //           no se hayan podido consultar — el glue lo afina al clicar.
+  //  · FACT → listado de facturas filtrado.
+  function buildResultHref(result, domainId, sectionKey, baseUrl) {
     if (!result || !domainId) return null;
     if (result.type === RESULT_TYPES.PO) {
       const base = baseUrl || ('/Domains/' + domainId + '/Purchasing/PurchaseOrders');
@@ -356,8 +366,25 @@
     }
     if (result.type === RESULT_TYPES.VENDOR) {
       const base = baseUrl || ('/Domains/' + domainId + '/Purchasing/PurchaseOrders');
-      return buildCategoryUrl(base, 'issued-open', { vendorIdFilter: result.id });
+      return buildCategoryUrl(base, sectionKey || 'issued-all', { vendorIdFilter: result.id });
     }
+    return null;
+  }
+
+  // Salto a la FICHA del documento (la flechita ↗, que abre en pestaña aparte).
+  // Las tres rutas usan `idInDomain`, NO el id de BD — verificado en vivo:
+  //   · OC     /Domains/<d>/Purchasing/PurchaseOrders/1897  (1897 = el PO# visible)
+  //   · PROV   /Domains/<d>/Vendors/6                       (6 = el "#6" del display;
+  //                                                          /Vendors/6 abre ATOTECH DE MEXICO)
+  //   · FACT   /Domains/<d>/Bills/<idInDomain>
+  // Sin `idInDomain` no se inventa link: mejor sin flechita que una flechita que abre otro
+  // documento.
+  function buildDetailHref(result, domainId) {
+    if (!result || !domainId || !result.idInDomain) return null;
+    const id = encodeURIComponent(result.idInDomain);
+    if (result.type === RESULT_TYPES.PO) return '/Domains/' + domainId + '/Purchasing/PurchaseOrders/' + id;
+    if (result.type === RESULT_TYPES.VENDOR) return '/Domains/' + domainId + '/Vendors/' + id;
+    if (result.type === RESULT_TYPES.BILL) return '/Domains/' + domainId + '/Bills/' + id;
     return null;
   }
 
@@ -434,15 +461,17 @@
   }
 
   const api = {
-    PO_URL_RE, PO_CATEGORIES, MODES, RESULT_TYPES,
+    PO_URL_RE, PO_CATEGORIES, PO_NAV_SECTIONS, MODES, RESULT_TYPES,
     MAX_QUERIES_PER_SEARCH, planSearchQueries, moveActiveIndex,
     pickVisibleCandidate, pickNearestByDepth,
+    resolveFirstSectionWithResults, buildDetailHref,
+    planProquipaFilter, isProquipaFilterActive,
     URL_PARAM_BILL_TO, FILTER_KEY_BILL_TO, FILTER_KEY_VENDOR, FILTER_SEARCH_LIMIT,
     DEFAULT_COMPANY_CONFIG,
     isPurchaseOrdersUrl, domainIdFromPath,
     categoryByKey, parseCategoryFromUrl, buildCategoryUrl,
     rootLocationName, companyOfLocation, groupLocationsByCompany,
-    planCompanyFilter, buildCompanyFilterUrl, parseBillToFilter, parseCompanyModeFromUrl,
+    buildCompanyFilterUrl, parseBillToFilter,
     parseVendorDisplay, classifyResults, dedupeResults, buildResultHref, groupResultsForRender,
   };
   if (typeof window !== 'undefined') window.POListingFiltersCore = api;
