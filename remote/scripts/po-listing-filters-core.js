@@ -357,8 +357,34 @@
     };
   }
 
+  // ── Selección de anclajes (reglas puras; el glue les pasa el DOM ya medido) ──
+  //
+  // El DOM de Steelhead DUPLICA controles en variantes responsive: el botón "New Purchase
+  // Order" existe dos veces (css-eabxx0 = solo ícono, oculta en escritorio; css-165nl96 =
+  // botón completo, visible), y hay 4 `SearchIcon` en la pantalla (el global del header, el
+  // de la tabla, el del chat…). Tomar el PRIMER match del querySelector ancla en el
+  // control equivocado — pasó en el deploy 1.7.203 con ambos widgets.
+  //
+  // cands: [{visible:boolean, width:number, ref:any}] → el primero realmente visible.
+  function pickVisibleCandidate(cands) {
+    const arr = Array.isArray(cands) ? cands : [];
+    const hit = arr.find((c) => c && c.visible && (c.width == null || c.width > 0));
+    return hit ? hit.ref : null;
+  }
+
+  // cands: [{depth:number|null, ref:any}] → el de MENOR profundidad (el más cercano al
+  // hermano de referencia). `depth` null = no comparte contenedor → descartado.
+  function pickNearestByDepth(cands) {
+    const arr = (Array.isArray(cands) ? cands : []).filter((c) => c && c.depth != null);
+    if (!arr.length) return null;
+    let best = arr[0];
+    for (const c of arr) if (c.depth < best.depth) best = c;
+    return best.ref;
+  }
+
   const api = {
     PO_URL_RE, PO_CATEGORIES, MODES, RESULT_TYPES,
+    pickVisibleCandidate, pickNearestByDepth,
     URL_PARAM_BILL_TO, FILTER_KEY_BILL_TO, FILTER_KEY_VENDOR, FILTER_SEARCH_LIMIT,
     DEFAULT_COMPANY_CONFIG,
     isPurchaseOrdersUrl, domainIdFromPath,
