@@ -388,6 +388,40 @@ con la pista `Toda la orden` en `default de receta`. Gate atado al `urlPatterns`
 parecen tanto que el operador escoge mal, el arreglo no es más documentación — es que el camino
 correcto sea el más visible desde donde ya está parado.
 
+### Un FAB por TRABAJO, no por panel (0.3.3 / 0.3.4, 2026-07-27)
+El 📦 de 0.3.2 no resolvió: *"es confuso que traiga el mismo link"*. Tenía razón — los dos FABs
+abrían el mismo panel en la misma vista, así que la única diferencia era el ícono. El reparto
+correcto no es por panel sino **por trabajo**, y el propio operador lo nombró: *"entiendo que no
+puedes rutear grupos hasta que se guardan"*. Hay una **secuencia**, no dos vistas de lo mismo.
+
+| FAB | Trabajo | Riesgo | Cuándo |
+|---|---|---|---|
+| 🔀 verde | **Rutear**: la orden completa y/o cada grupo a su línea | Nada se mueve hasta "Aplicar" | Después |
+| ✂️ oscuro | **Partir / reagrupar** piezas en grupos | Mueve material real de inmediato | Antes — un grupo no se rutea hasta que existe |
+
+Cambios: en la ficha el **🔀 abre el panel de PISTAS** (superset del single-order: cubre la orden
+completa Y los grupos) y se monta **siempre**, sin badge — el panel se carga del número de orden de
+la URL, no del contexto capturado. El **✂️** abre el panel **directo en la vista de partir**
+(`AutoRouterLanes.openSplit`), que ahora es autosuficiente: su pie ofrece `🔀 Rutear` y
+`🔗 Reagrupar`. El panel de ruteo **ya no lleva** los botones de partir/reagrupar, solo una nota que
+manda al ✂️. En el board no se tocó nada: ahí el 🔀 conserva su batch por selección. El single-order
+sigue disponible desde el popup y desde el board.
+
+Popup e iPad quedan con **cuatro** puertas: Auto-Ruteador (single-order), Batch, Rutear orden y
+✂️ Partir / reagrupar piezas.
+
+**0.3.4 — el título no seguía a la vista.** `renderShell` corre una vez y las vistas solo cambiaban
+cuerpo y pie, así que al saltar de partir a rutear el encabezado seguía diciendo "✂️ Partir…" sobre
+la tabla de rutas. Con títulos genéricos no se notaba; en cuanto cada vista nombra un trabajo
+distinto, un título pegado **miente sobre lo que estás por hacer** — y aquí uno de los dos mueve
+material. `setTitulo()` en `renderLanes` / `renderSplit` / `renderRegroup`.
+
+**Verificado en vivo** (OT 15990): ✂️ → "✂️ Partir / reagrupar piezas" con pie `🔀 Rutear` + `✂️
+Partir`; 🔀 → "🔀 Ruteo de la orden" con la nota al ✂️ y sin botones de partición. El cambio de
+título **al navegar dentro** del panel quedó desplegado pero **sin confirmar en vivo**: el
+`/graphql` de la sesión empezó a atorarse por las recargas de prueba (límite por sesión, ver
+`po-listing-filters`) y no valía la pena arriesgar la sesión del operador por un `textContent`.
+
 ### Fuente de datos de las piezas
 `WorkOrder { idInDomain }` → `workOrderByIdInDomain.currentPartsTransferAccounts.nodes[]` da en UNA
 llamada `{id, partCount, partGroupId, partGroupByPartGroupId{id,name}, partNumberId}` más

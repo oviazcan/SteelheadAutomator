@@ -36,6 +36,7 @@
     'open-auto-router':        'AutoRouter.openPanelFromPopup',
     'open-auto-router-batch':  'AutoRouter.openBatchFromPopup',
     'open-auto-router-lanes':  'AutoRouter.openLanesFromPopup',
+    'open-auto-router-split':  'AutoRouter.openSplitFromPopup',
     'open-wo-completer':       'WOCompleter.open',
     'run-wo-deadline':         'WODeadlineChanger.run',
     'run-pn-lifecycle':        'PNLifecycle.openConfigAndRun',
