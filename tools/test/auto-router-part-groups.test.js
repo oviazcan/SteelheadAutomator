@@ -142,3 +142,21 @@ test('sin grupos, el estado efectivo no cambia (retrocompatible)', () => {
   assert.equal(eff.get(1), 204111);
   assert.equal(eff.get(2), 900002);
 });
+
+test('computeRoutes estampa el partGroupId de la pista en cada ruta', () => {
+  // Sin esto, rutear un grupo generaría rutas GLOBALES y pisaría a toda la orden.
+  const recipeNodes = [
+    { id: 1, name: 'Enjuague', treatmentId: 10, recipeInd: 0, parentRecipeNodeId: null,
+      defaultStation: { id: 500, name: 'T204-TI00-001 Enjuague' } },
+  ];
+  const candidatesByTreatment = {
+    10: [{ id: 500, name: 'T204-TI00-001 Enjuague' }, { id: 600, name: 'T205-TI00-001 Enjuague' }],
+  };
+  const res = Engine.computeRoutes({
+    recipeNodes, candidatesByTreatment,
+    sourceLineCode: 'T204', destLineCode: 'T205',
+    partNumberId: PN, workOrderId: WO, partGroupId: 948192,
+  });
+  assert.ok(res.routes.length > 0);
+  assert.deepEqual([...new Set(res.routes.map((r) => r.partGroupId))], [948192]);
+});

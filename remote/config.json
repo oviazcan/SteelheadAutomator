@@ -1750,6 +1750,7 @@
         "scripts/auto-router-api.js",
         "scripts/auto-router-panel.js",
         "scripts/auto-router-batch.js",
+        "scripts/auto-router-lanes.js",
         "scripts/board-metal-tooltip.js",
         "scripts/auto-router.js"
       ],
@@ -1772,6 +1773,15 @@
           "type": "primary",
           "handler": "message",
           "message": "open-auto-router-batch"
+        },
+        {
+          "id": "open-auto-router-lanes",
+          "label": "Auto-Ruteador — Por grupos",
+          "sublabel": "Rutear la orden completa y/o cada grupo de piezas a su línea",
+          "icon": "📦",
+          "type": "primary",
+          "handler": "message",
+          "message": "open-auto-router-lanes"
         }
       ]
     },

@@ -314,12 +314,63 @@ Con piezas de por medio eso es un error físico: material a la tina equivocada.
 no hay pista declarada). Tests: `tools/test/auto-router-part-groups.test.js` (9), golden del engine
 intacto (12). Suite 73/0.
 
+## Ruteo POR PISTAS + partir piezas (2026-07-27) — implementado, **sin validar en vivo**
+
+La orden se modela como **pistas**: la GLOBAL (toda la orden) y una por grupo de piezas.
+Cada pista elige su línea destino por separado o se deja **pendiente** y no se toca.
+
+### Módulos
+- **`auto-router-groups.js`** — núcleo PURO (25 golden tests, `tools/test/auto-router-groups.test.js`):
+  - `buildLanes({partLocations, activeRoutes})` → pistas con `state`: `own` (override propio),
+    `inherited` (hereda la global), `default` (manda la receta).
+  - `planSplit()` / `planRegroup()` → payloads de partición y reagrupación.
+  - `reuseOrCreate(names, existing)` → qué grupos se reúsan y cuáles se crean.
+  - `parseWorkOrderAccounts(data)` → normaliza `WorkOrder{idInDomain}`.
+- **`auto-router-lanes.js`** — panel dark-mode: tabla de pistas + sub-modal de partición.
+  **Convive** con `auto-router-panel.js` (single-order, validado en producción): no lo reemplaza.
+- Acción de popup **`open-auto-router-lanes`** ("Auto-Ruteador — Por grupos"). Toma el número de
+  orden de la URL de la ficha; fuera de ella lo pregunta.
+
+### Fuente de datos de las piezas
+`WorkOrder { idInDomain }` → `workOrderByIdInDomain.currentPartsTransferAccounts.nodes[]` da en UNA
+llamada `{id, partCount, partGroupId, partGroupByPartGroupId{id,name}, partNumberId}` más
+`customerByCustomerId.id`. **`PartNumbersByWorkOrderIdInDomain` NO sirve aquí:** sus `partLocations`
+traen el grupo pero **no `partCount` ni el id de cuenta**, y sin eso no se puede partir.
+
+### Partir y reagrupar — los dos shapes NO son intercambiables
+| | Mutación | Destino | Forma |
+|---|---|---|---|
+| **Partir** | `CreateManyPartsTransfersChecked` | `toAccount: { partGroupId: X }` — **plano** | 1 cuenta → N grupos |
+| **Reagrupar** | `AddPartsToWorkOrders` | `toAccount: { partGroup: { id: X } }` — **anidado** | N cuentas → 1 grupo |
+
+Partir también difiere en la envoltura: `partsTransferEventsPayload` es un **objeto** con
+`partsTransferEvents[]`, mientras que en reagrupar va dentro de `input` y es un **array**. Por eso
+los payloads los arma el núcleo puro y nunca el panel al vuelo.
+
+Secuencia de partición (validada contra el tráfico real): `FindPartGroupQuery` (reúso) →
+`CreateNewPartGroup` por cada grupo que falte → `CreateManyPartsTransfersChecked`. **`CreateNewPartGroup`
+NO es idempotente:** pedir "100" tres veces deja tres grupos "100" en el catálogo del cliente. El panel
+valida las cantidades **antes** de crear ningún grupo, para no dejar huérfanos si la suma no cuadra.
+
+### Hashes agregados a `config.json`
+`GroupPartsDialogQuery` `f9538d72…` · `GroupPartsDialogPartLocation` `63fd5f93…` ·
+`GroupMultiplePartsDialogQuery` `951b9ffc…` · `FindPartGroupQuery` `85121b64…` ·
+`CreateNewPartGroup` `7ee30dd4…` · `CreateManyPartGroups` `f4c9d369…`.
+`WorkOrder`, `CreateManyPartsTransfersChecked` y `AddPartsToWorkOrders` ya estaban y coinciden con el scan.
+
 ## Riesgos abiertos
-- **Un solo grupo por orden en la capa de datos.** `auto-router-api.js:159` (`resolveWorkOrder`)
-  toma `locs[0]?.partGroupByPartGroupId` → si la orden tiene varios grupos **ve el primero e ignora
-  el resto en silencio**. La WO 15075 tiene "100" (948191) y "200" (948192): el applet solo vería
-  "100". `parseRouteData` tampoco reparte `activeRoutes` por `partGroupId`, ni el panel ofrece una
-  línea destino por grupo. Es el trabajo pendiente para rutear grupo por grupo.
+- **Ruteo por pistas y partición: SIN validar en vivo.** El núcleo tiene golden tests y los payloads
+  salen de tráfico real capturado, pero ninguna corrida contra producción está registrada. Partir
+  piezas **mueve material físico**: primer uso en una orden de prueba.
+- **Ruta de regeneración de hash PENDIENTE (deuda).** Los 6 hashes nuevos no están en
+  `route-catalog.json` ni en `sentinels-config.json`, así que el `hash-autopilot` no los puede
+  regenerar solo cuando Steelhead los rote. Regla del repo: un hash sin ruta de regeneración es deuda.
+  Las mutaciones (`CreateNewPartGroup`, `CreateManyPartGroups`) necesitan captura-y-aborta
+  (`sink.abortOps`) — crean objetos reales.
+- **`activeRoutes` filtradas por grupo, sin confirmar.** `StationTreatmentByWorkOrder` se llama con
+  todos los `partGroupIds` de la orden, pero no está verificado si devuelve las rutas de TODOS los
+  grupos o solo las de los pedidos. El diff aísla por pista, así que el riesgo es sub-reportar
+  cambios, no pisar pistas ajenas.
 - **Momentum** de enjuagues: best-effort por diseño (≈50% exacto en genéricos; las 22 rutas críticas son
   exactas). El preview editable es la red de seguridad. No vale la pena sobreajustar (las elecciones del
   operador en el cluster Desengrase/Decapado son batching físico, no una regla geométrica).
