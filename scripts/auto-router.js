@@ -4,8 +4,9 @@
 //   ruteo nativo de Steelhead) para capturar GRATIS el contexto de la orden:
 //   workOrderId, partNumberId y el árbol completo de recipeNodes. El modal nativo
 //   funciona como "selector de orden" — el applet no necesita pedir IDs internos.
-// · Muestra un FAB 🔀 cuando hay contexto capturado (panel single-order) y un FAB 📦 en
-//   la ficha de una OT que abre el ruteo POR GRUPOS — entrada propia, sin pasar por el popup.
+// · Dos FABs en la ficha de una OT, con roles separados: 🔀 RUTEA (la orden completa o
+//   cada grupo de piezas) y ✂️ PARTE/REAGRUPA las piezas — que es lo que va antes, porque
+//   un grupo no se puede rutear hasta que existe. En el board el 🔀 conserva su batch.
 // · Expone las entradas del popup (`AutoRouter.open*FromPopup`), que el background
 //   ejecuta con executeScript en el mundo MAIN — ver §"Entradas desde el popup".
 //
@@ -19,7 +20,7 @@
 const AutoRouter = (() => {
   'use strict';
 
-  const VERSION = '0.3.2';
+  const VERSION = '0.3.3';
   const LOG = '[AR]';
   const api = () => window.SteelheadAPI;
   const log = (m) => api()?.log?.(m) ?? console.log(LOG, m);
@@ -100,11 +101,11 @@ const AutoRouter = (() => {
       .sa-ar-fab .sa-ar-badge{position:absolute;top:-4px;right:-4px;background:#e8513a;
         color:#fff;font-size:11px;font-weight:700;min-width:18px;height:18px;border-radius:9px;
         display:flex;align-items:center;justify-content:center;padding:0 4px;}
-      /* FAB del ruteo POR GRUPOS: se apila ENCIMA del 🔀 y vive solo en la ficha de una
-         OT. Los dos paneles se parecen y sus dos botones del popup también, así que el
-         operador acababa abriendo el single-order creyendo que era el de grupos. */
-      .sa-ar-fab-lanes{bottom:82px;background:#1c2430;border:1px solid #2c3a4b;font-size:22px;}
-      .sa-ar-fab-lanes:hover{background:#26364a;}`;
+      /* FAB de PARTIR piezas: se apila ENCIMA del 🔀 y vive solo en la ficha de una OT.
+         Oscuro y con tijeras porque es OTRO trabajo — mueve material real y hay que
+         hacerlo ANTES de poder rutear un grupo. Verde = rutear, oscuro = cortar. */
+      .sa-ar-fab-split{bottom:82px;background:#1c2430;border:1px solid #2c3a4b;font-size:22px;}
+      .sa-ar-fab-split:hover{background:#26364a;}`;
     const s = document.createElement('style');
     s.id = 'sa-ar-style';
     s.textContent = css;
@@ -146,7 +147,9 @@ const AutoRouter = (() => {
 
   function syncFab() {
     const onBoard = isBoardPage();
-    const show = onBoard || (captured && captured.wos && captured.wos.length > 0);
+    // En la ficha se monta SIEMPRE: es la puerta del ruteo y el panel de pistas no
+    // necesita el contexto capturado (se carga solo desde el número de orden de la URL).
+    const show = onBoard || isWorkOrderDetail() || (captured && captured.wos && captured.wos.length > 0);
     let fab = document.getElementById('sa-ar-fab');
     if (show && !fab) {
       fab = document.createElement('button');
@@ -159,10 +162,12 @@ const AutoRouter = (() => {
       return;
     }
     if (fab) {
-      const n = fabCount();
+      // En la ficha el badge no aplica: el panel de pistas es de UNA orden (la de la URL),
+      // no de las que el modal nativo haya capturado.
+      const n = isWorkOrderDetail() && !onBoard ? 0 : fabCount();
       fab.title = onBoard
         ? (n ? `Rutear ${n} orden(es) seleccionada(s)` : 'Selecciona órdenes en el board y presiona 🔀')
-        : (n > 1 ? `Auto-rutear ${n} órdenes a otra línea` : 'Auto-rutear esta orden a otra línea');
+        : 'Rutear esta orden — completa o por grupos de piezas';
       fab.textContent = '🔀';
       if (n > 0) {
         const b = document.createElement('span');
@@ -173,37 +178,32 @@ const AutoRouter = (() => {
     }
   }
 
-  // ── FAB del ruteo por grupos ───────────────────────────────────────────────
-  // Vive SOLO en la ficha de una OT y NO depende del contexto capturado: el panel de
-  // pistas necesita TODOS los grupos de la orden, no el que trae el modal nativo. Es la
-  // única entrada del applet que no exige pasar por el popup.
+  // ── FAB de partir piezas ───────────────────────────────────────────────────
+  // Vive SOLO en la ficha de una OT y NO depende del contexto capturado. Es la puerta
+  // del trabajo que va ANTES del ruteo: un grupo no se puede rutear hasta que existe.
   function isWorkOrderDetail() {
     return /\/Domains\/\d+\/WorkOrders\/\d+/i.test(location.pathname);
   }
 
-  function syncLanesFab() {
+  function syncSplitFab() {
     const show = isWorkOrderDetail();
-    let fab = document.getElementById('sa-ar-fab-lanes');
+    let fab = document.getElementById('sa-ar-fab-split');
     if (show && !fab) {
       fab = document.createElement('button');
-      fab.id = 'sa-ar-fab-lanes';
-      fab.className = 'sa-ar-fab sa-ar-fab-lanes';
-      fab.textContent = '📦';
-      fab.title = 'Ruteo por grupos — la orden completa y/o cada grupo de piezas a su línea';
-      fab.onclick = openLanes;
+      fab.id = 'sa-ar-fab-split';
+      fab.className = 'sa-ar-fab sa-ar-fab-split';
+      fab.textContent = '✂️';
+      fab.title = 'Partir o reagrupar las piezas en grupos (mueve material real)';
+      fab.onclick = openSplit;
       document.body.appendChild(fab);
     } else if (!show && fab) {
       fab.remove();
-      return;
     }
-    // El 🔀 solo se monta en la ficha cuando hay contexto capturado del modal nativo:
-    // sin él, este baja a ocupar su lugar en vez de flotar sobre un hueco.
-    if (fab) fab.style.bottom = document.getElementById('sa-ar-fab') ? '82px' : '20px';
   }
 
   function syncFabs() {
     syncFab();
-    syncLanesFab();
+    syncSplitFab();
   }
 
   function onFab() {
@@ -214,6 +214,10 @@ const AutoRouter = (() => {
       void rerouteActiveStation(); // sin selección → rutear las de la ESTACIÓN ACTIVA (stationId de la URL)
       return;
     }
+    // En la ficha de una OT: panel de PISTAS — cubre la orden completa Y cada grupo, así
+    // que es superset del single-order. Ése sigue disponible desde el popup y desde el
+    // board, donde el contexto capturado del modal nativo es lo que hay.
+    if (isWorkOrderDetail()) { openLanes(); return; }
     openPanel();
   }
 
@@ -269,7 +273,10 @@ const AutoRouter = (() => {
   // Ruteo POR PISTAS (la orden completa y/o cada grupo de piezas a su propia línea).
   // La orden sale de la URL de su ficha; si no estamos ahí, se pide el número. No usa
   // el contexto capturado del modal: ese trae UN grupo y aquí se necesitan todos.
-  function openLanes() {
+  function openLanes() { void openLanesAt('open'); }
+  function openSplit() { void openLanesAt('openSplit'); }
+
+  function openLanesAt(metodo) {
     if (!window.AutoRouterLanes) { alert('Auto-Ruteador: módulo de grupos no cargado.'); return; }
     const m = location.pathname.match(/\/WorkOrders\/(\d+)/);
     let idInDomain = m ? Number(m[1]) : null;
@@ -279,7 +286,7 @@ const AutoRouter = (() => {
       idInDomain = Number(String(v).trim());
       if (!Number.isFinite(idInDomain)) { alert('Ese no es un número de orden válido.'); return; }
     }
-    window.AutoRouterLanes.open({ idInDomain });
+    window.AutoRouterLanes[metodo]({ idInDomain });
   }
 
   // ── Entradas desde el popup ────────────────────────────────────────────────
@@ -311,14 +318,17 @@ const AutoRouter = (() => {
     return { started: true, message: 'Abriendo el ruteo por lotes…' };
   }
 
-  function openLanesFromPopup() {
+  function openLanesFromPopup() { return desdePopup(openLanes, 'el ruteo'); }
+  function openSplitFromPopup() { return desdePopup(openSplit, 'partir/reagrupar piezas'); }
+
+  function desdePopup(fn, que) {
     if (!window.AutoRouterLanes) return { error: 'Módulo de grupos no cargado.' };
-    setTimeout(openLanes, 0);
+    setTimeout(fn, 0);
     const m = location.pathname.match(/\/WorkOrders\/(\d+)/);
     return {
       started: true,
       message: m
-        ? `Abriendo el ruteo por grupos de la OT ${m[1]}…`
+        ? `Abriendo ${que} de la OT ${m[1]}…`
         : 'Escribe el número de orden en la ventana que se abrió sobre Steelhead.',
     };
   }
@@ -366,8 +376,8 @@ const AutoRouter = (() => {
   if (typeof window !== 'undefined') {
     window.AutoRouter = {
       VERSION, init, getContext,
-      openPanel, openBatch, openLanes,
-      openPanelFromPopup, openBatchFromPopup, openLanesFromPopup,
+      openPanel, openBatch, openLanes, openSplit,
+      openPanelFromPopup, openBatchFromPopup, openLanesFromPopup, openSplitFromPopup,
     };
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', init);
@@ -376,5 +386,5 @@ const AutoRouter = (() => {
     }
   }
 
-  return { VERSION, init, openPanel, openLanes, getContext, openLanesFromPopup };
+  return { VERSION, init, openPanel, openLanes, openSplit, getContext, openLanesFromPopup, openSplitFromPopup };
 })();
