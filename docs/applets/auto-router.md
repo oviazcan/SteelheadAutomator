@@ -368,6 +368,26 @@ en `chrome.storage.local`, inalcanzable desde MAIN → necesitan republicar la e
 **ninguno de los tres falla solo**: el botón se pinta, el config valida, el script deploya. La única
 señal es el clic en producción. Todo canal así necesita un test que lo recorra de punta a punta.
 
+### FAB 📦: el ruteo por grupos deja de depender del popup (0.3.2, 2026-07-27)
+Con el popup ya cableado, el operador **seguía** abriendo el panel single-order creyendo que era el
+de grupos. Se entiende: los dos botones del popup se llaman casi igual ("Auto-Ruteador" y
+"Auto-Ruteador — Por grupos"), los dos modales son dark-mode y arrancan con "🔀 …· WO/OT 15990",
+y el **FAB 🔀 de la ficha abre el single-order**. Tres caminos parecidos, uno solo era el correcto.
+
+El ruteo por grupos ahora tiene **entrada propia y visible en la página**: FAB **📦** (oscuro,
+`#1c2430`, para no confundirse con los verdes) en la ficha de una OT, apilado sobre el 🔀. **No
+depende del contexto capturado** — el panel de pistas necesita TODOS los grupos, no el que trae el
+modal nativo — así que se monta con la sola ruta. Si el 🔀 no está (sin contexto), el 📦 baja a
+ocupar su lugar en vez de flotar sobre un hueco. El board se queda como estaba: ahí manda el 🔀.
+
+**Verificado en vivo** sobre la OT 15990: FAB montado, clic → panel "Ruteo por grupos · OT 15990"
+con la pista `Toda la orden` en `default de receta`. Gate atado al `urlPatterns` del config en
+[`tools/test/auto-router-lanes-fab.test.js`](../../tools/test/auto-router-lanes-fab.test.js).
+
+**Lección:** cablear el botón no es lo mismo que hacerlo alcanzable. Cuando dos flujos vecinos se
+parecen tanto que el operador escoge mal, el arreglo no es más documentación — es que el camino
+correcto sea el más visible desde donde ya está parado.
+
 ### Fuente de datos de las piezas
 `WorkOrder { idInDomain }` → `workOrderByIdInDomain.currentPartsTransferAccounts.nodes[]` da en UNA
 llamada `{id, partCount, partGroupId, partGroupByPartGroupId{id,name}, partNumberId}` más
