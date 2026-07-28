@@ -11,6 +11,22 @@ const config = require('../../remote/config.json');
 
 const R = p => path.join(__dirname, '../../remote/scripts', p);
 
+// ── Gate EN CUARENTENA (2026-07-27) ──────────────────────────────────────────
+// El gate por ruta se apagó en producción tras una regresión: al navegar DENTRO de la
+// SPA, `chrome.tabs.onUpdated` no entrega el pushState de forma confiable, así que los
+// applets de la pantalla a la que se llegaba navegando nunca se inyectaban (síntomas:
+// sin toggles en Work Orders, y Bills quedándose con el invoice-autofill que sobrevivía
+// de la pantalla anterior). Apagarlo fue posible SIN republicar la extensión gracias al
+// diseño fail-open: los patrones se movieron a `urlPatternsDisabled`, que el loader
+// ignora. Se reactivan cuando la detección de navegación SPA sea confiable (vía
+// content.js → background, sin permisos nuevos).
+// Los tests de contrato siguen corriendo sobre los patrones, re-activándolos aquí.
+const patternsOf = app => app.urlPatterns || app.urlPatternsDisabled || null;
+const appsWithGate = () => (config.apps || []).map(a => {
+  const p = patternsOf(a);
+  return p ? Object.assign({}, a, { urlPatterns: p }) : a;
+});
+
 // ---------------------------------------------------------------------------
 // matchesUrlPatterns — el gate es FAIL-OPEN por diseño
 // ---------------------------------------------------------------------------
@@ -187,10 +203,11 @@ const appById = id => (config.apps || []).find(a => a.id === id);
 function assertGateImplication(appId, isApplicable) {
   const app = appById(appId);
   assert.ok(app, `no existe el app ${appId} en config.json`);
-  assert.ok(Array.isArray(app.urlPatterns) && app.urlPatterns.length, `${appId} sin urlPatterns`);
+  const pats = patternsOf(app);
+  assert.ok(Array.isArray(pats) && pats.length, `${appId} sin urlPatterns`);
   for (const p of CORPUS) {
     if (!isApplicable(p)) continue;
-    assert.equal(Gate.matchesUrlPatterns(app.urlPatterns, p), true,
+    assert.equal(Gate.matchesUrlPatterns(pats, p), true,
       `${appId}: el applet aplica en "${p}" pero el config NO lo cargaría`);
   }
 }
@@ -237,8 +254,9 @@ test('coherencia: wo-schedule-button y wo-listing-columns (wo-schedule-core)', (
 
 test('en Compras solo entra po-listing-filters de los applets ya gateados', () => {
   const ruta = '/Domains/344/Purchasing/PurchaseOrders';
-  const cargados = Gate.selectAutoInjectApps(config.apps, ruta, {}).map(a => a.id);
-  const gateados = (config.apps || []).filter(a => a.autoInject && a.urlPatterns).map(a => a.id);
+  const apps = appsWithGate();
+  const cargados = Gate.selectAutoInjectApps(apps, ruta, {}).map(a => a.id);
+  const gateados = apps.filter(a => a.autoInject && a.urlPatterns).map(a => a.id);
   const gateadosQueCargan = cargados.filter(id => gateados.includes(id));
   assert.deepEqual(gateadosQueCargan, ['po-listing-filters']);
 });
@@ -248,36 +266,36 @@ test('en Compras solo entra po-listing-filters de los applets ya gateados', () =
 // test es lo que evita que se aprieten "de memoria" en un refactor.
 test('modal-driven: "Receive Parts" carga donde el operador lo abre', () => {
   for (const id of ['weight-quick-entry', 'receiver-date-override', 'warehouse-location-prefill']) {
-    const app = appById(id);
+    const pats = patternsOf(appById(id));
     for (const ruta of ['/Receiving/CustomerParts', '/Domains/344/SalesOrders/4102']) {
-      assert.equal(Gate.matchesUrlPatterns(app.urlPatterns, ruta), true, `${id} debe cargar en ${ruta}`);
+      assert.equal(Gate.matchesUrlPatterns(pats, ruta), true, `${id} debe cargar en ${ruta}`);
     }
-    assert.equal(Gate.matchesUrlPatterns(app.urlPatterns, '/Domains/344/Purchasing/PurchaseOrders'), false,
+    assert.equal(Gate.matchesUrlPatterns(pats, '/Domains/344/Purchasing/PurchaseOrders'), false,
       `${id} no tiene nada que hacer en Compras`);
   }
 });
 
 test('modal-driven: edición de NP cubre PartNumbers, recibo y cotizaciones', () => {
   for (const id of ['unit-autoconvert', 'proceso-calculator', 'load-calculator']) {
-    const app = appById(id);
+    const pats = patternsOf(appById(id));
     for (const ruta of ['/PartNumbers/8812', '/Domains/344/PartNumbers', '/Receiving/CustomerParts',
                         '/Domains/344/Quotes/12', '/Domains/344/SalesOrders/77']) {
-      assert.equal(Gate.matchesUrlPatterns(app.urlPatterns, ruta), true, `${id} debe cargar en ${ruta}`);
+      assert.equal(Gate.matchesUrlPatterns(pats, ruta), true, `${id} debe cargar en ${ruta}`);
     }
   }
 });
 
 test('modal-driven: los de facturas cargan en Invoices', () => {
   for (const id of ['cfdi-attacher', 'invoice-auto-regen']) {
-    const app = appById(id);
-    assert.equal(Gate.matchesUrlPatterns(app.urlPatterns, '/Domains/344/Invoices/551'), true);
-    assert.equal(Gate.matchesUrlPatterns(app.urlPatterns, '/Domains/344/Bills'), false);
+    const pats = patternsOf(appById(id));
+    assert.equal(Gate.matchesUrlPatterns(pats, '/Domains/344/Invoices/551'), true);
+    assert.equal(Gate.matchesUrlPatterns(pats, '/Domains/344/Bills'), false);
   }
 });
 
 // CANDADO DE DECISIÓN — si este test se pone rojo, léelo antes de "arreglarlo".
 test('price-confirm-guard y report-regen se quedan SIN urlPatterns a propósito', () => {
-  const sinGate = (config.apps || []).filter(a => a.autoInject && !a.urlPatterns).map(a => a.id).sort();
+  const sinGate = (config.apps || []).filter(a => a.autoInject && !patternsOf(a)).map(a => a.id).sort();
   assert.deepEqual(sinGate, ['price-confirm-guard', 'report-regen'],
     'price-confirm-guard es un CANDADO DE SEGURIDAD y la lista de pantallas donde se edita un ' +
     'precio NO es exhaustiva ("también en otros urls" — operador 2026-07-27): un patrón incompleto ' +
@@ -316,14 +334,14 @@ test('cada applet gateado sigue cargando en SU pantalla', () => {
     'invoice-auto-regen': '/Domains/344/Invoices'
   };
   for (const [id, ruta] of Object.entries(CANONICAS)) {
-    const cargados = Gate.selectAutoInjectApps(config.apps, ruta, {}).map(a => a.id);
+    const cargados = Gate.selectAutoInjectApps(appsWithGate(), ruta, {}).map(a => a.id);
     assert.ok(cargados.includes(id), `${id} NO se cargaría en su pantalla ${ruta}`);
   }
 });
 
 test('todo urlPatterns del config compila como regex', () => {
   for (const app of (config.apps || [])) {
-    for (const p of (app.urlPatterns || [])) {
+    for (const p of (patternsOf(app) || [])) {
       assert.doesNotThrow(() => new RegExp(p), `${app.id}: patrón inválido ${p}`);
     }
   }
@@ -331,4 +349,17 @@ test('todo urlPatterns del config compila como regex', () => {
 
 test('en el orden dedupeado, ningún applet del config se evalúa antes que sus dependencias', () => {
   assert.deepEqual(Gate.findDependencyViolations(config.apps), []);
+});
+
+// CANDADO DE CUARENTENA — si este test se pone rojo, léelo antes de "arreglarlo".
+test('el gate por ruta sigue APAGADO en el config (cuarentena del 2026-07-27)', () => {
+  const activos = (config.apps || []).filter(a => a.urlPatterns).map(a => a.id);
+  assert.deepEqual(activos, [],
+    'El gate por ruta está apagado a propósito: al navegar DENTRO de la SPA, ' +
+    'chrome.tabs.onUpdated no entrega el pushState de forma confiable y los applets de la ' +
+    'pantalla a la que se llega navegando nunca se inyectan (regresión en piso 2026-07-27: ' +
+    'sin toggles en Work Orders; Bills se quedaba con el invoice-autofill de la pantalla ' +
+    'anterior). Antes de mover un patrón de `urlPatternsDisabled` a `urlPatterns`, la ' +
+    'detección de navegación SPA tiene que ser confiable (content.js → background) y ' +
+    'validada en piso. Ver docs/architecture/applet-load-gating.md.');
 });
