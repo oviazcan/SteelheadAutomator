@@ -62,3 +62,14 @@ Fabrica un `needs-attention.json` con una op cuya receta SIGA funcionando y corr
 `tools/run-escalation.sh` a mano en una sesión supervisada; verifica: gate deja pasar →
 claude re-descubre/confirma → trace escrito → correo con el resumen → la marca idempotente
 evita el segundo run. Borra el needs-attention de prueba al terminar.
+
+## Actualización 2026-07-27 — el `observed` que llega al Nivel B ahora dice la verdad
+
+`buildNeedsAttention()` escribía siempre el genérico *"la receta no disparó la op (0 capturas)"*.
+El 2026-07-24 `SaveManyPartNumberPrices` escaló con ese texto cuando en realidad su **ciclo
+centinela había abortado por IDENTIDAD** (el load no reconoció el quote centinela). Son dos
+diagnósticos y **dos reparaciones distintas** — *"desarchiva/renombra el centinela"* vs
+*"re-descubre la receta"* — y el agente del Nivel B arrancó buscando la equivocada.
+
+Ahora la razón real del ciclo viaja en `observedByOp` (op → `"ciclo centinela abortó: <razón>"`).
+Sin entrada declarada se conserva el genérico de siempre (retrocompatible, con test).

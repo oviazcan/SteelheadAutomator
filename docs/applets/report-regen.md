@@ -12,7 +12,10 @@ manualmente — sólo que el botón nativo está enterrado 3-5 clicks. Este appl
 botón **♻️** en la barra de breadcrumb (junto a los iconos play ▶ y correo ✉) que dispara la
 regeneración con un click, muestra el progreso, y arranca un timer de enfriamiento.
 
-## v0.3.4 (2026-07-27) — LA CAUSA RAÍZ: Steelhead fragmentó el permiso
+## v0.3.4 (2026-07-27) — LA CAUSA RAÍZ: Steelhead fragmentó el permiso ✅ VALIDADO EN VIVO
+
+> **El operador confirmó que el botón ♻️ volvió a aparecer** tras el deploy de config 1.7.225.
+> Cierra el reporte "de pronto dejó de aparecer".
 
 Con el `debug()` de la v0.3.3 el operador reportó:
 
