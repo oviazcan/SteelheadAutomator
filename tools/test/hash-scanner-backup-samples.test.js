@@ -138,3 +138,86 @@ test('persistBackup devuelve false si ni el mínimo cabe (no lanza)', () => {
   const ls = { setItem() { const e = new Error('quota'); e.name = 'QuotaExceededError'; throw e; } };
   assert.equal(persistBackup(ls), false);
 });
+
+// ── Degradar antes que descartar (2026-07-28) ────────────────────────────────
+// El fix de arriba no alcanzó para las ops PESADAS: `take()` hacía UN recorte (arrays a 8)
+// y, si aun así no cabía en BACKUP_BYTES_PER_OP, tiraba la muestra ENTERA. Justo las más
+// caras de recapturar. Caso real: `CreateManyScheduleTasks` (crear una tarea de
+// programación) llevaba desde el 2026-07-23 con hash y count=1 pero SIN una sola variable
+// en 9 scans seguidos, mientras su hermana `UpdateManyScheduleTasks` (245 B) sí sobrevivía.
+// Sin variables no se puede escribir la llamada → "programar donde no hay tarea" quedó
+// bloqueado semanas por una poda de backup, no por el ERP.
+
+// Payload deliberadamente enorme: ni recortado a 8 elementos baja de 120 KB.
+function payloadPesado(nNodos = 4000) {
+  return {
+    scheduledTasks: { mnScheduleTask: [{
+      scheduleId: 454, treatmentId: 94832, stationId: 12101,
+      scheduleTaskElementsByScheduleTaskId: {
+        nodes: Array.from({ length: nNodos }, (_, i) => ({
+          partSetUuid: 'uuid-' + i + '-'.repeat(20),
+          recipeNodeId: 46711342 + i, partNumberId: 3028455,
+          rackIdLineage: [1, 2, 3], rackTypeIdLineage: [4, 5, 6],
+          partCount: 50, partsPerBatch: 4,
+          relatedPartTransferAccounts: [{ id: 44956003 + i, partCount: 50 }],
+        })),
+      },
+    }] },
+  };
+}
+
+test('una muestra PESADA se guarda recortada en vez de perderse', () => {
+  reset();
+  discovered.CreateManyScheduleTasks = opEntry({ variablesSamples: [payloadPesado()] });
+  const slim = slimForBackup();
+  const vs = slim.CreateManyScheduleTasks.variablesSamples;
+  assert.equal(vs.length, 1, 'la muestra pesada NO debe descartarse');
+  assert.ok(JSON.stringify(vs[0]).length <= 120000, 'debe caber en el tope por op');
+});
+
+test('la muestra recortada conserva la FORMA — que es para lo que sirve', () => {
+  reset();
+  discovered.CreateManyScheduleTasks = opEntry({ variablesSamples: [payloadPesado()] });
+  const v = slimForBackup().CreateManyScheduleTasks.variablesSamples[0];
+  // los campos que hacen falta para escribir la llamada siguen ahí
+  const tarea = v.scheduledTasks.mnScheduleTask[0];
+  assert.equal(tarea.scheduleId, 454);
+  assert.equal(tarea.treatmentId, 94832);
+  const nodo = tarea.scheduleTaskElementsByScheduleTaskId.nodes[0];
+  for (const k of ['partSetUuid', 'recipeNodeId', 'partNumberId', 'rackIdLineage',
+                   'rackTypeIdLineage', 'partCount', 'partsPerBatch', 'relatedPartTransferAccounts']) {
+    assert.ok(k in nodo, `se perdió el campo ${k}: la forma ya no documenta la llamada`);
+  }
+});
+
+test('op chica no se degrada: sigue guardándose completa', () => {
+  reset();
+  // el payload REAL de UpdateManyScheduleTasks (245 B) — no debe tocarse
+  const real = { scheduledTasks: [{ id: 86745, scheduleId: 454, stationId: 12101,
+    expectedStartTime: '2026-07-22T22:00:00.000Z', totalTimeMinutes: 5,
+    cycleTimeMinutes: 0.0009090909090909091, treatmentTimeMinutes: 0.0009090909090909705,
+    isIntentional: true }] };
+  discovered.UpdateManyScheduleTasks = opEntry({ variablesSamples: [real] });
+  assert.deepEqual(slimForBackup().UpdateManyScheduleTasks.variablesSamples, [real]);
+});
+
+test('si de plano no cabe, la entrada queda MARCADA (no muda)', () => {
+  reset();
+  // arrays de 1 elemento no ayudan si el peso está en un solo string gigante
+  discovered.OpImposible = opEntry({ variablesSamples: [{ blob: 'x'.repeat(200000) }] });
+  const slim = slimForBackup();
+  assert.equal(slim.OpImposible.variablesSamples.length, 0);
+  assert.equal(slim.OpImposible.samplesLost, true,
+    'una entrada con hash y sin muestras debe DECIR que perdió las muestras');
+});
+
+test('round-trip: la op pesada sobrevive a la recarga con payload utilizable', () => {
+  reset();
+  discovered.CreateManyScheduleTasks = opEntry({ variablesSamples: [payloadPesado()] });
+  const store = { data: {}, setItem(k, v) { this.data[k] = v; }, getItem(k) { return this.data[k] ?? null; } };
+  assert.equal(persistBackup(store), true);
+  const restored = JSON.parse(store.data.__sa_scan_backup);
+  const nodo = restored.CreateManyScheduleTasks.variablesSamples[0]
+    .scheduledTasks.mnScheduleTask[0].scheduleTaskElementsByScheduleTaskId.nodes[0];
+  assert.ok(nodo.partSetUuid, 'tras recargar sigue habiendo con qué escribir la llamada');
+});

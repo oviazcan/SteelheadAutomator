@@ -58,3 +58,28 @@ jq '.ops | to_entries | map({op: .key, hash_len: (.value.hash|length), samples: 
 jq '.eventLog | length' $JSON  # → 30+ para sesión normal
 ```
 
+## Fix 2026-07-28 — degradar antes que descartar (el hueco que dejó 0.6.24)
+
+El fix de 0.6.24 salvó las muestras de las ops nuevas, pero **no alcanzó para las PESADAS**:
+`take()` hacía UN recorte (arrays a 8) y, si aun así no cabía en `BACKUP_BYTES_PER_OP` (120 KB),
+tiraba la muestra **entera**. Es decir, castigaba justo a las ops más caras de recapturar.
+
+**Caso real que lo destapó:** `CreateManyScheduleTasks` —la mutation que crea una tarea de
+programación— llevaba desde el **2026-07-23** apareciendo en **9 scans** con hash y `count`,
+pero **sin una sola variable**. Su hermana `UpdateManyScheduleTasks` (payload de 245 B) sí
+sobrevivía en el mismo scan. Sin variables no se puede escribir la llamada, así que
+*"programar donde no hay tarea"* estuvo bloqueado **semanas por una poda de backup**, no por
+el ERP — y el síntoma engañaba, porque la entrada tenía hash y `count`: **parecía cubierta**.
+
+**Fix:** escalera de recorte `BACKUP_ARRAY_CAPS = [8, 3, 1]` — se prueba de mayor a menor y se
+guarda el **primero que quepa**. Una muestra con arrays de 1 elemento sigue documentando la
+**forma** completa de la llamada, que es para lo que sirve; cero muestras no documenta nada.
+Y si ni así cabe, la entrada queda **marcada** con `samplesLost:true` en vez de quedarse muda:
+una op con hash y sin muestras debe *decir* que perdió las muestras, porque si no se vuelve a
+disparar no se rellena sola.
+
+6 tests nuevos, incluido el round-trip que reproduce la recarga con el payload pesado.
+
+**Lección (segunda vuelta de la misma):** no basta con decidir *qué* se guarda por
+recuperabilidad — hay que decidir *cómo se degrada* cuando no cabe. Un tope duro sin plan de
+degradación es un descarte silencioso disfrazado de límite.
