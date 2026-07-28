@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Steelhead Automator — iPad",
-  "description": "Bundle de applets de Steelhead para iPad (empaquetado). 32 applets: auto-inyectados (FAB/gate propio) + lanzadores de popup. v0.6.0 suma wo-schedule-button (nació POR el iPad: ahí la tarjeta Cliente con el 📅 nativo se colapsa), wo-listing-columns (columnas PN/Programación/Lote en el listado de OTs) y po-listing-filters (buscador global de OC). En los dos primeros el scanner marcaba NO-APLICA por descarga, pero esa descarga es el PDF —función lateral y opt-in—, no su flujo core.",
-  "version": "0.6.1",
+  "description": "Bundle de applets de Steelhead para iPad (empaquetado). 32 applets: auto-inyectados (FAB/gate propio) + lanzadores de popup. v0.6.0 suma wo-schedule-button (nació POR el iPad: ahí la tarjeta Cliente con el 📅 nativo se colapsa), wo-listing-columns (columnas PN/Programación/Lote en el listado de OTs) y po-listing-filters (buscador global de OC). En los dos primeros el scanner marcaba NO-APLICA por descarga, pero esa descarga es el PDF —función lateral y opt-in—, no su flujo core. v0.6.2 no agrega applets: reconstruye para tomar price-confirm-guard/price-confirm-core con el gate ESTRUCTURAL (el sub-modal de precio se llama «Precio del número de parte» en español, así que el gate por título nunca matcheaba) y con el alert nativo en español «Error al guardar el precio» ya reconocido — en iPad ese alert es bloqueante y sacudirlo cuesta más que en escritorio.",
+  "version": "0.6.2",
   "permissions": [
     "storage",
     "tabs"

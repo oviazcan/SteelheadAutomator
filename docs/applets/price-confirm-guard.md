@@ -167,5 +167,17 @@ siguen visibles. Como un guardado legítimo no pasa por bloqueo, su `alert` nunc
 - Persistir el toggle. Distinguir alta vs edición si se quisiera aplicar solo a cambios.
 - Deploy a `gh-pages` con `tools/deploy.sh` tras validación.
 
+## Safari/iPad — rebundle v0.6.2 (2026-07-28)
+El bundle es **estático** (Apple 2.5.2 prohíbe código remoto), así que el fix de v0.1.5 NO llega al
+iPad con el deploy a `gh-pages`: hay que reconstruir. `safari/bundle.json` → **v0.6.2**, sin altas de
+applets (`price-confirm-guard` ya estaba desde v0.5.3); el rebuild solo toma los scripts cambiados.
+Verificado que el fix quedó DENTRO del artefacto (`isPriceModal` ×6 y ambos regex ES en
+`main-bundle.js`), `node --check` OK, `build-safari.test.js` 10/10, y sincronizado a los `Resources`
+del proyecto Xcode local. **Falta recompilar en Xcode** — el bundle no se actualiza solo.
+
+Lo que más pesa aquí es el `alert`: en escritorio un diálogo nativo sin suprimir es molesto, pero en
+iPad —donde el operador trabaja con la SPA a pantalla completa— un modal bloqueante encima cuesta
+bastante más quitarlo. Esa parte del fix es la que justifica el rebundle.
+
 ## Safari/iPad (2026-07-09)
 Integrado al bundle Safari/iPad (`safari/bundle.json` **v0.5.3**, `safari-bundle-sync`). **Corrección 2026-07-09:** al integrarlo asumí (por el índice desactualizado de `CLAUDE.md`, clavado en 0.1.0) que estaba "pendiente de validación en vivo + deploy". **Es falso:** está **vivo en gh-pages desde el 2026-07-01** (commit `9c8b411`; verificado 2026-07-09: en el config en vivo con `autoInject`, scripts sirviendo HTTP 200) e **iterado 4 veces sobre comportamiento REAL** (v0.1.4 suprime el `alert` nativo que SH dispara *tras* nuestro bloqueo — algo que solo se descubre corriéndolo). El usuario **confirma que la doble captura funciona en producción y sin problemas**. Es `autoInject:true` (intercepta `SaveManyPartNumberPrices` con el modal nativo abierto) y **fail-safe** (deja pasar el fetch al confirmar; `Response` sintético al cancelar). **Único auto-inyectado sin control en página** → se le cableó un **kill-switch en el popup** (`toggle-price-confirm-guard` → `PriceConfirmGuard.toggleFromPopup`, en `popup.js LAUNCHERS` + `sa-dispatcher.js LAUNCH_FN` + mapa del test `build-safari`) para poder apagarlo desde el iPad si hiciera falta. Rebuild `tools/build-safari.sh` (test 10/10, cadena de lanzadores verde). **Requiere recompilar en Xcode** (bundle estático). (La **preview multi-unidad** de v0.1.3 también quedó **validada en vivo** —operador 2026-07-17, confirmado 2026-07-22—; el candado core ya estaba validado desde antes.)
