@@ -110,6 +110,18 @@ const AutoRouterLanes = (() => {
     for (const n of nodes) if (n) ft.appendChild(n);
   }
 
+  // El shell se monta una vez, pero cada vista es un TRABAJO distinto y lo dice en el
+  // título: si no se actualiza, "Partir" se queda escrito encima de la tabla de rutas.
+  function setTitulo(text) {
+    const h = document.querySelector(`#${overlayId} .sa-arl-hd h2`);
+    if (h) h.textContent = text;
+  }
+
+  function tituloOT() {
+    const c = state.ctx || {};
+    return c.idInDomain ?? c.workOrderId ?? '';
+  }
+
   function renderShell(title) {
     removeOverlay();
     const ov = el('div', { id: overlayId, class: 'sa-arl-ov' });
@@ -231,6 +243,7 @@ const AutoRouterLanes = (() => {
 
   // ── Vista principal: una fila por pista ─────────────────────────────────────
   function renderLanes() {
+    setTitulo(`🔀 Ruteo de la orden · OT ${tituloOT()}`);
     const cont = el('div');
 
     if (!state.sourceLine) {
@@ -366,6 +379,7 @@ const AutoRouterLanes = (() => {
   // Se elige UNA cuenta origen y se reparte entre grupos con su cantidad. La suma
   // debe cuadrar exacto: el núcleo no emite payload si no.
   function renderSplit() {
+    setTitulo(`✂️ Partir piezas · OT ${tituloOT()}`);
     const cuentas = state.accounts.partLocations;
     if (!cuentas.length) {
       renderBody(el('div', { class: 'sa-arl-warn', text: 'Esta orden no tiene cuentas de piezas que partir.' }));
@@ -494,6 +508,7 @@ const AutoRouterLanes = (() => {
   // Varias cuentas caen en un mismo grupo destino. Las que ya viven ahí se omiten
   // solas (el núcleo las filtra), así que marcar todas es una petición válida.
   function renderRegroup() {
+    setTitulo(`🔗 Reagrupar piezas · OT ${tituloOT()}`);
     const cuentas = state.accounts.partLocations;
     const marcadas = new Set();
     const errBox = el('div', { class: 'sa-arl-err' });
