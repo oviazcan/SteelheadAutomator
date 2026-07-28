@@ -28,11 +28,14 @@
     'run-archiver':            'PNArchiver.openConfigAndRun',
     'assign-sensor-status':    'SensorStatusAutofill.run',
     'open-station-config':     'LoadCalculator.openStationConfig',
-    // auto-router: openPanel re-rutea la(s) orden(es) capturada(s) del modal de ruteo (alerta si no
-    // hay contexto); openBatch abre el modal de pegar números de orden (autocontenido). En Chrome su
-    // trigger vive en chrome.runtime.onMessage (muerto en MAIN world); aquí lo revive el postMessage.
-    'open-auto-router':        'AutoRouter.openPanel',
-    'open-auto-router-batch':  'AutoRouter.openBatch',
+    // auto-router: openPanel re-rutea la(s) orden(es) capturada(s) del modal de ruteo (avisa si no
+    // hay contexto); openBatch abre el modal de pegar números de orden (autocontenido); openLanes
+    // rutea la orden completa y/o cada grupo de piezas a su línea — este último NO tiene FAB, el
+    // popup es su única puerta. Las variantes …FromPopup devuelven de inmediato y difieren la
+    // apertura (openLanes puede pedir el número de orden con prompt, que bloquearía al llamador).
+    'open-auto-router':        'AutoRouter.openPanelFromPopup',
+    'open-auto-router-batch':  'AutoRouter.openBatchFromPopup',
+    'open-auto-router-lanes':  'AutoRouter.openLanesFromPopup',
     'open-wo-completer':       'WOCompleter.open',
     'run-wo-deadline':         'WODeadlineChanger.run',
     'run-pn-lifecycle':        'PNLifecycle.openConfigAndRun',

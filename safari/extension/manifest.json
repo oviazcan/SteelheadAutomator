@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Steelhead Automator — iPad",
   "description": "Bundle de applets de Steelhead para iPad (empaquetado). 32 applets: auto-inyectados (FAB/gate propio) + lanzadores de popup. v0.6.0 suma wo-schedule-button (nació POR el iPad: ahí la tarjeta Cliente con el 📅 nativo se colapsa), wo-listing-columns (columnas PN/Programación/Lote en el listado de OTs) y po-listing-filters (buscador global de OC). En los dos primeros el scanner marcaba NO-APLICA por descarga, pero esa descarga es el PDF —función lateral y opt-in—, no su flujo core.",
-  "version": "0.6.0",
+  "version": "0.6.1",
   "permissions": [
     "storage",
     "tabs"
