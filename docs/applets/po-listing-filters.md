@@ -278,8 +278,10 @@ Rollback: `tools/rollback.sh v1.7.208`.
       `purchaseOrderByPurchaseOrderId`, que era lo que el código asumía.
 - [ ] **Reponer el lado Ecoplating** cuando Steelhead corrija el filtro (ticket abierto por
       el operador 2026-07-27) — es agregar un modo en `planProquipaFilter`
-- [ ] Integrar al bundle Safari/iPad si el operador lo usa desde ahí
-- [ ] **Declarar `urlPatterns` para este applet** cuando se implemente el gate de carga —
-      hoy se inyecta en TODAS las pantallas de SH aunque solo aplique a
-      `/Purchasing/PurchaseOrders`. Ver
+- [x] ~~Integrar al bundle Safari/iPad~~ **HECHO 2026-07-27** (bundle v0.6.0, sin lanzador: es
+      `autoInject` con gate propio).
+- [x] ~~**Declarar `urlPatterns`**~~ **HECHO 2026-07-27**: `^/Domains/\d+/Purchasing/PurchaseOrders/?(?:[?#]|$)`
+      (copiado de su `PO_URL_RE`, con un test que ata config↔core para que no diverjan). Fue
+      además el **canario** con el que se validó en piso la reactivación del gate de carga, tras
+      la regresión del mismo día. Ver
       [`docs/architecture/applet-load-gating.md`](../architecture/applet-load-gating.md)

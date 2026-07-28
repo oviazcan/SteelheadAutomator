@@ -38,7 +38,14 @@
     'run-pn-lifecycle':        'PNLifecycle.openConfigAndRun',
     // Kill-switch del candado de confirmación de precio (auto-inyectado, sin control en
     // página): permite apagarlo/encenderlo desde el popup del iPad. Es un toggle.
-    'toggle-price-confirm-guard': 'PriceConfirmGuard.toggleFromPopup'
+    'toggle-price-confirm-guard': 'PriceConfirmGuard.toggleFromPopup',
+    // Programación de la OT: en el iPad la tarjeta Cliente (que trae el 📅 nativo) se colapsa
+    // — este applet nació justamente por eso. El lanzador refresca el readout inline.
+    'open-wo-schedule':        'WoScheduleButton.openFromPopup',
+    // Columnas del listado de OTs. Los toggles viven en la barra inyectada; estos lanzadores
+    // son el atajo desde el popup para las dos más usadas en piso.
+    'toggle-wo-pn-column':     'WoListingColumns.toggleFromPopup',
+    'toggle-wo-sched-column':  'WoListingColumns.toggleSchedFromPopup'
   };
 
   function resolveFn(action) {

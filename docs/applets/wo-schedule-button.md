@@ -100,3 +100,15 @@ Los hashes de mutación (`UpdateManyScheduleTasks`, luego Create/Delete/UpdateSt
 
 - **Core:** 18/18 golden ✓.
 - **En vivo (operador):** ficha `/WorkOrders/<id>` → readout 📅 entre EDITAR DETALLES y ABRIR PDF con la programación real (o "Sin programar"). Confirmar que el interceptor evita el doble fetch (una sola `WorkOrderSchedule` en la red).
+
+
+## Safari / iPad (bundle v0.6.0, 2026-07-27)
+
+Integrado al bundle del iPad. El scanner (`tools/safari-bundle-scan.py`) lo clasificaba
+**NO-APLICA** por detectar `a.download`, pero esa descarga es la **generación del PDF**: una
+función **lateral y opt-in**, no el flujo core del applet. La regla correcta es *NO-APLICA solo
+cuando el FLUJO CORE es la descarga* (auditor, carga-masiva, file-uploader…); si es una función
+más, el applet sí va al bundle y en iOS simplemente esa función no opera.
+
+Recordatorio: el bundle es **estático** (Apple 2.5.2 prohíbe código remoto) — editar
+`remote/scripts` NO llega al iPad hasta correr `tools/build-safari.sh` y **recompilar en Xcode**.

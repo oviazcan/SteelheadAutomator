@@ -1,5 +1,5 @@
 // ==========================================================================
-// Steelhead Automator — iPad — main-bundle.js  (v0.5.9)
+// Steelhead Automator — iPad — main-bundle.js  (v0.6.0)
 // GENERADO por tools/build-safari.sh desde remote/scripts + config.json.
 // NO editar a mano: edita la fuente en remote/scripts/ y re-corre el build.
 // Cada applet va en su propio IIFE (scope aislado, como el new Function() del
@@ -54,7 +54,14 @@ if (typeof window.chrome === 'undefined') { window.chrome = {}; }
     'run-pn-lifecycle':        'PNLifecycle.openConfigAndRun',
     // Kill-switch del candado de confirmación de precio (auto-inyectado, sin control en
     // página): permite apagarlo/encenderlo desde el popup del iPad. Es un toggle.
-    'toggle-price-confirm-guard': 'PriceConfirmGuard.toggleFromPopup'
+    'toggle-price-confirm-guard': 'PriceConfirmGuard.toggleFromPopup',
+    // Programación de la OT: en el iPad la tarjeta Cliente (que trae el 📅 nativo) se colapsa
+    // — este applet nació justamente por eso. El lanzador refresca el readout inline.
+    'open-wo-schedule':        'WoScheduleButton.openFromPopup',
+    // Columnas del listado de OTs. Los toggles viven en la barra inyectada; estos lanzadores
+    // son el atajo desde el popup para las dos más usadas en piso.
+    'toggle-wo-pn-column':     'WoListingColumns.toggleFromPopup',
+    'toggle-wo-sched-column':  'WoListingColumns.toggleSchedFromPopup'
   };
 
   function resolveFn(action) {
@@ -273,7 +280,11 @@ const SteelheadAPI = (() => {
       throw new Error(`GraphQL errors (${operationName}): ${msgs.substring(0, 2000)}`);
     }
     if (result.errors) {
-      warn(`GraphQL warnings (${operationName}): ${result.errors.map(e => e.message).join('; ')}`);
+      // Filtra warnings BENIGNOS de paginación: persisted queries que no controlamos (p.ej.
+      // WorkOrder, 1156 campos) traen campos con `onFull: ERROR` que topan el límite de paginación;
+      // el server AVISA pero el `data` SÍ llega. Floodean la consola (1 por fila en la columna Lote).
+      const real = result.errors.filter(e => !/pagination limit|onFull/i.test((e && e.message) || ''));
+      if (real.length) warn(`GraphQL warnings (${operationName}): ${real.map(e => e.message).join('; ')}`);
     }
 
     return result.data;
@@ -365,7 +376,7 @@ if (typeof window !== 'undefined') window.SteelheadAPI = SteelheadAPI;
 
 // ===== BEGIN config-seed (ignorado por --check) =====
 (function(){
-  window.REMOTE_CONFIG = {"version": "1.7.178", "lastUpdated": "2026-07-23T11:10", "extensionVersion": "1.6.6", "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip", "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html", "steelhead": {"baseUrl": "https://app.gosteelhead.com", "graphqlEndpoint": "/graphql", "keepAliveEndpoint": "/api/session/keep-alive", "apolloClientVersion": "4.0.8", "hashes": {"mutations": {"CreateStationInputSchema": "2abe86f7d8205cfd3c356e4cfeea91d857ee7820567fb82ecd9fa2688cabfa00", "UpdateStationInputs": "0237bbca4a0f168b800483bd21b6146829a11f158e033e00eef7c00ce53bb112", "CreateUpdateDeleteRoutes": "0597ad9896d1c2b87980183ac54835cf0c3fc68d777e55ade8950558f5d9a76e", "UpdateInventoryItemInputs": "e5eafcb715c4034adc406af5064a30d27eff273e5fb6121804a5a83f188828cf", "SaveMultipleSpecFieldParams": "bffd36ff1ea5e3e5b7ff91b23ebf33c5c7879ee54c35d86ad90e86eab3214b7b", "CreateEmailLogReceivedOrder": "ccd2065a419aea4a747eca0426bd14ac383323fa0cba1d7d55102f69b08d1163", "CreateInvoicePdf": "aafd22aa663f15839042d71daebcebdba5fc2904554ef18ad09e37f0d4079e49", "CreateInvoiceEmailLog": "0c1d5e7460009cb489ebf25b0d8500cb441b1fa02addfbab57bc975c8dd4d9aa", "CreateQuote": "ee313e1243e786915d564eee8b005f0a0c2d39525b76467ece84b6debaa3d129", "UpdateQuote": "1663ac5630123533063c4a53e2186f6f4a04000d9f3a284e3c0deb1308218388", "CreateQuoteStageChange": "85c945f12f3367a132607ab1ae22d1e3a8a43d78b836c564840d4251f66e4797", "SaveQuoteLines": "0f17faa3ab4f8536e7e108c8654abc179992ac0326c63ff38a6637d8a889b1e0", "SaveReceivedOrderLinesAndItems": "89c3342878ac89d561a7d4d5dedcd508bb25dcfa1fcf6573b59a134fd32b9bb6", "SaveReceivedOrderPartTransforms": "69ac725c25eedadc19570b9b7e0e335a804e3fc2ca170c8f5f17bcd0b2f2b154", "SaveManyPartNumberPrices": "72946d4d2e8a19b62e699d2593ea946154ba0287dfa9d521a9dcf16f6554a447", "SavePartNumber": "27adc1143653e87fbd0c8a763eaa4f3e3a2a6541bbddce47010cdbd1b0365f40", "SavePartNumberRackTypes": "087af4e8b489edc1c6ade599da96f368fc3a764f2f16093feae9c57ee81cb363", "SendEmailChecked": "63afd0cb799d8c9d17106fb1827fa210641d6608e9c1c2483480eb0be17635bc", "CreateReceivedOrder": "363cab20f9bd7fc89619e575de8d5a018cd2d59784081bef48fb77f9a41b07e5", "CreateUserFile": "9028f6b729fe0cd253b1d47d5f27d84cc15293bbc12381225a7c00a402849ec9", "CreateReceivedOrderUserFile": "5896851dd3ee71e025bd59be3a0a3795d2ccf177636ee1bb45b10084f1541f57", "SetPartNumberPricesAsDefaultPrice": "9f89b40ef7d5754e8e94a94b028ce4c54c3cbf53a102098fd4d3cbec28c9e293", "UpdatePartNumber": "a2c3fb5491160f6539d4a52dba9894e9fa070ac4c55d309b1538a9f21405a67b", "CreatePartNumberGroup": "81edc50920e0ab37d470720a29160d74c6856aea6498b02543707dedfc405202", "CreatePartNumberInputSchema": "b16225250e1554ef0f385816533d86d1026b9defa631e88deb479c8ea8893419", "DeletePartNumberPrice": "561f8f4b7a598d1d78a3fc462d41480ae7503a9cb1dc4c668fd6948418fcf394", "DeletePartNumberRackType": "4cec965c46a9c30c1db64eee1b24566229b6b73f6fe69bf206253c63ac97bbd4", "UnsetPartNumberPriceAsDefaultPrice": "95ac52298b1237b96fb2aa3e223975c5e15b088f8b75b29d6981ee7e896f8ac8", "CreatePartNumberUserFile": "8588664e0071f4bec1bfd4ac11fc16371210c57ae3c501a56185c81f666de953", "UpdateInventoryBatchesChecked": "4981b6dcbb240d5f9ab763a3b0cedde1fc5bd22c4735e8a33fc717b1ef5e7ea0", "CreateInventoryTransferEventGroups": "901d61bf9e1e56dcc51be44d6b8cc928de4a475d8902860e89b289cff2abd174", "ApplySpecsToPartNumber": "91f6c915be5ef1fcb0fffb8fff02933d5bc681174c4d31127b14b87f2720bf8b", "ArchivePartNumberSpecAndParams": "c7cb025f711107ced391aa000f7a42366fd4bc5118dea715dc5a078716272261", "UpdatePartNumberSpecParam": "3540e67906f7206f45584df82659b3eaa0fa41be489864009c819ecdf171c4ce", "AddParamsToPartNumber": "fab74fec6313b709fcd2ecfc9b219c3428983011c1a830563a06b2c9e66524c4", "CreateUpdateReportWithPermissions": "612de3330ed302eb17d672f8ccf12da686e97d0cc0d2ba8752162ef56fa83fcf", "DeleteFolderById": "adfd35fb25a3518eb8cc6bdc7e8ea6779fff1c1b06e20e83033b6083cffd4ce3", "ArchiveReport": "70a902a65b90be428381bff7dead60454329e35179c6425acbd3a4edf1c46d9b", "ChangePredictedInventoryUsagesWithRecipeNodeCascade": "1128163184d586ddd39a1f51ce01956ca8e424d1e5c6cfdfd93349c5e3b27022", "UpdatePartNumberPerPerRackType": "fb6e7902d18ce00c831873c8dd32153e7bb6e2dfa44936c85a4ef67575b07de3", "UpdateReceivedOrder": "b3602b2de6fb4924d15af4d70404d0ab5246c5deaf36c314f071018a7bbb679f", "AddPartsToWorkOrders": "70d5a792c93ace37a1e15f7d0a8201cb77cf8b796ad5129c7660ffef52e1129f", "CreateUpdateWorkOrdersChecked": "7a4bdb13cd47edfd2d205cd2cbeb81cc1350f4c5465627ff9a6881eed2e3f449", "DeleteWorkOrderLabels": "0bd35abe9ed820c45702d49199b4e799ba6dd3b9484bfeaecba23d3c2962af59", "CreateWorkOrderLabel": "e3d57bbe80a5cedd12c29766ae1f7546cd7a2b69a16aaf09af1ba2f1eaa13f60", "CreateMaintenanceEvent": "0dc541a9a52a4dfb7b17043d46875bfe6f104a009779a4cf4f442dd909d6fcf3", "CreateMaintenanceNodeEvent": "930aa9f61350f60b88dcdb7e827a73332d7a5df629dcf5b36025aad6f3c2ffd2", "CreateManySensorMeasurements": "af4afbc57dad32a492d45ec929e350ddf53be692dffa4d48c9f26badc684e93a", "UpdateMaintenanceEvent": "29078aa7bb90d3a505324eff7ef149cf699975ef3d3337e207472e121ef5da54", "UpdateMaintenanceNodeEvent": "39b3cdf27e06a37884bfb551376b23fca971f705fc6472fc495d34dfce69970c", "CreateMaintenanceEventComment": "c49db28d64861e3e91d33d1de7412d019f08f7b0700e9668c86a26579f8a8f84", "CreateMaintenanceEventUserFile": "e6546795994b4ca8ebf2556f3efadb8bac8205d6ca24ace0ea5f17a9a16d1856", "CreateInventoryItemUnitConversion": "769411466c537c059cf6fc1721e116dc42ff1d88e3a72879cc94444329a1f334", "UpdateInventoryItemUnitConversion": "ffc8db6cd8edaa9355b904fac38f8e5fc116ce1d597f076026c38ef09420a16c", "UpdateBillChecked": "1f3b253abd1e02ebf859aa59762469abd264373ae2f1fa6062ca7896b7e4a0ce", "CreateInvoiceAndUpdatePartTransferAccounts": "aba96bd095347fe6972dc645ebf22dd4512a8df2ea845a528f4ffe9cd0d1cb03", "CreateProcessNode": "9d7fe3d3c97b77d33790a5e5c53197f95badd5ff0f12feebbebf0126a03bbcd4", "ProcureTree": "4a43c8bb0cf8b168e0ad8a56fb39a848f0f7892040355f6f6f574b1c1fff668b", "UpdateProcessNode": "00eb11163759348d3bbfb5bc570a6d00c7ee6b9f23fe6a16928ff2d5c725bab6", "UpdateSensorDashboardMember": "b903749ed974d573f6167d93393e76f237634bf64ca483d25fbfaff32616f928", "UpdateReceiver": "005653bae4baad289db47d65857cc4e9fb89fa51e06caa78a1f0946dce7f92ec", "CreateReceiverChecked": "6147f74211e1f2caf8778a6c23ecc4b6fb7e9b96002c35bc04cc5c1df5437da3", "SaveGeometryType": "45b7a86483a5935ccb2b6960091a79b5a13162fef12f39b5b3af4607b111ad3f", "GenerateDuckDb": "f412b9eca03309b5ea9cfa20090b4f0c75f1e30632b6a02cda119fde3418daa0", "CreateManyPartsTransfersChecked": "fc7438932552bb02202dfcecc4e0bf826fd5097db6e6559c3c7b99186ceff9ed", "DeleteProcessNodePartNumberOptInOut": "4a0773339315f1a52a9c08c249c5b3540c13def2b0d320e0e16ad9cb75b4d823", "UpdateProcessNodePartNumberOptInOut": "4556e5710f068e129fadc74cbce1f9a5e7cc42113f4e8e1808976b4e4f4cd2a6", "CreateProcessNodePartNumberOptInout": "f6fe26e4494c8c91d076975a8d7e89ed2f90a487d05f8bc021c2e296f3d6124f"}, "queries": {"AllStations": "834516258e392dcd9c666c2349992e3f6744aaf536cb127cb8c9eb4347f883f7", "GetStation": "a41cfd01d2e5f218add4c8c5d4179b198d7ccf6ab8a361f346a252ec46c6ca52", "GetStationInputSchema": "c6ecbaae2df073010d5a667875037a132ae4eadb369fbd0798bb991a01a93dce", "CreateEditPartsPerRackTypeQuery": "59defeb5a1b2530737b04c32ca7857a03d16ba8ba531567eb8366eadb3b5f380", "StationTreatmentByWorkOrder": "1d0e7eb3c04864afcd1e3dc2e9f2493841e62a5369156f093fab3beefe5dd143", "SearchStationsForTreatment": "6ce8c070d50c69ee49bdfa77a078012a7f882c7c19760a9ed5e569105ef6e4a2", "PartNumbersByWorkOrderIdInDomain": "fda9e55c9e2341c17b6974c66407ac8b4306cab86a1c82ffe00c30133bb784d3", "SchedulablePartLocations": "5e9392ef2ce4f88ce08bef1c15dc25bc7abdc391b3339a3687ef1925484ac3fc", "GetInventoryItem": "0366571ed9796751dee38a9b156735b1247accebb4b01d434cd6e1e64a24c3f0", "GetInventoryInputSchema": "f1fd6a00069f86439299080f601c5a4b0e0c4b359c6f8acf1cadd44362766729", "ActiveReceivedOrders": "07d3e1947485825b519c2f7755773d28532c313e23fab116f6b656a9f4a960d0", "GetQuote": "de2c5da0112ceac87919096e1d821c6ab7025a7a4a78226cd4b66a6890db373d", "GetQuoteSecondary": "546aa58c4f63f2b4be2703dc5c8482a07f01e8b96176171bfa9e978ac605458d", "GetQuoteRelatedData": "02b8cf87fb717d07b4a29301a21a3cbf579c2b4630819ffc20a007425dfd1a33", "CustomerSearchByName": "c06fb4c3b770a89c02d00ac51b92be6e1efe98bf5f6f5caccfe753f0570e6f02", "CustomerFinancialByCustomerId": "7ea934f4e057c922f5ea1fbf832fd5b301a34784efc563e964abe4467689d1b9", "SearchInvoiceTerms": "26f2915bfe50e633829a1d85f58ff6578a31c2e22901094d2a92a9a71e222dca", "SearchUsers": "6a422f35513d85386355f874c14cfb5d80ab38f46210e54c4d3a56ba764ddaa3", "AllClassifications": "e67ac5d75defc00c583c463d3705d8a180915b069b25541de91ed22b1967690a", "AllProcesses": "acaa6a46bd1e47ff587ac28833302734d6b00e06c26292c268110ce406ba71e3", "AllLabels": "4323ade06a4c21efa356e231ee9f85d05217bc8384c8506cb3c3127705bef94e", "SearchSpecsForSelect": "f793b5669705de4273bd4f7f89a995f4919cd57fdf604006e021417e5eab115a", "TempSpecFieldsAndOptions": "c881d971a4c9fcd3849129e27fcc21546ad8eca732f6248ea523c3fbd89502ea", "AllRackTypes": "7d601c396bb27a5534424582bcc9e44262781414cbb3e60c09413922775eaef3", "SearchUnits": "0a23ee49dd85ae9bb0285f3f9ed2e45a3b8e73e5f4a76c559cf1bdf9f02bd2b8", "SearchProductsComprehensive": "b3e2b9c63285487866fe098c936cd37e60ffff373a9fa9e30296574cffcfbba0", "SearchPartNumbers": "63ba50ed71fbf40476f1844b841351766eefbb147613b51b33919b4f4b2d4d91", "GetPartNumber": "5efd689d8d92151ea510256828f17cbe10b815dd8dce2bd1dd51ef55bb9a0faf", "GetPartNumberInventoryBatch": "5a86da1bc53521a1204e32f8778e7b188082f7b93e132becb6af881c8719d109", "GetInventoryBatch": "90642f00a18be6ee79b80d2be793605565154428e14209c016a277ce4b2dcd9a", "GetSpecFieldParamToEdit": "f4aedfe3fbe7ef82ae55c7bd37b76637d18c9ce6fbfe257ef9618fd8b85aa75b", "PartNumberGroupSelect": "da00a1e356e8a3d1e1020fd64c0b6b26f989650a2d4177fb5485629b11ef7e4c", "Customer": "74f53734d68cc7b5dbadd4e9f436e11e3ca9b935031411713f3fe75d1a1c5631", "GetDimension": "60620534090bf2433b06ebb73513437634ae0dc4d3c76c62b79a499630229ef5", "GetEmailDefaultByTypeAndSubType": "345b2a71f09fa03768c275cb55267bc6736fefb4e9050ccb668518f61e7d9ca9", "AllPartNumbers": "a63e7a6aa73b978bad844ed1f68ab2cac9e902e78a1c22f8d6339590fa8271d1", "AllWorkOrders": "aaeb9dc00e6a957a4a7320ec69c10874e2369319b37680a4f4f995fd4bdbbc99", "AllReceivers": "3839532d3bbc2cbc2326f640f2e2e8915b65aed2fbd057b18388d753278163dc", "AllInventoryTypes": "318a31c9be322bc15fb530da13ba49a1459fab6b46676c342c2c5fcee355ffaf", "SearchInventoryTypeItems": "721efe8e6c93bf4ea5201ecd416b06fb0993d571987fc0b352c32665f209848c", "SearchInventoryItemBatches": "ae2466466ed3e84a2010c726a166c432c176c3d21be5be7ac71db6c1846b901b", "AllInventoryBatchStatuses": "37ef2266975d34d4318858553f68e56638c25ebff9bb4f16d080589c213cef09", "CheckDuplicatePO": "94e659bf6eea8d493f8ea67f950fd38371a5cb680d2622145d5df9dc63583b85", "CreateEditReceivedOrderDialogQuery": "b7187e08c8394f81bbef94b7ec5075bf6b4e6ca3e2e6fadbd4b9babb7a9fda04", "GetCustomerInfoForReceivedOrder": "be7c8dbeec701f49545d5f3685c448db57d043a7a2ebbe184ed642559abce9d5", "PartNumberCreatableSelectGetPartNumbers": "1d5714f35b4232eed5c3e89df5dd833c595d77df333ee3bc0f0f09c3a4f9b23a", "SearchPartNumberPrices": "57ffed00ceedcbf4c2e221856c7e3a4d0e5a2a57fbc23df84be9967c5af56d14", "CreateEditInventoryBatchDialogQuery": "d093459168803caff0502b7b44971cd8a864eb4fa9c3e49a8d186b71f01bfe3a", "SearchLocationsOnPath": "1880f0ee6f7c73651807d1d3e7b7b7259271f8c53d040465e5d3005382b96120", "GetReceivedOrder": "844854a938061daab8212a5f9374fe3c9de10932604269b958019d7d31312d7d", "GetAddPartsReceivedOrder": "05e2272ab769f3e69e4a7a740045da07a6b3082b01d98f287f4a136de2235e63", "WorkOrderDialogQuery": "1c4f09ee81aaec381778f0a56c7c3f7f3f42f327232f2461b467eb36adf2ab63", "GetPartsTransferAccountAssociationData": "396607b6caeb488f81c618c829b6779352415cb6e4d9b355c04b46bd4fc86686", "GetReceivedOrderCosts": "f7906dc53bcd269dc1d589646a12aa206e83421f316b9197796dc68e646c63d8", "GetReceivedOrderDocuments": "7d74c516daa9938572e482fb1ea012dce5eeb3bad2de63cecb1e5740a139e42d", "GetReceivedOrderLine": "1ee61cc2d81d34051b6ebc1c8ec428c1a9565da11afba993475a863599e81156", "GetSpec": "73c179574dd5de837ce721bd0e639ab94aba0796a83f0f09632efd5f1c11b520", "SpecFieldsAndOptions": "d6faffaeeb9ccfebf55241ba8e4ee16b3217161517264222de5b71fd7c97f1a0", "EmailCustomerContactsByCustomerIds": "6e377769aa06e55915c528c10e2c2f92662a78fdc34ae799610d489abaf983db", "FilterSearch": "52869c2e78906b009589e441c218bcbfc60f2cf5550399b32db74fc266ffa6de", "FilterSearchInventoryBatch": "1cdd9e39a0ac44d491910f8c1727154d6859fd2eabe49d619f06d54e926d2bc9", "InventoryBatchViewQuery": "e4fc4cdf098f41e10881a512e63ce6fb068bcd8d5bd57b8627c86e5fda025d44", "AllReports": "1f83add2747f8e0949a47ea4b6f95a67f8e1948a07fad9a5cf543d1ab4b8c00c", "GetPartNumbersInputSchema": "c56b972e024980b0593af9c902afaec0406cacd9b847dd85ffbea856f27c607d", "AllQuotes": "40ee4d1cda66a7103f70df6c782f44d7b601420c4ea41c35aff27b46415f60d8", "AllSpecs": "0710bf2eb9fa02f1fff3899be3629d1169d0af92564ec9aadb0a25ddd5ab19cb", "AllCustomers": "a45bcf6cbaccfbfc317d3264ce4f3e9bd8f896852cb89af989ad3f281fae3b33", "GetSpecFieldPartNumbers": "0e49e0eefc700a969aa3bedbbcb4b563c0c22ba50b79c35dda8dd69947c2d7a6", "GetUserEmailRecipients": "41a4ef4c78acc01384d9932c92721e4446d02118ef6b33429f3eaad2f9818888", "ReceivingBatchesQuery": "55a06a3013d465596d24cc3893f2c163a08f78c00d20a17d746e4cddce197d4e", "RouteReceivedOrders": "fc42311d93a683bec906253aa2cc54ae61931217ff6abf20d2bc335cb55c26d4", "InvoiceByIdInDomain": "06a51d0363584477082a9d76c72080b4dea2b2797737c051760c1b33a791dfba", "CurrentUser": "0c1911e444f0c2c35f267eadc010dca0307577812cecb3f19edba28b0529aeee", "CurrentUserDetails": "f966e56c8de95f667eac0f8c822bc1e12b5fc40a5f436edb7abac9e8029ac48c", "CurrentUserActiveSegments": "679822f12194223bd42ac5902f11054688a6440f581b63061531bf7a065751e0", "GlobalUsers": "2c727e5d066c9bc3966b60da0d34d6f2b3d5d7b5420b75b9e9ae91c4617e1c1c", "CreateMaintenanceEventDialogQuery": "effd90e383fb56e220696d5fe43addc60cb3668d86e08fdbc4c6b6721dbdf0ac", "OperatorMaintenanceNodeDialogQuery": "916178b464d0b2a4b49269ead0196c2db845cea5663de0c292e05d6d6e088830", "GetMaintenanceEvent": "be2a98642faeaa127dd66ac78f59716b030cc4dbeba7e9348fcde2d5bb074b2b", "UserDialogQuery": "843b5f4f236fd159b5d3912c434551cf2866a591e3c38babfdfb2fd6f7283959", "SearchEquipments": "3cd9da86777c0721399d9043695e281131d78364dd3ad0ef051b0d77c647ca63", "WorkboardById": "68b7ca4cbfa64a40717996ae60b1f896c20ec1d19c84e33f551af708373c0d83", "AllEquipments": "ce59e8bc9484625a7cb8ee3d1a80cd3bdcfdd39de24ef31ce34aec8e9a454d5f", "AllPermissionsEditManyPermissions": "80e71670d073b5849234cd164ad782782475eb2c41ed10c67c861c5a98ff37de", "GetAvailableUnits": "405368babb953708532627a930e5ea1a1ca21e5518a5f0f4d8cd0757880c43c0", "GetPurchaseOrderDetail": "dbc6c29ef8f1b523e6c9472bee4ca9a795e6d2bb284cfc3497b882b113dfb9de", "GetDomain": "c96d677245066f2d3ff5cd18e7e2b00f49912cb069e4c7c533ca23ce352a3a98", "SearchAccounts": "4b00b2b252fad480141bdd73b05267e1032bf4a2e1f7e27ac5ceeef94741fe57", "GetAccountDataForBill": "4265fbbad1b79d0559e337dafd8ff229b69273624734d716b4af70d424ce8ea0", "GetBillByIdInDomain": "161bb5aa0c346f2502346ebe441374c02d91031936940a5b3195cbe39801d74d", "SearchPurchaseOrdersForBill": "e99dddad15827a5c6b2a342f236a60a462edcc406f9896a1b04800a76def929a", "GetPurchaseOrdersDataForBill": "a94f43960ae91e6f62332a9e3268f9789ccdd847c8951dbf27a7d2ff25c5565d", "SearchVendors": "d7de73d26da71b96d51941c21bafccac4ba612b5280c76237c1ed1cf639c88c8", "GetVendor": "87ad05379932cc20b466a5ff3c3c33f8a8d27ca06bfdd0a423aa40f720c8f541", "InvoiceLowCodeData": "319b44ca39d9a1aca0d35a40ff47cee7950eaae41c48ae6336177724e4760d9e", "GetReceivedOrdersWithReceivedOrderLineItems": "f10d92898977064d1facaba234d78c852cbd20893d76f4ad031cc92ada7383ae", "GetProcessNode": "3c570c9045a631877f87e94aa196434a299d81e0b4385b3167b796f5bbe7ce32", "AllTagsAndNodes": "fb2206e8982f2867f872104ab13630ccbf1810e7c0af1410c5d2ebf76d1455af", "ProcessesComponentQuery": "c69417794d569109d798da0da49b40c2c2cdfae5ac981f8952f81060af06c60d", "ProcessesWithTag": "2d83c58122e0d3b528eed17b2024f7e3a4b4abb77f2dda97b21a6834174d1eb3", "GetAllTagsQuery": "0dbe45a0a23a3325615168695b49c0d3f1d8f5c7d3d026e857f52440663a0ae3", "CreateEditProcessDialogQuery": "231d4dc732cf37e123fd8a912a6694f3651cb43ace2811898f85857c4dca3080", "GetTreatment": "87a9d9f60a00814e8573ec59c0817fc2d29777777aa592a7db221a339322a750", "AllTreatments": "69c99e3fbb343cf07c0b95189b32ae411228a154f06588a9c28c58f8da26220b", "CreateEditTreatmentTimesDialogQuery": "3c4989bbeba90b2429776f3ab4aa375d7785749c705fe0c8d701da0b4ac06eca", "StationsByTreatmentId": "dd7f6764a9dc3adde9cef6eb205ad28658c1de8fdbdb2c8527786d97b33c50f2", "GetProcessNodeParents": "3c205d1210c0a0a24bc39d338b8ed9c6cf63e756c3ad4b57abf09b3d85d95bec", "AllSensorDashboards": "0c5ec2fba6a1b1b3dbdd3f9c6c3d188981bb6b21abb1234ac67ce582d051e3f9", "SensorDashboardQuery": "29c9033ecaa2021c75f7f2b728785ebf8e1d5de8196731c79b9f8a68f3363aa0", "AllGeometryTypes": "d0fa543dcdb0c4d682d710fcb7c14472ec2e6c0e7a7a292a506c1b95c1256705", "GetRecomputableAt": "c2483e87e8a5a0a2fe62e401bfd18506f05c0ee73c9905522e5e11053b7c3d05", "JobQuery": "86432972dfe6ea75c523515801993374044dc99e909778024904a02e9ef1b4e3", "WorkOrder": "fc41042ebaacfbfcc09a57d171a1c0f87580921bbdbb0cec86fa34a24a39255e", "GetWorkOrderPartsTransfers": "da4e8740973139bb23f3f0d37a0ea83a05b6d67cdab2c1bea1e154dff37aa284"}}, "domain": {"id": 344, "dimensionIds": {"linea": 349, "departamento": 586}, "billingDefaults": {"departmentName": "Producción", "departmentValueId": 182, "codigoSAT": "73181106 - Servicios de enchapado"}, "inputSchemaId_PN": 3932, "inputSchemaId_Quote": 659, "inputSchemaId_Bill": 27, "stagesRevisionId": 306, "ganadaStageId": 1212, "revertStageId": 1208, "geometryGenericaId": 831, "validacionProcessNodeIds": [231176, 231174], "unitIds": {"KGM": 3969, "LBR": 3972, "FTK": 4797, "CMK": 4907, "DMK": 3975, "FOT": 5148, "LM": 5150, "LO": 5348, "MTR": 3971}, "conversions": {"KGM_TO_LBR": 2.20462, "CMK_TO_FTK": 0.00107639, "LM_TO_FOT": 3.28084}, "geometryDimensions": {"LENGTH": 1284, "WIDTH": 1011, "HEIGHT": 1012, "OUTER_DIAM": 1013, "INNER_DIAM": 1014}, "empresas": {"ECO": "ECO030618BR4 - ECOPLATING SA DE CV, Primero de Mayo 1803, Zona Industrial Toluca, Santa Ana Tlapaltitlán Toluca, Estado de México 50071 México", "ECOPLATING": "ECO030618BR4 - ECOPLATING SA DE CV, Primero de Mayo 1803, Zona Industrial Toluca, Santa Ana Tlapaltitlán Toluca, Estado de México 50071 México", "PRO": "PRO800417TDA - PROQUIPA SA DE CV, Primero de Mayo 1801, Zona Industrial Toluca, Santa Ana Tlapaltitlán Toluca, Estado de México 50071 México", "PROQUIPA": "PRO800417TDA - PROQUIPA SA DE CV, Primero de Mayo 1801, Zona Industrial Toluca, Santa Ana Tlapaltitlán Toluca, Estado de México 50071 México"}, "predictiveMaterials": {"PlataFina": 55113, "EstanoPuro": 55114, "Niquel": 55115, "Zinc": 55116, "Cobre": 55117, "Sterlingshield_S": 55118, "Epoxy_MT": 55119, "Epoxica_BT": 55120, "Epoxica_MT_Red": 55121}, "schneiderQueretaro": {"customerId": 176980, "shipToAddressId": 277022, "inputSchemaId": 559, "invoiceTermsId": 3142, "sectorId": 578, "shipMethodId": 4661, "poNumberRegex": "^1[14]\\d{8}$", "restantesOvName": "Restantes Schneider QRO"}, "processAudit": {"satelliteOverrides": {"include": [], "exclude": []}, "finishProductMap": {"EST": ["ESTAÑADO", "ESTAÑO"], "NIQ": ["NIQUELADO", "NIQUEL"], "NSU": ["NIQUEL SULFAMATO", "NIQUEL"], "NWO": ["NIQUEL WOOD", "NIQUEL"], "NEL": ["NIQUEL ELECTROLITICO", "NIQUEL"], "NBR": ["NIQUEL BRILLANTE", "NIQUEL"], "NCV": ["NIQUEL CHEVROL", "NIQUEL"], "NCR": ["NIQUEL CROMO", "NIQUEL", "CROMO"], "CRO": ["CROMADO", "CROMO"], "CRD": ["CROMO DECORATIVO", "CROMADO", "CROMO"], "PLA": ["PLATEADO", "PLATA"], "PLF": ["PLATA FLASH", "PLATA"], "COB": ["COBREADO", "COBRE"], "ZIN": ["ZINCADO", "ZINC"], "ZNQ": ["ZINC NIQUEL", "ZINC", "NIQUEL"], "EST_T2": ["ESTAÑADO", "ESTAÑO"], "PAV": ["PAVONADO"], "FMS": ["FOSFATO MANGANESO"], "FZI": ["FOSFATO ZINC"], "AND": ["ANODIZADO"], "IRI": ["IRIDIZADO"], "BDP": ["BAÑO DE PASIVADO"], "BRI": ["BRILLO QUIMICO"], "PRE": ["PRELIMPIEZA", "LIMPIEZA"], "ROD": ["RODADO"], "REB": ["REBABADO", "REBARBADO"], "LES": ["LIMPIEZA ESPECIAL"], "DES": ["DESOXIDADO"], "PUL": ["PULIDO"], "ELE": ["ELECTROPULIDO"], "TIN": ["TINTURADO"], "ESM": ["ESMERILADO"], "SAB": ["SABLEADO"], "LMC": ["LIMPIEZA QUIMICA"], "NOX": ["NOX"], "LAV": ["LAVADO"], "DEC": ["DECAPADO"], "PAS": ["PASIVADO"], "ANT": ["ANTITARNISH"], "HOR": ["HORNEADO", "HORNO"], "FIB": ["FIBRADO"], "ENM": ["ENMASCARADO"], "DNM": ["DESENMASCARADO"], "ACE": ["ACEITADO"], "ABR": ["ABRILLANTADO"], "TRT": ["TRATAMIENTO TERMICO"], "EBT": ["EPOXICA BT"], "EMT": ["EPOXY MT"], "EMR": ["EPOXICA MR"], "CAZ": ["CAJA ZINC", "ZINC"], "CTR": ["CILINDRO TRADICIONAL"], "CVO": ["CILINDRO VOLTEO"], "CAM": ["CAMPANA"], "CAT": ["CATARINA"], "CNE": ["CILINDRO NEUMATICO"], "CNT": ["CILINDRO NETO"], "CRJ": ["CILINDRO ROJO"], "CTV": ["CILINDRO TV"], "CNN": ["CILINDRO NN"]}, "concurrency": {"audit": 5, "trees": 5, "parents": 5, "retryDelaysMs": [0, 1000, 2000]}, "duplicates": {"enabled": true, "includeSources": ["main", "satellite", "rt", "subprocess", "stepshipping"], "ignoreNamePatterns": [], "ignoreIds": []}}, "specParamsBulk": {"concurrency": {"fetchDetails": 5, "editShape": 10}, "batchSize": 50, "retryDelaysMs": [1000, 2000, 4000], "labelMP": "MP", "impPrefixRegex": "^IMP", "page": {"first": 400}}, "bulkUpload": {"concurrency": {"savePartNumber": 8, "archive": 8, "sentinelPreQuoteArchive": 3}, "retry": {"delaysMs": [1000, 2000, 4000]}, "paging": {"allPartNumbers": {"first": 200, "maxResults": 1000, "massiveMaxResults": 50000}}, "preview": {"pageSize": 100}, "resume": {"maxEntries": 20, "purgeAgeDays": 7}, "nonFinishLabelNames": ["SMY", "STX", "SXC", "SRG", "SCM", "SQ1", "SQ2", "NP desconocido", "En desarrollo", "Muestras", "Lote", "Obsoleto"], "metalEquivalents": [["Estaño", "Estaño s/Aluminio", "Estaño s/Cobre"], ["Plata", "Plata Flash"]], "dedup": {"massiveThreshold": 1000}, "chunking": {"defaultChunkSize": 250}, "debug": {"logPredictiveParse": true, "logPredictiveSampleRows": 20}}, "auditor": {"largeCustomers": [{"name": "SCHNEIDER ELECTRIC MEXICO", "estimatedPns": 12000}], "hardCapPns": 8000, "hardCapWithExclusions": 15000}}}, "portalLayouts": {"hubbell": {"name": "Hubbell Portal", "detection": {"requiredColumns": ["number", "status", "lineItem.itemNumber", "lineItem.materialCodeBuyer", "lineItem.materialDescription", "lineItem.netPrice", "lineItem.priceUnit", "lineItem.targetQuantity", "lineItem.schedule.deliveryDate"], "minMatchRatio": 0.9}, "mapping": {"poNumber": "number", "status": "status", "customer": "customerAddressName", "currency": "currency", "date": "date", "lineNumber": "lineItem.itemNumber", "buyerCode": "lineItem.materialCodeBuyer", "description": "lineItem.note", "netPrice": "lineItem.netPrice", "priceUnit": "lineItem.priceUnit", "quantity": "lineItem.targetQuantity", "deliveryDate": "lineItem.schedule.deliveryDate", "unit": "lineItem.unit"}, "pnExtractor": {"type": "regex", "source": "description", "patterns": ["(?:Material\\s*Number|MATERIAL)\\s*[:=]\\s*(\\S+)", "(?:Catalog|CATALOGO|CAT)\\s*[:=]\\s*(\\S+)"]}, "statusFilter": {"activeValues": ["Nuevo"]}, "unitPriceFormula": "netPrice / priceUnit"}}, "unitAutoConvertEnabled": true, "fileUploader": {"viewCodes": ["FRO", "POS", "LIZ", "LDE", "SUP", "INF", "ISO"]}, "apps": [{"id": "load-calculator", "name": "Calculadora de Piezas por Carga", "subtitle": "Configura estaciones y calcula piezas/carga en el modal de Rack Types", "icon": "⚙️", "category": "Números de Parte", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/load-calculator-engine.js", "scripts/load-calculator-stations.js", "scripts/load-calculator.js", "scripts/load-calculator-modal.js"], "requiredPermissions": [], "actions": [{"id": "open-station-config", "label": "Configurar Estaciones", "sublabel": "Captura dims de tina, capacidad DMK y OEE por estación o línea", "icon": "⚙️", "type": "primary", "handler": "message", "message": "open-station-config", "fn": "LoadCalculator.openStationConfig"}]}, {"id": "proceso-calculator", "name": "Calculadora de Procesos", "subtitle": "Sugiere Default Process al editar un NP", "icon": "🧮", "category": "Números de Parte", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/proceso-calculator.js"], "requiredPermissions": []}, {"id": "batch-name-filter", "name": "Filtrar Lote por Nombre", "subtitle": "Selecciona todos los lotes con el mismo nombre en el Panel de Envío", "icon": "🏷️", "category": "Herramientas", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/batch-name-filter-core.js", "scripts/batch-name-filter.js"], "requiredPermissions": []}, {"id": "schedule-batch-highlighter", "name": "Resaltar Lote en Programación", "subtitle": "Resalta y marca todas las tareas de un lote (por nombre) en el Schedule Board", "icon": "🏷️", "category": "Herramientas", "autoInject": true, "scripts": ["scripts/schedule-batch-highlighter-core.js", "scripts/schedule-batch-highlighter.js"], "requiredPermissions": []}, {"id": "carga-masiva", "name": "Carga Masiva", "subtitle": "Cotizaciones y NP", "icon": "📊", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/bulk-upload-cc.js", "scripts/bulk-upload-parse.js", "scripts/bulk-upload-classify.js", "scripts/bulk-upload-batch.js", "scripts/bulk-upload.js", "scripts/catalog-fetcher.js"], "requiredPermissions": ["READ_PART_NUMBERS", "READ_QUOTES"], "actions": [{"id": "upload-csv", "label": "Cargar CSV", "sublabel": "Subir cotizaciones y números de parte", "icon": "📊", "type": "primary", "handler": "file-picker"}, {"id": "download-template", "label": "Descargar Plantilla v12 (Excel 2021+)", "sublabel": "Base + catálogos frescos", "icon": "📥", "handler": "open-url", "url": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v12.xlsm", "afterMessage": "update-catalogs", "notice": "Plantilla descargada. Recuerda: al abrirla por primera vez ejecuta el botón 'Refrescar Listas' del ribbon antes de pegar datos."}, {"id": "download-template-compat", "label": "Versión de compatibilidad (Excel 2019)", "sublabel": "Misma plantilla v12 para Excel 2019 y anteriores", "icon": "📥", "handler": "open-url", "url": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v12_compatibilidad.xlsm", "afterMessage": "update-catalogs", "notice": "Plantilla descargada. Recuerda: al abrirla por primera vez ejecuta el botón 'Refrescar Listas' del ribbon antes de pegar datos."}, {"id": "update-catalogs", "label": "Actualizar Catálogos", "sublabel": "Descarga datos frescos de Steelhead", "icon": "📋", "handler": "message", "message": "update-catalogs"}, {"id": "load-history", "label": "Historial de Cargas", "sublabel": "Ver cargas anteriores y descargar CSV de corrección", "icon": "📜", "handler": "message", "message": "view-load-history"}]}, {"id": "hash-scanner", "name": "Explorador Steelhead", "subtitle": "Captura de APIs", "icon": "🔍", "category": "Herramientas", "scripts": ["scripts/steelhead-api.js", "scripts/hash-scanner.js", "scripts/api-knowledge.js"], "requiredPermissions": ["WRITE_USER_PERMISSIONS"], "actions": [{"id": "toggle-scan", "label": "Iniciar Captura", "sublabel": "Interceptar requests GraphQL", "icon": "🔍", "type": "primary", "handler": "message", "message": "toggle-scan"}, {"id": "view-results", "label": "Ver Resultados", "sublabel": "Hashes y schemas descubiertos", "icon": "📊", "handler": "message", "message": "view-scan-results"}, {"id": "export-config", "label": "Exportar Config", "sublabel": "Config.json con hashes actualizados", "icon": "💾", "handler": "message", "message": "export-config"}, {"id": "api-knowledge", "label": "APIs Conocidas", "sublabel": "Operaciones que el sistema domina", "icon": "🧠", "handler": "message", "message": "show-api-knowledge"}]}, {"id": "archiver", "name": "Archivador de PNs", "subtitle": "Por etiquetas, fecha y modo", "icon": "📦", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/archiver.js"], "requiredPermissions": ["READ_PART_NUMBERS"], "actions": [{"id": "run-archiver", "label": "Archivar / Desarchivar PNs", "sublabel": "Por etiquetas, fecha (opcional) y modo", "icon": "📦", "type": "primary", "handler": "message", "message": "run-archiver"}]}, {"id": "auditor", "name": "Auditor de PNs", "subtitle": "Verificar calidad de datos", "icon": "🔎", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/duplicate-tiers.js", "scripts/auditor.js"], "requiredPermissions": ["READ_PART_NUMBERS"], "actions": [{"id": "run-auditor", "label": "Auditar PNs", "sublabel": "Seleccionar criterios y ejecutar", "icon": "🔎", "type": "primary", "handler": "message", "message": "run-auditor"}]}, {"id": "file-uploader", "name": "Cargador de Archivos", "subtitle": "Fotos y planos por PN", "icon": "📎", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/file-uploader-core.js", "scripts/file-uploader.js"], "requiredPermissions": ["READ_ALL_UPLOADED_FILES"], "actions": [{"id": "upload-files", "label": "Subir Archivos", "sublabel": "Seleccionar archivos nombrados como el PN", "icon": "📎", "type": "primary", "handler": "message", "message": "upload-pn-files"}, {"id": "backfill-display", "label": "Marcar Portadas desde CSV", "sublabel": "Sube el CSV de Cowork (PN→displayImage). Marca portadas faltantes sin re-subir.", "icon": "★", "type": "secondary", "handler": "message", "message": "backfill-display-images", "fn": "FileUploader.runBackfillFromPopup"}]}, {"id": "report-liberator", "name": "Liberador de Reportes", "subtitle": "Sacar reportes de carpetas", "icon": "📂", "category": "Herramientas", "scripts": ["scripts/steelhead-api.js", "scripts/report-liberator.js"], "requiredPermissions": ["MANAGE_REPORTING"], "actions": [{"id": "run-report-liberator", "label": "Liberar Reportes", "sublabel": "Quitar folderId de los reportes seleccionados", "icon": "📂", "type": "primary", "handler": "message", "message": "run-report-liberator"}]}, {"id": "report-regen", "name": "Regenerar Reportes", "subtitle": "Fuerza el refresh global de la base de reportes", "icon": "♻️", "category": "Herramientas", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/report-regen.js"], "requiredPermissions": ["MANAGE_REPORTING"], "actions": [{"id": "trigger-report-regen", "label": "Regenerar Reportes Ahora", "sublabel": "Refresh global de la base (respeta el cooldown del domain)", "icon": "♻️", "type": "primary", "handler": "message", "message": "trigger-report-regen", "fn": "ReportRegen.triggerFromPopup"}]}, {"id": "spec-migrator", "name": "Ajuste Masivo de Specs", "subtitle": "Migración y params pendientes", "icon": "🔀", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/spec-migrator-normalize.js", "scripts/spec-migrator.js"], "requiredPermissions": ["READ_SPECS", "WRITE_SPECS"], "actions": [{"id": "run-spec-migrator", "label": "Migrar Specs", "sublabel": "Desde la spec actual en pantalla", "icon": "🔀", "type": "primary", "handler": "message", "message": "run-spec-migrator", "fn": "SpecMigrator.run"}, {"id": "assign-pending-params", "label": "Asignar Params Pendientes", "sublabel": "Detectar y asignar params faltantes en PNs", "icon": "📋", "handler": "message", "message": "assign-pending-params", "fn": "SpecMigrator.assignPendingParams"}, {"id": "resolve-conflicts", "label": "Resolver Conflictos", "sublabel": "Detectar PNs con specs duplicadas y archivar", "icon": "⚔️", "handler": "message", "message": "resolve-conflicts", "fn": "SpecMigrator.resolveConflicts"}, {"id": "validate-duplicate-params", "label": "Validar params duplicados", "sublabel": "Detecta >1 param activo por SpecField y archiva el sobrante", "icon": "🧹", "handler": "message", "message": "validate-duplicate-params", "fn": "SpecMigrator.runDuplicateParamsValidator"}]}, {"id": "inventory-reset", "name": "Reinicio de Inventario", "subtitle": "Archivar lotes y carga inicial", "icon": "🔄", "category": "Inventario", "scripts": ["scripts/steelhead-api.js", "scripts/inventory-reset.js"], "requiredPermissions": ["READ_INVENTORY"], "actions": [{"id": "run-inventory-reset", "label": "Reiniciar Inventario", "sublabel": "Archivar lotes y cargar desde CSV", "icon": "🔄", "type": "primary", "handler": "message", "message": "run-inventory-reset"}]}, {"id": "po-comparator", "name": "Validador OC vs OV", "subtitle": "Comparar orden de compra vs venta", "icon": "📋", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/claude-api.js", "scripts/ov-operations.js", "scripts/po-comparator.js"], "requiredPermissions": ["READ_RECEIVED_ORDERS"], "actions": [{"id": "run-po-comparator", "label": "Validar OC vs OV", "sublabel": "Subir PDF y comparar contra Steelhead", "icon": "📋", "type": "primary", "handler": "message", "message": "run-po-comparator"}]}, {"id": "po-reconciler", "name": "Reconciliador OV vs PO Schneider", "subtitle": "Rebalancear OVs temporales contra POs reales", "icon": "🧮", "category": "Órdenes de Venta", "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/po-comparator.js", "scripts/lib/pdf.min.js", "scripts/po-reconciler.js"], "requiredPermissions": ["READ_RECEIVED_ORDERS"], "autoInject": true, "actions": [{"id": "run-po-reconciler", "label": "Reconciliar Schneider QRO", "sublabel": "Subir PDFs de PO y rebalancear OVs temp", "icon": "🧮", "type": "primary", "handler": "message", "message": "run-po-reconciler"}]}, {"id": "wo-deadline", "name": "Gestión Masiva de OT", "subtitle": "Cambiar plazos y etiquetas masivamente", "icon": "⚙️", "category": "Órdenes de Trabajo", "scripts": ["scripts/steelhead-api.js", "scripts/wo-deadline-changer.js"], "requiredPermissions": ["READ_WORK_ORDER"], "actions": [{"id": "run-wo-deadline", "label": "Gestionar OTs", "sublabel": "Cambiar plazos y etiquetas masivamente", "icon": "⚙️", "type": "primary", "handler": "message", "message": "run-wo-deadline", "fn": "WODeadlineChanger.run"}]}, {"id": "wo-mover", "name": "Mover OTs entre OVs", "subtitle": "Reasignar órdenes de trabajo a otra OV desde el detalle de OV", "icon": "↔️", "category": "Órdenes de Trabajo", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/ov-operations.js", "scripts/wo-mover.js"], "requiredPermissions": ["READ_RECEIVED_ORDERS", "READ_WORK_ORDER"], "autoInject": true, "actions": [{"id": "run-wo-mover", "label": "Mover OTs", "sublabel": "Reasignar OTs de esta OV a otra", "icon": "↔️", "type": "primary", "handler": "message", "message": "run-wo-mover"}]}, {"id": "wo-completer", "name": "Completar / Descompletar OTs", "subtitle": "Cerrar o revivir órdenes de trabajo desde un listado", "icon": "✅", "category": "Órdenes de Trabajo", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/wo-completer-engine.js", "scripts/wo-completer.js"], "requiredPermissions": ["READ_WORK_ORDER"], "actions": [{"id": "open-wo-completer", "label": "Completar / Descompletar OTs", "sublabel": "Pega un listado de OTs y ciérralas o revívelas", "icon": "✅", "type": "primary", "handler": "message", "message": "open-wo-completer", "fn": "WOCompleter.open"}]}, {"id": "cfdi-attacher", "name": "Adjuntar CFDI", "subtitle": "Auto-adjunta XML CFDI al enviar facturas", "icon": "📄", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/cfdi-attacher.js"], "autoInject": true, "requiredPermissions": ["READ_INVOICING"], "actions": [{"id": "toggle-cfdi-attacher", "label": "Adjuntar CFDI", "sublabel": "Auto-adjunta XML(s) al enviar email de factura", "icon": "📄", "type": "toggle", "handler": "message", "message": "toggle-cfdi-attacher"}]}, {"id": "invoice-auto-regen", "name": "Auto-regenerar Facturas", "subtitle": "Regenera PDF al detectar timbrado exitoso", "icon": "🔄", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/invoice-auto-regen.js"], "autoInject": true, "requiredPermissions": ["READ_INVOICING"], "actions": [{"id": "toggle-invoice-auto-regen", "label": "Auto-regenerar Facturas", "sublabel": "Regenera PDF tras timbrado exitoso", "icon": "🔄", "type": "toggle", "handler": "message", "message": "toggle-invoice-auto-regen"}]}, {"id": "invoice-default-tab", "name": "Tab por defecto en Invoices", "subtitle": "Auto-navega a Packing Slips al entrar a /Invoices sin mode=", "icon": "📦", "category": "Facturación", "scripts": ["scripts/invoice-default-tab.js"], "autoInject": true, "actions": [{"id": "toggle-invoice-default-tab", "label": "Tab por defecto Invoices", "sublabel": "Salta a Packing Slips al entrar a /Invoices", "icon": "📦", "type": "toggle", "handler": "message", "message": "toggle-invoice-default-tab"}]}, {"id": "invoice-listing-marker", "name": "Marcadores de Facturas", "subtitle": "Resalta NC, montos cero y borradores en el listado", "icon": "🎯", "category": "Facturación", "scripts": ["scripts/invoice-listing-marker.js"], "autoInject": true, "actions": [{"id": "toggle-invoice-listing-marker", "label": "Marcadores de Facturas", "sublabel": "Colorea NC, montos cero y borradores", "icon": "🎯", "type": "toggle", "handler": "message", "message": "toggle-invoice-listing-marker"}]}, {"id": "portal-importer", "name": "Importador de Portales", "subtitle": "Subir XLS de portales de clientes (Hubbell, etc.)", "icon": "📥", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/claude-api.js", "scripts/lib/xlsx.full.min.js", "scripts/ov-operations.js", "scripts/po-comparator.js", "scripts/portal-importer.js"], "requiredPermissions": ["READ_RECEIVED_ORDERS"], "actions": [{"id": "run-portal-importer", "label": "Importar Portal", "sublabel": "Subir XLS y procesar POs", "icon": "📥", "type": "primary", "handler": "message", "message": "run-portal-importer"}]}, {"id": "paros-linea", "name": "Paro de Línea", "subtitle": "Registrar paros con cronómetro", "icon": "⚠️", "category": "Producción", "scripts": ["scripts/steelhead-api.js", "scripts/paros-linea.js"], "autoInject": true, "requiredPermissions": ["READ_MAINTENANCE"], "actions": [{"id": "open-paros-linea", "label": "Iniciar Paro de Línea", "sublabel": "Mostrar modal de captura", "icon": "⚠️", "type": "primary", "handler": "message", "message": "open-paros-linea"}, {"id": "toggle-paros-linea", "label": "Botón flotante", "sublabel": "Activar/desactivar botón flotante en Steelhead", "icon": "🔘", "type": "toggle", "handler": "message", "message": "toggle-paros-linea-enabled"}]}, {"id": "vale-almacen", "name": "Vale de Almacén", "subtitle": "Surtido de material/equipo por usuario", "icon": "📦", "category": "Producción", "scripts": ["scripts/steelhead-api.js", "scripts/vale-almacen-engine.js", "scripts/vale-almacen.js"], "autoInject": true, "requiredPermissions": ["READ_MAINTENANCE"], "actions": [{"id": "open-vale-almacen", "label": "Emitir Vale de Almacén", "sublabel": "Registrar artículos entregados por usuario", "icon": "📦", "type": "primary", "handler": "message", "message": "open-vale-almacen", "fn": "ValeAlmacen.open"}]}, {"id": "weight-quick-entry", "name": "Peso Rápido", "subtitle": "Registra peso KG/LB desde el modal de recibo", "icon": "⚖️", "category": "Recibo", "scripts": ["scripts/steelhead-api.js", "scripts/weight-quick-entry.js"], "autoInject": true, "requiredPermissions": ["READ_RECEIVING"], "actions": [{"id": "toggle-weight-quick-entry", "label": "Peso Rápido", "sublabel": "Campos de peso en modal de recibo", "icon": "⚖️", "type": "toggle", "handler": "message", "message": "toggle-weight-quick-entry"}]}, {"id": "unit-autoconvert", "name": "Auto-conversión de Unidades", "subtitle": "Calcula las demás unidades del mismo tipo al editar un NP", "icon": "📐", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/unit-autoconvert-core.js", "scripts/unit-autoconvert.js"], "autoInject": true, "requiredPermissions": []}, {"id": "price-confirm-guard", "name": "Candado de Confirmación de Precio", "subtitle": "Reconfirma el precio (tipo password) y exige divisa al guardar en el modal de precios", "icon": "🔒", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/price-confirm-core.js", "scripts/price-confirm-guard.js"], "autoInject": true, "requiredPermissions": [], "actions": [{"id": "toggle-price-confirm-guard", "label": "Candado de Precio", "sublabel": "Reconfirmar precio + divisa al guardar (se reactiva al recargar)", "icon": "🔒", "type": "toggle", "handler": "message", "message": "toggle-price-confirm-guard", "fn": "PriceConfirmGuard.toggleFromPopup"}]}, {"id": "receiver-date-override", "name": "Fecha de Recibo", "subtitle": "Editar fecha real de recibo desde el modal de Receive Parts", "icon": "📅", "category": "Recibo", "scripts": ["scripts/receiver-date-override.js"], "autoInject": true, "requiredPermissions": ["READ_RECEIVING"], "actions": [{"id": "toggle-receiver-date-override", "label": "Fecha de Recibo", "sublabel": "Editar fecha real desde el modal", "icon": "📅", "type": "toggle", "handler": "message", "message": "toggle-receiver-date-override"}]}, {"id": "warehouse-location-prefill", "name": "Ubicación de Recibo", "subtitle": "Prellenado de ubicación inicial en el modal de Receive Parts", "icon": "📦", "category": "Recibo", "scripts": ["scripts/steelhead-api.js", "scripts/warehouse-location-prefill.js"], "autoInject": true, "requiredPermissions": ["READ_RECEIVING"], "actions": [{"id": "toggle-warehouse-location-prefill", "label": "Ubicación de Recibo", "sublabel": "Prellenado de ubicación inicial al recibir", "icon": "📦", "type": "toggle", "handler": "message", "message": "toggle-warehouse-location-prefill"}]}, {"id": "create-order-autofill", "name": "Crear OV — Autofill", "subtitle": "Razón Social, Divisa y Consolidar en modal Crear Orden de Venta", "icon": "📝", "category": "Recibo", "scripts": ["scripts/steelhead-api.js", "scripts/create-order-autofill-core.js", "scripts/create-order-autofill.js"], "autoInject": true, "requiredPermissions": ["READ_RECEIVING"], "actions": [{"id": "toggle-create-order-autofill", "label": "Crear OV — Autofill", "sublabel": "Auto-llena Entradas Personalizadas al crear OV", "icon": "📝", "type": "toggle", "handler": "message", "message": "toggle-create-order-autofill"}]}, {"id": "bill-autofill", "name": "Bill Autofill", "subtitle": "Llenado automático de cuentas contables en Bills", "icon": "🧾", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/bill-autofill.js"], "autoInject": true, "requiredPermissions": ["READ_ACCOUNTS_PAYABLE"], "actions": [{"id": "toggle-bill-autofill", "label": "Bill Autofill", "sublabel": "Auto-llenar cuentas AP y gastos en Bills", "icon": "🧾", "type": "toggle", "handler": "message", "message": "toggle-bill-autofill"}]}, {"id": "invoice-autofill", "name": "Invoice Autofill", "subtitle": "Llenado automático de cuentas contables en Invoices", "icon": "🧮", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/invoice-autofill.js"], "autoInject": true, "requiredPermissions": ["READ_INVOICING"], "actions": [{"id": "toggle-invoice-autofill", "label": "Invoice Autofill", "sublabel": "Auto-llenar cuenta CXC e ingresos en Invoices", "icon": "🧮", "type": "toggle", "handler": "message", "message": "toggle-invoice-autofill"}]}, {"id": "process-canon", "name": "Canon de Procesos", "subtitle": "Auditar y normalizar nodos canónicos", "icon": "🏭", "category": "Producción", "scripts": ["scripts/steelhead-api.js", "scripts/process-shared.js", "scripts/process-canon.js", "scripts/process-deep-audit.js"], "actions": [{"id": "run-process-canon", "label": "Auditar Procesos", "sublabel": "Detectar y corregir patrón canónico de 9 nodos", "icon": "🏭", "type": "primary", "handler": "message", "message": "run-process-canon", "fn": "ProcessCanon.run"}, {"id": "run-process-deep-audit", "label": "Auditoría profunda", "sublabel": "R1-R4: scanner, tiempos, satélites, lead time/producto + XLSX", "icon": "🔬", "type": "secondary", "handler": "message", "message": "run-process-deep-audit"}]}, {"id": "spec-params-bulk", "name": "Carga masiva Spec Params", "subtitle": "Editar parámetros de specs vía XLSX", "icon": "🧪", "category": "Calidad", "scripts": ["scripts/steelhead-api.js", "scripts/spec-shared.js", "scripts/spec-params-bulk.js"], "requiredPermissions": [], "actions": [{"id": "download-spec-params", "label": "Descargar XLSX", "sublabel": "Filtrar specs y bajar plantilla editable", "icon": "📥", "type": "primary", "handler": "message", "message": "download-spec-params"}, {"id": "upload-spec-params", "label": "Cargar XLSX editado", "sublabel": "Subir archivo y aplicar diffs en batch", "icon": "📤", "type": "secondary", "handler": "message", "message": "upload-spec-params"}]}, {"id": "sensor-status-autofill", "name": "Auto-asignar status (Sensor Dashboards)", "subtitle": "Marca 'Use for Status' en members de un dashboard", "icon": "📊", "category": "Producción", "scripts": ["scripts/steelhead-api.js", "scripts/sensor-status-autofill.js"], "requiredPermissions": [], "actions": [{"id": "assign-sensor-status", "label": "Asignar status", "sublabel": "Auto-asigna o elige candidato para cada member", "icon": "📊", "type": "primary", "handler": "message", "message": "assign-sensor-status"}]}, {"id": "sensor-graph-hide-all", "name": "Auto-ocultar sensores en la gráfica", "subtitle": "Al entrar a un Sensor Dashboard esconde todos los sensores para elegir uno", "icon": "👁", "category": "Producción", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/sensor-graph-hide-all-core.js", "scripts/sensor-graph-hide-all.js"], "requiredPermissions": [], "actions": [{"id": "toggle-sensor-graph-hide-all", "label": "Auto-ocultar sensores", "sublabel": "Esconder todos al entrar al dashboard (se reactiva al recargar)", "icon": "👁", "type": "toggle", "handler": "message", "message": "toggle-sensor-graph-hide-all", "fn": "SensorGraphHideAll.toggleFromPopup"}]}, {"id": "pn-specs-column", "name": "Specs en Números de Parte", "subtitle": "Columna de specs + parámetros numéricos de cada NP en el dashboard /PartNumbers", "icon": "🧪", "category": "Números de Parte", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/pn-specs-column-core.js", "scripts/pn-specs-column.js"], "requiredPermissions": ["READ_PART_NUMBERS"], "actions": [{"id": "toggle-pn-specs-column", "label": "Specs en Números de Parte", "sublabel": "Columna de specs + params numéricos en /PartNumbers (1 consulta por NP visible; el toggle también vive en el header)", "icon": "🧪", "type": "toggle", "handler": "message", "message": "toggle-pn-specs-column", "fn": "PnSpecsColumn.toggleFromPopup"}]}, {"id": "auto-router", "name": "Auto-Ruteador", "subtitle": "Re-rutea órdenes de trabajo entre líneas de producción", "icon": "🔀", "category": "Producción", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/auto-router-engine.js", "scripts/auto-router-api.js", "scripts/auto-router-panel.js", "scripts/auto-router-batch.js", "scripts/board-metal-tooltip.js", "scripts/auto-router.js"], "requiredPermissions": [], "actions": [{"id": "open-auto-router", "label": "Auto-Ruteador", "sublabel": "Re-rutear orden a otra línea (abre tras cargar el modal de ruteo)", "icon": "🔀", "type": "primary", "handler": "message", "message": "open-auto-router"}, {"id": "open-auto-router-batch", "label": "Auto-Ruteador — Batch", "sublabel": "Rutear varias órdenes a una línea (pega los números de orden)", "icon": "🔀", "type": "primary", "handler": "message", "message": "open-auto-router-batch"}]}, {"id": "surtido-guard", "name": "Candado de Surtido Programado", "subtitle": "Bloquea mover piezas no programadas en Preparación de Surtido", "icon": "🔒", "category": "Producción", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/surtido-guard-core.js", "scripts/surtido-guard.js"], "requiredPermissions": [], "actions": [{"id": "toggle-surtido-guard", "label": "Candado de Surtido", "sublabel": "Bloquear mover piezas no programadas (se reactiva al recargar)", "icon": "🔒", "type": "toggle", "handler": "message", "message": "toggle-surtido-guard", "fn": "SurtidoGuard.toggleFromPopup"}]}, {"id": "pn-lifecycle", "name": "Ciclo de vida de PNs", "subtitle": "Marcar validación de ingeniería, desarchivar, quitar validación o archivar (Borrado definitivo) PNs por lote, con filtros y dedup", "icon": "♻️", "category": "Números de Parte", "scripts": ["scripts/host-cleanup-shared.js", "scripts/steelhead-api.js", "scripts/bulk-upload-cc.js", "scripts/bulk-upload-classify.js", "scripts/pn-lifecycle-core.js", "scripts/pn-lifecycle.js"], "requiredPermissions": ["READ_PART_NUMBERS"], "actions": [{"id": "run-pn-lifecycle", "label": "Ciclo de vida de PNs", "sublabel": "Filtrar, previsualizar y ejecutar acciones sobre PNs", "icon": "♻️", "type": "primary", "handler": "message", "message": "run-pn-lifecycle"}]}], "knownOperations": {"StationTreatmentByWorkOrder": {"type": "query", "description": "Árbol de recipeNodes de una WO con treatmentId + stationByDefaultStationId (tina default), allDefaultStationTransports (grafo físico) y activeRoutes (rutas ya aplicadas). Variables: {workOrderIds:[woId], partNumberIds:[pnId], partGroupIds:[]}. La dispara el modal de ruteo nativo.", "usedBy": "auto-router"}, "SearchStationsForTreatment": {"type": "query", "description": "Tinas (treatmentById.schedulingStations.nodes[].{id,name}) compatibles con un tratamiento, de todas las líneas, ya filtradas al grupo Planificación. El nombre trae línea+posición física (T205-TI00-019 Enjuague). Variables: {nameLike:'%%', treatmentId}.", "usedBy": "auto-router"}, "CreateUpdateDeleteRoutes": {"type": "mutation", "description": "Aplica rutas tina↔recipeNode de una WO. Variables: {input:{routesToCreate:[{partNumberId,workOrderId,treatmentId,stationId,recipeNodeId,partGroupId:null}], routesToUpdate:[{id,stationId}], routesToDelete:[id]}}. Devuelve createUpdateDeleteRoutes.{createdRoutes[],updatedRoutes,deletedRouteIds}. Gotcha: exige una lectura RECIENTE de StationTreatmentByWorkOrder de esa WO o crea 0 rutas (rechazo silencioso, 200 sin error).", "usedBy": "auto-router"}, "PartNumbersByWorkOrderIdInDomain": {"type": "query", "description": "Resuelve una orden por su número visible. Variables: {idInDomain}. Devuelve workOrderByIdInDomain.{id (woId interno), idInDomain, name, partLocationsByWorkOrderId.nodes[].{partNumberByPartNumberId{id,name}, partGroupByPartGroupId}}. Resuelve woId+pnId+partGroup en una llamada (usado por el batch).", "usedBy": "auto-router"}, "GetPartNumberInventoryBatch": {"type": "query", "description": "Resuelve un lote por su idInDomain (el número del link /Inventory/Batches/<n>). Variables: {idInDomain}. Devuelve inventoryBatchByIdInDomain.{id (id INTERNO del lote), nodeId}. Paso 1 de la cadena para leer el PS: idInDomain → id interno → GetInventoryBatch.", "usedBy": "auto-router"}, "GetInventoryBatch": {"type": "query", "description": "Detalle de un lote por su id INTERNO. Variables: {id, limit, offset}. Devuelve inventoryBatchById.customInputs.DatosRecibo.PackingSlip (PS = Packing Slip del cliente) entre otros. Paso 2 de la cadena del tooltip del board (el id interno sale de GetPartNumberInventoryBatch).", "usedBy": "auto-router"}, "SchedulablePartLocations": {"type": "query", "description": "Part-locations de un schedule por estación(es). Variables: {scheduleId, stationIds:[...], routedOnly:false}. Devuelve allPartLocations.nodes[].{workOrderId, partNumberId, partGroupId, stationId, recipeNodeId}. Usado para 'rutear todas': trae las WO de la línea sin seleccionarlas. OJO: query relativamente pesada (1700+ nodos si se piden varias estaciones).", "usedBy": "auto-router"}, "CreateQuote": {"type": "mutation", "description": "Crear cotización con custom inputs (Comentarios, DatosAdicionales, Autorización)", "usedBy": "carga-masiva"}, "UpdateQuote": {"type": "mutation", "description": "Actualizar notas externas/internas de cotización", "usedBy": "carga-masiva"}, "SaveQuoteLines": {"type": "mutation", "description": "Asignar productos a líneas de cotización", "usedBy": "carga-masiva"}, "CreateQuoteStageChange": {"type": "mutation", "description": "Mover una cotización a un stage (quoteStageId). bulk-upload: STEP 9 la mueve a 'Ganada' (ganadaStageId) al terminar; y al 'retomar anterior' la mueve a revertStageId (no-active) ANTES de editar = revert-from-active. Variables: {quoteId, quoteStageId, message, needsRevision}.", "usedBy": "carga-masiva"}, "SaveManyPartNumberPrices": {"type": "mutation", "description": "Vincular PNs a cotización con precios y divisa (batch de 20)", "usedBy": "carga-masiva"}, "SavePartNumber": {"type": "mutation", "description": "Crear/enriquecer números de parte (labels, specs, dims, predictive, optIn)", "usedBy": "carga-masiva"}, "SavePartNumberRackTypes": {"type": "mutation", "description": "Asignar racks a números de parte", "usedBy": "carga-masiva"}, "SetPartNumberPricesAsDefaultPrice": {"type": "mutation", "description": "Marcar precios como default para un PN", "usedBy": "carga-masiva"}, "UpdatePartNumber": {"type": "mutation", "description": "Archivar números de parte (archivedAt)", "usedBy": "carga-masiva"}, "CreatePartNumberGroup": {"type": "mutation", "description": "Crear grupo/familia de números de parte", "usedBy": "carga-masiva"}, "CustomerSearchByName": {"type": "query", "description": "Buscar clientes por nombre para dropdowns y resolución", "usedBy": "carga-masiva"}, "CustomerFinancialByCustomerId": {"type": "query", "description": "Obtener términos de facturación del cliente", "usedBy": "carga-masiva"}, "GetQuote": {"type": "query", "description": "Obtener cotización completa con líneas, QPNPs y PNs", "usedBy": "carga-masiva"}, "GetQuoteRelatedData": {"type": "query", "description": "Obtener direcciones y contactos del cliente para cotización", "usedBy": "carga-masiva"}, "SearchInvoiceTerms": {"type": "query", "description": "Buscar términos de facturación disponibles", "usedBy": "carga-masiva"}, "SearchUsers": {"type": "query", "description": "Buscar usuarios/vendedores para asignar a cotización", "usedBy": "carga-masiva"}, "AllProcesses": {"type": "query", "description": "Listar procesos/workflows disponibles (no archivados)", "usedBy": "carga-masiva"}, "AllLabels": {"type": "query", "description": "Listar etiquetas para números de parte", "usedBy": "carga-masiva"}, "DeleteWorkOrderLabels": {"type": "mutation", "description": "Eliminar todas las etiquetas de una OT", "usedBy": "wo-deadline"}, "CreateWorkOrderLabel": {"type": "mutation", "description": "Asignar una etiqueta a una OT", "usedBy": "wo-deadline"}, "SearchSpecsForSelect": {"type": "query", "description": "Buscar especificaciones con campos y parámetros", "usedBy": "carga-masiva"}, "TempSpecFieldsAndOptions": {"type": "query", "description": "DEPRECATED — usar SpecFieldsAndOptions. Su selection set no devuelve params para fields tipo DROPDOWN", "usedBy": "carga-masiva"}, "AllRackTypes": {"type": "query", "description": "Listar tipos de rack disponibles", "usedBy": "carga-masiva"}, "SearchUnits": {"type": "query", "description": "Listar unidades de medida (KGM, LBR, CMK, etc.)", "usedBy": "carga-masiva, unit-autoconvert"}, "SearchProductsComprehensive": {"type": "query", "description": "Buscar productos (renombrada de SearchProducts 2026-07-16; misma key searchProducts.nodes + var offset opcional)", "usedBy": "carga-masiva, wo-deadline-changer"}, "SearchPartNumbers": {"type": "query", "description": "Buscar PNs existentes por nombre (verificar duplicados)", "usedBy": "carga-masiva"}, "PartNumberGroupSelect": {"type": "query", "description": "Listar grupos de números de parte", "usedBy": "carga-masiva"}, "DeletePartNumberPrice": {"type": "mutation", "description": "Borrar un precio de PN por ID", "usedBy": "carga-masiva"}, "DeletePartNumberRackType": {"type": "mutation", "description": "Borrar un rack de PN por ID", "usedBy": "carga-masiva"}, "CreatePartNumberInputSchema": {"type": "mutation", "description": "Actualizar schema de custom inputs (agregar Metal Base, etc.)", "usedBy": "carga-masiva"}, "GetDimension": {"type": "query", "description": "Obtener valores de dimensión contable (Línea, Departamento)", "usedBy": "carga-masiva"}, "Customer": {"type": "query", "description": "Trae customerByIdInDomain con salesTaxable, idInDomain y todo el customInputs (DatosContables.CuentasContables, DatosFactura.{RazonSocialVenta, Divisa, ConsolidarPorProducto}, etc). Variables: { idInDomain, includeAccountingFields }", "usedBy": "invoice-autofill, create-order-autofill"}, "AllInventoryTypes": {"type": "query", "description": "Listar todos los tipos de inventario (Materia Prima, Metales, etc.)", "usedBy": "inventory-reset"}, "SearchInventoryTypeItems": {"type": "query", "description": "Listar items de un tipo de inventario (paginado)", "usedBy": "inventory-reset"}, "SearchInventoryItemBatches": {"type": "query", "description": "Listar lotes activos de un item de inventario", "usedBy": "inventory-reset"}, "AllInventoryBatchStatuses": {"type": "query", "description": "Listar estatus de lotes de inventario por tipo", "usedBy": "inventory-reset"}, "CreateEditInventoryBatchDialogQuery": {"type": "query", "description": "Obtener el inputSchemaId genérico para creación de lotes", "usedBy": "inventory-reset"}, "SearchLocationsOnPath": {"type": "query", "description": "Buscar ubicaciones de almacén por path (Ecoplating.N3.A3.RJ)", "usedBy": "inventory-reset, warehouse-location-prefill"}, "UpdateInventoryBatchesChecked": {"type": "mutation", "description": "Archivar lotes de inventario en batch (hasta 20 por llamada)", "usedBy": "inventory-reset"}, "CreateInventoryTransferEventGroups": {"type": "mutation", "description": "Crear lotes de inventario nuevos (carga inicial)", "usedBy": "inventory-reset"}, "GetSpec": {"type": "query", "description": "Obtener spec por idInDomain+revision con sus PNs asignados", "usedBy": "spec-migrator"}, "SpecFieldsAndOptions": {"type": "query", "description": "Obtener spec fields y sus parámetros completos (defaultValues.nodes para todos los field types: DROPDOWN, BOOLEAN, espesor, etc.). Es la query CORRECTA para construir specsToApply. Reemplazó a TempSpecFieldsAndOptions y al embed de AllSpecs (que omite params en DROPDOWN)", "usedBy": "carga-masiva, spec-migrator"}, "ApplySpecsToPartNumber": {"type": "mutation", "description": "Aplicar una spec nueva a un PN con defaultSelections + genericSelections", "usedBy": "spec-migrator"}, "ArchivePartNumberSpecAndParams": {"type": "mutation", "description": "Archivar/desarchivar spec y sus params a nivel PN", "usedBy": "spec-migrator"}, "UpdatePartNumberSpecParam": {"type": "mutation", "description": "Archivar un param individual de un PN (cambia archivedAt)", "usedBy": "spec-migrator"}, "AddParamsToPartNumber": {"type": "mutation", "description": "Agregar params a una spec ya ligada al PN (sin re-crear part_number_spec). CRÍTICO: pasar processNodeId:null y processNodeOccurrence:null aunque isGeneric=false — pasar el processId real choca con exclusion constraint. Llamar uno por uno y tolerar 'conflicting key' como 'ya presente'", "usedBy": "carga-masiva, spec-migrator"}, "FilterSearch": {"type": "query", "description": "Buscar opciones de filtro (cliente, etiqueta) para dashboards", "usedBy": "spec-migrator"}, "AllReports": {"type": "query", "description": "Listar todos los reportes y carpetas (con includeArchived YES/NO)", "usedBy": "report-liberator"}, "CreateUpdateReportWithPermissions": {"type": "mutation", "description": "Crear o actualizar reporte (cambiar folderId a null para liberar)", "usedBy": "report-liberator"}, "DeleteFolderById": {"type": "mutation", "description": "Borrar carpeta de reportes por ID (falla si tiene reportes adentro)", "usedBy": "report-liberator"}, "ArchiveReport": {"type": "mutation", "description": "Archivar/desarchivar reporte (archivedAt timestamp o null)", "usedBy": "report-liberator"}, "CreateUpdateBill": {"type": "mutation", "description": "Crear o actualizar factura de proveedor con líneas, journal entry y custom inputs (Divisa, exchangeRate)", "usedBy": "bill-autofill"}, "GetPurchaseOrderDetail": {"type": "query", "description": "Obtener PO por idInDomain con customInputs.DatosReferencia.Divisa, vendor y domain (antes 'GetPurchaseOrder'; el front renombró la op, mismas variables idInDomain/userIdFilter)", "usedBy": "bill-autofill"}, "GetDomain": {"type": "query", "description": "Obtener dominio con customInputs.TipoCambio (array de {fecha, valor}) y currentExchangeRate", "usedBy": "bill-autofill"}, "SearchAccounts": {"type": "query", "description": "Buscar cuentas contables por texto (%query%)", "usedBy": "bill-autofill"}, "GetAccountDataForBill": {"type": "query", "description": "Lista completa de cuentas contables + mapeo producto→cuenta para bills", "usedBy": "bill-autofill"}, "GetBillByIdInDomain": {"type": "query", "description": "Obtener bill por idInDomain con líneas y customInputs", "usedBy": "bill-autofill"}, "GetPartNumbersInputSchema": {"type": "query", "description": "Obtener input schemas de PN (usado para extraer enums BaseMetal y CodigoSAT)", "usedBy": "carga-masiva"}, "AllSpecs": {"type": "query", "description": "Listar specs paginado por offset/first. Filtrable por type=EXTERNAL. Reemplaza SearchSpecsForSelect (que tiene límite oculto ~5000). Trae specFieldSpecsBySpecId.nodes embebido pero el selection set OMITE params para field types tipo DROPDOWN — solo usar para name→id lookup, NO para construir specsToApply (ahí usar SpecFieldsAndOptions)", "usedBy": "carga-masiva"}, "AllCustomers": {"type": "query", "description": "Listar clientes paginado por offset/first. Trae customerLabelsByCustomerId embebido pero NO direcciones (siguen requiriendo Customer por idInDomain). Reemplaza el workaround de letras A-Z+0-9 con CustomerSearchByName", "usedBy": "carga-masiva"}, "UpdateInventoryItemPredictedUsage": {"type": "mutation", "description": "Actualizar predictivos existentes en batch. Input: {mnPredictedInventoryUsagePatch: [{id, microQuantityPerPart, inventoryUsageLowCodeId}]}. microQuantityPerPart está en micro-unidades (kg/pza × 1e6 redondeado). Necesario porque SavePartNumber.inventoryPredictedUsages es insert-only y dispara unique constraint en (pn, inventoryItem)", "usedBy": "carga-masiva"}, "ArchivePredictedInventoryUsage": {"type": "mutation", "description": "Archivar (soft-delete) un predictivo de inventario existente. Input singular: {input: {id, predictedInventoryUsagePatch: {archivedAt: ISO}}}. Devuelve updatePredictedInventoryUsageById.clientMutationId. (1.6.28: bulk-upload ya no la usa — usa ChangePredictedInventoryUsagesWithRecipeNodeCascade. Conservada para tools/archive-predictive-dash.js.)", "usedBy": "archive-predictive-dash"}, "ChangePredictedInventoryUsagesWithRecipeNodeCascade": {"type": "mutation", "description": "Mutación consolidada para predictivos. Input: {input:{toCreate:[{inventoryItemId,partNumberId,microQuantityPerPart,treatmentId?}], toArchiveAndReplace:[{archiveId,inventoryItemId,partNumberId,microQuantityPerPart}], toArchive:[{archiveId}], cascadePairs:[]}}. microQuantityPerPart en micro-unidades como STRING ('70' = 70 micro). toArchiveAndReplace archiva el id existente y crea uno nuevo activo en un solo round-trip — semánticamente reemplaza tanto Unarchive+Update como Update simple. Reemplaza el trio UpdateInventoryItemPredictedUsage + ArchivePredictedInventoryUsage que bulk-upload usaba en STEP 6a", "usedBy": "carga-masiva"}, "UpdatePartNumberPerPerRackType": {"type": "mutation", "description": "Actualizar partsPerRack de un rack ya ligado a un PN (typo 'PerPer' es del API real). Input: {partNumberId, partsPerRack, rackTypeId}. Necesario porque SavePartNumberRackTypes es insert-only y dispara unique constraint en (pn, rackType)", "usedBy": "carga-masiva"}, "GetSpecFieldPartNumbers": {"type": "query", "description": "PNs sin asignar de un specFieldSpec. Reemplaza el viejo GetSpecFieldSpec, que Steelhead dividió por-tab (scan 2026-06-24). Variables: {specFieldSpecId, partNumberUnassignedActive:true, partNumberSpecFieldParamActive:false, searchQuery:'', first, offset, orderBy:['NAME_ASC']}. Responde pagedData.{totalCount, nodes[].{id,name}}. isGeneric/defaultValues/specFieldBySpecFieldId vienen de SpecFieldsAndOptions, no de aquí.", "usedBy": "spec-migrator"}, "CheckDuplicatePO": {"type": "query", "description": "Buscar OVs por nombre/PO para detección de duplicados", "usedBy": "po-comparator"}, "ActiveReceivedOrders": {"type": "query", "description": "Listar órdenes de venta activas con filtros y paginación", "usedBy": "po-comparator"}, "GetReceivedOrder": {"type": "query", "description": "Detalle completo de una orden de venta por idInDomain", "usedBy": "po-comparator"}, "GetAddPartsReceivedOrder": {"type": "query", "description": "Detalle de OV con workOrders + receivedOrderPartTransforms (incluye partNumberId, count, maxPartTransformCount). Variable {id} es internal id, alias del root es receivedOrderByIdInDomain", "usedBy": "po-reconciler"}, "GetReceivedOrderLine": {"type": "query", "description": "Detalle de una línea específica de OV", "usedBy": "po-comparator"}, "GetReceivedOrderDocuments": {"type": "query", "description": "Documentos adjuntos de una orden de venta", "usedBy": "po-comparator"}, "RouteReceivedOrders": {"type": "query", "description": "Datos mínimos de OVs por lista de IDs", "usedBy": "po-comparator"}, "GetReceivedOrderCosts": {"type": "query", "description": "Desglose de costos de una orden de venta", "usedBy": "po-comparator"}, "ReceivingBatchesQuery": {"type": "query", "description": "Batches de recibo con datos de discrepancia", "usedBy": "po-comparator"}, "EmailCustomerContactsByCustomerIds": {"type": "query", "description": "Contactos de correo del cliente por ID", "usedBy": "po-comparator"}, "GetEmailDefaultByTypeAndSubType": {"type": "query", "description": "Plantillas de email por tipo (SALES_ORDER, GENERIC)", "usedBy": "po-comparator"}, "GetUserEmailRecipients": {"type": "query", "description": "Lista de destinatarios internos para emails", "usedBy": "po-comparator"}, "SaveReceivedOrderLinesAndItems": {"type": "mutation", "description": "Crear/actualizar líneas y items de OV", "usedBy": "po-comparator"}, "SaveReceivedOrderPartTransforms": {"type": "mutation", "description": "Crear/actualizar part transforms de una OV (paso previo a SaveReceivedOrderLinesAndItems)", "usedBy": "portal-importer"}, "UpdateReceivedOrder": {"type": "mutation", "description": "Actualizar custom inputs y header de OV (Divisa, RazonSocial, name para rename)", "usedBy": "po-comparator, po-reconciler"}, "AddPartsToWorkOrders": {"type": "mutation", "description": "Mover piezas entre OTs (cross-OV o intra-OV). Requiere fromAccountId + toAccount con workOrderId/recipeNodeId/locationId/partNumberId/receivedOrderPartTransformId", "usedBy": "po-reconciler"}, "CreateUpdateWorkOrdersChecked": {"type": "mutation", "description": "Crear o actualizar Work Orders (header con customerId, productId, deadline, receivedOrderId)", "usedBy": "po-reconciler"}, "SendEmailChecked": {"type": "mutation", "description": "Enviar email con plantilla, adjuntos y links", "usedBy": "po-comparator, cfdi-attacher"}, "CreateEmailLogReceivedOrder": {"type": "mutation", "description": "Registrar envío de email en historial de OV", "usedBy": "po-comparator"}, "InvoiceByIdInDomain": {"type": "query", "description": "Obtener factura por idInDomain con writeResult (linkxml, XmlBase64File)", "usedBy": "cfdi-attacher"}, "CreateInvoicePdf": {"type": "mutation", "description": "Generar PDF de factura para adjuntar en email", "usedBy": "cfdi-attacher"}, "ActiveInvoicesPaged": {"type": "query", "description": "Listar facturas paginadas para dashboard (incluye steelheadObjectByInvoiceId.writtenAt y invoicePdfsByInvoiceId)", "usedBy": "invoice-auto-regen"}, "CreateInvoiceEmailLog": {"type": "mutation", "description": "Registrar envío de email de factura en historial", "usedBy": "cfdi-attacher"}, "CurrentUser": {"type": "query", "description": "Usuario actual logueado con permisos y config de dominio. DEPRECADA server-side 2026-04-27 (HTTP 400 'Must provide a query string.'). Usar CurrentUserDetails como fallback (sin permisos finos).", "usedBy": "permissions"}, "CurrentUserDetails": {"type": "query", "description": "Usuario actual mínimo: id, domainId, isAdmin. Sin currentManagedPermissions ni name. Usado por paros-linea como gating ligero (admin-only).", "usedBy": "paros-linea"}, "CurrentUserActiveSegments": {"type": "query", "description": "Sesión actual: currentSession.userByUserId.name (+ domain, employment, segments). Usado por bulk-upload para el usuario del footprint ControlCambios (CurrentUserDetails NO trae name).", "usedBy": "bulk-upload"}, "GlobalUsers": {"type": "query", "description": "Listar todos los usuarios del dominio (paginado)", "usedBy": "permissions"}, "CreateReceivedOrder": {"type": "mutation", "description": "Crear nueva orden de venta con custom inputs", "usedBy": "po-comparator"}, "CreateUserFile": {"type": "mutation", "description": "Registrar archivo subido en el sistema de archivos", "usedBy": "po-comparator, file-uploader"}, "CreateReceivedOrderUserFile": {"type": "mutation", "description": "Enlazar archivo a una orden de venta", "usedBy": "po-comparator"}, "CreateEditReceivedOrderDialogQuery": {"type": "query", "description": "Schema de inputs y defaults del dominio para crear/editar OV", "usedBy": "po-comparator"}, "GetCustomerInfoForReceivedOrder": {"type": "query", "description": "Contactos, direcciones, invoice terms y defaults de un cliente", "usedBy": "po-comparator"}, "PartNumberCreatableSelectGetPartNumbers": {"type": "query", "description": "Buscar PNs por nombre con filtro de cliente", "usedBy": "po-comparator"}, "SearchPartNumberPrices": {"type": "query", "description": "Buscar precios de un PN para un cliente", "usedBy": "po-comparator"}, "CreateMaintenanceEvent": {"type": "mutation", "description": "Crear evento de mantenimiento vinculado a nodo, equipo y asignado (punto de inicio del paro)", "usedBy": "paros-linea"}, "CreateMaintenanceNodeEvent": {"type": "mutation", "description": "Abrir el paso del nodo al detener un evento (precede a las mediciones de sensor)", "usedBy": "paros-linea"}, "CreateManySensorMeasurements": {"type": "mutation", "description": "Registrar mediciones de sensores (PASS/FAIL) para un paso de mantenimiento", "usedBy": "paros-linea"}, "UpdateMaintenanceEvent": {"type": "mutation", "description": "Actualizar un evento de mantenimiento (equipmentId, assigneeId, completedAt)", "usedBy": "paros-linea"}, "CreateMaintenanceEventComment": {"type": "mutation", "description": "Agregar comentario al historial del evento de mantenimiento", "usedBy": "paros-linea"}, "CreateMaintenanceEventUserFile": {"type": "mutation", "description": "Enlazar archivo subido a un evento de mantenimiento (evidencia)", "usedBy": "paros-linea"}, "CreateMaintenanceEventDialogQuery": {"type": "query", "description": "Listar todos los nodos de mantenimiento disponibles (filtrar por %Paro de Línea% para derivar responsable)", "usedBy": "paros-linea"}, "OperatorMaintenanceNodeDialogQuery": {"type": "query", "description": "Obtener detalle de un nodo de mantenimiento (sensores = motivos) para la vista del operador", "usedBy": "paros-linea"}, "SearchEquipments": {"type": "query", "description": "Buscar equipos (líneas, máquinas) por nombre parcial", "usedBy": "paros-linea"}, "WorkboardById": {"type": "query", "description": "Obtener detalle de un workboard por ID (incluye name para deducir línea activa)", "usedBy": "paros-linea"}, "AllEquipments": {"type": "query", "description": "Listar equipos paginados con etiquetas/tipo/ubicación (filtrar líneas y células por etiqueta)", "usedBy": "paros-linea, vale-almacen"}, "GetMaintenanceEvent": {"type": "query", "description": "Detalle de un evento de mantenimiento por idInDomain (incluye descendantRelationships del nodo raíz → pasos hijo con childIndex)", "usedBy": "vale-almacen"}, "UpdateMaintenanceNodeEvent": {"type": "mutation", "description": "Actualizar/archivar un paso (maintenanceNodeEvent) — archivedAt marca el paso como completado", "usedBy": "vale-almacen"}, "UserDialogQuery": {"type": "query", "description": "Detalle de un usuario por id (customInputs.DatosLaborales.CodigoEmpleado = número de empleado)", "usedBy": "vale-almacen"}, "AllPermissionsEditManyPermissions": {"type": "query", "description": "Catálogo de todos los permisos gestionados de Steelhead con descripción", "usedBy": "popup-settings"}, "GetAvailableUnits": {"type": "query", "description": "Obtener unidades disponibles y conversiones existentes de un inventory item", "usedBy": "weight-quick-entry, unit-autoconvert"}, "CreateInventoryItemUnitConversion": {"type": "mutation", "description": "Crear conversión de unidad nueva para un inventory item (unitId + factor)", "usedBy": "weight-quick-entry, unit-autoconvert"}, "UpdateInventoryItemUnitConversion": {"type": "mutation", "description": "Actualizar factor de conversión existente de un inventory item", "usedBy": "weight-quick-entry, unit-autoconvert"}, "InvoiceLowCodeData": {"type": "query", "description": "Carga única de creación/edición de invoice — trae customerById con customInputs.DatosContables.CuentasContables (NO trae salesTaxable). También allAcctAccounts, allAcctProductAccountConfigs, customInputs.TipoCambio del dominio", "usedBy": "invoice-autofill"}, "GetReceivedOrdersWithReceivedOrderLineItems": {"type": "query", "description": "Trae OVs con customInputs.divisa (canon) y customerById.salesTaxable + customerById.idInDomain. Marca linkage de invoice a OV", "usedBy": "invoice-autofill"}, "CreateInvoiceAndUpdatePartTransferAccounts": {"type": "mutation", "description": "Crea invoice y actualiza acctAccountId/acctArAccountId en transfer records (no se intercepta outbound en v1; DOM-fill garantiza valores)", "usedBy": "invoice-autofill"}, "GetProcessNode": {"type": "query", "description": "Obtener árbol completo de un proceso con descendantRelationships (lista plana padre→hijo de TODOS los descendientes) Y atributos del nodo raíz: processNodeById.{defaultLeadTime, productByProductId, treatmentByTreatmentId, children}. Variables: {id, processNodeOccurrence:1, rootId:<sameAsId>}", "usedBy": "process-canon, process-deep-audit"}, "CreateEditProcessDialogQuery": {"type": "query", "description": "Detalle ligero (sin árbol) de un proceso para edición: processNodeById.{name, type, defaultLeadTime{hours,minutes,seconds}, productByProductId{id,name}, processNodeTagsByProcessNodeId.totalCount}. Variables: {id}", "usedBy": "process-deep-audit"}, "GetTreatment": {"type": "query", "description": "Detalle de treatment con estaciones: treatmentById.{name, stationTreatmentsByTreatmentId.{totalCount, nodes[].{id, stationId, stationByStationId{id,name}}}}. Variables: {id}", "usedBy": "process-deep-audit"}, "AllTreatments": {"type": "query", "description": "Lista paginada de treatments. Devuelve pagedData.nodes[].{id, name, stationTreatmentsByTreatmentId.nodes[].stationByStationId{id,name}}. Variables: {} (sin filtros)", "usedBy": "process-deep-audit"}, "CreateEditTreatmentTimesDialogQuery": {"type": "query", "description": "Trae los tiempos cargados para combos (treatmentId, stationId, processNodeId?, processNodeOccurrence?, partNumberId?). Devuelve allRelatedTreatmentTimesByIdSets.nodes[].relatedTimes[].{cycleTime{hours,minutes,seconds}, totalTime{hours,minutes,seconds}, timeType, stationByStationId, treatmentByTreatmentId, processNodeByProcessNodeId}. Variables: {searchTreatmentTimesInput:[{stationId, treatmentId, processNodeOccurrence}], partNumberIds:[], stationIds, treatmentIds, treatmentGroupIds:[], processNodeIds}", "usedBy": "process-deep-audit"}, "StationsByTreatmentId": {"type": "query", "description": "Devuelve allTreatments.nodes[].performingStations.nodes[].{id, name} dado treatmentIds o treatmentGroupIds. Variables: {ids:[treatmentId], groupIds:[]}", "usedBy": "process-deep-audit"}, "GetProcessNodeParents": {"type": "query", "description": "Devuelve processNodeById.parentProcesses.nodes[].{id, name} — útil para detectar si un nodo (satélite) está compartido en uso por varios procesos. Variables: {processNodeId}", "usedBy": "process-deep-audit"}, "AllTagsAndNodes": {"type": "query", "description": "Lista de tags del dominio (NO incluye process nodes — su responseSchema solo expone allTags.nodes). Para discovery de nodos compartidos usar ProcessesComponentQuery con SUB_PROCESS", "usedBy": "process-canon"}, "ProcessesComponentQuery": {"type": "query", "description": "Listar process nodes incluyendo SUB_PROCESS (compartidos). Variables: {includeArchived:'NO', processNodeTypes:['PROCESS','SUB_PROCESS'], orderBy:['ID_DESC'], offset, first, searchQuery}. Devuelve pagedData.nodes[] + totalCount. Es el discovery correcto para los compartidos prefijados con 'SP '.", "usedBy": "process-canon"}, "ProcessesWithTag": {"type": "query", "description": "Listar process nodes filtrados por tagId. Variables: {includeArchived:'NO', tagId, orderBy, offset, first, searchQuery}. Reserva para discovery alternativo por tag.", "usedBy": "process-canon"}, "GetAllTagsQuery": {"type": "query", "description": "Lista todos los tags del dominio con id+name. Reserva para mapear tag→procesos.", "usedBy": "process-canon"}, "CreateProcessNode": {"type": "mutation", "description": "Crear nodo de proceso. Para 'Listo para Procesar' usar type:'SCANNER_NODE', autoComplete:false. Devuelve createProcessNode.processNode.id", "usedBy": "process-canon"}, "ProcureTree": {"type": "mutation", "description": "REEMPLAZA atómicamente el árbol completo de un proceso. Variables: {tree:{id:rootId, children:[{id, children:[...], specId:null}], specId:null}}. CRÍTICO: snapshot el árbol antes; un id incorrecto deja el proceso roto", "usedBy": "process-canon"}, "UpdateProcessNode": {"type": "mutation", "description": "Actualiza atributos de un process node (ej. autoComplete). Variables: {id:<processNodeId>, autoComplete:true}. Devuelve updateProcessNodeById.clientMutationId (puede ser null aunque sea exitoso)", "usedBy": "process-canon"}, "UpdateReceiver": {"type": "mutation", "description": "Actualizar receiver (id, notes, receivedAt, customInputs, inputSchemaId). Usado como follow-up tras CreateReceiverChecked para sobrescribir receivedAt", "usedBy": "receiver-date-override (follow-up POST)"}, "CreateReceiverChecked": {"type": "mutation", "description": "Crea un receiver desde el modal Receive Parts from Customer. Variables.receiverPayload incluye notes/customInputs/inputSchemaId/receiverBomItems pero NO receivedAt (server lo setea a NOW). Devuelve createReceiverChecked.id (number)", "usedBy": "receiver-date-override (intercept response, fire follow-up UpdateReceiver)"}}, "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/bulk-upload-cc.js", "scripts/bulk-upload-parse.js", "scripts/bulk-upload-classify.js", "scripts/bulk-upload.js", "scripts/catalog-fetcher.js"], "templateUrl": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v12.xlsm", "scriptIntegrity": {"scripts/api-knowledge.js": "ae05a48d18b2e989e9a8a51be1693183f9e191b47a80cf05457c99325930b13d", "scripts/archiver.js": "f90382b4786080edc370bae87729af9b45efc38152190a2f9691bb3a4115403b", "scripts/auditor.js": "c0bb4771b29d1046f819b98885a089f5af330219227a24a9e9c67ebf634e2f22", "scripts/auto-router-api.js": "c40507b25bc923f0b0e5bece16bcc93ba9db8740f63d6d2be0b0612d59f89099", "scripts/auto-router-batch.js": "985feb74c421a7661c2366435412686b1495405094181bbbf72b832c391938ac", "scripts/auto-router-engine.js": "72dce77ad562d657b8793d0a0bd27b110d4d0791c11886aaf8ff33cf0ab57700", "scripts/auto-router-panel.js": "07020fbd82ced16bc38e22a2a406d1e8ffc177a51f3993c4a7d03faf106e0f49", "scripts/auto-router.js": "6a2eed28ed8beb5b63fbb9022e56f5f5bf49ea788fad545bb76a6a830caae74c", "scripts/batch-name-filter-core.js": "918ef9faf5b76c94467b43d36ee23df7addecee03aeeeb34d9cf328885d4a914", "scripts/batch-name-filter.js": "b77dcb52fa6f9facf31f9f3153aed6b116ad81024ed2090f811fc7bf90441cc2", "scripts/bill-autofill.js": "58750f899a5c1b40ce262297ccc81a7cfaf8feda6f8284bf6b096c74f136c6b9", "scripts/board-metal-tooltip.js": "5f57e72f2e1918285c45d8ac638cca43594c6326f86d3e7f26da1094698cc4ae", "scripts/bulk-upload-batch.js": "93ff56929eea67f5c79c35404601e827b785ab43d3fed633d2047ff3a7b2767e", "scripts/bulk-upload-cc.js": "20722ceedaec6208892cbff51fb1264d34a278ce7a41a3c5b4b6bb67d35b0a49", "scripts/bulk-upload-classify.js": "6ed19f27028976a39ff19ffc08705696f599c9c8559b70f234ab7a5557743abf", "scripts/bulk-upload-parse.js": "e7c6bb1f97d336c85295764d0d4707723c06bac2b7c9ae3c03f703bf38e3ab15", "scripts/bulk-upload.js": "6a0396ac92c9858fabb643b433285e028506dcb43ac4dca06e712aa8cf6e2732", "scripts/catalog-fetcher.js": "48f3f8a55ea94e7fa8626c95688cb7e9de7877fa14f7e5a52dda1490731cca63", "scripts/cfdi-attacher.js": "de1c2c4d530434be501fee9978c7945e681c62f10c23abbd6ad98aa925a485c8", "scripts/claude-api.js": "15e112fd05c69ffa54b0f43752cb636b7c057e08e7953b7d5134534a9728cf7c", "scripts/create-order-autofill-core.js": "188557e7ecf9759423ec54d4d0364dc33bf1303006b518c491e10ecabd7d0484", "scripts/create-order-autofill.js": "0981d9c51fa47fbab3ced3850af0c06dd429454eda3340b0da7b8330ee7327d7", "scripts/duplicate-tiers.js": "93f93691b833cd00254c26a752e1266587d1e7f31e3dafc5c31bb325b8136077", "scripts/file-uploader-core.js": "c59cc259fffacbef361ce3331fd384a0d6acd0a0f7c5e771ec04b215476c6fd5", "scripts/file-uploader.js": "fb3565a9dd4a49afc71cd569b0472a919312108cb85e47b05e3e79927d0966de", "scripts/hash-scanner.js": "0231fe5649b9eca4f56853eac94e950c30a38c518889bf622c444c8eb3a8f6a5", "scripts/host-cleanup-shared.js": "08a289903b13c93408163a11882ff6fc4f58021401846ba360c7501ba9ebb34e", "scripts/inventory-reset.js": "3440af034dd81af0ff0ad9ee140c3b44130d704c648c1a5639dd73acc6ff5e60", "scripts/invoice-auto-regen.js": "1b9270137b711a54e9aa2864bea18ac5718d20a4f61544ab2ccb61546d9a9955", "scripts/invoice-autofill.js": "cb67f9103ef102cdc37ed15770f0cb4a90d8d39d8380407b8a9601a0ed1cd458", "scripts/invoice-default-tab.js": "5ed3e6bf3adac75fe987dbec360e041db6b16b4d9084894a68a0c9b8a4570a52", "scripts/invoice-listing-marker.js": "c2edcceddbfc662c76a165368a63c97cc9c14fbfe97e522d7c4e5e55ff723862", "scripts/lib/pdf.min.js": "978fd1b2d134a98e98966186a97777bebf87d8e770dadab1ece3687e21a5aa6c", "scripts/lib/xlsx.full.min.js": "c9506197caf809a075b6dee1da0d36fb19da7158ffe8a88e7b0c96c5d8623c99", "scripts/load-calculator-engine.js": "87983ec94eb5cbb48570cff4e8c92cbf03511cd25c762cd16eb3047f6b9ed671", "scripts/load-calculator-modal.js": "eb9c4252ce583e0a4939fedff018cdf30f057e1dc4f7bc99e917ddb2464c428a", "scripts/load-calculator-stations.js": "417ebe274fd3a649fcc70c02bc122afb3d57db5e2c53a9cb9bb24e0ecf43ef06", "scripts/load-calculator.js": "bf06e3cd6ed5063b62b5b62c9ef13ecf9546b2093d40320f450058576658b111", "scripts/ov-operations.js": "58f2fed723ba81a1f73c0bb58da934293aec5cda6cde81494682be4d9910989c", "scripts/paros-linea.js": "b10074bbcb58bb1ce41d80b5333e4f75d01fbfd272d9fc37cb0134f6a0419e35", "scripts/pn-lifecycle-core.js": "81a8e694132873e3176eab07167324abfa77c616adac0690e6cbbfc8b39ff0c9", "scripts/pn-lifecycle.js": "2b4693608fa23ecda32bd5dd6a31b988914b6c784cb6fce9100f75a457f54c52", "scripts/pn-specs-column-core.js": "05b8aa288daff29b82ed1dc7a23a246b5794c8912f4dfe8eaf22e816eed478a4", "scripts/pn-specs-column.js": "1d44e2f95e1eff0c0e2e06d646ec85577f3c14a692d4e17196f6be51948c1137", "scripts/po-comparator.js": "4e3d620cc06665c8a6b29626ec113874f150c5f7d4472978095a25d2fc53fb1f", "scripts/po-reconciler.js": "6a9c20833558a3805f721c09a63511d05057b3606d3d9e12a520d5e9738839c6", "scripts/portal-importer.js": "c14d8ad3441f8fe087988d7a3b542cc51f075358ad3935b4f1df2af8ea57652a", "scripts/price-confirm-core.js": "ff1f019a0379a253fb7616e815c625d91a6876da2cc91df6a3e6c2a38c275cda", "scripts/price-confirm-guard.js": "2e5a685b6802b75535181a45e8d2e7dc8365f6b92920e8ec3672097d2c3124a4", "scripts/proceso-calculator.js": "09425a2473f8bfcf681c86378168f0a0f5cfd39e247b3e3510debdd91bc17739", "scripts/process-canon.js": "9d82354d4e914ccdf1f96c9eb89fd5789c522c880dd544963b648db2abf5b16a", "scripts/process-deep-audit.js": "4345457ec845f95b46975f86cb4405de404a59f63d2322b8a74fb6ee97114dc5", "scripts/process-shared.js": "4b67a9cdc261aeb7cde1498d6399af288b883b6537de0a80b41dd16f1060a1fb", "scripts/receiver-date-override.js": "f18f704138be627db5273e1fbff4b8c9d1884caeafa9d0b2dbd273eb9560ad0b", "scripts/report-liberator.js": "3f153fe5f34261ca9b579a14fcd8d00cd205413943534c41ce54116975b25409", "scripts/report-regen.js": "2f8bb3bbdea0074525b3b383c102d8ec3a649050596a7a9ae4c2a91cc2f6bad7", "scripts/schedule-batch-highlighter-core.js": "a11a6ca286e594ad9910719d0a4bbab86c461d28e2adbd3edb369a3603832637", "scripts/schedule-batch-highlighter.js": "0cceca941ecddee9f8725443359c678bb53a1b48d0a5cbf14d93195490b450ab", "scripts/sensor-graph-hide-all-core.js": "795d1741fc04de7b8a5a111542e36fe53a8b3ee473c3f0b7a457780df3ea213e", "scripts/sensor-graph-hide-all.js": "3da2ad449d6792035a8ae952cc829ad7d6b5dd598b7281799b473cea5087ca6f", "scripts/sensor-status-autofill.js": "e19d6183c84c1cdd153110bdd31b3eb95b1973b089210182a177937a11f2b6bd", "scripts/spec-migrator-normalize.js": "11873800f3805139c2ffc8f9f25dc36efb8ec575f9e84b3ce96638a76072ffdb", "scripts/spec-migrator.js": "0ea0a1ce778ac237c15c3dd7b53a18597a3254289f87d09386415a30ad3d2ac1", "scripts/spec-params-bulk.js": "f49affd0af9c7aa11fd8ab586b4a2b70c71e34405796f5d136909db0184a929b", "scripts/spec-shared.js": "9a4adf965ffac349fdc69dd05b6bc1c50bb4dcc298333c7ff245acd955d0b255", "scripts/steelhead-api.js": "60030bcd08ec1ca19893cf66e0675fc43f49ebb0fec4a3f3b5eb18da9c3dffda", "scripts/surtido-guard-core.js": "8bca9a296283d83d1ae99b13b33e159455203a199063c04227de2e4d09cce85c", "scripts/surtido-guard.js": "bea2066eab13530839e241503e5355e12ee1b206605357e3d9a924124d085780", "scripts/unit-autoconvert-core.js": "4c43e041cc6a1c249ab1f20c0a9c089bf1a38929d82a1b5f03c89814a113d633", "scripts/unit-autoconvert.js": "886b971f171619e74bb250a0c076b67b7aca12006fed195a4c2c9f50d827ef11", "scripts/vale-almacen-engine.js": "36241da082a58d03241068bcec6fcde2131eb69a9871eb9cd2f8bce21ccdd1a0", "scripts/vale-almacen.js": "a16893b2c5491349610c1e62f620b4f804bab9620ea0dcc1715e057109125a99", "scripts/warehouse-location-prefill.js": "e50128e0a0d0c36279cbd85bef87597814bef20e77ea53c1c206ef44dfc2f5a0", "scripts/weight-quick-entry.js": "9710caa9ecc4e81f97b6aa2e68565e0de2abf720ccd7cdf7ef8e30ac5f8a2b42", "scripts/wo-completer-engine.js": "3101a9c8f718f9469e005a02498a89d6467b8f7c49583d7bb6f96f55a5bdfc83", "scripts/wo-completer.js": "d2879a8daf876ff2956dfeadcba673ab082f3b28c9bb7fbabb0c00db92f487e9", "scripts/wo-deadline-changer.js": "169d0dc0c60030398a108ea73747848071159b7d4664305ad66833a0fe67265b", "scripts/wo-mover.js": "e924dfd9fb5d82ed65ab75151adcdc32cd4a94e950b8fcc2add9a9a65c78aefd"}};
+  window.REMOTE_CONFIG = {"version": "1.7.225", "lastUpdated": "2026-07-27T23:23", "extensionVersion": "1.7.1", "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip", "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html", "steelhead": {"baseUrl": "https://app.gosteelhead.com", "graphqlEndpoint": "/graphql", "keepAliveEndpoint": "/api/session/keep-alive", "apolloClientVersion": "4.0.8", "hashes": {"mutations": {"CreateStationInputSchema": "2abe86f7d8205cfd3c356e4cfeea91d857ee7820567fb82ecd9fa2688cabfa00", "UpdateStationInputs": "0237bbca4a0f168b800483bd21b6146829a11f158e033e00eef7c00ce53bb112", "CreateUpdateDeleteRoutes": "0597ad9896d1c2b87980183ac54835cf0c3fc68d777e55ade8950558f5d9a76e", "UpdateInventoryItemInputs": "e5eafcb715c4034adc406af5064a30d27eff273e5fb6121804a5a83f188828cf", "SaveMultipleSpecFieldParams": "bffd36ff1ea5e3e5b7ff91b23ebf33c5c7879ee54c35d86ad90e86eab3214b7b", "CreateEmailLogReceivedOrder": "ccd2065a419aea4a747eca0426bd14ac383323fa0cba1d7d55102f69b08d1163", "CreateInvoicePdf": "aafd22aa663f15839042d71daebcebdba5fc2904554ef18ad09e37f0d4079e49", "CreateInvoiceEmailLog": "0c1d5e7460009cb489ebf25b0d8500cb441b1fa02addfbab57bc975c8dd4d9aa", "CreateQuote": "ee313e1243e786915d564eee8b005f0a0c2d39525b76467ece84b6debaa3d129", "UpdateQuote": "1663ac5630123533063c4a53e2186f6f4a04000d9f3a284e3c0deb1308218388", "CreateQuoteStageChange": "85c945f12f3367a132607ab1ae22d1e3a8a43d78b836c564840d4251f66e4797", "SaveQuoteLines": "0f17faa3ab4f8536e7e108c8654abc179992ac0326c63ff38a6637d8a889b1e0", "SaveReceivedOrderLinesAndItems": "89c3342878ac89d561a7d4d5dedcd508bb25dcfa1fcf6573b59a134fd32b9bb6", "SaveReceivedOrderPartTransforms": "69ac725c25eedadc19570b9b7e0e335a804e3fc2ca170c8f5f17bcd0b2f2b154", "SaveManyPartNumberPrices": "ab7bc2624f7d27b2110be16be8ca078de93a8ab7287b278da9ce0550f767ec61", "SavePartNumber": "27adc1143653e87fbd0c8a763eaa4f3e3a2a6541bbddce47010cdbd1b0365f40", "SavePartNumberRackTypes": "087af4e8b489edc1c6ade599da96f368fc3a764f2f16093feae9c57ee81cb363", "SendEmailChecked": "63afd0cb799d8c9d17106fb1827fa210641d6608e9c1c2483480eb0be17635bc", "CreateReceivedOrder": "363cab20f9bd7fc89619e575de8d5a018cd2d59784081bef48fb77f9a41b07e5", "CreateUserFile": "9028f6b729fe0cd253b1d47d5f27d84cc15293bbc12381225a7c00a402849ec9", "CreateReceivedOrderUserFile": "5896851dd3ee71e025bd59be3a0a3795d2ccf177636ee1bb45b10084f1541f57", "SetPartNumberPricesAsDefaultPrice": "9f89b40ef7d5754e8e94a94b028ce4c54c3cbf53a102098fd4d3cbec28c9e293", "UpdatePartNumber": "a2c3fb5491160f6539d4a52dba9894e9fa070ac4c55d309b1538a9f21405a67b", "CreatePartNumberGroup": "81edc50920e0ab37d470720a29160d74c6856aea6498b02543707dedfc405202", "CreatePartNumberInputSchema": "b16225250e1554ef0f385816533d86d1026b9defa631e88deb479c8ea8893419", "DeletePartNumberPrice": "561f8f4b7a598d1d78a3fc462d41480ae7503a9cb1dc4c668fd6948418fcf394", "DeletePartNumberRackType": "4cec965c46a9c30c1db64eee1b24566229b6b73f6fe69bf206253c63ac97bbd4", "UnsetPartNumberPriceAsDefaultPrice": "95ac52298b1237b96fb2aa3e223975c5e15b088f8b75b29d6981ee7e896f8ac8", "CreatePartNumberUserFile": "8588664e0071f4bec1bfd4ac11fc16371210c57ae3c501a56185c81f666de953", "UpdateInventoryBatchesChecked": "4981b6dcbb240d5f9ab763a3b0cedde1fc5bd22c4735e8a33fc717b1ef5e7ea0", "CreateInventoryTransferEventGroups": "901d61bf9e1e56dcc51be44d6b8cc928de4a475d8902860e89b289cff2abd174", "ApplySpecsToPartNumber": "91f6c915be5ef1fcb0fffb8fff02933d5bc681174c4d31127b14b87f2720bf8b", "ArchivePartNumberSpecAndParams": "c7cb025f711107ced391aa000f7a42366fd4bc5118dea715dc5a078716272261", "UpdatePartNumberSpecParam": "3540e67906f7206f45584df82659b3eaa0fa41be489864009c819ecdf171c4ce", "AddParamsToPartNumber": "fab74fec6313b709fcd2ecfc9b219c3428983011c1a830563a06b2c9e66524c4", "CreateUpdateReportWithPermissions": "612de3330ed302eb17d672f8ccf12da686e97d0cc0d2ba8752162ef56fa83fcf", "DeleteFolderById": "adfd35fb25a3518eb8cc6bdc7e8ea6779fff1c1b06e20e83033b6083cffd4ce3", "ArchiveReport": "70a902a65b90be428381bff7dead60454329e35179c6425acbd3a4edf1c46d9b", "ChangePredictedInventoryUsagesWithRecipeNodeCascade": "1128163184d586ddd39a1f51ce01956ca8e424d1e5c6cfdfd93349c5e3b27022", "UpdatePartNumberPerPerRackType": "fb6e7902d18ce00c831873c8dd32153e7bb6e2dfa44936c85a4ef67575b07de3", "UpdateReceivedOrder": "b3602b2de6fb4924d15af4d70404d0ab5246c5deaf36c314f071018a7bbb679f", "AddPartsToWorkOrders": "70d5a792c93ace37a1e15f7d0a8201cb77cf8b796ad5129c7660ffef52e1129f", "CreateUpdateWorkOrdersChecked": "7a4bdb13cd47edfd2d205cd2cbeb81cc1350f4c5465627ff9a6881eed2e3f449", "DeleteWorkOrderLabels": "0bd35abe9ed820c45702d49199b4e799ba6dd3b9484bfeaecba23d3c2962af59", "CreateWorkOrderLabel": "e3d57bbe80a5cedd12c29766ae1f7546cd7a2b69a16aaf09af1ba2f1eaa13f60", "CreateMaintenanceEvent": "0dc541a9a52a4dfb7b17043d46875bfe6f104a009779a4cf4f442dd909d6fcf3", "CreateMaintenanceNodeEvent": "930aa9f61350f60b88dcdb7e827a73332d7a5df629dcf5b36025aad6f3c2ffd2", "CreateManySensorMeasurements": "af4afbc57dad32a492d45ec929e350ddf53be692dffa4d48c9f26badc684e93a", "UpdateMaintenanceEvent": "29078aa7bb90d3a505324eff7ef149cf699975ef3d3337e207472e121ef5da54", "UpdateMaintenanceNodeEvent": "39b3cdf27e06a37884bfb551376b23fca971f705fc6472fc495d34dfce69970c", "CreateMaintenanceEventComment": "c49db28d64861e3e91d33d1de7412d019f08f7b0700e9668c86a26579f8a8f84", "CreateMaintenanceEventUserFile": "e6546795994b4ca8ebf2556f3efadb8bac8205d6ca24ace0ea5f17a9a16d1856", "CreateInventoryItemUnitConversion": "769411466c537c059cf6fc1721e116dc42ff1d88e3a72879cc94444329a1f334", "UpdateInventoryItemUnitConversion": "ffc8db6cd8edaa9355b904fac38f8e5fc116ce1d597f076026c38ef09420a16c", "UpdateBillChecked": "1f3b253abd1e02ebf859aa59762469abd264373ae2f1fa6062ca7896b7e4a0ce", "CreateInvoiceAndUpdatePartTransferAccounts": "aba96bd095347fe6972dc645ebf22dd4512a8df2ea845a528f4ffe9cd0d1cb03", "CreateProcessNode": "9d7fe3d3c97b77d33790a5e5c53197f95badd5ff0f12feebbebf0126a03bbcd4", "ProcureTree": "4a43c8bb0cf8b168e0ad8a56fb39a848f0f7892040355f6f6f574b1c1fff668b", "UpdateProcessNode": "00eb11163759348d3bbfb5bc570a6d00c7ee6b9f23fe6a16928ff2d5c725bab6", "UpdateSensorDashboardMember": "b903749ed974d573f6167d93393e76f237634bf64ca483d25fbfaff32616f928", "UpdateReceiver": "005653bae4baad289db47d65857cc4e9fb89fa51e06caa78a1f0946dce7f92ec", "CreateReceiverChecked": "6147f74211e1f2caf8778a6c23ecc4b6fb7e9b96002c35bc04cc5c1df5437da3", "SaveGeometryType": "45b7a86483a5935ccb2b6960091a79b5a13162fef12f39b5b3af4607b111ad3f", "GenerateDuckDb": "f412b9eca03309b5ea9cfa20090b4f0c75f1e30632b6a02cda119fde3418daa0", "CreateManyPartsTransfersChecked": "fc7438932552bb02202dfcecc4e0bf826fd5097db6e6559c3c7b99186ceff9ed", "DeleteProcessNodePartNumberOptInOut": "4a0773339315f1a52a9c08c249c5b3540c13def2b0d320e0e16ad9cb75b4d823", "UpdateProcessNodePartNumberOptInOut": "4556e5710f068e129fadc74cbce1f9a5e7cc42113f4e8e1808976b4e4f4cd2a6", "CreateProcessNodePartNumberOptInout": "f6fe26e4494c8c91d076975a8d7e89ed2f90a487d05f8bc021c2e296f3d6124f", "CreateNewPartGroup": "7ee30dd45af56f280ac45423349bb03b23ba6be7fb70aba6fe8ecfae819d54e4"}, "queries": {"AllStations": "834516258e392dcd9c666c2349992e3f6744aaf536cb127cb8c9eb4347f883f7", "GetStation": "a41cfd01d2e5f218add4c8c5d4179b198d7ccf6ab8a361f346a252ec46c6ca52", "GetStationInputSchema": "c6ecbaae2df073010d5a667875037a132ae4eadb369fbd0798bb991a01a93dce", "CreateEditPartsPerRackTypeQuery": "59defeb5a1b2530737b04c32ca7857a03d16ba8ba531567eb8366eadb3b5f380", "StationTreatmentByWorkOrder": "1d0e7eb3c04864afcd1e3dc2e9f2493841e62a5369156f093fab3beefe5dd143", "SearchStationsForTreatment": "6ce8c070d50c69ee49bdfa77a078012a7f882c7c19760a9ed5e569105ef6e4a2", "PartNumbersByWorkOrderIdInDomain": "fda9e55c9e2341c17b6974c66407ac8b4306cab86a1c82ffe00c30133bb784d3", "SchedulablePartLocations": "5e9392ef2ce4f88ce08bef1c15dc25bc7abdc391b3339a3687ef1925484ac3fc", "GetInventoryItem": "0366571ed9796751dee38a9b156735b1247accebb4b01d434cd6e1e64a24c3f0", "GetInventoryInputSchema": "f1fd6a00069f86439299080f601c5a4b0e0c4b359c6f8acf1cadd44362766729", "ActiveReceivedOrders": "07d3e1947485825b519c2f7755773d28532c313e23fab116f6b656a9f4a960d0", "GetQuote": "de2c5da0112ceac87919096e1d821c6ab7025a7a4a78226cd4b66a6890db373d", "GetQuoteSecondary": "546aa58c4f63f2b4be2703dc5c8482a07f01e8b96176171bfa9e978ac605458d", "GetQuoteRelatedData": "02b8cf87fb717d07b4a29301a21a3cbf579c2b4630819ffc20a007425dfd1a33", "CustomerSearchByName": "c06fb4c3b770a89c02d00ac51b92be6e1efe98bf5f6f5caccfe753f0570e6f02", "CustomerFinancialByCustomerId": "7ea934f4e057c922f5ea1fbf832fd5b301a34784efc563e964abe4467689d1b9", "SearchInvoiceTerms": "26f2915bfe50e633829a1d85f58ff6578a31c2e22901094d2a92a9a71e222dca", "SearchUsers": "6a422f35513d85386355f874c14cfb5d80ab38f46210e54c4d3a56ba764ddaa3", "AllClassifications": "e67ac5d75defc00c583c463d3705d8a180915b069b25541de91ed22b1967690a", "AllProcesses": "acaa6a46bd1e47ff587ac28833302734d6b00e06c26292c268110ce406ba71e3", "AllLabels": "4323ade06a4c21efa356e231ee9f85d05217bc8384c8506cb3c3127705bef94e", "SearchSpecsForSelect": "f793b5669705de4273bd4f7f89a995f4919cd57fdf604006e021417e5eab115a", "TempSpecFieldsAndOptions": "c881d971a4c9fcd3849129e27fcc21546ad8eca732f6248ea523c3fbd89502ea", "AllRackTypes": "7d601c396bb27a5534424582bcc9e44262781414cbb3e60c09413922775eaef3", "SearchUnits": "0a23ee49dd85ae9bb0285f3f9ed2e45a3b8e73e5f4a76c559cf1bdf9f02bd2b8", "SearchProductsComprehensive": "b3e2b9c63285487866fe098c936cd37e60ffff373a9fa9e30296574cffcfbba0", "SearchPartNumbers": "e65235b5f0b6b5aeff8691955c6d842343cef568968bc1e8d63516301a78df32", "GetPartNumber": "5efd689d8d92151ea510256828f17cbe10b815dd8dce2bd1dd51ef55bb9a0faf", "GetPartNumberForPartNumberPage": "34ed9de74300219ae0af48c77640e080e0ad7c5b3b2a442d63901d6742846ac4", "GetPartNumberInventoryBatch": "5a86da1bc53521a1204e32f8778e7b188082f7b93e132becb6af881c8719d109", "GetInventoryBatch": "90642f00a18be6ee79b80d2be793605565154428e14209c016a277ce4b2dcd9a", "GetSpecFieldParamToEdit": "f4aedfe3fbe7ef82ae55c7bd37b76637d18c9ce6fbfe257ef9618fd8b85aa75b", "PartNumberGroupSelect": "da00a1e356e8a3d1e1020fd64c0b6b26f989650a2d4177fb5485629b11ef7e4c", "Customer": "74f53734d68cc7b5dbadd4e9f436e11e3ca9b935031411713f3fe75d1a1c5631", "GetDimension": "60620534090bf2433b06ebb73513437634ae0dc4d3c76c62b79a499630229ef5", "GetEmailDefaultByTypeAndSubType": "345b2a71f09fa03768c275cb55267bc6736fefb4e9050ccb668518f61e7d9ca9", "AllPartNumbers": "a63e7a6aa73b978bad844ed1f68ab2cac9e902e78a1c22f8d6339590fa8271d1", "AllWorkOrders": "4a1ce04a1e6e94e73c50449834a1307a5847be18a30fddd1fd6ecaee26104240", "AllReceivers": "3839532d3bbc2cbc2326f640f2e2e8915b65aed2fbd057b18388d753278163dc", "AllInventoryTypes": "318a31c9be322bc15fb530da13ba49a1459fab6b46676c342c2c5fcee355ffaf", "SearchInventoryTypeItems": "721efe8e6c93bf4ea5201ecd416b06fb0993d571987fc0b352c32665f209848c", "SearchInventoryItemBatches": "ae2466466ed3e84a2010c726a166c432c176c3d21be5be7ac71db6c1846b901b", "AllInventoryBatchStatuses": "37ef2266975d34d4318858553f68e56638c25ebff9bb4f16d080589c213cef09", "CheckDuplicatePO": "94e659bf6eea8d493f8ea67f950fd38371a5cb680d2622145d5df9dc63583b85", "CreateEditReceivedOrderDialogQuery": "b7187e08c8394f81bbef94b7ec5075bf6b4e6ca3e2e6fadbd4b9babb7a9fda04", "GetCustomerInfoForReceivedOrder": "be7c8dbeec701f49545d5f3685c448db57d043a7a2ebbe184ed642559abce9d5", "PartNumberCreatableSelectGetPartNumbers": "1d5714f35b4232eed5c3e89df5dd833c595d77df333ee3bc0f0f09c3a4f9b23a", "SearchPartNumberPrices": "57ffed00ceedcbf4c2e221856c7e3a4d0e5a2a57fbc23df84be9967c5af56d14", "CreateEditInventoryBatchDialogQuery": "d093459168803caff0502b7b44971cd8a864eb4fa9c3e49a8d186b71f01bfe3a", "SearchLocationsOnPath": "1880f0ee6f7c73651807d1d3e7b7b7259271f8c53d040465e5d3005382b96120", "GetReceivedOrder": "844854a938061daab8212a5f9374fe3c9de10932604269b958019d7d31312d7d", "GetAddPartsReceivedOrder": "05e2272ab769f3e69e4a7a740045da07a6b3082b01d98f287f4a136de2235e63", "WorkOrderDialogQuery": "1c4f09ee81aaec381778f0a56c7c3f7f3f42f327232f2461b467eb36adf2ab63", "GetPartsTransferAccountAssociationData": "396607b6caeb488f81c618c829b6779352415cb6e4d9b355c04b46bd4fc86686", "GetReceivedOrderCosts": "f7906dc53bcd269dc1d589646a12aa206e83421f316b9197796dc68e646c63d8", "GetReceivedOrderDocuments": "7d74c516daa9938572e482fb1ea012dce5eeb3bad2de63cecb1e5740a139e42d", "GetReceivedOrderLine": "1ee61cc2d81d34051b6ebc1c8ec428c1a9565da11afba993475a863599e81156", "GetSpec": "73c179574dd5de837ce721bd0e639ab94aba0796a83f0f09632efd5f1c11b520", "SpecFieldsAndOptions": "d6faffaeeb9ccfebf55241ba8e4ee16b3217161517264222de5b71fd7c97f1a0", "EmailCustomerContactsByCustomerIds": "6e377769aa06e55915c528c10e2c2f92662a78fdc34ae799610d489abaf983db", "FilterSearch": "1cdd9e39a0ac44d491910f8c1727154d6859fd2eabe49d619f06d54e926d2bc9", "FilterSearchInventoryBatch": "1cdd9e39a0ac44d491910f8c1727154d6859fd2eabe49d619f06d54e926d2bc9", "InventoryBatchViewQuery": "e4fc4cdf098f41e10881a512e63ce6fb068bcd8d5bd57b8627c86e5fda025d44", "AllReports": "1f83add2747f8e0949a47ea4b6f95a67f8e1948a07fad9a5cf543d1ab4b8c00c", "GetPartNumbersInputSchema": "c56b972e024980b0593af9c902afaec0406cacd9b847dd85ffbea856f27c607d", "AllQuotes": "40ee4d1cda66a7103f70df6c782f44d7b601420c4ea41c35aff27b46415f60d8", "AllSpecs": "0710bf2eb9fa02f1fff3899be3629d1169d0af92564ec9aadb0a25ddd5ab19cb", "AllCustomers": "a45bcf6cbaccfbfc317d3264ce4f3e9bd8f896852cb89af989ad3f281fae3b33", "GetSpecFieldPartNumbers": "0e49e0eefc700a969aa3bedbbcb4b563c0c22ba50b79c35dda8dd69947c2d7a6", "GetUserEmailRecipients": "41a4ef4c78acc01384d9932c92721e4446d02118ef6b33429f3eaad2f9818888", "ReceivingBatchesQuery": "55a06a3013d465596d24cc3893f2c163a08f78c00d20a17d746e4cddce197d4e", "RouteReceivedOrders": "fc42311d93a683bec906253aa2cc54ae61931217ff6abf20d2bc335cb55c26d4", "InvoiceByIdInDomain": "06a51d0363584477082a9d76c72080b4dea2b2797737c051760c1b33a791dfba", "CurrentUser": "8b0e23f6a5aa8ce4711a493fb7472d77ace3d74891fbdd83d51cc7c6ebae6d6a", "CurrentUserDetails": "f966e56c8de95f667eac0f8c822bc1e12b5fc40a5f436edb7abac9e8029ac48c", "CurrentUserActiveSegments": "679822f12194223bd42ac5902f11054688a6440f581b63061531bf7a065751e0", "GlobalUsers": "2c727e5d066c9bc3966b60da0d34d6f2b3d5d7b5420b75b9e9ae91c4617e1c1c", "CreateMaintenanceEventDialogQuery": "effd90e383fb56e220696d5fe43addc60cb3668d86e08fdbc4c6b6721dbdf0ac", "OperatorMaintenanceNodeDialogQuery": "916178b464d0b2a4b49269ead0196c2db845cea5663de0c292e05d6d6e088830", "GetMaintenanceEvent": "be2a98642faeaa127dd66ac78f59716b030cc4dbeba7e9348fcde2d5bb074b2b", "UserDialogQuery": "843b5f4f236fd159b5d3912c434551cf2866a591e3c38babfdfb2fd6f7283959", "SearchEquipments": "3cd9da86777c0721399d9043695e281131d78364dd3ad0ef051b0d77c647ca63", "WorkboardById": "68b7ca4cbfa64a40717996ae60b1f896c20ec1d19c84e33f551af708373c0d83", "AllEquipments": "ce59e8bc9484625a7cb8ee3d1a80cd3bdcfdd39de24ef31ce34aec8e9a454d5f", "AllPermissionsEditManyPermissions": "80e71670d073b5849234cd164ad782782475eb2c41ed10c67c861c5a98ff37de", "GetAvailableUnits": "405368babb953708532627a930e5ea1a1ca21e5518a5f0f4d8cd0757880c43c0", "GetPurchaseOrderDetail": "dbc6c29ef8f1b523e6c9472bee4ca9a795e6d2bb284cfc3497b882b113dfb9de", "GetDomain": "c96d677245066f2d3ff5cd18e7e2b00f49912cb069e4c7c533ca23ce352a3a98", "SearchAccounts": "4b00b2b252fad480141bdd73b05267e1032bf4a2e1f7e27ac5ceeef94741fe57", "GetAccountDataForBill": "4265fbbad1b79d0559e337dafd8ff229b69273624734d716b4af70d424ce8ea0", "GetBillByIdInDomain": "161bb5aa0c346f2502346ebe441374c02d91031936940a5b3195cbe39801d74d", "SearchPurchaseOrdersForBill": "e99dddad15827a5c6b2a342f236a60a462edcc406f9896a1b04800a76def929a", "GetPurchaseOrdersDataForBill": "a94f43960ae91e6f62332a9e3268f9789ccdd847c8951dbf27a7d2ff25c5565d", "SearchVendors": "d7de73d26da71b96d51941c21bafccac4ba612b5280c76237c1ed1cf639c88c8", "GetVendor": "87ad05379932cc20b466a5ff3c3c33f8a8d27ca06bfdd0a423aa40f720c8f541", "InvoiceLowCodeData": "319b44ca39d9a1aca0d35a40ff47cee7950eaae41c48ae6336177724e4760d9e", "GetReceivedOrdersWithReceivedOrderLineItems": "f10d92898977064d1facaba234d78c852cbd20893d76f4ad031cc92ada7383ae", "GetProcessNode": "3c570c9045a631877f87e94aa196434a299d81e0b4385b3167b796f5bbe7ce32", "AllTagsAndNodes": "fb2206e8982f2867f872104ab13630ccbf1810e7c0af1410c5d2ebf76d1455af", "ProcessesComponentQuery": "c69417794d569109d798da0da49b40c2c2cdfae5ac981f8952f81060af06c60d", "ProcessesWithTag": "2d83c58122e0d3b528eed17b2024f7e3a4b4abb77f2dda97b21a6834174d1eb3", "GetAllTagsQuery": "0dbe45a0a23a3325615168695b49c0d3f1d8f5c7d3d026e857f52440663a0ae3", "CreateEditProcessDialogQuery": "231d4dc732cf37e123fd8a912a6694f3651cb43ace2811898f85857c4dca3080", "GetTreatment": "87a9d9f60a00814e8573ec59c0817fc2d29777777aa592a7db221a339322a750", "AllTreatments": "69c99e3fbb343cf07c0b95189b32ae411228a154f06588a9c28c58f8da26220b", "CreateEditTreatmentTimesDialogQuery": "3c4989bbeba90b2429776f3ab4aa375d7785749c705fe0c8d701da0b4ac06eca", "StationsByTreatmentId": "dd7f6764a9dc3adde9cef6eb205ad28658c1de8fdbdb2c8527786d97b33c50f2", "GetProcessNodeParents": "3c205d1210c0a0a24bc39d338b8ed9c6cf63e756c3ad4b57abf09b3d85d95bec", "AllSensorDashboards": "0c5ec2fba6a1b1b3dbdd3f9c6c3d188981bb6b21abb1234ac67ce582d051e3f9", "SensorDashboardQuery": "29c9033ecaa2021c75f7f2b728785ebf8e1d5de8196731c79b9f8a68f3363aa0", "AllGeometryTypes": "d0fa543dcdb0c4d682d710fcb7c14472ec2e6c0e7a7a292a506c1b95c1256705", "GetRecomputableAt": "c2483e87e8a5a0a2fe62e401bfd18506f05c0ee73c9905522e5e11053b7c3d05", "JobQuery": "86432972dfe6ea75c523515801993374044dc99e909778024904a02e9ef1b4e3", "WorkOrder": "fc41042ebaacfbfcc09a57d171a1c0f87580921bbdbb0cec86fa34a24a39255e", "WorkOrderSchedule": "7b1b11275a49fde330dfbfecc8d403d6f16646ac48e9b12f19284abaf6ddbae8", "GetWorkOrderPartsTransfers": "da4e8740973139bb23f3f0d37a0ea83a05b6d67cdab2c1bea1e154dff37aa284", "PurchaseOrders": "32f823d324b6b91e78fe43c93ab82042b931797f5592d088c4f1563051210d84", "SearchBills": "e50ba3ee7d2e694476d5180abdd978fa21f5147251c02d4cef051973b408bd8a", "FindPartGroupQuery": "85121b64ebe7c614a0c3de7a730c45488b0ca45ea6731ff8c88efafb0667774c"}}, "domain": {"id": 344, "dimensionIds": {"linea": 349, "departamento": 586}, "billingDefaults": {"departmentName": "Producción", "departmentValueId": 182, "codigoSAT": "73181106 - Servicios de enchapado"}, "inputSchemaId_PN": 3932, "inputSchemaId_Quote": 659, "inputSchemaId_Bill": 27, "stagesRevisionId": 306, "ganadaStageId": 1212, "revertStageId": 1208, "geometryGenericaId": 831, "validacionProcessNodeIds": [231176, 231174], "unitIds": {"KGM": 3969, "LBR": 3972, "FTK": 4797, "CMK": 4907, "DMK": 3975, "FOT": 5148, "LM": 5150, "LO": 5348, "MTR": 3971}, "conversions": {"KGM_TO_LBR": 2.20462, "CMK_TO_FTK": 0.00107639, "LM_TO_FOT": 3.28084}, "geometryDimensions": {"LENGTH": 1284, "WIDTH": 1011, "HEIGHT": 1012, "OUTER_DIAM": 1013, "INNER_DIAM": 1014}, "empresas": {"ECO": "ECO030618BR4 - ECOPLATING SA DE CV, Primero de Mayo 1803, Zona Industrial Toluca, Santa Ana Tlapaltitlán Toluca, Estado de México 50071 México", "ECOPLATING": "ECO030618BR4 - ECOPLATING SA DE CV, Primero de Mayo 1803, Zona Industrial Toluca, Santa Ana Tlapaltitlán Toluca, Estado de México 50071 México", "PRO": "PRO800417TDA - PROQUIPA SA DE CV, Primero de Mayo 1801, Zona Industrial Toluca, Santa Ana Tlapaltitlán Toluca, Estado de México 50071 México", "PROQUIPA": "PRO800417TDA - PROQUIPA SA DE CV, Primero de Mayo 1801, Zona Industrial Toluca, Santa Ana Tlapaltitlán Toluca, Estado de México 50071 México"}, "predictiveMaterials": {"PlataFina": 55113, "EstanoPuro": 55114, "Niquel": 55115, "Zinc": 55116, "Cobre": 55117, "Sterlingshield_S": 55118, "Epoxy_MT": 55119, "Epoxica_BT": 55120, "Epoxica_MT_Red": 55121}, "schneiderQueretaro": {"customerId": 176980, "shipToAddressId": 277022, "inputSchemaId": 559, "invoiceTermsId": 3142, "sectorId": 578, "shipMethodId": 4661, "poNumberRegex": "^1[14]\\d{8}$", "restantesOvName": "Restantes Schneider QRO"}, "processAudit": {"satelliteOverrides": {"include": [], "exclude": []}, "finishProductMap": {"EST": ["ESTAÑADO", "ESTAÑO"], "NIQ": ["NIQUELADO", "NIQUEL"], "NSU": ["NIQUEL SULFAMATO", "NIQUEL"], "NWO": ["NIQUEL WOOD", "NIQUEL"], "NEL": ["NIQUEL ELECTROLITICO", "NIQUEL"], "NBR": ["NIQUEL BRILLANTE", "NIQUEL"], "NCV": ["NIQUEL CHEVROL", "NIQUEL"], "NCR": ["NIQUEL CROMO", "NIQUEL", "CROMO"], "CRO": ["CROMADO", "CROMO"], "CRD": ["CROMO DECORATIVO", "CROMADO", "CROMO"], "PLA": ["PLATEADO", "PLATA"], "PLF": ["PLATA FLASH", "PLATA"], "COB": ["COBREADO", "COBRE"], "ZIN": ["ZINCADO", "ZINC"], "ZNQ": ["ZINC NIQUEL", "ZINC", "NIQUEL"], "EST_T2": ["ESTAÑADO", "ESTAÑO"], "PAV": ["PAVONADO"], "FMS": ["FOSFATO MANGANESO"], "FZI": ["FOSFATO ZINC"], "AND": ["ANODIZADO"], "IRI": ["IRIDIZADO"], "BDP": ["BAÑO DE PASIVADO"], "BRI": ["BRILLO QUIMICO"], "PRE": ["PRELIMPIEZA", "LIMPIEZA"], "ROD": ["RODADO"], "REB": ["REBABADO", "REBARBADO"], "LES": ["LIMPIEZA ESPECIAL"], "DES": ["DESOXIDADO"], "PUL": ["PULIDO"], "ELE": ["ELECTROPULIDO"], "TIN": ["TINTURADO"], "ESM": ["ESMERILADO"], "SAB": ["SABLEADO"], "LMC": ["LIMPIEZA QUIMICA"], "NOX": ["NOX"], "LAV": ["LAVADO"], "DEC": ["DECAPADO"], "PAS": ["PASIVADO"], "ANT": ["ANTITARNISH"], "HOR": ["HORNEADO", "HORNO"], "FIB": ["FIBRADO"], "ENM": ["ENMASCARADO"], "DNM": ["DESENMASCARADO"], "ACE": ["ACEITADO"], "ABR": ["ABRILLANTADO"], "TRT": ["TRATAMIENTO TERMICO"], "EBT": ["EPOXICA BT"], "EMT": ["EPOXY MT"], "EMR": ["EPOXICA MR"], "CAZ": ["CAJA ZINC", "ZINC"], "CTR": ["CILINDRO TRADICIONAL"], "CVO": ["CILINDRO VOLTEO"], "CAM": ["CAMPANA"], "CAT": ["CATARINA"], "CNE": ["CILINDRO NEUMATICO"], "CNT": ["CILINDRO NETO"], "CRJ": ["CILINDRO ROJO"], "CTV": ["CILINDRO TV"], "CNN": ["CILINDRO NN"]}, "concurrency": {"audit": 5, "trees": 5, "parents": 5, "retryDelaysMs": [0, 1000, 2000]}, "duplicates": {"enabled": true, "includeSources": ["main", "satellite", "rt", "subprocess", "stepshipping"], "ignoreNamePatterns": [], "ignoreIds": []}}, "specParamsBulk": {"concurrency": {"fetchDetails": 5, "editShape": 10}, "batchSize": 50, "retryDelaysMs": [1000, 2000, 4000], "labelMP": "MP", "impPrefixRegex": "^IMP", "page": {"first": 400}}, "bulkUpload": {"concurrency": {"savePartNumber": 8, "archive": 8, "sentinelPreQuoteArchive": 3}, "retry": {"delaysMs": [1000, 2000, 4000]}, "paging": {"allPartNumbers": {"first": 200, "maxResults": 1000, "massiveMaxResults": 50000}}, "preview": {"pageSize": 100}, "resume": {"maxEntries": 20, "purgeAgeDays": 7}, "nonFinishLabelNames": ["SMY", "STX", "SXC", "SRG", "SCM", "SQ1", "SQ2", "NP desconocido", "En desarrollo", "Muestras", "Lote", "Obsoleto"], "metalEquivalents": [["Estaño", "Estaño s/Aluminio", "Estaño s/Cobre"], ["Plata", "Plata Flash"]], "dedup": {"massiveThreshold": 1000}, "chunking": {"defaultChunkSize": 250}, "debug": {"logPredictiveParse": true, "logPredictiveSampleRows": 20}}, "auditor": {"largeCustomers": [{"name": "SCHNEIDER ELECTRIC MEXICO", "estimatedPns": 12000}], "hardCapPns": 8000, "hardCapWithExclusions": 15000}}}, "portalLayouts": {"hubbell": {"name": "Hubbell Portal", "detection": {"requiredColumns": ["number", "status", "lineItem.itemNumber", "lineItem.materialCodeBuyer", "lineItem.materialDescription", "lineItem.netPrice", "lineItem.priceUnit", "lineItem.targetQuantity", "lineItem.schedule.deliveryDate"], "minMatchRatio": 0.9}, "mapping": {"poNumber": "number", "status": "status", "customer": "customerAddressName", "currency": "currency", "date": "date", "lineNumber": "lineItem.itemNumber", "buyerCode": "lineItem.materialCodeBuyer", "description": "lineItem.note", "netPrice": "lineItem.netPrice", "priceUnit": "lineItem.priceUnit", "quantity": "lineItem.targetQuantity", "deliveryDate": "lineItem.schedule.deliveryDate", "unit": "lineItem.unit"}, "pnExtractor": {"type": "regex", "source": "description", "patterns": ["(?:Material\\s*Number|MATERIAL)\\s*[:=]\\s*(\\S+)", "(?:Catalog|CATALOGO|CAT)\\s*[:=]\\s*(\\S+)"]}, "statusFilter": {"activeValues": ["Nuevo"]}, "unitPriceFormula": "netPrice / priceUnit"}}, "unitAutoConvertEnabled": true, "fileUploader": {"viewCodes": ["FRO", "POS", "LIZ", "LDE", "SUP", "INF", "ISO"]}, "apps": [{"id": "wo-schedule-button", "name": "Programación en la ficha de OT", "subtitle": "Muestra inline (en el header, entre Editar Detalles y Abrir PDF) a qué hora y en qué estación está programada la OT", "icon": "📅", "category": "Órdenes de Trabajo", "autoInject": true, "urlPatterns": ["/Domains/\\d+/WorkOrders/\\d+(?:[/?#]|$)"], "scripts": ["scripts/steelhead-api.js", "scripts/wo-schedule-core.js", "scripts/wo-schedule-button.js"], "requiredPermissions": ["READ_WORK_ORDER"], "actions": [{"id": "open-wo-schedule", "label": "Ver Programación de la OT", "sublabel": "Refresca el readout inline de programación (estando en la ficha de una OT)", "icon": "📅", "type": "primary", "handler": "message", "message": "open-wo-schedule", "fn": "WoScheduleButton.openFromPopup"}]}, {"id": "load-calculator", "name": "Calculadora de Piezas por Carga", "subtitle": "Configura estaciones y calcula piezas/carga en el modal de Rack Types", "icon": "⚙️", "category": "Números de Parte", "autoInject": true, "urlPatterns": ["(?:^|/)PartNumbers(?:/|$)", "/Receiving/CustomerParts(?:/|$)", "/Domains/\\d+/Quotes(?:/|$)", "/Domains/\\d+/SalesOrders(?:/|$)"], "scripts": ["scripts/steelhead-api.js", "scripts/load-calculator-engine.js", "scripts/load-calculator-stations.js", "scripts/load-calculator.js", "scripts/load-calculator-modal.js"], "requiredPermissions": [], "actions": [{"id": "open-station-config", "label": "Configurar Estaciones", "sublabel": "Captura dims de tina, capacidad DMK y OEE por estación o línea", "icon": "⚙️", "type": "primary", "handler": "message", "message": "open-station-config", "fn": "LoadCalculator.openStationConfig"}]}, {"id": "proceso-calculator", "name": "Calculadora de Procesos", "subtitle": "Sugiere Default Process al editar un NP", "icon": "🧮", "category": "Números de Parte", "autoInject": true, "urlPatterns": ["(?:^|/)PartNumbers(?:/|$)", "/Receiving/CustomerParts(?:/|$)", "/Domains/\\d+/Quotes(?:/|$)", "/Domains/\\d+/SalesOrders(?:/|$)"], "scripts": ["scripts/steelhead-api.js", "scripts/proceso-calculator.js"], "requiredPermissions": []}, {"id": "batch-name-filter", "name": "Filtrar Lote por Nombre", "subtitle": "Selecciona todos los lotes con el mismo nombre en el Panel de Envío", "icon": "🏷️", "category": "Herramientas", "autoInject": true, "urlPatterns": ["^/Domains/\\d+/Shipping/?(?:[?#]|$)"], "scripts": ["scripts/steelhead-api.js", "scripts/batch-name-filter-core.js", "scripts/batch-name-filter.js"], "requiredPermissions": []}, {"id": "schedule-batch-highlighter", "name": "Resaltar Lote en Programación", "subtitle": "Resalta y marca todas las tareas de un lote (por nombre) en el Schedule Board", "icon": "🏷️", "category": "Herramientas", "autoInject": true, "urlPatterns": ["^/Schedules/\\d+/ScheduleBoard/\\d+/?(?:[?#]|$)"], "scripts": ["scripts/schedule-batch-highlighter-core.js", "scripts/schedule-batch-highlighter.js"], "requiredPermissions": []}, {"id": "carga-masiva", "name": "Carga Masiva", "subtitle": "Cotizaciones y NP", "icon": "📊", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/bulk-upload-cc.js", "scripts/bulk-upload-parse.js", "scripts/bulk-upload-classify.js", "scripts/bulk-upload-batch.js", "scripts/bulk-upload.js", "scripts/catalog-fetcher.js"], "requiredPermissions": ["READ_PART_NUMBERS", "READ_QUOTES"], "actions": [{"id": "upload-csv", "label": "Cargar CSV", "sublabel": "Subir cotizaciones y números de parte", "icon": "📊", "type": "primary", "handler": "file-picker"}, {"id": "download-template", "label": "Descargar Plantilla v12 (Excel 2021+)", "sublabel": "Base + catálogos frescos", "icon": "📥", "handler": "open-url", "url": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v12.xlsm", "afterMessage": "update-catalogs", "notice": "Plantilla descargada. Recuerda: al abrirla por primera vez ejecuta el botón 'Refrescar Listas' del ribbon antes de pegar datos."}, {"id": "download-template-compat", "label": "Versión de compatibilidad (Excel 2019)", "sublabel": "Misma plantilla v12 para Excel 2019 y anteriores", "icon": "📥", "handler": "open-url", "url": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v12_compatibilidad.xlsm", "afterMessage": "update-catalogs", "notice": "Plantilla descargada. Recuerda: al abrirla por primera vez ejecuta el botón 'Refrescar Listas' del ribbon antes de pegar datos."}, {"id": "update-catalogs", "label": "Actualizar Catálogos", "sublabel": "Descarga datos frescos de Steelhead", "icon": "📋", "handler": "message", "message": "update-catalogs"}, {"id": "load-history", "label": "Historial de Cargas", "sublabel": "Ver cargas anteriores y descargar CSV de corrección", "icon": "📜", "handler": "message", "message": "view-load-history"}]}, {"id": "hash-scanner", "name": "Explorador Steelhead", "subtitle": "Captura de APIs", "icon": "🔍", "category": "Herramientas", "scripts": ["scripts/steelhead-api.js", "scripts/hash-scanner.js", "scripts/api-knowledge.js"], "requiredPermissions": ["WRITE_USER_PERMISSIONS"], "actions": [{"id": "toggle-scan", "label": "Iniciar Captura", "sublabel": "Interceptar requests GraphQL", "icon": "🔍", "type": "primary", "handler": "message", "message": "toggle-scan"}, {"id": "view-results", "label": "Ver Resultados", "sublabel": "Hashes y schemas descubiertos", "icon": "📊", "handler": "message", "message": "view-scan-results"}, {"id": "export-config", "label": "Exportar Config", "sublabel": "Config.json con hashes actualizados", "icon": "💾", "handler": "message", "message": "export-config"}, {"id": "api-knowledge", "label": "APIs Conocidas", "sublabel": "Operaciones que el sistema domina", "icon": "🧠", "handler": "message", "message": "show-api-knowledge"}]}, {"id": "archiver", "name": "Archivador de PNs", "subtitle": "Por etiquetas, fecha y modo", "icon": "📦", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/archiver.js"], "requiredPermissions": ["READ_PART_NUMBERS"], "actions": [{"id": "run-archiver", "label": "Archivar / Desarchivar PNs", "sublabel": "Por etiquetas, fecha (opcional) y modo", "icon": "📦", "type": "primary", "handler": "message", "message": "run-archiver"}]}, {"id": "auditor", "name": "Auditor de PNs", "subtitle": "Verificar calidad de datos", "icon": "🔎", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/duplicate-tiers.js", "scripts/auditor.js"], "requiredPermissions": ["READ_PART_NUMBERS"], "actions": [{"id": "run-auditor", "label": "Auditar PNs", "sublabel": "Seleccionar criterios y ejecutar", "icon": "🔎", "type": "primary", "handler": "message", "message": "run-auditor"}]}, {"id": "file-uploader", "name": "Cargador de Archivos", "subtitle": "Fotos y planos por PN", "icon": "📎", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/file-uploader-core.js", "scripts/file-uploader.js"], "requiredPermissions": ["READ_ALL_UPLOADED_FILES"], "actions": [{"id": "upload-files", "label": "Subir Archivos", "sublabel": "Seleccionar archivos nombrados como el PN", "icon": "📎", "type": "primary", "handler": "message", "message": "upload-pn-files"}, {"id": "backfill-display", "label": "Marcar Portadas desde CSV", "sublabel": "Sube el CSV de Cowork (PN→displayImage). Marca portadas faltantes sin re-subir.", "icon": "★", "type": "secondary", "handler": "message", "message": "backfill-display-images", "fn": "FileUploader.runBackfillFromPopup"}]}, {"id": "report-liberator", "name": "Liberador de Reportes", "subtitle": "Sacar reportes de carpetas", "icon": "📂", "category": "Herramientas", "scripts": ["scripts/steelhead-api.js", "scripts/report-liberator.js"], "requiredPermissions": ["MANAGE_REPORTING_SETTINGS"], "actions": [{"id": "run-report-liberator", "label": "Liberar Reportes", "sublabel": "Quitar folderId de los reportes seleccionados", "icon": "📂", "type": "primary", "handler": "message", "message": "run-report-liberator"}]}, {"id": "report-regen", "name": "Regenerar Reportes", "subtitle": "Fuerza el refresh global de la base de reportes", "icon": "♻️", "category": "Herramientas", "autoInject": true, "scripts": ["scripts/steelhead-api.js", "scripts/report-regen.js"], "requiredPermissions": ["MANAGE_REPORTING_SETTINGS"], "actions": [{"id": "trigger-report-regen", "label": "Regenerar Reportes Ahora", "sublabel": "Refresh global de la base (respeta el cooldown del domain)", "icon": "♻️", "type": "primary", "handler": "message", "message": "trigger-report-regen", "fn": "ReportRegen.triggerFromPopup"}]}, {"id": "spec-migrator", "name": "Ajuste Masivo de Specs", "subtitle": "Migración y params pendientes", "icon": "🔀", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/spec-migrator-normalize.js", "scripts/spec-migrator.js"], "requiredPermissions": ["READ_SPECS", "WRITE_SPECS"], "actions": [{"id": "run-spec-migrator", "label": "Migrar Specs", "sublabel": "Desde la spec actual en pantalla", "icon": "🔀", "type": "primary", "handler": "message", "message": "run-spec-migrator", "fn": "SpecMigrator.run"}, {"id": "assign-pending-params", "label": "Asignar Params Pendientes", "sublabel": "Detectar y asignar params faltantes en PNs", "icon": "📋", "handler": "message", "message": "assign-pending-params", "fn": "SpecMigrator.assignPendingParams"}, {"id": "resolve-conflicts", "label": "Resolver Conflictos", "sublabel": "Detectar PNs con specs duplicadas y archivar", "icon": "⚔️", "handler": "message", "message": "resolve-conflicts", "fn": "SpecMigrator.resolveConflicts"}, {"id": "validate-duplicate-params", "label": "Validar params duplicados", "sublabel": "Detecta >1 param activo por SpecField y archiva el sobrante", "icon": "🧹", "handler": "message", "message": "validate-duplicate-params", "fn": "SpecMigrator.runDuplicateParamsValidator"}]}, {"id": "inventory-reset", "name": "Reinicio de Inventario", "subtitle": "Archivar lotes y carga inicial", "icon": "🔄", "category": "Inventario", "scripts": ["scripts/steelhead-api.js", "scripts/inventory-reset.js"], "requiredPermissions": ["READ_INVENTORY"], "actions": [{"id": "run-inventory-reset", "label": "Reiniciar Inventario", "sublabel": "Archivar lotes y cargar desde CSV", "icon": "🔄", "type": "primary", "handler": "message", "message": "run-inventory-reset"}]}, {"id": "po-comparator", "name": "Validador OC vs OV", "subtitle": "Comparar orden de compra vs venta", "icon": "📋", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/claude-api.js", "scripts/ov-operations.js", "scripts/po-comparator.js"], "requiredPermissions": ["READ_RECEIVED_ORDERS"], "actions": [{"id": "run-po-comparator", "label": "Validar OC vs OV", "sublabel": "Subir PDF y comparar contra Steelhead", "icon": "📋", "type": "primary", "handler": "message", "message": "run-po-comparator"}]}, {"id": "po-reconciler", "name": "Reconciliador OV vs PO Schneider", "subtitle": "Rebalancear OVs temporales contra POs reales", "icon": "🧮", "category": "Órdenes de Venta", "scripts": ["scripts/steelhead-api.js", "scripts/claude-api.js", "scripts/po-comparator.js", "scripts/lib/pdf.min.js", "scripts/po-reconciler.js"], "requiredPermissions": ["READ_RECEIVED_ORDERS"], "autoInject": true, "urlPatterns": ["/Domains/\\d+/ReceivedOrders(?:/|$|\\?)"], "actions": [{"id": "run-po-reconciler", "label": "Reconciliar Schneider QRO", "sublabel": "Subir PDFs de PO y rebalancear OVs temp", "icon": "🧮", "type": "primary", "handler": "message", "message": "run-po-reconciler"}]}, {"id": "wo-deadline", "name": "Gestión Masiva de OT", "subtitle": "Cambiar plazos y etiquetas masivamente", "icon": "⚙️", "category": "Órdenes de Trabajo", "scripts": ["scripts/steelhead-api.js", "scripts/wo-deadline-changer.js"], "requiredPermissions": ["READ_WORK_ORDER"], "actions": [{"id": "run-wo-deadline", "label": "Gestionar OTs", "sublabel": "Cambiar plazos y etiquetas masivamente", "icon": "⚙️", "type": "primary", "handler": "message", "message": "run-wo-deadline", "fn": "WODeadlineChanger.run"}]}, {"id": "wo-mover", "name": "Mover OTs entre OVs", "subtitle": "Reasignar órdenes de trabajo a otra OV desde el detalle de OV", "icon": "↔️", "category": "Órdenes de Trabajo", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/ov-operations.js", "scripts/wo-mover.js"], "requiredPermissions": ["READ_RECEIVED_ORDERS", "READ_WORK_ORDER"], "autoInject": true, "urlPatterns": ["/Domains/\\d+/ReceivedOrders/\\d+"], "actions": [{"id": "run-wo-mover", "label": "Mover OTs", "sublabel": "Reasignar OTs de esta OV a otra", "icon": "↔️", "type": "primary", "handler": "message", "message": "run-wo-mover"}]}, {"id": "wo-completer", "name": "Completar / Descompletar OTs", "subtitle": "Cerrar o revivir órdenes de trabajo desde un listado", "icon": "✅", "category": "Órdenes de Trabajo", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/wo-completer-engine.js", "scripts/wo-completer.js"], "requiredPermissions": ["READ_WORK_ORDER"], "actions": [{"id": "open-wo-completer", "label": "Completar / Descompletar OTs", "sublabel": "Pega un listado de OTs y ciérralas o revívelas", "icon": "✅", "type": "primary", "handler": "message", "message": "open-wo-completer", "fn": "WOCompleter.open"}]}, {"id": "cfdi-attacher", "name": "Adjuntar CFDI", "subtitle": "Auto-adjunta XML CFDI al enviar facturas", "icon": "📄", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/cfdi-attacher.js"], "autoInject": true, "urlPatterns": ["/Domains/\\d+/Invoices(?:/|$)"], "requiredPermissions": ["READ_INVOICING"], "actions": [{"id": "toggle-cfdi-attacher", "label": "Adjuntar CFDI", "sublabel": "Auto-adjunta XML(s) al enviar email de factura", "icon": "📄", "type": "toggle", "handler": "message", "message": "toggle-cfdi-attacher"}]}, {"id": "invoice-auto-regen", "name": "Auto-regenerar Facturas", "subtitle": "Regenera PDF al detectar timbrado exitoso", "icon": "🔄", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/invoice-auto-regen.js"], "autoInject": true, "urlPatterns": ["/Domains/\\d+/Invoices(?:/|$)"], "requiredPermissions": ["READ_INVOICING"], "actions": [{"id": "toggle-invoice-auto-regen", "label": "Auto-regenerar Facturas", "sublabel": "Regenera PDF tras timbrado exitoso", "icon": "🔄", "type": "toggle", "handler": "message", "message": "toggle-invoice-auto-regen"}]}, {"id": "invoice-default-tab", "name": "Tab por defecto en Invoices", "subtitle": "Auto-navega a Packing Slips al entrar a /Invoices sin mode=", "icon": "📦", "category": "Facturación", "scripts": ["scripts/invoice-default-tab.js"], "autoInject": true, "urlPatterns": ["/Domains/\\d+/Invoices/?$"], "actions": [{"id": "toggle-invoice-default-tab", "label": "Tab por defecto Invoices", "sublabel": "Salta a Packing Slips al entrar a /Invoices", "icon": "📦", "type": "toggle", "handler": "message", "message": "toggle-invoice-default-tab"}]}, {"id": "invoice-listing-marker", "name": "Marcadores de Facturas", "subtitle": "Resalta NC, montos cero y borradores en el listado", "icon": "🎯", "category": "Facturación", "scripts": ["scripts/invoice-listing-marker.js"], "autoInject": true, "urlPatterns": ["/Domains/\\d+/Invoices(?:/|$)"], "actions": [{"id": "toggle-invoice-listing-marker", "label": "Marcadores de Facturas", "sublabel": "Colorea NC, montos cero y borradores", "icon": "🎯", "type": "toggle", "handler": "message", "message": "toggle-invoice-listing-marker"}]}, {"id": "portal-importer", "name": "Importador de Portales", "subtitle": "Subir XLS de portales de clientes (Hubbell, etc.)", "icon": "📥", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/claude-api.js", "scripts/lib/xlsx.full.min.js", "scripts/ov-operations.js", "scripts/po-comparator.js", "scripts/portal-importer.js"], "requiredPermissions": ["READ_RECEIVED_ORDERS"], "actions": [{"id": "run-portal-importer", "label": "Importar Portal", "sublabel": "Subir XLS y procesar POs", "icon": "📥", "type": "primary", "handler": "message", "message": "run-portal-importer"}]}, {"id": "paros-linea", "name": "Paro de Línea", "subtitle": "Registrar paros con cronómetro", "icon": "⚠️", "category": "Producción", "scripts": ["scripts/steelhead-api.js", "scripts/paros-linea.js"], "autoInject": true, "urlPatterns": ["^/Domains/\\d+/(?:Workboards(?:/|$)|WorkOrders/\\d+)"], "requiredPermissions": ["READ_MAINTENANCE"], "actions": [{"id": "open-paros-linea", "label": "Iniciar Paro de Línea", "sublabel": "Mostrar modal de captura", "icon": "⚠️", "type": "primary", "handler": "message", "message": "open-paros-linea"}, {"id": "toggle-paros-linea", "label": "Botón flotante", "sublabel": "Activar/desactivar botón flotante en Steelhead", "icon": "🔘", "type": "toggle", "handler": "message", "message": "toggle-paros-linea-enabled"}]}, {"id": "vale-almacen", "name": "Vale de Almacén", "subtitle": "Surtido de material/equipo por usuario", "icon": "📦", "category": "Producción", "scripts": ["scripts/steelhead-api.js", "scripts/vale-almacen-engine.js", "scripts/vale-almacen.js"], "autoInject": true, "urlPatterns": ["^/Domains/\\d+/(?:(?:Workboards|Maintenance\\w*|SensorDashboards?|Sensors|Inventory\\w*)(?:/|$)|WorkOrders/\\d+)"], "requiredPermissions": ["READ_MAINTENANCE"], "actions": [{"id": "open-vale-almacen", "label": "Emitir Vale de Almacén", "sublabel": "Registrar artículos entregados por usuario", "icon": "📦", "type": "primary", "handler": "message", "message": "open-vale-almacen", "fn": "ValeAlmacen.open"}]}, {"id": "weight-quick-entry", "name": "Peso Rápido", "subtitle": "Registra peso KG/LB desde el modal de recibo", "icon": "⚖️", "category": "Recibo", "scripts": ["scripts/steelhead-api.js", "scripts/weight-quick-entry.js"], "autoInject": true, "urlPatterns": ["/Receiving/CustomerParts(?:/|$)", "/Domains/\\d+/SalesOrders(?:/|$)"], "requiredPermissions": ["READ_RECEIVING"], "actions": [{"id": "toggle-weight-quick-entry", "label": "Peso Rápido", "sublabel": "Campos de peso en modal de recibo", "icon": "⚖️", "type": "toggle", "handler": "message", "message": "toggle-weight-quick-entry"}]}, {"id": "unit-autoconvert", "name": "Auto-conversión de Unidades", "subtitle": "Calcula las demás unidades del mismo tipo al editar un NP", "icon": "📐", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/unit-autoconvert-core.js", "scripts/unit-autoconvert.js"], "autoInject": true, "urlPatterns": ["(?:^|/)PartNumbers(?:/|$)", "/Receiving/CustomerParts(?:/|$)", "/Domains/\\d+/Quotes(?:/|$)", "/Domains/\\d+/SalesOrders(?:/|$)"], "requiredPermissions": []}, {"id": "price-confirm-guard", "name": "Candado de Confirmación de Precio", "subtitle": "Reconfirma el precio (tipo password) y exige divisa al guardar en el modal de precios", "icon": "🔒", "category": "Números de Parte", "scripts": ["scripts/steelhead-api.js", "scripts/price-confirm-core.js", "scripts/price-confirm-guard.js"], "autoInject": true, "requiredPermissions": [], "actions": [{"id": "toggle-price-confirm-guard", "label": "Candado de Precio", "sublabel": "Reconfirmar precio + divisa al guardar (se reactiva al recargar)", "icon": "🔒", "type": "toggle", "handler": "message", "message": "toggle-price-confirm-guard", "fn": "PriceConfirmGuard.toggleFromPopup"}]}, {"id": "receiver-date-override", "name": "Fecha de Recibo", "subtitle": "Editar fecha real de recibo desde el modal de Receive Parts", "icon": "📅", "category": "Recibo", "scripts": ["scripts/receiver-date-override.js"], "autoInject": true, "urlPatterns": ["/Receiving/CustomerParts(?:/|$)", "/Domains/\\d+/SalesOrders(?:/|$)"], "requiredPermissions": ["READ_RECEIVING"], "actions": [{"id": "toggle-receiver-date-override", "label": "Fecha de Recibo", "sublabel": "Editar fecha real desde el modal", "icon": "📅", "type": "toggle", "handler": "message", "message": "toggle-receiver-date-override"}]}, {"id": "warehouse-location-prefill", "name": "Ubicación de Recibo", "subtitle": "Prellenado de ubicación inicial en el modal de Receive Parts", "icon": "📦", "category": "Recibo", "scripts": ["scripts/steelhead-api.js", "scripts/warehouse-location-prefill.js"], "autoInject": true, "urlPatterns": ["/Receiving/CustomerParts(?:/|$)", "/Domains/\\d+/SalesOrders(?:/|$)"], "requiredPermissions": ["READ_RECEIVING"], "actions": [{"id": "toggle-warehouse-location-prefill", "label": "Ubicación de Recibo", "sublabel": "Prellenado de ubicación inicial al recibir", "icon": "📦", "type": "toggle", "handler": "message", "message": "toggle-warehouse-location-prefill"}]}, {"id": "create-order-autofill", "name": "Crear OV — Autofill", "subtitle": "Razón Social, Divisa y Consolidar en modal Crear Orden de Venta", "icon": "📝", "category": "Recibo", "scripts": ["scripts/steelhead-api.js", "scripts/create-order-autofill-core.js", "scripts/create-order-autofill.js"], "autoInject": true, "urlPatterns": ["/Receiving/CustomerParts(?:/|$)", "/Domains/\\d+/SalesOrders/?$"], "requiredPermissions": ["READ_RECEIVING"], "actions": [{"id": "toggle-create-order-autofill", "label": "Crear OV — Autofill", "sublabel": "Auto-llena Entradas Personalizadas al crear OV", "icon": "📝", "type": "toggle", "handler": "message", "message": "toggle-create-order-autofill"}]}, {"id": "bill-autofill", "name": "Bill Autofill", "subtitle": "Llenado automático de cuentas contables en Bills", "icon": "🧾", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/bill-autofill.js"], "autoInject": true, "urlPatterns": ["/Domains/\\d+/Bills(?:/|$)"], "requiredPermissions": ["READ_BILLS"], "actions": [{"id": "toggle-bill-autofill", "label": "Bill Autofill", "sublabel": "Auto-llenar cuentas AP y gastos en Bills", "icon": "🧾", "type": "toggle", "handler": "message", "message": "toggle-bill-autofill"}]}, {"id": "invoice-autofill", "name": "Invoice Autofill", "subtitle": "Llenado automático de cuentas contables en Invoices", "icon": "🧮", "category": "Facturación", "scripts": ["scripts/steelhead-api.js", "scripts/invoice-autofill.js"], "autoInject": true, "urlPatterns": ["/Domains/\\d+/(?:Invoices|Shipping/PackingSlips)(?:/|$)"], "requiredPermissions": ["READ_INVOICING"], "actions": [{"id": "toggle-invoice-autofill", "label": "Invoice Autofill", "sublabel": "Auto-llenar cuenta CXC e ingresos en Invoices", "icon": "🧮", "type": "toggle", "handler": "message", "message": "toggle-invoice-autofill"}]}, {"id": "process-canon", "name": "Canon de Procesos", "subtitle": "Auditar y normalizar nodos canónicos", "icon": "🏭", "category": "Producción", "scripts": ["scripts/steelhead-api.js", "scripts/process-shared.js", "scripts/process-canon.js", "scripts/process-deep-audit.js"], "actions": [{"id": "run-process-canon", "label": "Auditar Procesos", "sublabel": "Detectar y corregir patrón canónico de 9 nodos", "icon": "🏭", "type": "primary", "handler": "message", "message": "run-process-canon", "fn": "ProcessCanon.run"}, {"id": "run-process-deep-audit", "label": "Auditoría profunda", "sublabel": "R1-R4: scanner, tiempos, satélites, lead time/producto + XLSX", "icon": "🔬", "type": "secondary", "handler": "message", "message": "run-process-deep-audit"}]}, {"id": "spec-params-bulk", "name": "Carga masiva Spec Params", "subtitle": "Editar parámetros de specs vía XLSX", "icon": "🧪", "category": "Calidad", "scripts": ["scripts/steelhead-api.js", "scripts/spec-shared.js", "scripts/spec-params-bulk.js"], "requiredPermissions": [], "actions": [{"id": "download-spec-params", "label": "Descargar XLSX", "sublabel": "Filtrar specs y bajar plantilla editable", "icon": "📥", "type": "primary", "handler": "message", "message": "download-spec-params"}, {"id": "upload-spec-params", "label": "Cargar XLSX editado", "sublabel": "Subir archivo y aplicar diffs en batch", "icon": "📤", "type": "secondary", "handler": "message", "message": "upload-spec-params"}]}, {"id": "sensor-status-autofill", "name": "Auto-asignar status (Sensor Dashboards)", "subtitle": "Marca 'Use for Status' en members de un dashboard", "icon": "📊", "category": "Producción", "scripts": ["scripts/steelhead-api.js", "scripts/sensor-status-autofill.js"], "requiredPermissions": [], "actions": [{"id": "assign-sensor-status", "label": "Asignar status", "sublabel": "Auto-asigna o elige candidato para cada member", "icon": "📊", "type": "primary", "handler": "message", "message": "assign-sensor-status"}]}, {"id": "sensor-graph-hide-all", "name": "Auto-ocultar sensores en la gráfica", "subtitle": "Al entrar a un Sensor Dashboard esconde todos los sensores para elegir uno", "icon": "👁", "category": "Producción", "autoInject": true, "urlPatterns": ["/sensor-?dashboards/\\d+(?:[/?#]|$)"], "scripts": ["scripts/steelhead-api.js", "scripts/sensor-graph-hide-all-core.js", "scripts/sensor-graph-hide-all.js"], "requiredPermissions": [], "actions": [{"id": "toggle-sensor-graph-hide-all", "label": "Auto-ocultar sensores", "sublabel": "Esconder todos al entrar al dashboard (se reactiva al recargar)", "icon": "👁", "type": "toggle", "handler": "message", "message": "toggle-sensor-graph-hide-all", "fn": "SensorGraphHideAll.toggleFromPopup"}]}, {"id": "pn-specs-column", "name": "Specs en Números de Parte", "subtitle": "Columna de specs + parámetros numéricos de cada NP en el dashboard /PartNumbers", "icon": "🧪", "category": "Números de Parte", "autoInject": true, "urlPatterns": ["(?:^|/)PartNumbers/?(?:[?#]|$)"], "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/pn-specs-column-core.js", "scripts/pn-specs-column.js"], "requiredPermissions": ["READ_PART_NUMBERS"], "actions": [{"id": "toggle-pn-specs-column", "label": "Specs en Números de Parte", "sublabel": "Columna de specs + params numéricos en /PartNumbers (1 consulta por NP visible; el toggle también vive en el header)", "icon": "🧪", "type": "toggle", "handler": "message", "message": "toggle-pn-specs-column", "fn": "PnSpecsColumn.toggleFromPopup"}]}, {"id": "wo-listing-columns", "name": "Columnas en Órdenes de Trabajo", "subtitle": "Columna de Número de Parte (link a su ficha) en el listado /WorkOrders", "icon": "🔩", "category": "Órdenes de Trabajo", "autoInject": true, "urlPatterns": ["/Domains/\\d+/WorkOrders/?(?:[?#]|$)"], "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/wo-schedule-core.js", "scripts/wo-listing-columns.js"], "requiredPermissions": ["READ_WORK_ORDER"], "actions": [{"id": "toggle-wo-listing-columns", "label": "Columna de Núm. de Parte en OTs", "sublabel": "Muestra el Número de Parte de cada OT en /WorkOrders (1 consulta por OT; el toggle también vive sobre la tabla)", "icon": "🔩", "type": "toggle", "handler": "message", "message": "toggle-wo-listing-columns", "fn": "WoListingColumns.toggleFromPopup"}, {"id": "toggle-wo-listing-schedule", "label": "Columna de Programación en OTs", "sublabel": "Muestra estación · fecha · estado de cada OT en /WorkOrders (1 consulta del tablero por página; el toggle también vive sobre la tabla)", "icon": "📅", "type": "toggle", "handler": "message", "message": "toggle-wo-listing-schedule", "fn": "WoListingColumns.toggleSchedFromPopup"}]}, {"id": "auto-router", "name": "Auto-Ruteador", "subtitle": "Re-rutea órdenes de trabajo entre líneas de producción", "icon": "🔀", "category": "Producción", "autoInject": true, "urlPatterns": ["/Schedules/\\d+/ScheduleBoard/\\d+", "/Domains/\\d+/WorkOrders/\\d+"], "scripts": ["scripts/steelhead-api.js", "scripts/auto-router-engine.js", "scripts/auto-router-groups.js", "scripts/auto-router-api.js", "scripts/auto-router-panel.js", "scripts/auto-router-batch.js", "scripts/auto-router-lanes.js", "scripts/board-metal-tooltip.js", "scripts/auto-router.js"], "requiredPermissions": [], "actions": [{"id": "open-auto-router", "label": "Auto-Ruteador", "sublabel": "Re-rutear orden a otra línea (abre tras cargar el modal de ruteo)", "icon": "🔀", "type": "primary", "handler": "message", "message": "open-auto-router"}, {"id": "open-auto-router-batch", "label": "Auto-Ruteador — Batch", "sublabel": "Rutear varias órdenes a una línea (pega los números de orden)", "icon": "🔀", "type": "primary", "handler": "message", "message": "open-auto-router-batch"}, {"id": "open-auto-router-lanes", "label": "Auto-Ruteador — Por grupos", "sublabel": "Rutear la orden completa y/o cada grupo de piezas a su línea", "icon": "📦", "type": "primary", "handler": "message", "message": "open-auto-router-lanes"}]}, {"id": "surtido-guard", "name": "Candado de Surtido Programado", "subtitle": "Bloquea mover piezas no programadas en Preparación de Surtido", "icon": "🔒", "category": "Producción", "autoInject": true, "urlPatterns": ["^/Domains/\\d+/Workboards/\\d+"], "scripts": ["scripts/steelhead-api.js", "scripts/surtido-guard-core.js", "scripts/surtido-guard.js"], "requiredPermissions": [], "actions": [{"id": "toggle-surtido-guard", "label": "Candado de Surtido", "sublabel": "Bloquear mover piezas no programadas (se reactiva al recargar)", "icon": "🔒", "type": "toggle", "handler": "message", "message": "toggle-surtido-guard", "fn": "SurtidoGuard.toggleFromPopup"}]}, {"id": "pn-lifecycle", "name": "Ciclo de vida de PNs", "subtitle": "Marcar validación de ingeniería, desarchivar, quitar validación o archivar (Borrado definitivo) PNs por lote, con filtros y dedup", "icon": "♻️", "category": "Números de Parte", "scripts": ["scripts/host-cleanup-shared.js", "scripts/steelhead-api.js", "scripts/bulk-upload-cc.js", "scripts/bulk-upload-classify.js", "scripts/pn-lifecycle-core.js", "scripts/pn-lifecycle.js"], "requiredPermissions": ["READ_PART_NUMBERS"], "actions": [{"id": "run-pn-lifecycle", "label": "Ciclo de vida de PNs", "sublabel": "Filtrar, previsualizar y ejecutar acciones sobre PNs", "icon": "♻️", "type": "primary", "handler": "message", "message": "run-pn-lifecycle"}]}, {"id": "po-listing-filters", "name": "Buscador global de OC + Empresa", "subtitle": "Busca OC, proveedor o factura en las 5 vistas a la vez y filtra por Ecoplating/Proquipa", "icon": "🔎", "category": "Compras", "autoInject": true, "urlPatterns": ["^/Domains/\\d+/Purchasing/PurchaseOrders/?(?:[?#]|$)"], "scripts": ["scripts/steelhead-api.js", "scripts/po-listing-filters-core.js", "scripts/po-listing-filters.js"], "requiredPermissions": []}], "knownOperations": {"StationTreatmentByWorkOrder": {"type": "query", "description": "Árbol de recipeNodes de una WO con treatmentId + stationByDefaultStationId (tina default), allDefaultStationTransports (grafo físico) y activeRoutes (rutas ya aplicadas). Variables: {workOrderIds:[woId], partNumberIds:[pnId], partGroupIds:[]}. La dispara el modal de ruteo nativo.", "usedBy": "auto-router"}, "SearchStationsForTreatment": {"type": "query", "description": "Tinas (treatmentById.schedulingStations.nodes[].{id,name}) compatibles con un tratamiento, de todas las líneas, ya filtradas al grupo Planificación. El nombre trae línea+posición física (T205-TI00-019 Enjuague). Variables: {nameLike:'%%', treatmentId}.", "usedBy": "auto-router"}, "CreateUpdateDeleteRoutes": {"type": "mutation", "description": "Aplica rutas tina↔recipeNode de una WO. Variables: {input:{routesToCreate:[{partNumberId,workOrderId,treatmentId,stationId,recipeNodeId,partGroupId:null}], routesToUpdate:[{id,stationId}], routesToDelete:[id]}}. Devuelve createUpdateDeleteRoutes.{createdRoutes[],updatedRoutes,deletedRouteIds}. Gotcha: exige una lectura RECIENTE de StationTreatmentByWorkOrder de esa WO o crea 0 rutas (rechazo silencioso, 200 sin error).", "usedBy": "auto-router"}, "PartNumbersByWorkOrderIdInDomain": {"type": "query", "description": "Resuelve una orden por su número visible. Variables: {idInDomain}. Devuelve workOrderByIdInDomain.{id (woId interno), idInDomain, name, partLocationsByWorkOrderId.nodes[].{partNumberByPartNumberId{id,name}, partGroupByPartGroupId}}. Resuelve woId+pnId+partGroup en una llamada (usado por el batch).", "usedBy": "auto-router"}, "GetPartNumberInventoryBatch": {"type": "query", "description": "Resuelve un lote por su idInDomain (el número del link /Inventory/Batches/<n>). Variables: {idInDomain}. Devuelve inventoryBatchByIdInDomain.{id (id INTERNO del lote), nodeId}. Paso 1 de la cadena para leer el PS: idInDomain → id interno → GetInventoryBatch.", "usedBy": "auto-router"}, "GetInventoryBatch": {"type": "query", "description": "Detalle de un lote por su id INTERNO. Variables: {id, limit, offset}. Devuelve inventoryBatchById.customInputs.DatosRecibo.PackingSlip (PS = Packing Slip del cliente) entre otros. Paso 2 de la cadena del tooltip del board (el id interno sale de GetPartNumberInventoryBatch).", "usedBy": "auto-router"}, "SchedulablePartLocations": {"type": "query", "description": "Part-locations de un schedule por estación(es). Variables: {scheduleId, stationIds:[...], routedOnly:false}. Devuelve allPartLocations.nodes[].{workOrderId, partNumberId, partGroupId, stationId, recipeNodeId}. Usado para 'rutear todas': trae las WO de la línea sin seleccionarlas. OJO: query relativamente pesada (1700+ nodos si se piden varias estaciones).", "usedBy": "auto-router"}, "CreateQuote": {"type": "mutation", "description": "Crear cotización con custom inputs (Comentarios, DatosAdicionales, Autorización)", "usedBy": "carga-masiva"}, "UpdateQuote": {"type": "mutation", "description": "Actualizar notas externas/internas de cotización", "usedBy": "carga-masiva"}, "SaveQuoteLines": {"type": "mutation", "description": "Asignar productos a líneas de cotización", "usedBy": "carga-masiva"}, "CreateQuoteStageChange": {"type": "mutation", "description": "Mover una cotización a un stage (quoteStageId). bulk-upload: STEP 9 la mueve a 'Ganada' (ganadaStageId) al terminar; y al 'retomar anterior' la mueve a revertStageId (no-active) ANTES de editar = revert-from-active. Variables: {quoteId, quoteStageId, message, needsRevision}.", "usedBy": "carga-masiva"}, "SaveManyPartNumberPrices": {"type": "mutation", "description": "Vincular PNs a cotización con precios y divisa (batch de 20)", "usedBy": "carga-masiva"}, "SavePartNumber": {"type": "mutation", "description": "Crear/enriquecer números de parte (labels, specs, dims, predictive, optIn)", "usedBy": "carga-masiva"}, "SavePartNumberRackTypes": {"type": "mutation", "description": "Asignar racks a números de parte", "usedBy": "carga-masiva"}, "SetPartNumberPricesAsDefaultPrice": {"type": "mutation", "description": "Marcar precios como default para un PN", "usedBy": "carga-masiva"}, "UpdatePartNumber": {"type": "mutation", "description": "Archivar números de parte (archivedAt)", "usedBy": "carga-masiva"}, "CreatePartNumberGroup": {"type": "mutation", "description": "Crear grupo/familia de números de parte", "usedBy": "carga-masiva"}, "CustomerSearchByName": {"type": "query", "description": "Buscar clientes por nombre para dropdowns y resolución", "usedBy": "carga-masiva"}, "CustomerFinancialByCustomerId": {"type": "query", "description": "Obtener términos de facturación del cliente", "usedBy": "carga-masiva"}, "GetQuote": {"type": "query", "description": "Obtener cotización completa con líneas, QPNPs y PNs", "usedBy": "carga-masiva"}, "GetQuoteRelatedData": {"type": "query", "description": "Obtener direcciones y contactos del cliente para cotización", "usedBy": "carga-masiva"}, "SearchInvoiceTerms": {"type": "query", "description": "Buscar términos de facturación disponibles", "usedBy": "carga-masiva"}, "SearchUsers": {"type": "query", "description": "Buscar usuarios/vendedores para asignar a cotización", "usedBy": "carga-masiva"}, "AllProcesses": {"type": "query", "description": "Listar procesos/workflows disponibles (no archivados)", "usedBy": "carga-masiva"}, "AllLabels": {"type": "query", "description": "Listar etiquetas para números de parte", "usedBy": "carga-masiva"}, "DeleteWorkOrderLabels": {"type": "mutation", "description": "Eliminar todas las etiquetas de una OT", "usedBy": "wo-deadline"}, "CreateWorkOrderLabel": {"type": "mutation", "description": "Asignar una etiqueta a una OT", "usedBy": "wo-deadline"}, "SearchSpecsForSelect": {"type": "query", "description": "Buscar especificaciones con campos y parámetros", "usedBy": "carga-masiva"}, "TempSpecFieldsAndOptions": {"type": "query", "description": "DEPRECATED — usar SpecFieldsAndOptions. Su selection set no devuelve params para fields tipo DROPDOWN", "usedBy": "carga-masiva"}, "AllRackTypes": {"type": "query", "description": "Listar tipos de rack disponibles", "usedBy": "carga-masiva"}, "SearchUnits": {"type": "query", "description": "Listar unidades de medida (KGM, LBR, CMK, etc.)", "usedBy": "carga-masiva, unit-autoconvert"}, "SearchProductsComprehensive": {"type": "query", "description": "Buscar productos (renombrada de SearchProducts 2026-07-16; misma key searchProducts.nodes + var offset opcional)", "usedBy": "carga-masiva, wo-deadline-changer"}, "SearchPartNumbers": {"type": "query", "description": "Buscar PNs existentes por nombre (verificar duplicados)", "usedBy": "carga-masiva"}, "PartNumberGroupSelect": {"type": "query", "description": "Listar grupos de números de parte", "usedBy": "carga-masiva"}, "DeletePartNumberPrice": {"type": "mutation", "description": "Borrar un precio de PN por ID", "usedBy": "carga-masiva"}, "DeletePartNumberRackType": {"type": "mutation", "description": "Borrar un rack de PN por ID", "usedBy": "carga-masiva"}, "CreatePartNumberInputSchema": {"type": "mutation", "description": "Actualizar schema de custom inputs (agregar Metal Base, etc.)", "usedBy": "carga-masiva"}, "GetDimension": {"type": "query", "description": "Obtener valores de dimensión contable (Línea, Departamento)", "usedBy": "carga-masiva"}, "Customer": {"type": "query", "description": "Trae customerByIdInDomain con salesTaxable, idInDomain y todo el customInputs (DatosContables.CuentasContables, DatosFactura.{RazonSocialVenta, Divisa, ConsolidarPorProducto}, etc). Variables: { idInDomain, includeAccountingFields }", "usedBy": "invoice-autofill, create-order-autofill"}, "AllInventoryTypes": {"type": "query", "description": "Listar todos los tipos de inventario (Materia Prima, Metales, etc.)", "usedBy": "inventory-reset"}, "SearchInventoryTypeItems": {"type": "query", "description": "Listar items de un tipo de inventario (paginado)", "usedBy": "inventory-reset"}, "SearchInventoryItemBatches": {"type": "query", "description": "Listar lotes activos de un item de inventario", "usedBy": "inventory-reset"}, "AllInventoryBatchStatuses": {"type": "query", "description": "Listar estatus de lotes de inventario por tipo", "usedBy": "inventory-reset"}, "CreateEditInventoryBatchDialogQuery": {"type": "query", "description": "Obtener el inputSchemaId genérico para creación de lotes", "usedBy": "inventory-reset"}, "SearchLocationsOnPath": {"type": "query", "description": "Buscar ubicaciones de almacén por path (Ecoplating.N3.A3.RJ)", "usedBy": "inventory-reset, warehouse-location-prefill"}, "UpdateInventoryBatchesChecked": {"type": "mutation", "description": "Archivar lotes de inventario en batch (hasta 20 por llamada)", "usedBy": "inventory-reset"}, "CreateInventoryTransferEventGroups": {"type": "mutation", "description": "Crear lotes de inventario nuevos (carga inicial)", "usedBy": "inventory-reset"}, "GetSpec": {"type": "query", "description": "Obtener spec por idInDomain+revision con sus PNs asignados", "usedBy": "spec-migrator"}, "SpecFieldsAndOptions": {"type": "query", "description": "Obtener spec fields y sus parámetros completos (defaultValues.nodes para todos los field types: DROPDOWN, BOOLEAN, espesor, etc.). Es la query CORRECTA para construir specsToApply. Reemplazó a TempSpecFieldsAndOptions y al embed de AllSpecs (que omite params en DROPDOWN)", "usedBy": "carga-masiva, spec-migrator"}, "ApplySpecsToPartNumber": {"type": "mutation", "description": "Aplicar una spec nueva a un PN con defaultSelections + genericSelections", "usedBy": "spec-migrator"}, "ArchivePartNumberSpecAndParams": {"type": "mutation", "description": "Archivar/desarchivar spec y sus params a nivel PN", "usedBy": "spec-migrator"}, "UpdatePartNumberSpecParam": {"type": "mutation", "description": "Archivar un param individual de un PN (cambia archivedAt)", "usedBy": "spec-migrator"}, "AddParamsToPartNumber": {"type": "mutation", "description": "Agregar params a una spec ya ligada al PN (sin re-crear part_number_spec). CRÍTICO: pasar processNodeId:null y processNodeOccurrence:null aunque isGeneric=false — pasar el processId real choca con exclusion constraint. Llamar uno por uno y tolerar 'conflicting key' como 'ya presente'", "usedBy": "carga-masiva, spec-migrator"}, "FilterSearch": {"type": "query", "description": "Buscar opciones de filtro (cliente, etiqueta) para dashboards", "usedBy": "spec-migrator"}, "AllReports": {"type": "query", "description": "Listar todos los reportes y carpetas (con includeArchived YES/NO)", "usedBy": "report-liberator"}, "CreateUpdateReportWithPermissions": {"type": "mutation", "description": "Crear o actualizar reporte (cambiar folderId a null para liberar)", "usedBy": "report-liberator"}, "DeleteFolderById": {"type": "mutation", "description": "Borrar carpeta de reportes por ID (falla si tiene reportes adentro)", "usedBy": "report-liberator"}, "ArchiveReport": {"type": "mutation", "description": "Archivar/desarchivar reporte (archivedAt timestamp o null)", "usedBy": "report-liberator"}, "CreateUpdateBill": {"type": "mutation", "description": "Crear o actualizar factura de proveedor con líneas, journal entry y custom inputs (Divisa, exchangeRate)", "usedBy": "bill-autofill"}, "GetPurchaseOrderDetail": {"type": "query", "description": "Obtener PO por idInDomain con customInputs.DatosReferencia.Divisa, vendor y domain (antes 'GetPurchaseOrder'; el front renombró la op, mismas variables idInDomain/userIdFilter)", "usedBy": "bill-autofill"}, "GetDomain": {"type": "query", "description": "Obtener dominio con customInputs.TipoCambio (array de {fecha, valor}) y currentExchangeRate", "usedBy": "bill-autofill"}, "SearchAccounts": {"type": "query", "description": "Buscar cuentas contables por texto (%query%)", "usedBy": "bill-autofill"}, "GetAccountDataForBill": {"type": "query", "description": "Lista completa de cuentas contables + mapeo producto→cuenta para bills", "usedBy": "bill-autofill"}, "GetBillByIdInDomain": {"type": "query", "description": "Obtener bill por idInDomain con líneas y customInputs", "usedBy": "bill-autofill"}, "GetPartNumbersInputSchema": {"type": "query", "description": "Obtener input schemas de PN (usado para extraer enums BaseMetal y CodigoSAT)", "usedBy": "carga-masiva"}, "AllSpecs": {"type": "query", "description": "Listar specs paginado por offset/first. Filtrable por type=EXTERNAL. Reemplaza SearchSpecsForSelect (que tiene límite oculto ~5000). Trae specFieldSpecsBySpecId.nodes embebido pero el selection set OMITE params para field types tipo DROPDOWN — solo usar para name→id lookup, NO para construir specsToApply (ahí usar SpecFieldsAndOptions)", "usedBy": "carga-masiva"}, "AllCustomers": {"type": "query", "description": "Listar clientes paginado por offset/first. Trae customerLabelsByCustomerId embebido pero NO direcciones (siguen requiriendo Customer por idInDomain). Reemplaza el workaround de letras A-Z+0-9 con CustomerSearchByName", "usedBy": "carga-masiva"}, "UpdateInventoryItemPredictedUsage": {"type": "mutation", "description": "Actualizar predictivos existentes en batch. Input: {mnPredictedInventoryUsagePatch: [{id, microQuantityPerPart, inventoryUsageLowCodeId}]}. microQuantityPerPart está en micro-unidades (kg/pza × 1e6 redondeado). Necesario porque SavePartNumber.inventoryPredictedUsages es insert-only y dispara unique constraint en (pn, inventoryItem)", "usedBy": "carga-masiva"}, "ArchivePredictedInventoryUsage": {"type": "mutation", "description": "Archivar (soft-delete) un predictivo de inventario existente. Input singular: {input: {id, predictedInventoryUsagePatch: {archivedAt: ISO}}}. Devuelve updatePredictedInventoryUsageById.clientMutationId. (1.6.28: bulk-upload ya no la usa — usa ChangePredictedInventoryUsagesWithRecipeNodeCascade. Conservada para tools/archive-predictive-dash.js.)", "usedBy": "archive-predictive-dash"}, "ChangePredictedInventoryUsagesWithRecipeNodeCascade": {"type": "mutation", "description": "Mutación consolidada para predictivos. Input: {input:{toCreate:[{inventoryItemId,partNumberId,microQuantityPerPart,treatmentId?}], toArchiveAndReplace:[{archiveId,inventoryItemId,partNumberId,microQuantityPerPart}], toArchive:[{archiveId}], cascadePairs:[]}}. microQuantityPerPart en micro-unidades como STRING ('70' = 70 micro). toArchiveAndReplace archiva el id existente y crea uno nuevo activo en un solo round-trip — semánticamente reemplaza tanto Unarchive+Update como Update simple. Reemplaza el trio UpdateInventoryItemPredictedUsage + ArchivePredictedInventoryUsage que bulk-upload usaba en STEP 6a", "usedBy": "carga-masiva"}, "UpdatePartNumberPerPerRackType": {"type": "mutation", "description": "Actualizar partsPerRack de un rack ya ligado a un PN (typo 'PerPer' es del API real). Input: {partNumberId, partsPerRack, rackTypeId}. Necesario porque SavePartNumberRackTypes es insert-only y dispara unique constraint en (pn, rackType)", "usedBy": "carga-masiva"}, "GetSpecFieldPartNumbers": {"type": "query", "description": "PNs sin asignar de un specFieldSpec. Reemplaza el viejo GetSpecFieldSpec, que Steelhead dividió por-tab (scan 2026-06-24). Variables: {specFieldSpecId, partNumberUnassignedActive:true, partNumberSpecFieldParamActive:false, searchQuery:'', first, offset, orderBy:['NAME_ASC']}. Responde pagedData.{totalCount, nodes[].{id,name}}. isGeneric/defaultValues/specFieldBySpecFieldId vienen de SpecFieldsAndOptions, no de aquí.", "usedBy": "spec-migrator"}, "CheckDuplicatePO": {"type": "query", "description": "Buscar OVs por nombre/PO para detección de duplicados", "usedBy": "po-comparator"}, "ActiveReceivedOrders": {"type": "query", "description": "Listar órdenes de venta activas con filtros y paginación", "usedBy": "po-comparator"}, "GetReceivedOrder": {"type": "query", "description": "Detalle completo de una orden de venta por idInDomain", "usedBy": "po-comparator"}, "GetAddPartsReceivedOrder": {"type": "query", "description": "Detalle de OV con workOrders + receivedOrderPartTransforms (incluye partNumberId, count, maxPartTransformCount). Variable {id} es internal id, alias del root es receivedOrderByIdInDomain", "usedBy": "po-reconciler"}, "GetReceivedOrderLine": {"type": "query", "description": "Detalle de una línea específica de OV", "usedBy": "po-comparator"}, "GetReceivedOrderDocuments": {"type": "query", "description": "Documentos adjuntos de una orden de venta", "usedBy": "po-comparator"}, "RouteReceivedOrders": {"type": "query", "description": "Datos mínimos de OVs por lista de IDs", "usedBy": "po-comparator"}, "GetReceivedOrderCosts": {"type": "query", "description": "Desglose de costos de una orden de venta", "usedBy": "po-comparator"}, "ReceivingBatchesQuery": {"type": "query", "description": "Batches de recibo con datos de discrepancia", "usedBy": "po-comparator"}, "EmailCustomerContactsByCustomerIds": {"type": "query", "description": "Contactos de correo del cliente por ID", "usedBy": "po-comparator"}, "GetEmailDefaultByTypeAndSubType": {"type": "query", "description": "Plantillas de email por tipo (SALES_ORDER, GENERIC)", "usedBy": "po-comparator"}, "GetUserEmailRecipients": {"type": "query", "description": "Lista de destinatarios internos para emails", "usedBy": "po-comparator"}, "SaveReceivedOrderLinesAndItems": {"type": "mutation", "description": "Crear/actualizar líneas y items de OV", "usedBy": "po-comparator"}, "SaveReceivedOrderPartTransforms": {"type": "mutation", "description": "Crear/actualizar part transforms de una OV (paso previo a SaveReceivedOrderLinesAndItems)", "usedBy": "portal-importer"}, "UpdateReceivedOrder": {"type": "mutation", "description": "Actualizar custom inputs y header de OV (Divisa, RazonSocial, name para rename)", "usedBy": "po-comparator, po-reconciler"}, "AddPartsToWorkOrders": {"type": "mutation", "description": "Mover piezas entre OTs (cross-OV o intra-OV). Requiere fromAccountId + toAccount con workOrderId/recipeNodeId/locationId/partNumberId/receivedOrderPartTransformId", "usedBy": "po-reconciler"}, "CreateUpdateWorkOrdersChecked": {"type": "mutation", "description": "Crear o actualizar Work Orders (header con customerId, productId, deadline, receivedOrderId)", "usedBy": "po-reconciler"}, "SendEmailChecked": {"type": "mutation", "description": "Enviar email con plantilla, adjuntos y links", "usedBy": "po-comparator, cfdi-attacher"}, "CreateEmailLogReceivedOrder": {"type": "mutation", "description": "Registrar envío de email en historial de OV", "usedBy": "po-comparator"}, "InvoiceByIdInDomain": {"type": "query", "description": "Obtener factura por idInDomain con writeResult (linkxml, XmlBase64File)", "usedBy": "cfdi-attacher"}, "CreateInvoicePdf": {"type": "mutation", "description": "Generar PDF de factura para adjuntar en email", "usedBy": "cfdi-attacher"}, "ActiveInvoicesPaged": {"type": "query", "description": "Listar facturas paginadas para dashboard (incluye steelheadObjectByInvoiceId.writtenAt y invoicePdfsByInvoiceId)", "usedBy": "invoice-auto-regen"}, "CreateInvoiceEmailLog": {"type": "mutation", "description": "Registrar envío de email de factura en historial", "usedBy": "cfdi-attacher"}, "CurrentUser": {"type": "query", "description": "Usuario actual logueado con permisos y config de dominio. DEPRECADA server-side 2026-04-27 (HTTP 400 'Must provide a query string.'). Usar CurrentUserDetails como fallback (sin permisos finos).", "usedBy": "permissions"}, "CurrentUserDetails": {"type": "query", "description": "Usuario actual mínimo: id, domainId, isAdmin. Sin currentManagedPermissions ni name. Usado por paros-linea como gating ligero (admin-only).", "usedBy": "paros-linea"}, "CurrentUserActiveSegments": {"type": "query", "description": "Sesión actual: currentSession.userByUserId.name (+ domain, employment, segments). Usado por bulk-upload para el usuario del footprint ControlCambios (CurrentUserDetails NO trae name).", "usedBy": "bulk-upload"}, "GlobalUsers": {"type": "query", "description": "Listar todos los usuarios del dominio (paginado)", "usedBy": "permissions"}, "CreateReceivedOrder": {"type": "mutation", "description": "Crear nueva orden de venta con custom inputs", "usedBy": "po-comparator"}, "CreateUserFile": {"type": "mutation", "description": "Registrar archivo subido en el sistema de archivos", "usedBy": "po-comparator, file-uploader"}, "CreateReceivedOrderUserFile": {"type": "mutation", "description": "Enlazar archivo a una orden de venta", "usedBy": "po-comparator"}, "CreateEditReceivedOrderDialogQuery": {"type": "query", "description": "Schema de inputs y defaults del dominio para crear/editar OV", "usedBy": "po-comparator"}, "GetCustomerInfoForReceivedOrder": {"type": "query", "description": "Contactos, direcciones, invoice terms y defaults de un cliente", "usedBy": "po-comparator"}, "PartNumberCreatableSelectGetPartNumbers": {"type": "query", "description": "Buscar PNs por nombre con filtro de cliente", "usedBy": "po-comparator"}, "SearchPartNumberPrices": {"type": "query", "description": "Buscar precios de un PN para un cliente", "usedBy": "po-comparator"}, "CreateMaintenanceEvent": {"type": "mutation", "description": "Crear evento de mantenimiento vinculado a nodo, equipo y asignado (punto de inicio del paro)", "usedBy": "paros-linea"}, "CreateMaintenanceNodeEvent": {"type": "mutation", "description": "Abrir el paso del nodo al detener un evento (precede a las mediciones de sensor)", "usedBy": "paros-linea"}, "CreateManySensorMeasurements": {"type": "mutation", "description": "Registrar mediciones de sensores (PASS/FAIL) para un paso de mantenimiento", "usedBy": "paros-linea"}, "UpdateMaintenanceEvent": {"type": "mutation", "description": "Actualizar un evento de mantenimiento (equipmentId, assigneeId, completedAt)", "usedBy": "paros-linea"}, "CreateMaintenanceEventComment": {"type": "mutation", "description": "Agregar comentario al historial del evento de mantenimiento", "usedBy": "paros-linea"}, "CreateMaintenanceEventUserFile": {"type": "mutation", "description": "Enlazar archivo subido a un evento de mantenimiento (evidencia)", "usedBy": "paros-linea"}, "CreateMaintenanceEventDialogQuery": {"type": "query", "description": "Listar todos los nodos de mantenimiento disponibles (filtrar por %Paro de Línea% para derivar responsable)", "usedBy": "paros-linea"}, "OperatorMaintenanceNodeDialogQuery": {"type": "query", "description": "Obtener detalle de un nodo de mantenimiento (sensores = motivos) para la vista del operador", "usedBy": "paros-linea"}, "SearchEquipments": {"type": "query", "description": "Buscar equipos (líneas, máquinas) por nombre parcial", "usedBy": "paros-linea"}, "WorkboardById": {"type": "query", "description": "Obtener detalle de un workboard por ID (incluye name para deducir línea activa)", "usedBy": "paros-linea"}, "AllEquipments": {"type": "query", "description": "Listar equipos paginados con etiquetas/tipo/ubicación (filtrar líneas y células por etiqueta)", "usedBy": "paros-linea, vale-almacen"}, "GetMaintenanceEvent": {"type": "query", "description": "Detalle de un evento de mantenimiento por idInDomain (incluye descendantRelationships del nodo raíz → pasos hijo con childIndex)", "usedBy": "vale-almacen"}, "UpdateMaintenanceNodeEvent": {"type": "mutation", "description": "Actualizar/archivar un paso (maintenanceNodeEvent) — archivedAt marca el paso como completado", "usedBy": "vale-almacen"}, "UserDialogQuery": {"type": "query", "description": "Detalle de un usuario por id (customInputs.DatosLaborales.CodigoEmpleado = número de empleado)", "usedBy": "vale-almacen"}, "AllPermissionsEditManyPermissions": {"type": "query", "description": "Catálogo de todos los permisos gestionados de Steelhead con descripción", "usedBy": "popup-settings"}, "GetAvailableUnits": {"type": "query", "description": "Obtener unidades disponibles y conversiones existentes de un inventory item", "usedBy": "weight-quick-entry, unit-autoconvert"}, "CreateInventoryItemUnitConversion": {"type": "mutation", "description": "Crear conversión de unidad nueva para un inventory item (unitId + factor)", "usedBy": "weight-quick-entry, unit-autoconvert"}, "UpdateInventoryItemUnitConversion": {"type": "mutation", "description": "Actualizar factor de conversión existente de un inventory item", "usedBy": "weight-quick-entry, unit-autoconvert"}, "InvoiceLowCodeData": {"type": "query", "description": "Carga única de creación/edición de invoice — trae customerById con customInputs.DatosContables.CuentasContables (NO trae salesTaxable). También allAcctAccounts, allAcctProductAccountConfigs, customInputs.TipoCambio del dominio", "usedBy": "invoice-autofill"}, "GetReceivedOrdersWithReceivedOrderLineItems": {"type": "query", "description": "Trae OVs con customInputs.divisa (canon) y customerById.salesTaxable + customerById.idInDomain. Marca linkage de invoice a OV", "usedBy": "invoice-autofill"}, "CreateInvoiceAndUpdatePartTransferAccounts": {"type": "mutation", "description": "Crea invoice y actualiza acctAccountId/acctArAccountId en transfer records (no se intercepta outbound en v1; DOM-fill garantiza valores)", "usedBy": "invoice-autofill"}, "GetProcessNode": {"type": "query", "description": "Obtener árbol completo de un proceso con descendantRelationships (lista plana padre→hijo de TODOS los descendientes) Y atributos del nodo raíz: processNodeById.{defaultLeadTime, productByProductId, treatmentByTreatmentId, children}. Variables: {id, processNodeOccurrence:1, rootId:<sameAsId>}", "usedBy": "process-canon, process-deep-audit"}, "CreateEditProcessDialogQuery": {"type": "query", "description": "Detalle ligero (sin árbol) de un proceso para edición: processNodeById.{name, type, defaultLeadTime{hours,minutes,seconds}, productByProductId{id,name}, processNodeTagsByProcessNodeId.totalCount}. Variables: {id}", "usedBy": "process-deep-audit"}, "GetTreatment": {"type": "query", "description": "Detalle de treatment con estaciones: treatmentById.{name, stationTreatmentsByTreatmentId.{totalCount, nodes[].{id, stationId, stationByStationId{id,name}}}}. Variables: {id}", "usedBy": "process-deep-audit"}, "AllTreatments": {"type": "query", "description": "Lista paginada de treatments. Devuelve pagedData.nodes[].{id, name, stationTreatmentsByTreatmentId.nodes[].stationByStationId{id,name}}. Variables: {} (sin filtros)", "usedBy": "process-deep-audit"}, "CreateEditTreatmentTimesDialogQuery": {"type": "query", "description": "Trae los tiempos cargados para combos (treatmentId, stationId, processNodeId?, processNodeOccurrence?, partNumberId?). Devuelve allRelatedTreatmentTimesByIdSets.nodes[].relatedTimes[].{cycleTime{hours,minutes,seconds}, totalTime{hours,minutes,seconds}, timeType, stationByStationId, treatmentByTreatmentId, processNodeByProcessNodeId}. Variables: {searchTreatmentTimesInput:[{stationId, treatmentId, processNodeOccurrence}], partNumberIds:[], stationIds, treatmentIds, treatmentGroupIds:[], processNodeIds}", "usedBy": "process-deep-audit"}, "StationsByTreatmentId": {"type": "query", "description": "Devuelve allTreatments.nodes[].performingStations.nodes[].{id, name} dado treatmentIds o treatmentGroupIds. Variables: {ids:[treatmentId], groupIds:[]}", "usedBy": "process-deep-audit"}, "GetProcessNodeParents": {"type": "query", "description": "Devuelve processNodeById.parentProcesses.nodes[].{id, name} — útil para detectar si un nodo (satélite) está compartido en uso por varios procesos. Variables: {processNodeId}", "usedBy": "process-deep-audit"}, "AllTagsAndNodes": {"type": "query", "description": "Lista de tags del dominio (NO incluye process nodes — su responseSchema solo expone allTags.nodes). Para discovery de nodos compartidos usar ProcessesComponentQuery con SUB_PROCESS", "usedBy": "process-canon"}, "ProcessesComponentQuery": {"type": "query", "description": "Listar process nodes incluyendo SUB_PROCESS (compartidos). Variables: {includeArchived:'NO', processNodeTypes:['PROCESS','SUB_PROCESS'], orderBy:['ID_DESC'], offset, first, searchQuery}. Devuelve pagedData.nodes[] + totalCount. Es el discovery correcto para los compartidos prefijados con 'SP '.", "usedBy": "process-canon"}, "ProcessesWithTag": {"type": "query", "description": "Listar process nodes filtrados por tagId. Variables: {includeArchived:'NO', tagId, orderBy, offset, first, searchQuery}. Reserva para discovery alternativo por tag.", "usedBy": "process-canon"}, "GetAllTagsQuery": {"type": "query", "description": "Lista todos los tags del dominio con id+name. Reserva para mapear tag→procesos.", "usedBy": "process-canon"}, "CreateProcessNode": {"type": "mutation", "description": "Crear nodo de proceso. Para 'Listo para Procesar' usar type:'SCANNER_NODE', autoComplete:false. Devuelve createProcessNode.processNode.id", "usedBy": "process-canon"}, "ProcureTree": {"type": "mutation", "description": "REEMPLAZA atómicamente el árbol completo de un proceso. Variables: {tree:{id:rootId, children:[{id, children:[...], specId:null}], specId:null}}. CRÍTICO: snapshot el árbol antes; un id incorrecto deja el proceso roto", "usedBy": "process-canon"}, "UpdateProcessNode": {"type": "mutation", "description": "Actualiza atributos de un process node (ej. autoComplete). Variables: {id:<processNodeId>, autoComplete:true}. Devuelve updateProcessNodeById.clientMutationId (puede ser null aunque sea exitoso)", "usedBy": "process-canon"}, "UpdateReceiver": {"type": "mutation", "description": "Actualizar receiver (id, notes, receivedAt, customInputs, inputSchemaId). Usado como follow-up tras CreateReceiverChecked para sobrescribir receivedAt", "usedBy": "receiver-date-override (follow-up POST)"}, "CreateReceiverChecked": {"type": "mutation", "description": "Crea un receiver desde el modal Receive Parts from Customer. Variables.receiverPayload incluye notes/customInputs/inputSchemaId/receiverBomItems pero NO receivedAt (server lo setea a NOW). Devuelve createReceiverChecked.id (number)", "usedBy": "receiver-date-override (intercept response, fire follow-up UpdateReceiver)"}}, "scripts": ["scripts/steelhead-api.js", "scripts/host-cleanup-shared.js", "scripts/bulk-upload-cc.js", "scripts/bulk-upload-parse.js", "scripts/bulk-upload-classify.js", "scripts/bulk-upload.js", "scripts/catalog-fetcher.js"], "templateUrl": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v12.xlsm", "scriptIntegrity": {"scripts/api-knowledge.js": "ae05a48d18b2e989e9a8a51be1693183f9e191b47a80cf05457c99325930b13d", "scripts/archiver.js": "f90382b4786080edc370bae87729af9b45efc38152190a2f9691bb3a4115403b", "scripts/auditor.js": "c0bb4771b29d1046f819b98885a089f5af330219227a24a9e9c67ebf634e2f22", "scripts/auto-router-api.js": "8ff6ace1f3d629442491cba5bab687ccc2b63a532415051b6c852b899a94d7e8", "scripts/auto-router-batch.js": "985feb74c421a7661c2366435412686b1495405094181bbbf72b832c391938ac", "scripts/auto-router-engine.js": "c7d9d9694c8e9d6e9d889abd7061780db4196e3ac5effb13e828e1491c239f96", "scripts/auto-router-groups.js": "b5f65a11d3369f12575863026a1937da89f6451510051f5c45aa5a87408ebe49", "scripts/auto-router-lanes.js": "b73c74d5c744fc689ce454c44b6338ba4a0f5700a5f6e0e720ff2c829dbe01d9", "scripts/auto-router-panel.js": "07020fbd82ced16bc38e22a2a406d1e8ffc177a51f3993c4a7d03faf106e0f49", "scripts/auto-router.js": "6ada6a57a0c52f681ea3047ba8e83d4276bd8a13f5c3958bbb11919e3aa978a1", "scripts/batch-name-filter-core.js": "918ef9faf5b76c94467b43d36ee23df7addecee03aeeeb34d9cf328885d4a914", "scripts/batch-name-filter.js": "b77dcb52fa6f9facf31f9f3153aed6b116ad81024ed2090f811fc7bf90441cc2", "scripts/bill-autofill.js": "58750f899a5c1b40ce262297ccc81a7cfaf8feda6f8284bf6b096c74f136c6b9", "scripts/board-metal-tooltip.js": "5f57e72f2e1918285c45d8ac638cca43594c6326f86d3e7f26da1094698cc4ae", "scripts/bulk-upload-batch.js": "93ff56929eea67f5c79c35404601e827b785ab43d3fed633d2047ff3a7b2767e", "scripts/bulk-upload-cc.js": "20722ceedaec6208892cbff51fb1264d34a278ce7a41a3c5b4b6bb67d35b0a49", "scripts/bulk-upload-classify.js": "6ed19f27028976a39ff19ffc08705696f599c9c8559b70f234ab7a5557743abf", "scripts/bulk-upload-parse.js": "e7c6bb1f97d336c85295764d0d4707723c06bac2b7c9ae3c03f703bf38e3ab15", "scripts/bulk-upload.js": "6a0396ac92c9858fabb643b433285e028506dcb43ac4dca06e712aa8cf6e2732", "scripts/catalog-fetcher.js": "48f3f8a55ea94e7fa8626c95688cb7e9de7877fa14f7e5a52dda1490731cca63", "scripts/cfdi-attacher.js": "de1c2c4d530434be501fee9978c7945e681c62f10c23abbd6ad98aa925a485c8", "scripts/claude-api.js": "15e112fd05c69ffa54b0f43752cb636b7c057e08e7953b7d5134534a9728cf7c", "scripts/create-order-autofill-core.js": "188557e7ecf9759423ec54d4d0364dc33bf1303006b518c491e10ecabd7d0484", "scripts/create-order-autofill.js": "0981d9c51fa47fbab3ced3850af0c06dd429454eda3340b0da7b8330ee7327d7", "scripts/duplicate-tiers.js": "93f93691b833cd00254c26a752e1266587d1e7f31e3dafc5c31bb325b8136077", "scripts/file-uploader-core.js": "c59cc259fffacbef361ce3331fd384a0d6acd0a0f7c5e771ec04b215476c6fd5", "scripts/file-uploader.js": "fb3565a9dd4a49afc71cd569b0472a919312108cb85e47b05e3e79927d0966de", "scripts/hash-scanner.js": "9d12aa69456325b2504a0c05487d4d52f78de991e2b6dce5780c476696f74211", "scripts/host-cleanup-shared.js": "08a289903b13c93408163a11882ff6fc4f58021401846ba360c7501ba9ebb34e", "scripts/inventory-reset.js": "3440af034dd81af0ff0ad9ee140c3b44130d704c648c1a5639dd73acc6ff5e60", "scripts/invoice-auto-regen.js": "1b9270137b711a54e9aa2864bea18ac5718d20a4f61544ab2ccb61546d9a9955", "scripts/invoice-autofill.js": "cb67f9103ef102cdc37ed15770f0cb4a90d8d39d8380407b8a9601a0ed1cd458", "scripts/invoice-default-tab.js": "5ed3e6bf3adac75fe987dbec360e041db6b16b4d9084894a68a0c9b8a4570a52", "scripts/invoice-listing-marker.js": "c2edcceddbfc662c76a165368a63c97cc9c14fbfe97e522d7c4e5e55ff723862", "scripts/lib/pdf.min.js": "978fd1b2d134a98e98966186a97777bebf87d8e770dadab1ece3687e21a5aa6c", "scripts/lib/xlsx.full.min.js": "c9506197caf809a075b6dee1da0d36fb19da7158ffe8a88e7b0c96c5d8623c99", "scripts/load-calculator-engine.js": "87983ec94eb5cbb48570cff4e8c92cbf03511cd25c762cd16eb3047f6b9ed671", "scripts/load-calculator-modal.js": "eb9c4252ce583e0a4939fedff018cdf30f057e1dc4f7bc99e917ddb2464c428a", "scripts/load-calculator-stations.js": "417ebe274fd3a649fcc70c02bc122afb3d57db5e2c53a9cb9bb24e0ecf43ef06", "scripts/load-calculator.js": "bf06e3cd6ed5063b62b5b62c9ef13ecf9546b2093d40320f450058576658b111", "scripts/ov-operations.js": "58f2fed723ba81a1f73c0bb58da934293aec5cda6cde81494682be4d9910989c", "scripts/paros-linea.js": "ccf14c09e6886c1eb480014de75c86c2a54fb1f10787aeb92409c4f12ed6c126", "scripts/pn-lifecycle-core.js": "81a8e694132873e3176eab07167324abfa77c616adac0690e6cbbfc8b39ff0c9", "scripts/pn-lifecycle.js": "2b4693608fa23ecda32bd5dd6a31b988914b6c784cb6fce9100f75a457f54c52", "scripts/pn-specs-column-core.js": "05b8aa288daff29b82ed1dc7a23a246b5794c8912f4dfe8eaf22e816eed478a4", "scripts/pn-specs-column.js": "fc751ea5ebcab44abee5a9be1b7772c8d48bb214eff292ed6989bc960b0bd041", "scripts/po-comparator.js": "4e3d620cc06665c8a6b29626ec113874f150c5f7d4472978095a25d2fc53fb1f", "scripts/po-listing-filters-core.js": "4393baa884364235b99b445f9a9a3273143f37b8d8137b4f35c44bd152957ca1", "scripts/po-listing-filters.js": "307ac1f2b232f54689f8854cceb0cda2ec7191ebf5514ee16dfc821e4e42e5f2", "scripts/po-reconciler.js": "6a9c20833558a3805f721c09a63511d05057b3606d3d9e12a520d5e9738839c6", "scripts/portal-importer.js": "c14d8ad3441f8fe087988d7a3b542cc51f075358ad3935b4f1df2af8ea57652a", "scripts/price-confirm-core.js": "ff1f019a0379a253fb7616e815c625d91a6876da2cc91df6a3e6c2a38c275cda", "scripts/price-confirm-guard.js": "2e5a685b6802b75535181a45e8d2e7dc8365f6b92920e8ec3672097d2c3124a4", "scripts/proceso-calculator.js": "09425a2473f8bfcf681c86378168f0a0f5cfd39e247b3e3510debdd91bc17739", "scripts/process-canon.js": "9d82354d4e914ccdf1f96c9eb89fd5789c522c880dd544963b648db2abf5b16a", "scripts/process-deep-audit.js": "4345457ec845f95b46975f86cb4405de404a59f63d2322b8a74fb6ee97114dc5", "scripts/process-shared.js": "4b67a9cdc261aeb7cde1498d6399af288b883b6537de0a80b41dd16f1060a1fb", "scripts/receiver-date-override.js": "f18f704138be627db5273e1fbff4b8c9d1884caeafa9d0b2dbd273eb9560ad0b", "scripts/report-liberator.js": "3f153fe5f34261ca9b579a14fcd8d00cd205413943534c41ce54116975b25409", "scripts/report-regen.js": "9627a12c33346f5c06120098075e5bc6f12054feb64dc9764012157d4e298e92", "scripts/schedule-batch-highlighter-core.js": "a11a6ca286e594ad9910719d0a4bbab86c461d28e2adbd3edb369a3603832637", "scripts/schedule-batch-highlighter.js": "0cceca941ecddee9f8725443359c678bb53a1b48d0a5cbf14d93195490b450ab", "scripts/sensor-graph-hide-all-core.js": "795d1741fc04de7b8a5a111542e36fe53a8b3ee473c3f0b7a457780df3ea213e", "scripts/sensor-graph-hide-all.js": "3da2ad449d6792035a8ae952cc829ad7d6b5dd598b7281799b473cea5087ca6f", "scripts/sensor-status-autofill.js": "e19d6183c84c1cdd153110bdd31b3eb95b1973b089210182a177937a11f2b6bd", "scripts/spec-migrator-normalize.js": "11873800f3805139c2ffc8f9f25dc36efb8ec575f9e84b3ce96638a76072ffdb", "scripts/spec-migrator.js": "0ea0a1ce778ac237c15c3dd7b53a18597a3254289f87d09386415a30ad3d2ac1", "scripts/spec-params-bulk.js": "f49affd0af9c7aa11fd8ab586b4a2b70c71e34405796f5d136909db0184a929b", "scripts/spec-shared.js": "9a4adf965ffac349fdc69dd05b6bc1c50bb4dcc298333c7ff245acd955d0b255", "scripts/steelhead-api.js": "9377271a0ee2dd11b2a17908717575951b904c0ce6184ef07819d90b93c5de32", "scripts/surtido-guard-core.js": "8bca9a296283d83d1ae99b13b33e159455203a199063c04227de2e4d09cce85c", "scripts/surtido-guard.js": "bea2066eab13530839e241503e5355e12ee1b206605357e3d9a924124d085780", "scripts/unit-autoconvert-core.js": "4c43e041cc6a1c249ab1f20c0a9c089bf1a38929d82a1b5f03c89814a113d633", "scripts/unit-autoconvert.js": "886b971f171619e74bb250a0c076b67b7aca12006fed195a4c2c9f50d827ef11", "scripts/vale-almacen-engine.js": "36241da082a58d03241068bcec6fcde2131eb69a9871eb9cd2f8bce21ccdd1a0", "scripts/vale-almacen.js": "cbd6bc27c493cb703d4125211bc33ff510a15ed5061d31770cf2b128e8ea3985", "scripts/warehouse-location-prefill.js": "e50128e0a0d0c36279cbd85bef87597814bef20e77ea53c1c206ef44dfc2f5a0", "scripts/weight-quick-entry.js": "9710caa9ecc4e81f97b6aa2e68565e0de2abf720ccd7cdf7ef8e30ac5f8a2b42", "scripts/wo-completer-engine.js": "3101a9c8f718f9469e005a02498a89d6467b8f7c49583d7bb6f96f55a5bdfc83", "scripts/wo-completer.js": "d2879a8daf876ff2956dfeadcba673ab082f3b28c9bb7fbabb0c00db92f487e9", "scripts/wo-deadline-changer.js": "169d0dc0c60030398a108ea73747848071159b7d4664305ad66833a0fe67265b", "scripts/wo-listing-columns.js": "7f3e11886246b828ceefb89a974670265ec3507d48465822cb15e1599c63583e", "scripts/wo-mover.js": "e924dfd9fb5d82ed65ab75151adcdc32cd4a94e950b8fcc2add9a9a65c78aefd", "scripts/wo-schedule-button.js": "71528809baf8d64a1ff6aa899c2a19b049f003f1b344c4e0a5e7d4f6e917d654", "scripts/wo-schedule-core.js": "78ca7f1981bff19ee2fd0a860e22f76a9377a41b83bbf4ed10c25fbe19fa9b20"}};
   try { if (window.SteelheadAPI && window.SteelheadAPI.init) window.SteelheadAPI.init(window.REMOTE_CONFIG); } catch (e) {}
 })();
 // ===== END config-seed =====
@@ -4504,7 +4515,11 @@ const ParosLinea = (() => {
   }
 
   const LINE_LABEL_RE = /^(?:l[ií]neas?|c[eé]lulas?)$/i;
-  const ALLOWED_PATH_RE = /^\/Domains\/\d+\/(Workboards|WorkOrders)(?:\/|$)/;
+  // FAB en Workboards y en la FICHA de OT (WorkOrders/<id>), NO en el listado /WorkOrders
+  // (el dashboard general ya está muy cargado — decisión del usuario 2026-07-24).
+  const ALLOWED_PATH_RE = /^\/Domains\/\d+\/(?:Workboards(?:\/|$)|WorkOrders\/\d+)/;
+  // Pestaña de impresión headless (?sa_print=): no cargar el FAB (la pestaña es solo para generar el PDF).
+  function isPrintTab() { return /[?&]sa_print=/i.test(location.search); }
 
   let state = {
     currentUser: null,
@@ -4553,7 +4568,7 @@ const ParosLinea = (() => {
   }
 
   function isAllowedPath() {
-    return ALLOWED_PATH_RE.test(location.pathname);
+    return !isPrintTab() && ALLOWED_PATH_RE.test(location.pathname);
   }
 
   function syncFabVisibility() {
@@ -5489,7 +5504,7 @@ if (typeof window !== 'undefined') {
 (function () {
   'use strict';
 
-  const APPLET_VERSION = '0.3.0';
+  const APPLET_VERSION = '0.3.4';
 
   // ── Singleton guard + teardown de versión previa (re-inyección en SPA / bump) ──
   if (window.ReportRegen && window.ReportRegen.__version === APPLET_VERSION) return;
@@ -5501,8 +5516,20 @@ if (typeof window !== 'undefined') {
   const BTN_ID = 'sa-report-regen-btn';
   const SEP_ID = 'sa-report-regen-sep';
   const STYLE_ID = 'sa-report-regen-style';
-  const REQUIRED_PERMISSION = 'MANAGE_REPORTING';
+  // Steelhead FRAGMENTÓ `MANAGE_REPORTING` en cinco permisos granulares y el viejo dejó de
+  // existir (verificado el 2026-07-27 contra /Users/Access/PermissionsReference). El que
+  // corresponde aquí es, textual en su catálogo: "Admin-level reporting actions: regenerate
+  // the reporting database, view and change reporting settings." Exigir el fantasma dejaba
+  // el botón invisible para TODOS, en silencio. El de config.json manda sobre esta constante.
+  const REQUIRED_PERMISSION = 'MANAGE_REPORTING_SETTINGS';
   const OBSERVER_DEBOUNCE_MS = 300;
+  // Memoria del último veredicto REAL de permisos en este navegador ('1'/'0').
+  // `_v2` porque la v0.3.1 pudo grabar un "no" ESPURIO (ver evalAllowed): al versionar la
+  // clave, ese valor envenenado se ignora en vez de bloquear el botón para siempre.
+  const REMEMBER_KEY = 'sa_rr_perm_v2';
+  const REMEMBER_KEY_LEGACY = 'sa_rr_perm';
+  // Cuánto se espera a que el front pida CurrentUser/Profile antes de montar igual.
+  const GATE_TIMEOUT_MS = 5000;
   const POLL_REGEN_MS = 10000;    // job propio activo → poll JobQuery
   const POLL_COOLDOWN_MS = 30000; // en enfriamiento → resync recomputableAt
   const POLL_AVAILABLE_MS = 60000;// idle → detectar que otro usuario disparó
@@ -5514,6 +5541,8 @@ if (typeof window !== 'undefined') {
   let destroyed = false;
   let allowed = null;            // null=desconocido, true/false=veredicto de permiso
   let capturedPerms = null;      // { isAdmin, isSuperUser, perms[] } — leído del front, no de un fetch propio
+  let gateTimedOut = false;      // ya se esperó GATE_TIMEOUT_MS sin veredicto real
+  let gateTimer = null;
   let booted = false;
   let bootPromise = null;
   let lastRecomputableAt = null; // ISO string del servidor
@@ -5659,16 +5688,63 @@ if (typeof window !== 'undefined') {
   // isAdmin/isSuperUser). Fallback: leer del Apollo cache si está expuesto.
 
   // Lógica pura (testeable): dado caps + permisos requeridos → true|false|null.
+  //
+  // "No sé qué permisos tiene" NO es "sé que no los tiene" (bug 2026-07-27, v0.3.2).
+  // `Profile` trae isAdmin/isSuperUser pero NO la lista de permisos; tratando esa lista
+  // ausente como vacía, cualquier usuario no-admin daba un `false` **espurio** y el botón
+  // se desmontaba. Peor aún desde v0.3.1, que empezó a PERSISTIR el veredicto: ese "no"
+  // falso quedaba grabado y bloqueaba el botón para siempre. Sin lista conocida → null.
   function evalAllowed(caps, req) {
-    if (!caps) return null; // aún no se conocen permisos
+    if (!caps) return null;                       // aún no se sabe nada
     if (caps.isAdmin || caps.isSuperUser) return true;
-    const perms = Array.isArray(caps.perms) ? caps.perms : [];
-    return req.every((p) => perms.includes(p));
+    if (!Array.isArray(caps.perms)) return null;  // sólo llegó Profile: permisos desconocidos
+    return req.every((p) => caps.perms.includes(p));
+  }
+
+  // Decisión del gate cuando NO hay veredicto real (el caso normal, no la excepción).
+  //
+  // Bug 2026-07-27 (el operador: "de pronto dejó de aparecer"): el gate dependía al 100%
+  // de cazar una respuesta de CurrentUser/Profile que el front hiciera DESPUÉS de que el
+  // applet ya estaba montado, y el front la pide al arrancar la SPA — o sea antes de que
+  // la extensión inyecte. El fallback por Apollo cache nunca sirvió: `__APOLLO_CLIENT__`
+  // NO está expuesto en producción (verificado en vivo). Resultado: `allowed` se quedaba
+  // en null para siempre y, fail-closed, el botón no se montaba nunca.
+  //
+  // Se resuelve con dos apoyos que no dependen de esa carrera:
+  //   · MEMORIA — el último veredicto REAL conocido en este navegador (localStorage).
+  //   · TIMEOUT — sin ningún dato tras unos segundos, se monta igual. Es coherente con lo
+  //     que el applet YA hacía al ejecutar ("allowed === null tras el timeout: el server
+  //     valida el permiso al ejecutar"): la autoridad es el servidor, no este gate. Un
+  //     usuario sin permiso, en el peor caso, ve un botón que el servidor le rechaza —
+  //     mucho menos malo que nadie vea el botón.
+  // Un `false` real (o recordado) SIEMPRE gana: si se supo que no tiene permiso, no se monta.
+  function decideGate(caps, req, remembered, timedOut) {
+    const real = evalAllowed(caps, req);
+    if (real !== null) return real;          // veredicto real → manda
+    if (remembered === false) return false;  // se supo que NO → respetarlo
+    if (remembered === true) return true;    // se supo que SÍ → montar ya, sin esperar
+    return timedOut ? true : null;           // sin dato: esperar y, si no llega, montar
+  }
+
+  function readRemembered() {
+    try {
+      const v = localStorage.getItem(REMEMBER_KEY);
+      return v === '1' ? true : v === '0' ? false : null;
+    } catch (_) { return null; }
+  }
+
+  function remember(verdict) {
+    try { localStorage.setItem(REMEMBER_KEY, verdict ? '1' : '0'); } catch (_) {}
   }
 
   function reevaluateGate() {
     if (destroyed) return;
-    const verdict = evalAllowed(capturedPerms, requiredPerms());
+    const req = requiredPerms();
+    // Solo se recuerda lo que se supo DE VERDAD (de una respuesta del front),
+    // nunca la decisión provisional del timeout.
+    const real = evalAllowed(capturedPerms, req);
+    if (real !== null) remember(real);
+    const verdict = decideGate(capturedPerms, req, readRemembered(), gateTimedOut);
     if (verdict === allowed) return;
     allowed = verdict;
     if (allowed === true) {
@@ -5691,7 +5767,9 @@ if (typeof window !== 'undefined') {
       if (source === 'CurrentUser' && Array.isArray(u.currentManagedPermissions)) {
         partial.perms = u.currentManagedPermissions;
       }
-      capturedPerms = Object.assign({ isAdmin: false, isSuperUser: false, perms: [] }, capturedPerms || {}, partial);
+      // Sin `perms: []` por default: la lista solo existe si de verdad llegó (CurrentUser).
+      // Inventarla vacía es lo que producía el `false` espurio desde Profile — ver evalAllowed.
+      capturedPerms = Object.assign({ isAdmin: false, isSuperUser: false }, capturedPerms || {}, partial);
       reevaluateGate();
     } catch (_) {}
   }
@@ -5993,11 +6071,31 @@ if (typeof window !== 'undefined') {
     bootPromise = (async () => {
       const ok = await waitForDeps(20000);
       booted = true;
-      if (!ok) return; // deps no llegaron; queda inerte
+      if (!ok) {
+        // Queda inerte, pero que se sepa: en silencio esto es indistinguible de "no tengo permiso".
+        console.warn('[report-regen] SteelheadAPI/REMOTE_CONFIG no llegaron en 20s — applet inerte');
+        return;
+      }
+      // Tira la memoria envenenada de v0.3.1 (pudo grabar un "no" espurio desde Profile).
+      try { localStorage.removeItem(REMEMBER_KEY_LEGACY); } catch (_) {}
+      // El observer se instala SIEMPRE, no sólo cuando ya hay permiso: el applet puede
+      // arrancar antes de que React pinte el header (el loader nuevo inyecta muy temprano),
+      // y sin observer el botón se perdería la única oportunidad de montarse. `ensureButton`
+      // ya se protege solo con `allowed !== true`.
+      installObserver();
       installPermSniffer(); // captura permisos de CurrentUser/Profile que pida el front
-      tryApolloCache();     // intento inmediato del cache (si el front lo expone)
-      // El botón se monta vía reevaluateGate cuando se confirmen permisos (fail-closed
-      // mientras tanto). El front pide CurrentUser/Profile seguido → llega en segundos.
+      tryApolloCache();     // cache del front (en producción NO está expuesto — ver decideGate)
+      // Con la memoria de un veredicto anterior esto monta de inmediato; si no hay nada,
+      // se espera a que el front pida CurrentUser/Profile y, si no llega, el timeout monta
+      // igual (el servidor es la autoridad al ejecutar). Ver decideGate.
+      reevaluateGate();
+      gateTimer = setTimeout(() => {
+        gateTimer = null;
+        if (destroyed) return;
+        gateTimedOut = true;
+        log('sin respuesta de CurrentUser/Profile en ' + GATE_TIMEOUT_MS + 'ms — monto el botón (el server valida al ejecutar)');
+        reevaluateGate();
+      }, GATE_TIMEOUT_MS);
     })();
     return bootPromise;
   }
@@ -6006,6 +6104,7 @@ if (typeof window !== 'undefined') {
 
   function destroy() {
     destroyed = true;
+    if (gateTimer) { clearTimeout(gateTimer); gateTimer = null; }
     if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
     if (tickTimer) { clearInterval(tickTimer); tickTimer = null; }
     if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
@@ -6021,7 +6120,21 @@ if (typeof window !== 'undefined') {
     __version: APPLET_VERSION,
     triggerFromPopup,
     destroy,
-    _internals: { computeState, computeSkewMs, formatCountdown, pickPollIntervalMs, findAnchor, evalAllowed, formatLastGenerated, formatRelativeAge, extractLatestGeneratedAt }
+    // Estado interno para diagnosticar en vivo por qué el botón no aparece.
+    debug: () => ({
+      version: APPLET_VERSION,
+      allowed,                       // true=monta · false=sin permiso · null=aún sin veredicto
+      capturedPerms,                 // lo que se pudo leer del front (null = nada)
+      permsConocidos: Array.isArray(capturedPerms && capturedPerms.perms),
+      gateTimedOut,
+      recordado: readRemembered(),
+      booted,
+      deps: { api: !!window.SteelheadAPI, config: !!window.REMOTE_CONFIG },
+      anclaEncontrada: !!findAnchor(),
+      botonEnDOM: !!document.getElementById(BTN_ID),
+      observer: !!observer
+    }),
+    _internals: { computeState, computeSkewMs, formatCountdown, pickPollIntervalMs, findAnchor, evalAllowed, decideGate, formatLastGenerated, formatRelativeAge, extractLatestGeneratedAt }
   };
   // Para los golden tests (node --test) y depuración manual.
   window.__SAReportRegen = window.ReportRegen._internals;
@@ -13949,9 +14062,12 @@ const ValeAlmacen = (() => {
   const STEP0_CACHE_KEY = 'sa_vale_step0_map_v1';
   const LAST_LINE_KEY = 'sa_vale_last_line';
 
-  // 4 familias de pantallas pedidas: Producción (Workboards/WorkOrders), Mantenimiento,
-  // Tableros de sensores e Inventario. Los segmentos exactos de SH se confirman en vivo.
-  const ALLOWED_PATH_RE = /^\/Domains\/\d+\/(Workboards|WorkOrders|Maintenance\w*|SensorDashboards?|Sensors|Inventory\w*)(?:\/|$)/i;
+  // 4 familias de pantallas pedidas: Producción (Workboards + FICHA de OT), Mantenimiento,
+  // Tableros de sensores e Inventario. NO en el LISTADO /WorkOrders (dashboard general muy
+  // cargado — decisión del usuario 2026-07-24): WorkOrders solo en la ficha (WorkOrders/<id>).
+  const ALLOWED_PATH_RE = /^\/Domains\/\d+\/(?:(?:Workboards|Maintenance\w*|SensorDashboards?|Sensors|Inventory\w*)(?:\/|$)|WorkOrders\/\d+)/i;
+  // Pestaña de impresión headless (?sa_print=): no cargar el FAB (la pestaña es solo para generar el PDF).
+  function isPrintTab() { return /[?&]sa_print=/i.test(location.search); }
   const SURT_RE = /surtimiento/i;
   // Las RAÍCES de surtimiento empiezan con un código de área en MAYÚSCULAS (SMP/EPP/SGL/MTY/MLA/LIM…)
   // seguido de espacio; los PASOS hijo ("Solicitud…", "Surtimiento de Materia Prima",
@@ -14033,7 +14149,7 @@ const ValeAlmacen = (() => {
     return req.every(p => user.managedPermissions.includes(p));
   }
 
-  function isAllowedPath() { return ALLOWED_PATH_RE.test(location.pathname); }
+  function isAllowedPath() { return !isPrintTab() && ALLOWED_PATH_RE.test(location.pathname); }
 
   function syncFabVisibility() {
     const should = isAllowedPath() || !!state.activeEvent;
@@ -17728,24 +17844,38 @@ const F2C_WRITE_ENABLED = false; // F2c: activar solo tras validación en vivo
   //   · (tina sin cambio → se omite, no-op).
   // activeRoutes: nodos crudos de StationTreatmentByWorkOrder.activeRoutes
   //   ({ id, stationId, recipeNodeId, ... }).
+  // Una PISTA de ruteo es (recipeNode, partGroup). La global es la pista de partGroup
+  // null; cada grupo con override tiene la suya, y ambas COEXISTEN para el mismo
+  // recipeNode (evidencia en vivo WO 15074: "Recibo de Orden" aparece dos veces, una
+  // sin grupo → T204 y otra del grupo 2 → T205, y la del grupo gana para ese grupo).
+  // Indexar solo por recipeNodeId hacía que la override pisara a la global en el Map:
+  // el diff podía mover el grupo equivocado o borrarle sus rutas.
+  const laneKey = (recipeNodeId, partGroupId) => `${recipeNodeId}::${partGroupId ?? 'null'}`;
+
   function diffRoutes(desiredRoutes, activeRoutes) {
-    const activeByNode = new Map();
+    const activeByLane = new Map();
     for (const a of activeRoutes || []) {
-      if (a && a.recipeNodeId != null) activeByNode.set(a.recipeNodeId, a);
+      if (a && a.recipeNodeId != null) activeByLane.set(laneKey(a.recipeNodeId, a.partGroupId), a);
     }
     const routesToCreate = [];
     const routesToUpdate = [];
     const routesToDelete = [];
-    const desiredNodes = new Set();
+    const desiredLanes = new Set();
+    // Solo se tocan las pistas que el llamador declaró al pedir estas rutas. Sin rutas
+    // deseadas no hay pista declarada → no se borra nada (fail-safe).
+    const scopedGroups = new Set();
     for (const r of desiredRoutes || []) {
-      desiredNodes.add(r.recipeNodeId);
-      const a = activeByNode.get(r.recipeNodeId);
+      desiredLanes.add(laneKey(r.recipeNodeId, r.partGroupId));
+      scopedGroups.add(r.partGroupId ?? null);
+      const a = activeByLane.get(laneKey(r.recipeNodeId, r.partGroupId));
       if (!a) routesToCreate.push(r);
       else if (a.stationId !== r.stationId) routesToUpdate.push({ id: a.id, stationId: r.stationId });
       // misma tina → no-op
     }
     for (const a of activeRoutes || []) {
-      if (a && a.id != null && !desiredNodes.has(a.recipeNodeId)) routesToDelete.push(a.id);
+      if (!a || a.id == null) continue;
+      if (!scopedGroups.has(a.partGroupId ?? null)) continue; // otra pista: no es asunto nuestro
+      if (!desiredLanes.has(laneKey(a.recipeNodeId, a.partGroupId))) routesToDelete.push(a.id);
     }
     return { routesToCreate, routesToUpdate, routesToDelete };
   }
@@ -17785,13 +17915,26 @@ const F2C_WRITE_ENABLED = false; // F2c: activar solo tras validación en vivo
   }
 
   // Station EFECTIVA de cada recipeNode = la activeRoute si existe, si no la default.
-  function effectiveStationByNode(recipeNodes, activeRoutes) {
-    const active = new Map();
-    for (const a of activeRoutes || []) if (a && a.recipeNodeId != null) active.set(a.recipeNodeId, a.stationId);
+  // Estado efectivo de la PISTA `partGroupId` con la HERENCIA real de Steelhead:
+  // override del grupo → ruta global → default de la receta. Con partGroupId null se
+  // mira solo la global (las override de otros grupos no son asunto de esa pista).
+  // Antes se indexaba por recipeNodeId a secas, así que en una orden con override la
+  // ruta del grupo pisaba a la global y el conteo de tinas / la línea de origen salían
+  // mezclados.
+  function effectiveStationByNode(recipeNodes, activeRoutes, partGroupId = null) {
+    const own = new Map();
+    const global = new Map();
+    for (const a of activeRoutes || []) {
+      if (!a || a.recipeNodeId == null) continue;
+      const pg = a.partGroupId ?? null;
+      if (pg === null) global.set(a.recipeNodeId, a.stationId);
+      else if (partGroupId != null && pg === partGroupId) own.set(a.recipeNodeId, a.stationId);
+    }
     const eff = new Map();
     for (const n of recipeNodes || []) {
       if (!n) continue;
-      if (active.has(n.id)) eff.set(n.id, active.get(n.id));
+      if (own.has(n.id)) eff.set(n.id, own.get(n.id));
+      else if (global.has(n.id)) eff.set(n.id, global.get(n.id));
       else if (n.defaultStation && n.defaultStation.id != null) eff.set(n.id, n.defaultStation.id);
     }
     return eff;
@@ -17801,8 +17944,8 @@ const F2C_WRITE_ENABLED = false; // F2c: activar solo tras validación en vivo
   // (activeRoute ?? default). Un nodo cuenta si su tina deseada difiere de la efectiva.
   // Esto es la verdad para el conteo "tinas a re-rutear" y el filtro "aplicable":
   // independiente de comparar líneas (que falla con órdenes movidas).
-  function effectiveChangeCount(recipeNodes, desiredRoutes, activeRoutes) {
-    const eff = effectiveStationByNode(recipeNodes, activeRoutes);
+  function effectiveChangeCount(recipeNodes, desiredRoutes, activeRoutes, partGroupId = null) {
+    const eff = effectiveStationByNode(recipeNodes, activeRoutes, partGroupId);
     let n = 0;
     for (const r of desiredRoutes || []) if (r.stationId !== eff.get(r.recipeNodeId)) n++;
     return n;
@@ -17811,11 +17954,11 @@ const F2C_WRITE_ENABLED = false; // F2c: activar solo tras validación en vivo
   // Línea EFECTIVA actual (best-effort, para mostrar el "Origen"): la línea de la tina
   // física (con posición) más frecuente entre las stations efectivas. Las "-LI" y nodos
   // sin posición no cuentan (no son tinas de proceso). Fallback: null.
-  function currentLineCode(recipeNodes, activeRoutes, candidatesByTreatment) {
+  function currentLineCode(recipeNodes, activeRoutes, candidatesByTreatment, partGroupId = null) {
     const nameById = new Map();
     for (const n of recipeNodes || []) if (n && n.defaultStation && n.defaultStation.id != null) nameById.set(n.defaultStation.id, n.defaultStation.name);
     for (const tId of Object.keys(candidatesByTreatment || {})) for (const s of (candidatesByTreatment[tId] || [])) if (s && s.id != null) nameById.set(s.id, s.name);
-    const eff = effectiveStationByNode(recipeNodes, activeRoutes);
+    const eff = effectiveStationByNode(recipeNodes, activeRoutes, partGroupId);
     const freq = new Map();
     for (const [, sid] of eff) {
       const name = nameById.get(sid);
@@ -17833,6 +17976,235 @@ const F2C_WRITE_ENABLED = false; // F2c: activar solo tras validación en vivo
 })(typeof window !== 'undefined' ? window : globalThis);
 })();
 // ===== END scripts/auto-router-engine.js =====
+
+// ===== BEGIN scripts/auto-router-groups.js =====
+(function(){
+// auto-router-groups.js — Núcleo PURO de pistas de ruteo, partición y reagrupación
+// de piezas. Sin DOM y sin red: todo lo que decide qué se escribe vive aquí y se
+// prueba con `tools/test/auto-router-groups.test.js`.
+//
+// ── Modelo (confirmado en vivo 2026-07-27, WO 15074/15075) ────────────────────
+// Una orden se rutea por PISTAS. La pista GLOBAL (partGroupId null) es la ruta de
+// toda la orden; cada grupo de piezas puede tener su OVERRIDE, que toma precedencia
+// solo para ese grupo. Un grupo sin override HEREDA la global, y sin global usa el
+// default de la receta. Las pistas coexisten: crear la de un grupo no toca las otras.
+//
+// ── Partir vs reagrupar ──────────────────────────────────────────────────────
+// Las dos son transferencias de piezas, pero cada mutación pide un shape DISTINTO
+// para el destino y NO son intercambiables:
+//   · PARTIR    → CreateManyPartsTransfersChecked · toAccount: { partGroupId: X }
+//   · REAGRUPAR → AddPartsToWorkOrders            · toAccount: { partGroup: { id: X } }
+// Ambas mueven material físico, así que las funciones de plan devuelven `payload:
+// null` cuando algo no cuadra: más vale no escribir que escribir a medias.
+
+(function (root) {
+  'use strict';
+
+  const num = (v) => (v == null ? null : Number(v));
+  const normName = (s) => String(s ?? '').trim().toLowerCase();
+
+  // ── Pistas ─────────────────────────────────────────────────────────────────
+  // partLocations: [{ partsTransferAccountId, partCount, partGroup: {id,name}|null }]
+  //   (shape de GroupPartsDialogPartLocation.searchPartLocations.nodes[], ya normalizado)
+  // activeRoutes:  [{ id, recipeNodeId, stationId, partGroupId }]
+  //
+  // Devuelve [{ kind, partGroupId, name, partCount, accountIds, state }] con la GLOBAL
+  // siempre primero. `state` dice de dónde salen las rutas efectivas de esa pista:
+  //   'own'       → tiene override propio
+  //   'inherited' → no tiene, pero la global sí (la hereda)
+  //   'default'   → ni una ni otra: manda el default de la receta
+  function buildLanes(input) {
+    const partLocations = (input && input.partLocations) || [];
+    const activeRoutes = (input && input.activeRoutes) || [];
+
+    const hasGlobalRoutes = activeRoutes.some((a) => a && (a.partGroupId ?? null) === null);
+    const groupsWithOwnRoutes = new Set(
+      activeRoutes.filter((a) => a && a.partGroupId != null).map((a) => Number(a.partGroupId))
+    );
+
+    // Agrupa las cuentas por grupo, preservando el orden de aparición.
+    const byGroup = new Map();
+    let globalCount = 0;
+    for (const loc of partLocations) {
+      if (!loc) continue;
+      const count = Number(loc.partCount) || 0;
+      globalCount += count;
+      const g = loc.partGroup;
+      if (!g || g.id == null) continue;
+      const id = Number(g.id);
+      if (!byGroup.has(id)) byGroup.set(id, { id, name: String(g.name ?? ''), partCount: 0, accountIds: [] });
+      const entry = byGroup.get(id);
+      entry.partCount += count;
+      if (loc.partsTransferAccountId != null) entry.accountIds.push(Number(loc.partsTransferAccountId));
+    }
+
+    const stateFor = (partGroupId) => {
+      if (partGroupId != null && groupsWithOwnRoutes.has(partGroupId)) return 'own';
+      if (hasGlobalRoutes) return partGroupId == null ? 'own' : 'inherited';
+      return 'default';
+    };
+
+    const lanes = [{
+      kind: 'global', partGroupId: null, name: 'Toda la orden',
+      partCount: globalCount, accountIds: partLocations
+        .filter((l) => l && l.partsTransferAccountId != null)
+        .map((l) => Number(l.partsTransferAccountId)),
+      state: stateFor(null),
+    }];
+    for (const g of byGroup.values()) {
+      lanes.push({
+        kind: 'group', partGroupId: g.id, name: g.name,
+        partCount: g.partCount, accountIds: g.accountIds, state: stateFor(g.id),
+      });
+    }
+    return lanes;
+  }
+
+  // ── Partir ─────────────────────────────────────────────────────────────────
+  // Reparte las piezas de UNA cuenta origen entre varios grupos.
+  // splits: [{ partGroupId, partCount }]
+  function planSplit(input) {
+    const fromAccountId = num(input && input.fromAccountId);
+    const partCount = Number(input && input.partCount);
+    const splits = (input && input.splits) || [];
+    const errors = [];
+
+    if (fromAccountId == null) errors.push('Falta la cuenta de origen.');
+    if (!splits.length) errors.push('No hay ninguna partición definida.');
+
+    const seen = new Set();
+    let suma = 0;
+    for (const s of splits) {
+      const n = Number(s && s.partCount);
+      const gid = num(s && s.partGroupId);
+      if (gid == null) { errors.push('Una partición no tiene grupo destino.'); continue; }
+      if (seen.has(gid)) errors.push(`El grupo destino ${gid} está repetido.`);
+      seen.add(gid);
+      if (!Number.isFinite(n) || n <= 0) { errors.push(`La cantidad del grupo ${gid} debe ser mayor que cero.`); continue; }
+      if (!Number.isInteger(n)) { errors.push(`La cantidad del grupo ${gid} debe ser entera.`); continue; }
+      suma += n;
+    }
+    if (splits.length && Number.isFinite(partCount) && suma !== partCount) {
+      errors.push(`Las cantidades suman ${suma} y la cuenta tiene ${partCount} piezas.`);
+    }
+    if (errors.length) return { valid: false, errors, payload: null };
+
+    return {
+      valid: true,
+      errors: [],
+      payload: {
+        partsTransferEventsPayload: {
+          partsTransferEvents: [{
+            createPartsTransferEvent: {},
+            partsTransfers: splits.map((s) => ({
+              fromAccountId,
+              type: 'STEP',
+              partCount: Number(s.partCount),
+              toAccount: { partGroupId: num(s.partGroupId) },  // PLANO — no anidar aquí
+              unitId: null,
+            })),
+          }],
+        },
+      },
+    };
+  }
+
+  // ── Reagrupar ──────────────────────────────────────────────────────────────
+  // Junta varias cuentas en un mismo grupo destino. Las cuentas que ya viven en ese
+  // grupo se omiten (no es error: reagrupar A+B en A es una petición legítima).
+  // accounts: [{ accountId, partCount, partGroupId? }]
+  function planRegroup(input) {
+    const targetGroupId = num(input && input.targetGroupId);
+    const accounts = (input && input.accounts) || [];
+    const errors = [];
+
+    if (targetGroupId == null) errors.push('Falta el grupo destino.');
+    if (!accounts.length) errors.push('No hay cuentas de origen que reagrupar.');
+    if (errors.length) return { valid: false, errors, payload: null };
+
+    const move = accounts.filter((a) => a && num(a.partGroupId) !== targetGroupId);
+    if (!move.length) {
+      return { valid: false, errors: ['Todo ya está en el grupo destino: no hay nada que mover.'], payload: null };
+    }
+    for (const a of move) {
+      const n = Number(a.partCount);
+      if (!Number.isFinite(n) || n <= 0) errors.push(`La cuenta ${a.accountId} no tiene piezas que mover.`);
+    }
+    if (errors.length) return { valid: false, errors, payload: null };
+
+    return {
+      valid: true,
+      errors: [],
+      payload: {
+        input: {
+          partsTransferEventsPayload: [{
+            createPartsTransferEvent: {},
+            partsTransfers: move.map((a) => ({
+              fromAccountId: num(a.accountId),
+              type: 'STEP',
+              partCount: Number(a.partCount),
+              toAccount: { partGroup: { id: targetGroupId } },  // ANIDADO — distinto a partir
+              unitId: null,
+            })),
+          }],
+        },
+      },
+    };
+  }
+
+  // ── Reúso de grupos ────────────────────────────────────────────────────────
+  // CreateNewPartGroup NO es idempotente: cada llamada crea un grupo, así que pedir
+  // "100" tres veces deja tres grupos llamados "100". Se reúsan los del cliente que
+  // ya existan (match por nombre normalizado) y solo se crean los que falten.
+  function reuseOrCreate(wantedNames, existingGroups) {
+    const byName = new Map();
+    for (const g of existingGroups || []) {
+      if (g && g.id != null) byName.set(normName(g.name), Number(g.id));
+    }
+    const reuse = [];
+    const create = [];
+    const pedidos = new Set();
+    for (const name of wantedNames || []) {
+      const key = normName(name);
+      if (!key || pedidos.has(key)) continue;
+      pedidos.add(key);
+      if (byName.has(key)) reuse.push({ name, id: byName.get(key) });
+      else create.push(name);
+    }
+    return { reuse, create };
+  }
+
+  // ── Lectura del estado de piezas ───────────────────────────────────────────
+  // `WorkOrder { idInDomain }` trae en UNA llamada el id interno de la orden, su
+  // cliente (que CreateNewPartGroup pide) y las cuentas vivas con sus piezas y su
+  // grupo. `PartNumbersByWorkOrderIdInDomain` NO sirve aquí: sus partLocations traen
+  // el grupo pero no `partCount` ni el id de cuenta, y sin eso no se puede partir.
+  function parseWorkOrderAccounts(data) {
+    const wo = (data && data.workOrderByIdInDomain) || null;
+    const nodes = (wo && wo.currentPartsTransferAccounts && wo.currentPartsTransferAccounts.nodes) || [];
+    const partLocations = nodes.filter(Boolean).map((n) => {
+      const g = n.partGroupByPartGroupId;
+      return {
+        partsTransferAccountId: num(n.id),
+        partCount: Number(n.partCount) || 0,
+        partGroup: g && g.id != null ? { id: num(g.id), name: String(g.name ?? '') } : null,
+      };
+    });
+    return {
+      workOrderId: num(wo && wo.id),
+      idInDomain: num(wo && wo.idInDomain),
+      customerId: num(wo && wo.customerByCustomerId && wo.customerByCustomerId.id),
+      partNumberId: num(nodes.find((n) => n && n.partNumberId != null)?.partNumberId),
+      partLocations,
+    };
+  }
+
+  const api = { buildLanes, planSplit, planRegroup, reuseOrCreate, parseWorkOrderAccounts };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  root.AutoRouterGroups = api;
+})(typeof window !== 'undefined' ? window : globalThis);
+})();
+// ===== END scripts/auto-router-groups.js =====
 
 // ===== BEGIN scripts/auto-router-api.js =====
 (function(){
@@ -17987,23 +18359,90 @@ const F2C_WRITE_ENABLED = false; // F2c: activar solo tras validación en vivo
 
   // Resuelve una orden por su número visible (idInDomain) a sus IDs internos.
   // PartNumbersByWorkOrderIdInDomain trae en una sola llamada el workOrderId interno
-  // + el/los partNumber(s) + partGroup. Devuelve el part primario (el primero).
+  // + el/los partNumber(s) + partGroup.
+  //
+  // `partGroupIds` son TODOS los grupos de la orden. `partGroupId` (el primero) se
+  // conserva por compatibilidad con los llamadores de una sola pista, pero una orden
+  // con varios grupos NO se describe con un escalar: usar `partGroupIds`.
   async function resolveWorkOrder(idInDomain) {
     const data = await api().query('PartNumbersByWorkOrderIdInDomain', { idInDomain: Number(idInDomain) });
     const wo = data?.workOrderByIdInDomain;
     if (!wo || wo.id == null) throw new Error(`Orden ${idInDomain} no encontrada`);
     const locs = wo.partLocationsByWorkOrderId?.nodes || [];
     const pn = locs[0]?.partNumberByPartNumberId || null;
-    const pg = locs[0]?.partGroupByPartGroupId || null;
+    const groups = [];
+    const vistos = new Set();
+    for (const l of locs) {
+      const g = l?.partGroupByPartGroupId;
+      if (!g || g.id == null || vistos.has(g.id)) continue;
+      vistos.add(g.id);
+      groups.push({ id: g.id, name: (g.name || '').trim() });
+    }
     return {
       idInDomain: wo.idInDomain,
       workOrderId: wo.id,
       name: (wo.name || '').trim(),
       partNumberId: pn?.id ?? null,
       partNumberName: (pn?.name || '').trim() || null,
-      partGroupId: pg?.id ?? null,
+      partGroups: groups,
+      partGroupIds: groups.map((g) => g.id),
+      partGroupId: groups[0]?.id ?? null,
       partCount: locs.length,
     };
+  }
+
+  // ── Piezas: leer, partir, reagrupar ──────────────────────────────────────────
+
+  // Estado de piezas de la orden: cuentas vivas con su conteo y su grupo, más el
+  // cliente (que CreateNewPartGroup exige). El parseo vive en el núcleo puro.
+  async function fetchWorkOrderAccounts(idInDomain) {
+    const data = await api().query('WorkOrder', { idInDomain: Number(idInDomain) });
+    const parsed = window.AutoRouterGroups.parseWorkOrderAccounts(data);
+    if (parsed.workOrderId == null) throw new Error(`Orden ${idInDomain} no encontrada`);
+    return parsed;
+  }
+
+  // Grupos ya existentes del cliente. Se consultan ANTES de crear: CreateNewPartGroup
+  // no es idempotente y repetir el nombre deja grupos duplicados.
+  async function searchPartGroups(customerId, searchQuery = '') {
+    const data = await api().query('FindPartGroupQuery', {
+      groupActive: false,
+      searchQuery: String(searchQuery || ''),
+      groupType: 'GROUPING',
+      customerId: Number(customerId),
+      first: 50,
+      includeArchived: 'NO',
+      orderBy: ['NAME_ASC'],
+    });
+    return (data?.searchPartGroups?.nodes || [])
+      .filter((n) => n && n.id != null)
+      .map((n) => ({ id: n.id, name: (n.name || '').trim() }));
+  }
+
+  async function createPartGroup(name, customerId) {
+    const data = await api().query('CreateNewPartGroup', {
+      name: String(name),
+      customerId: Number(customerId),
+      type: 'GROUPING',
+    });
+    const g = data?.createPartGroup?.partGroup;
+    if (!g || g.id == null) throw new Error(`No se pudo crear el grupo "${name}"`);
+    return { id: g.id, name: (g.name || '').trim() };
+  }
+
+  // PARTIR: reparte las piezas de una cuenta entre varios grupos. El payload lo arma
+  // AutoRouterGroups.planSplit — aquí solo se manda (mueve material: nada de armar
+  // el cuerpo al vuelo).
+  async function splitParts(payload) {
+    const data = await api().query('CreateManyPartsTransfersChecked', payload);
+    return data?.createManyPartsTransfersChecked || data || null;
+  }
+
+  // REAGRUPAR: junta varias cuentas en un grupo. Ojo, el shape del destino NO es el
+  // mismo que en splitParts (ver auto-router-groups.js).
+  async function regroupParts(payload) {
+    const data = await api().query('AddPartsToWorkOrders', payload);
+    return data?.addPartsToWorkOrders || data || null;
   }
 
   // Todas las órdenes de una línea del Scheduling board (para "rutear todas" sin
@@ -18055,6 +18494,12 @@ const F2C_WRITE_ENABLED = false; // F2c: activar solo tras validación en vivo
     resolveWorkOrder,
     fetchBoardWorkOrders,
     applyRoutes,
+    // piezas: pistas, partir y reagrupar
+    fetchWorkOrderAccounts,
+    searchPartGroups,
+    createPartGroup,
+    splitParts,
+    regroupParts,
     parseRouteData,    // exportado para tests/depuración
     parseAllRouteData, // multi-WO (captura del board)
   };
@@ -18836,6 +19281,595 @@ const AutoRouterBatch = (() => {
 })();
 // ===== END scripts/auto-router-batch.js =====
 
+// ===== BEGIN scripts/auto-router-lanes.js =====
+(function(){
+// auto-router-lanes.js — Panel de ruteo POR PISTAS de una orden con grupos de piezas.
+//
+// Una orden se rutea por pistas: la GLOBAL (toda la orden) y una por grupo de piezas.
+// Cada pista elige su línea destino por separado, o se deja PENDIENTE y no se toca.
+// Desde aquí también se parten las piezas en grupos nuevos y se reagrupan.
+//
+// Convive con auto-router-panel.js (single-order, ya validado en producción): este
+// panel es la vista de órdenes CON grupos y no reemplaza aquel flujo.
+//
+// Depende de: AutoRouterEngine, AutoRouterGroups, AutoRouterAPI. Expone
+// window.AutoRouterLanes. Toda decisión de qué se escribe vive en AutoRouterGroups
+// (núcleo puro con golden tests); aquí solo hay DOM y orquestación.
+
+const AutoRouterLanes = (() => {
+  'use strict';
+
+  const LOG = '[AR-Lanes]';
+  const Engine = () => window.AutoRouterEngine;
+  const Groups = () => window.AutoRouterGroups;
+  const ARAPI = () => window.AutoRouterAPI;
+  const log = (m) => window.SteelheadAPI?.log?.(m) ?? console.log(LOG, m);
+
+  const PENDIENTE = '';   // valor del select cuando la pista no se rutea
+
+  let state = fresh();
+  function fresh() {
+    return {
+      ctx: null,          // { idInDomain, workOrderId, partNumberId, routeData }
+      accounts: null,     // parseWorkOrderAccounts()
+      lanes: [],          // buildLanes()
+      destLines: [],
+      choice: new Map(),  // partGroupId|null -> destLine ('' = pendiente)
+      sourceLine: null,
+      busy: false,
+    };
+  }
+
+  // ── Estilos (dark mode: regla del repo — la UI propia NUNCA se confunde con la de SH) ──
+  function injectStyles() {
+    if (document.getElementById('sa-arl-style')) return;
+    const s = document.createElement('style');
+    s.id = 'sa-arl-style';
+    s.textContent = `
+      .sa-arl-ov{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2147483641;
+        display:flex;align-items:center;justify-content:center;}
+      .sa-arl{background:#1c2430;width:min(820px,94vw);max-height:90vh;border-radius:10px;
+        display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.55);
+        font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;color:#e6e9ee;border:1px solid #33404f;}
+      .sa-arl h2{margin:0;font-size:17px;color:#f0f3f7;}
+      .sa-arl-hd{padding:16px 20px;border-bottom:1px solid #33404f;display:flex;
+        align-items:center;justify-content:space-between;gap:12px;}
+      .sa-arl-x{border:none;background:none;font-size:22px;cursor:pointer;color:#9aa7b5;}
+      .sa-arl-x:hover{color:#e6e9ee;}
+      .sa-arl-bd{padding:16px 20px;overflow:auto;}
+      .sa-arl-ft{padding:14px 20px;border-top:1px solid #33404f;display:flex;
+        align-items:center;justify-content:space-between;gap:12px;}
+      .sa-arl-btn{border:none;border-radius:7px;padding:9px 16px;font-size:14px;font-weight:600;cursor:pointer;}
+      .sa-arl-btn.primary{background:#13a36f;color:#fff;}
+      .sa-arl-btn.primary:disabled{background:#3a5247;color:#8fa99c;cursor:not-allowed;}
+      .sa-arl-btn.ghost{background:#33404f;color:#dfe5ec;}
+      .sa-arl-btn.sm{padding:5px 11px;font-size:12.5px;}
+      table.sa-arl-tb{width:100%;border-collapse:collapse;font-size:13px;}
+      table.sa-arl-tb th,table.sa-arl-tb td{text-align:left;padding:8px;border-bottom:1px solid #2a3340;vertical-align:middle;}
+      table.sa-arl-tb th{color:#9aa7b5;font-weight:600;font-size:11.5px;text-transform:uppercase;letter-spacing:.03em;}
+      tr.sa-arl-global td{background:#202a37;}
+      .sa-arl select{font-size:13px;padding:5px 7px;border:1px solid #3a4757;border-radius:6px;
+        background:#141a23;color:#e6e9ee;}
+      .sa-arl-tag{font-size:10.5px;padding:1px 7px;border-radius:9px;font-weight:700;white-space:nowrap;}
+      .sa-arl-tag.own{background:#163a2c;color:#5fd0a0;}
+      .sa-arl-tag.inh{background:#2a3340;color:#9aa7b5;}
+      .sa-arl-tag.def{background:#33302a;color:#c8ab74;}
+      .sa-arl-warn{background:#3a2a1c;border:1px solid #6b4a2e;color:#f0a35e;padding:10px 12px;
+        border-radius:7px;font-size:13px;margin-bottom:12px;}
+      .sa-arl-note{font-size:12px;color:#9aa7b5;margin-bottom:10px;}
+      .sa-arl-sec{display:flex;align-items:center;justify-content:space-between;margin:16px 0 8px;}
+      .sa-arl-sec h3{margin:0;font-size:13px;color:#9aa7b5;text-transform:uppercase;letter-spacing:.04em;}
+      .sa-arl-split input{font-size:13px;padding:5px 7px;border:1px solid #3a4757;border-radius:6px;
+        background:#141a23;color:#e6e9ee;width:100%;}
+      .sa-arl-err{color:#f08a7a;font-size:12.5px;margin-top:8px;}`;
+    document.head.appendChild(s);
+  }
+
+  function el(tag, attrs, children) {
+    const e = document.createElement(tag);
+    if (attrs) for (const k of Object.keys(attrs)) {
+      if (k === 'class') e.className = attrs[k];
+      else if (k === 'text') e.textContent = attrs[k];       // textContent: nunca innerHTML (anti-XSS)
+      else if (k.startsWith('on') && typeof attrs[k] === 'function') e.addEventListener(k.slice(2), attrs[k]);
+      else e.setAttribute(k, attrs[k]);
+    }
+    for (const c of children || []) if (c) e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c);
+    return e;
+  }
+
+  const overlayId = 'sa-arl-ov';
+  const removeOverlay = () => document.getElementById(overlayId)?.remove();
+
+  function close() { removeOverlay(); state = fresh(); }
+
+  function renderBody(node) {
+    const bd = document.getElementById('sa-arl-bd');
+    if (!bd) return;
+    bd.textContent = '';
+    bd.appendChild(node);
+  }
+  function renderFooter(...nodes) {
+    const ft = document.getElementById('sa-arl-ft');
+    if (!ft) return;
+    ft.textContent = '';
+    for (const n of nodes) if (n) ft.appendChild(n);
+  }
+
+  function renderShell(title) {
+    removeOverlay();
+    const ov = el('div', { id: overlayId, class: 'sa-arl-ov' });
+    ov.addEventListener('mousedown', (e) => { if (e.target === ov) close(); });
+    const panel = el('div', { class: 'sa-arl' }, [
+      el('div', { class: 'sa-arl-hd' }, [
+        el('h2', { text: title }),
+        el('button', { class: 'sa-arl-x', text: '×', onclick: close }),
+      ]),
+      el('div', { class: 'sa-arl-bd', id: 'sa-arl-bd' }),
+      el('div', { class: 'sa-arl-ft', id: 'sa-arl-ft' }),
+    ]);
+    ov.appendChild(panel);
+    document.body.appendChild(ov);
+  }
+
+  // ── Apertura ────────────────────────────────────────────────────────────────
+  async function open(ctx) {
+    injectStyles();
+    state = fresh();
+    state.ctx = ctx;
+    renderShell(`🔀 Ruteo por grupos · OT ${ctx.idInDomain ?? ctx.workOrderId}`);
+    renderBody(el('div', { class: 'sa-arl-note', text: 'Cargando piezas y rutas…' }));
+    try {
+      await load();
+      renderLanes();
+    } catch (e) {
+      log(`Error cargando: ${e.message}`);
+      renderBody(el('div', { class: 'sa-arl-warn', text: `No se pudo cargar la orden: ${e.message}` }));
+      renderFooter(el('button', { class: 'sa-arl-btn ghost', text: 'Cerrar', onclick: close }));
+    }
+  }
+
+  async function load() {
+    const { ctx } = state;
+    state.accounts = await ARAPI().fetchWorkOrderAccounts(ctx.idInDomain);
+    // Las rutas activas de TODAS las pistas: se piden con todos los grupos para que
+    // el diff por pista tenga el panorama completo (cada pista se aísla después).
+    const groupIds = state.accounts.partLocations
+      .map((l) => l.partGroup?.id).filter((id) => id != null);
+    const partNumberId = ctx.partNumberId ?? state.accounts.partNumberId;
+    state.ctx.routeData = await ARAPI().fetchWorkOrderRouteData(
+      state.accounts.workOrderId, partNumberId, groupIds
+    );
+    state.ctx.partNumberId = partNumberId;
+    state.ctx.workOrderId = state.accounts.workOrderId;
+
+    state.lanes = Groups().buildLanes({
+      partLocations: state.accounts.partLocations,
+      activeRoutes: state.ctx.routeData.activeRoutes,
+    });
+    state.sourceLine = detectSourceLine(state.ctx.routeData.recipeNodes);
+    state.destLines = Engine().destinationLines(
+      state.ctx.routeData.candidatesByTreatment, state.sourceLine
+    );
+    for (const l of state.lanes) state.choice.set(l.partGroupId, PENDIENTE);
+  }
+
+  // Misma heurística que el panel single-order: el nodo "Listo para Procesar" ancla
+  // la sección de línea; si no aparece, la línea más frecuente entre tinas de proceso.
+  function detectSourceLine(recipeNodes) {
+    const lc = Engine().extractLineCode;
+    const listo = (recipeNodes || []).find((n) => /listo para procesar/i.test(n.name || '') && n.defaultStation);
+    if (listo) {
+      const code = lc(listo.defaultStation.name);
+      if (code) return code;
+    }
+    const freq = new Map();
+    for (const n of recipeNodes || []) {
+      if (!n.defaultStation || !/-TI\d{2}-/.test(n.defaultStation.name)) continue;
+      const code = lc(n.defaultStation.name);
+      if (code) freq.set(code, (freq.get(code) || 0) + 1);
+    }
+    let best = null, bestN = 0;
+    for (const [code, n] of freq) if (n > bestN) { best = code; bestN = n; }
+    return best;
+  }
+
+  // Rutas que quedarían para una pista si se manda a `destLine`.
+  function routesFor(lane, destLine) {
+    if (!destLine) return null;
+    const res = Engine().computeRoutes({
+      recipeNodes: state.ctx.routeData.recipeNodes,
+      candidatesByTreatment: state.ctx.routeData.candidatesByTreatment,
+      sourceLineCode: state.sourceLine,
+      destLineCode: destLine,
+      partNumberId: state.ctx.partNumberId,
+      workOrderId: state.ctx.workOrderId,
+      partGroupId: lane.partGroupId,
+    });
+    return res;
+  }
+
+  function changeCountFor(lane, destLine) {
+    const res = routesFor(lane, destLine);
+    if (!res) return 0;
+    return Engine().effectiveChangeCount(
+      state.ctx.routeData.recipeNodes, res.routes,
+      state.ctx.routeData.activeRoutes, lane.partGroupId
+    );
+  }
+
+  const ESTADO = {
+    own: { cls: 'own', text: 'ruta propia' },
+    inherited: { cls: 'inh', text: 'hereda la orden' },
+    default: { cls: 'def', text: 'default de receta' },
+  };
+
+  // ── Vista principal: una fila por pista ─────────────────────────────────────
+  function renderLanes() {
+    const cont = el('div');
+
+    if (!state.sourceLine) {
+      cont.appendChild(el('div', { class: 'sa-arl-warn',
+        text: 'No se pudo detectar la línea origen de esta orden.' }));
+    }
+    cont.appendChild(el('div', { class: 'sa-arl-note',
+      text: `PN ${state.accounts.partNumberId ?? '—'} · ${state.accounts.partLocations.length} cuenta(s) de piezas · origen ${state.sourceLine || '—'}. `
+          + 'Las pistas en "— pendiente —" no se tocan.' }));
+
+    const tb = el('table', { class: 'sa-arl-tb' });
+    tb.appendChild(el('thead', {}, [el('tr', {}, [
+      el('th', { text: 'Pista' }), el('th', { text: 'Piezas' }),
+      el('th', { text: 'Rutas hoy' }), el('th', { text: 'Línea destino' }),
+      el('th', { text: 'Tinas' }),
+    ])]));
+    const tbody = el('tbody');
+
+    for (const lane of state.lanes) {
+      const tr = el('tr', lane.kind === 'global' ? { class: 'sa-arl-global' } : {});
+      tr.appendChild(el('td', { text: lane.kind === 'global' ? '📋 Toda la orden' : `📦 Grupo ${lane.name}` }));
+      tr.appendChild(el('td', { text: lane.partCount != null ? String(lane.partCount) : '—' }));
+      const est = ESTADO[lane.state] || ESTADO.default;
+      tr.appendChild(el('td', {}, [el('span', { class: `sa-arl-tag ${est.cls}`, text: est.text })]));
+
+      const tinasCell = el('td', { text: '—' });
+      const sel = el('select', {
+        onchange: (e) => {
+          state.choice.set(lane.partGroupId, e.target.value);
+          const n = e.target.value ? changeCountFor(lane, e.target.value) : 0;
+          tinasCell.textContent = e.target.value ? String(n) : '—';
+          refreshFooter();
+        },
+      }, [el('option', { value: PENDIENTE, text: '— pendiente —' })].concat(
+        state.destLines.map((d) => el('option', { value: d, text: d }))
+      ));
+      tr.appendChild(el('td', {}, [sel]));
+      tr.appendChild(tinasCell);
+      tbody.appendChild(tr);
+    }
+    tb.appendChild(tbody);
+    cont.appendChild(tb);
+
+    // Acciones sobre las piezas — separadas del ruteo a propósito: mueven material.
+    const acciones = el('span', {}, [
+      el('button', { class: 'sa-arl-btn ghost sm', text: '✂️ Partir en grupos', onclick: renderSplit }),
+    ]);
+    if (state.accounts.partLocations.length > 1) {
+      acciones.appendChild(document.createTextNode(' '));
+      acciones.appendChild(el('button', { class: 'sa-arl-btn ghost sm', text: '🔗 Reagrupar', onclick: renderRegroup }));
+    }
+    cont.appendChild(el('div', { class: 'sa-arl-sec' }, [el('h3', { text: 'Piezas' }), acciones]));
+    cont.appendChild(el('div', { class: 'sa-arl-note',
+      text: 'Partir crea grupos nuevos y reparte las piezas; reagrupar junta varias cuentas en un solo grupo. '
+          + 'Las dos mueven material real, por eso van aparte del ruteo.' }));
+
+    renderBody(cont);
+    refreshFooter();
+  }
+
+  function pistasElegidas() {
+    return state.lanes.filter((l) => state.choice.get(l.partGroupId));
+  }
+
+  function refreshFooter() {
+    const n = pistasElegidas().length;
+    const btn = el('button', {
+      class: 'sa-arl-btn primary',
+      text: state.busy ? 'Aplicando…' : (n ? `Aplicar · ${n} pista${n > 1 ? 's' : ''}` : 'Elige una línea destino'),
+      onclick: apply,
+    });
+    if (state.busy || !n) btn.disabled = true;
+    renderFooter(el('button', { class: 'sa-arl-btn ghost', text: 'Cerrar', onclick: close }), btn);
+  }
+
+  // ── Aplicar el ruteo de las pistas elegidas ─────────────────────────────────
+  async function apply() {
+    const elegidas = pistasElegidas();
+    if (state.busy || !elegidas.length) return;
+    state.busy = true;
+    refreshFooter();
+    try {
+      // load-before-save: Steelhead exige una lectura RECIENTE de
+      // StationTreatmentByWorkOrder o acepta la mutación y crea 0 rutas en silencio.
+      const groupIds = state.lanes.map((l) => l.partGroupId).filter((g) => g != null);
+      let activeRoutes = state.ctx.routeData.activeRoutes;
+      try {
+        const data = await ARAPI().fetchWorkOrderRouteData(
+          state.ctx.workOrderId, state.ctx.partNumberId, groupIds
+        );
+        state.ctx.routeData = data;
+        activeRoutes = data.activeRoutes;
+      } catch (e) {
+        log(`re-fetch previo a aplicar falló (uso el contexto capturado): ${e.message}`);
+      }
+
+      // Una mutación por pista: el diff aísla cada una, así que un grupo nunca pisa
+      // a otro ni a la global.
+      const resumen = [];
+      for (const lane of elegidas) {
+        const destLine = state.choice.get(lane.partGroupId);
+        const res = routesFor(lane, destLine);
+        if (!res || !res.routes.length) { resumen.push(`${etiqueta(lane)}: sin rutas que aplicar`); continue; }
+        const split = Engine().diffRoutes(res.routes, activeRoutes);
+        const wantC = split.routesToCreate.length;
+        if (!wantC && !split.routesToUpdate.length && !split.routesToDelete.length) {
+          resumen.push(`${etiqueta(lane)}: ya estaba en ${destLine}`);
+          continue;
+        }
+        const out = await ARAPI().applyRoutes(split.routesToCreate, split.routesToUpdate, split.routesToDelete);
+        const created = (out.createdRoutes || []).length;
+        if (wantC > 0 && created === 0) {
+          resumen.push(`⚠️ ${etiqueta(lane)}: el servidor creó 0 de ${wantC} rutas (estado obsoleto)`);
+          continue;
+        }
+        resumen.push(`✅ ${etiqueta(lane)} → ${destLine}: +${created} ~${(out.updatedRoutes || []).length} -${(out.deletedRouteIds || []).length}`);
+      }
+
+      renderBody(el('div', {}, [
+        el('h2', { text: 'Resultado' }),
+        el('div', { class: 'sa-arl-note', text: ' ' }),
+        ...resumen.map((r) => el('div', { class: 'sa-arl-note', text: r })),
+        el('div', { class: 'sa-arl-note', text: 'Recarga la pantalla de Enrutamiento de Estación para verlas.' }),
+      ]));
+      renderFooter(el('button', { class: 'sa-arl-btn primary', text: 'Cerrar', onclick: close }));
+    } catch (e) {
+      state.busy = false;
+      log(`Error aplicando: ${e.message}`);
+      const bd = document.getElementById('sa-arl-bd');
+      if (bd) bd.insertBefore(el('div', { class: 'sa-arl-warn', text: `Error al aplicar: ${e.message}` }), bd.firstChild);
+      refreshFooter();
+    }
+  }
+
+  const etiqueta = (lane) => (lane.kind === 'global' ? 'Toda la orden' : `Grupo ${lane.name}`);
+
+  // ── Partir piezas ───────────────────────────────────────────────────────────
+  // Se elige UNA cuenta origen y se reparte entre grupos con su cantidad. La suma
+  // debe cuadrar exacto: el núcleo no emite payload si no.
+  function renderSplit() {
+    const cuentas = state.accounts.partLocations;
+    if (!cuentas.length) {
+      renderBody(el('div', { class: 'sa-arl-warn', text: 'Esta orden no tiene cuentas de piezas que partir.' }));
+      renderFooter(el('button', { class: 'sa-arl-btn ghost', text: 'Volver', onclick: renderLanes }));
+      return;
+    }
+
+    let origen = cuentas[0];
+    const filas = [{ name: '', partCount: '' }, { name: '', partCount: '' }];
+    const errBox = el('div', { class: 'sa-arl-err' });
+
+    const cuentaSel = el('select', {
+      onchange: (e) => { origen = cuentas[Number(e.target.value)]; pinta(); },
+    }, cuentas.map((c, i) => el('option', {
+      value: String(i),
+      text: `${c.partGroup ? `Grupo ${c.partGroup.name}` : 'Sin grupo'} · ${c.partCount} pzas`,
+    })));
+
+    const tbody = el('tbody');
+    const cont = el('div', { class: 'sa-arl-split' }, [
+      el('div', { class: 'sa-arl-note',
+        text: 'Las piezas de la cuenta origen se reparten entre los grupos. Las cantidades deben sumar exactamente el total.' }),
+      el('div', { class: 'sa-arl-sec' }, [el('h3', { text: 'Cuenta origen' }), cuentaSel]),
+    ]);
+    const tb = el('table', { class: 'sa-arl-tb' });
+    tb.appendChild(el('thead', {}, [el('tr', {}, [
+      el('th', { text: 'Grupo destino' }), el('th', { text: 'Piezas' }), el('th', { text: '' }),
+    ])]));
+    tb.appendChild(tbody);
+    cont.appendChild(tb);
+    cont.appendChild(el('div', {}, [
+      el('button', { class: 'sa-arl-btn ghost sm', text: '＋ Otro grupo',
+        onclick: () => { filas.push({ name: '', partCount: '' }); pinta(); } }),
+    ]));
+    cont.appendChild(errBox);
+
+    function pinta() {
+      tbody.textContent = '';
+      filas.forEach((f, i) => {
+        const tr = el('tr');
+        const nombre = el('input', { type: 'text', value: f.name, placeholder: 'nombre del grupo' });
+        nombre.addEventListener('input', (e) => { f.name = e.target.value; });
+        const cant = el('input', { type: 'number', min: '1', step: '1', value: f.partCount, placeholder: '0' });
+        cant.addEventListener('input', (e) => { f.partCount = e.target.value; });
+        tr.appendChild(el('td', {}, [nombre]));
+        tr.appendChild(el('td', {}, [cant]));
+        tr.appendChild(el('td', {}, [el('button', {
+          class: 'sa-arl-btn ghost sm', text: '✕',
+          onclick: () => { filas.splice(i, 1); pinta(); },
+        })]));
+        tbody.appendChild(tr);
+      });
+      const total = filas.reduce((s, f) => s + (Number(f.partCount) || 0), 0);
+      errBox.textContent = `Suman ${total} de ${origen.partCount} piezas.`;
+    }
+    pinta();
+
+    renderBody(cont);
+    renderFooter(
+      el('button', { class: 'sa-arl-btn ghost', text: 'Volver', onclick: renderLanes }),
+      el('button', { class: 'sa-arl-btn primary', text: '✂️ Partir', onclick: () => confirmarSplit(origen, filas, errBox) }),
+    );
+  }
+
+  async function confirmarSplit(origen, filas, errBox) {
+    if (state.busy) return;
+    const nombres = filas.map((f) => String(f.name || '').trim());
+    if (nombres.some((n) => !n)) { errBox.textContent = 'Cada grupo necesita un nombre.'; return; }
+
+    // Validación PREVIA con nombres, antes de crear nada: si las cantidades no cuadran
+    // no tiene caso dejar grupos huérfanos en el catálogo del cliente.
+    const previo = Groups().planSplit({
+      fromAccountId: origen.partsTransferAccountId,
+      partCount: origen.partCount,
+      splits: filas.map((f, i) => ({ partGroupId: -(i + 1), partCount: Number(f.partCount) })),
+    });
+    if (!previo.valid) { errBox.textContent = previo.errors.join(' '); return; }
+
+    state.busy = true;
+    errBox.textContent = 'Preparando los grupos…';
+    try {
+      const customerId = state.accounts.customerId;
+      if (customerId == null) throw new Error('La orden no tiene cliente; no se pueden crear grupos.');
+
+      // CreateNewPartGroup no es idempotente → reúsa los que ya existan por nombre.
+      const existentes = await ARAPI().searchPartGroups(customerId, '');
+      const plan = Groups().reuseOrCreate(nombres, existentes);
+      const idPorNombre = new Map(plan.reuse.map((r) => [String(r.name).trim().toLowerCase(), r.id]));
+      for (const name of plan.create) {
+        const g = await ARAPI().createPartGroup(name, customerId);
+        idPorNombre.set(String(name).trim().toLowerCase(), g.id);
+      }
+
+      const splits = filas.map((f) => ({
+        partGroupId: idPorNombre.get(String(f.name).trim().toLowerCase()),
+        partCount: Number(f.partCount),
+      }));
+      const p = Groups().planSplit({
+        fromAccountId: origen.partsTransferAccountId,
+        partCount: origen.partCount,
+        splits,
+      });
+      if (!p.valid) throw new Error(p.errors.join(' '));
+
+      await ARAPI().splitParts(p.payload);
+      log(`Partición aplicada: cuenta ${origen.partsTransferAccountId} → ${splits.length} grupos.`);
+
+      state.busy = false;
+      // Recarga: nacieron cuentas nuevas y las pistas cambiaron.
+      renderBody(el('div', { class: 'sa-arl-note', text: 'Piezas partidas. Recargando pistas…' }));
+      await load();
+      renderLanes();
+    } catch (e) {
+      state.busy = false;
+      log(`Error al partir: ${e.message}`);
+      errBox.textContent = `No se pudo partir: ${e.message}`;
+      refreshFooter();
+    }
+  }
+
+  // ── Reagrupar piezas ────────────────────────────────────────────────────────
+  // Varias cuentas caen en un mismo grupo destino. Las que ya viven ahí se omiten
+  // solas (el núcleo las filtra), así que marcar todas es una petición válida.
+  function renderRegroup() {
+    const cuentas = state.accounts.partLocations;
+    const marcadas = new Set();
+    const errBox = el('div', { class: 'sa-arl-err' });
+
+    // Destino: cualquiera de los grupos que ya están en la orden.
+    const gruposEnOrden = [];
+    const vistos = new Set();
+    for (const c of cuentas) {
+      if (!c.partGroup || vistos.has(c.partGroup.id)) continue;
+      vistos.add(c.partGroup.id);
+      gruposEnOrden.push(c.partGroup);
+    }
+    if (!gruposEnOrden.length) {
+      renderBody(el('div', { class: 'sa-arl-warn',
+        text: 'Esta orden no tiene grupos a los cuales reagrupar. Parte las piezas primero.' }));
+      renderFooter(el('button', { class: 'sa-arl-btn ghost', text: 'Volver', onclick: renderLanes }));
+      return;
+    }
+    let destino = gruposEnOrden[0].id;
+
+    const destSel = el('select', { onchange: (e) => { destino = Number(e.target.value); resumen(); } },
+      gruposEnOrden.map((g) => el('option', { value: String(g.id), text: `Grupo ${g.name}` })));
+
+    const tbody = el('tbody');
+    for (const c of cuentas) {
+      const tr = el('tr');
+      const cb = el('input', { type: 'checkbox' });
+      cb.addEventListener('change', (e) => {
+        if (e.target.checked) marcadas.add(c.partsTransferAccountId);
+        else marcadas.delete(c.partsTransferAccountId);
+        resumen();
+      });
+      tr.appendChild(el('td', {}, [cb]));
+      tr.appendChild(el('td', { text: c.partGroup ? `Grupo ${c.partGroup.name}` : 'Sin grupo' }));
+      tr.appendChild(el('td', { text: `${c.partCount} pzas` }));
+      tbody.appendChild(tr);
+    }
+
+    const tb = el('table', { class: 'sa-arl-tb' });
+    tb.appendChild(el('thead', {}, [el('tr', {}, [
+      el('th', { text: '' }), el('th', { text: 'Cuenta' }), el('th', { text: 'Piezas' }),
+    ])]));
+    tb.appendChild(tbody);
+
+    function resumen() {
+      const mueven = cuentas.filter((c) => marcadas.has(c.partsTransferAccountId)
+        && (c.partGroup?.id ?? null) !== destino);
+      const total = mueven.reduce((s, c) => s + c.partCount, 0);
+      errBox.textContent = mueven.length
+        ? `Se moverán ${total} piezas de ${mueven.length} cuenta(s).`
+        : 'Marca las cuentas que quieres juntar en el grupo destino.';
+    }
+
+    const cont = el('div', {}, [
+      el('div', { class: 'sa-arl-note',
+        text: 'Las cuentas marcadas se juntan en el grupo destino. Las que ya están ahí se omiten solas.' }),
+      el('div', { class: 'sa-arl-sec' }, [el('h3', { text: 'Grupo destino' }), destSel]),
+      tb, errBox,
+    ]);
+    resumen();
+
+    renderBody(cont);
+    renderFooter(
+      el('button', { class: 'sa-arl-btn ghost', text: 'Volver', onclick: renderLanes }),
+      el('button', { class: 'sa-arl-btn primary', text: '🔗 Reagrupar',
+        onclick: () => confirmarRegroup(cuentas, marcadas, () => destino, errBox) }),
+    );
+  }
+
+  async function confirmarRegroup(cuentas, marcadas, getDestino, errBox) {
+    if (state.busy) return;
+    const p = Groups().planRegroup({
+      targetGroupId: getDestino(),
+      accounts: cuentas
+        .filter((c) => marcadas.has(c.partsTransferAccountId))
+        .map((c) => ({ accountId: c.partsTransferAccountId, partCount: c.partCount, partGroupId: c.partGroup?.id ?? null })),
+    });
+    if (!p.valid) { errBox.textContent = p.errors.join(' '); return; }
+
+    state.busy = true;
+    errBox.textContent = 'Reagrupando…';
+    try {
+      await ARAPI().regroupParts(p.payload);
+      log(`Reagrupación aplicada hacia el grupo ${getDestino()}.`);
+      state.busy = false;
+      renderBody(el('div', { class: 'sa-arl-note', text: 'Piezas reagrupadas. Recargando pistas…' }));
+      await load();
+      renderLanes();
+    } catch (e) {
+      state.busy = false;
+      log(`Error al reagrupar: ${e.message}`);
+      errBox.textContent = `No se pudo reagrupar: ${e.message}`;
+    }
+  }
+
+  if (typeof window !== 'undefined') window.AutoRouterLanes = { open, close };
+  return { open, close };
+})();
+})();
+// ===== END scripts/auto-router-lanes.js =====
+
 // ===== BEGIN scripts/board-metal-tooltip.js =====
 (function(){
 // board-metal-tooltip.js — Enriquece el tooltip NATIVO del Scheduling board.
@@ -19289,12 +20323,29 @@ const AutoRouter = (() => {
     window.AutoRouterBatch.open();
   }
 
+  // Ruteo POR PISTAS (la orden completa y/o cada grupo de piezas a su propia línea).
+  // La orden sale de la URL de su ficha; si no estamos ahí, se pide el número. No usa
+  // el contexto capturado del modal: ese trae UN grupo y aquí se necesitan todos.
+  function openLanes() {
+    if (!window.AutoRouterLanes) { alert('Auto-Ruteador: módulo de grupos no cargado.'); return; }
+    const m = location.pathname.match(/\/WorkOrders\/(\d+)/);
+    let idInDomain = m ? Number(m[1]) : null;
+    if (!idInDomain) {
+      const v = prompt('Número de orden (el que ves en Steelhead):');
+      if (!v) return;
+      idInDomain = Number(String(v).trim());
+      if (!Number.isFinite(idInDomain)) { alert('Ese no es un número de orden válido.'); return; }
+    }
+    window.AutoRouterLanes.open({ idInDomain });
+  }
+
   function listenManualTrigger() {
     try {
       chrome.runtime?.onMessage?.addListener?.((msg) => {
         if (!msg) return;
         if (msg.action === 'open-auto-router') openPanel();
         else if (msg.action === 'open-auto-router-batch') openBatch();
+        else if (msg.action === 'open-auto-router-lanes') openLanes();
       });
     } catch (_) { /* no chrome.runtime en algunos contextos */ }
   }
@@ -21472,8 +22523,16 @@ const PnSpecsColumn = (() => {
   }
 
   function syncColumn() {
-    if (!isEnabled() || !onIndex()) return;
+    if (!onIndex()) return;
+    // El toggle se monta SIEMPRE, aunque esté apagado: es la UI de entrada del applet, y sin
+    // él el operador no tiene cómo encenderlo. Estaba detrás del `!isEnabled() → return` y el
+    // bug quedaba oculto por timing: `ensureToggle()` ancla al botón "NUEVO NÚMERO DE PARTE",
+    // que en el init puede no estar renderizado todavía, y este observer es el único reintento.
+    // Con el loader viejo (79 archivos en serie) el applet llegaba tan tarde que el header ya
+    // existía; al acelerarlo (2026-07-27) pasó a correr antes que React. Mismo bug que
+    // wo-listing-columns — este applet es el molde del que salió aquél.
     ensureToggle();
+    if (!isEnabled()) return;
     const table = getTable();
     if (!table) return;
     injectStyles();
@@ -25491,6 +26550,3363 @@ const PNLifecycle = (() => {
 })();
 })();
 // ===== END scripts/schedule-batch-highlighter.js =====
+
+// ===== BEGIN scripts/po-listing-filters-core.js =====
+(function(){
+// Buscador global de OC + Toggle de empresa — módulo puro (sin DOM ni red).
+//
+// Resuelve dos huecos de la pantalla /Domains/<d>/Purchasing/PurchaseOrders, ambos
+// verificados EN VIVO (dominio 344, 2026-07-27, read-only):
+//
+//   1) La pantalla está partida en 5 vistas (Draft / Issued·Open / Issued·Closed /
+//      Fulfilled·Open / Fulfilled·Closed) y el buscador nativo solo mira la vista actual.
+//      Peor: su `searchQuery` NO busca por proveedor — 'ATOTECH' devuelve 0 resultados
+//      aunque existe la OC #1873 de "ATOTECH DE MEXICO". Solo matchea el PO#.
+//      → El proveedor solo es alcanzable por el filtro `vendorIdFilter`, que es otro control.
+//
+//   2) El filtro "Dirección de Facturación" es single-select en la UI, así que no deja
+//      seleccionar Ecoplating y el dominio de un jalón. PERO la variable
+//      `billToLocationIdFilter` es un ARRAY con semántica OR — verificado:
+//        [Ecoplating]=0, [Proquipa]=50, [Ecoplating,Proquipa]=50  (la UNIÓN, no la intersección).
+//      → La limitación es de la UI, no del backend. Por eso el toggle es viable.
+//
+// Las direcciones se nombran ANIDADAS por punto ("Ecoplating.N2.A2") y la RAÍZ del path
+// define la empresa. NO se hardcodean ids: el glue las descubre en runtime con FilterSearch
+// (que topa en 10 resultados por consulta → sondas múltiples) y este módulo las agrupa.
+(function () {
+  'use strict';
+
+  // ── Gate de pantalla ──
+  const PO_URL_RE = /^\/Domains\/\d+\/Purchasing\/PurchaseOrders\/?(?:[?#]|$)/;
+
+  function isPurchaseOrdersUrl(pathname) {
+    return PO_URL_RE.test(String(pathname == null ? '' : pathname));
+  }
+
+  function domainIdFromPath(pathname) {
+    const m = /^\/Domains\/(\d+)\//.exec(String(pathname == null ? '' : pathname));
+    return m ? m[1] : null;
+  }
+
+  // ── Las 5 vistas ──
+  // `queryVars` son las variables EXACTAS que manda el front (capturadas del sniffer).
+  // OJO con Draft: manda `issuedAt:true` (no `draftCondition`) — nombre contraintuitivo
+  // del backend, significa "sin issuedAt". No lo renombres.
+  const PO_CATEGORIES = [
+    {
+      key: 'draft',
+      label: 'Borrador',
+      labelEn: 'Draft',
+      urlParams: { category: 'Draft' },
+      queryVars: { issuedAt: true, fulfilledCondition: false },
+    },
+    {
+      key: 'issued-open',
+      label: 'Emitida · Abierta',
+      labelEn: 'Issued · Open',
+      urlParams: { category: 'Issued' },
+      queryVars: { issuedCondition: true, billingOpen: true },
+    },
+    {
+      key: 'issued-closed',
+      label: 'Emitida · Cerrada',
+      labelEn: 'Issued · Closed',
+      urlParams: { category: 'Issued', billing: 'Closed' },
+      queryVars: { issuedCondition: true, billingOpen: false },
+    },
+    {
+      key: 'fulfilled-open',
+      label: 'Surtida · Abierta',
+      labelEn: 'Fulfilled · Open',
+      urlParams: { category: 'Fulfilled', billing: 'Open' },
+      queryVars: { fulfilledCondition: true, billingOpen: true },
+    },
+    {
+      key: 'fulfilled-closed',
+      label: 'Surtida · Cerrada',
+      labelEn: 'Fulfilled · Closed',
+      urlParams: { category: 'Fulfilled', billing: 'Closed' },
+      queryVars: { fulfilledCondition: true, billingOpen: false },
+    },
+  ];
+
+  // ── Secciones de NAVEGACIÓN (distintas de las 5 vistas de arriba) ──
+  //
+  // El eje de facturación tiene un tercer estado, "All" (`?billing=All`), que simplemente
+  // OMITE `billingOpen` en la query — verificado en vivo: Issued·All manda
+  // {issuedCondition:true} a secas.
+  //
+  // Al saltar desde un PROVEEDOR se navega SIEMPRE a la variante All, nunca a Open ni a
+  // Closed: el operador quiere ver todas sus OCs, no la mitad. Se elige la PRIMERA sección
+  // que traiga resultados, en este orden. (Una OC concreta es otra cosa: esa vive en UNA
+  // vista específica y ahí se manda — ver buildResultHref.)
+  const PO_NAV_SECTIONS = [
+    { key: 'draft', label: 'Borrador', urlParams: { category: 'Draft' }, queryVars: { issuedAt: true, fulfilledCondition: false } },
+    { key: 'issued-all', label: 'Emitidas (todas)', urlParams: { category: 'Issued', billing: 'All' }, queryVars: { issuedCondition: true } },
+    { key: 'fulfilled-all', label: 'Surtidas (todas)', urlParams: { category: 'Fulfilled', billing: 'All' }, queryVars: { fulfilledCondition: true } },
+  ];
+
+  function categoryByKey(key) {
+    return PO_CATEGORIES.find((c) => c.key === key)
+      || PO_NAV_SECTIONS.find((c) => c.key === key)
+      || null;
+  }
+
+  // counts: { draft:n, 'issued-all':n, 'fulfilled-all':n } → key de la PRIMERA sección con
+  // resultados, respetando el orden de PO_NAV_SECTIONS. null si ninguna trae nada.
+  // Un conteo desconocido (null/undefined) NO cuenta como resultado: mandar al operador a
+  // una sección vacía es peor que dejarlo donde está.
+  function resolveFirstSectionWithResults(counts) {
+    const c = counts || {};
+    for (const s of PO_NAV_SECTIONS) {
+      const n = c[s.key];
+      if (typeof n === 'number' && n > 0) return s.key;
+    }
+    return null;
+  }
+
+  // ¿En qué vista estoy? Sin `category` la pantalla cae en Draft (verificado en vivo).
+  function parseCategoryFromUrl(url) {
+    let cat = null;
+    let billing = null;
+    try {
+      const u = new URL(url, 'https://x.invalid');
+      cat = u.searchParams.get('category');
+      billing = u.searchParams.get('billing');
+    } catch (_) { /* url basura → default */ }
+    if (!cat || cat === 'Draft') return 'draft';
+    const closed = billing === 'Closed';
+    if (cat === 'Issued') return closed ? 'issued-closed' : 'issued-open';
+    if (cat === 'Fulfilled') return closed ? 'fulfilled-closed' : 'fulfilled-open';
+    return 'draft';
+  }
+
+  // `new URL(rel, BASE)` necesita una base, pero devolver `u.toString()` PEGA esa base
+  // ficticia al resultado y produce enlaces a https://x.invalid/… (bug del deploy 1.7.205:
+  // clicar un resultado sacaba al operador de Steelhead a un host muerto). Si la entrada era
+  // relativa, el resultado DEBE volver relativo.
+  const URL_BASE = 'https://x.invalid';
+  function isAbsoluteUrl(url) {
+    return /^[a-z][a-z0-9+.-]*:\/\//i.test(String(url == null ? '' : url));
+  }
+  function serializeUrl(u, absolute) {
+    const s = absolute ? u.toString() : (u.pathname + u.search + u.hash);
+    return s.replace(/%2C/gi, ','); // coma literal, como el nativo
+  }
+
+  function buildCategoryUrl(baseUrl, categoryKey, extraParams) {
+    const cat = categoryByKey(categoryKey);
+    const absolute = isAbsoluteUrl(baseUrl);
+    const u = new URL(baseUrl, URL_BASE);
+    // Limpia los ejes de vista antes de escribir los nuevos (evita ?billing residual).
+    u.searchParams.delete('category');
+    u.searchParams.delete('billing');
+    if (cat) {
+      for (const [k, v] of Object.entries(cat.urlParams)) u.searchParams.set(k, v);
+    }
+    for (const [k, v] of Object.entries(extraParams || {})) {
+      if (v == null || v === '') u.searchParams.delete(k);
+      else u.searchParams.set(k, v);
+    }
+    u.searchParams.set('offset', '0');
+    return serializeUrl(u, absolute);
+  }
+
+  // ── Empresas / direcciones de facturación ──
+  const URL_PARAM_BILL_TO = 'billToLocationIdFilter';
+  const FILTER_KEY_BILL_TO = 'billToLocationIdFilter';
+  const FILTER_KEY_VENDOR = 'vendorIdFilter';
+  const FILTER_SEARCH_LIMIT = 10; // tope duro de FilterSearch (devuelve 10 y no pagina)
+
+  // Config por defecto. `dominio` cuenta como Ecoplating: decisión del usuario
+  // ("PlantaToluca sería equivalente a dominio, por tanto equivalente a Ecoplating").
+  const DEFAULT_COMPANY_CONFIG = {
+    ecoplating: ['Ecoplating', 'PlantaToluca'],
+    proquipa: ['Proquipa'],
+  };
+
+  // 'Ecoplating.N2.A2' → 'Ecoplating'.  Las ubicaciones de Steelhead están ANIDADAS y la
+  // raíz del path es la empresa; por eso se corta en el primer punto y no se hace prefix-match
+  // ingenuo (que confundiría 'Ecoplating' con un hipotético 'EcoplatingOtra').
+  function rootLocationName(display) {
+    const s = String(display == null ? '' : display).trim();
+    if (!s) return '';
+    return s.split('.')[0].trim();
+  }
+
+  function normalize(s) {
+    return String(s == null ? '' : s).trim().toLowerCase();
+  }
+
+  // display → 'ecoplating' | 'proquipa' | 'otra'
+  function companyOfLocation(display, config) {
+    const cfg = config || DEFAULT_COMPANY_CONFIG;
+    const root = normalize(rootLocationName(display));
+    if (!root) return 'otra';
+    for (const company of Object.keys(cfg)) {
+      const roots = (cfg[company] || []).map(normalize);
+      if (roots.includes(root)) return company;
+    }
+    return 'otra';
+  }
+
+  // items: [{display, identifier}] crudo de FilterSearch (posiblemente de varias sondas).
+  // → {ecoplating:[ids], proquipa:[ids], otras:[{display,identifier}], all:[ids]}
+  // Dedup por identifier: las sondas múltiples repiten resultados a propósito.
+  function groupLocationsByCompany(items, config) {
+    const arr = Array.isArray(items) ? items : [];
+    const seen = new Set();
+    const out = { ecoplating: [], proquipa: [], otras: [], all: [] };
+    for (const it of arr) {
+      if (!it || it.identifier == null) continue;
+      const id = String(it.identifier);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      out.all.push(id);
+      const company = companyOfLocation(it.display, config);
+      if (company === 'ecoplating') out.ecoplating.push(id);
+      else if (company === 'proquipa') out.proquipa.push(id);
+      else out.otras.push({ display: it.display, identifier: id });
+    }
+    return out;
+  }
+
+  // ── Toggle de empresa: SOLO Proquipa (binario) ──
+  //
+  // Nació como toggle triple (Ecoplating | ambos | Proquipa), pero el lado Ecoplating NO es
+  // expresable: las OCs del dominio llevan la dirección del dominio, que es la MISMA que la
+  // asignada a la ubicación "Ecoplating", y el filtro nativo no la acepta (por eso 79 de 129
+  // OCs no matchean ninguna de las 10 direcciones). Es un **bug de Steelhead**, con ticket
+  // de soporte levantado por el operador el 2026-07-27.
+  //
+  // Mientras tanto el toggle es binario: **solo Proquipa**, que es lo único filtrable de
+  // forma confiable. Cuando Steelhead corrija el filtro, reponer el lado Ecoplating es
+  // agregar un modo aquí — el descubrimiento y la agrupación por raíz ya existen y siguen
+  // clasificando ambas empresas.
+  const MODES = { OFF: 'off', PROQUIPA: 'proquipa' };
+
+  function planProquipaFilter(enabled, groups) {
+    const g = groups || { proquipa: [] };
+    if (!enabled) return { kind: 'clear', ids: [] };
+    if (!g.proquipa.length) return { kind: 'unavailable', reason: 'sin-direcciones-proquipa' };
+    return { kind: 'filter', ids: g.proquipa.slice() };
+  }
+
+  // Escribe (o limpia) el parámetro de dirección de facturación.
+  function buildCompanyFilterUrl(currentUrl, ids) {
+    const absolute = isAbsoluteUrl(currentUrl);
+    const u = new URL(currentUrl, URL_BASE);
+    const list = (Array.isArray(ids) ? ids : []).map(String).filter(Boolean);
+    if (list.length) u.searchParams.set(URL_PARAM_BILL_TO, list.join(','));
+    else u.searchParams.delete(URL_PARAM_BILL_TO);
+    u.searchParams.set('offset', '0');
+    return serializeUrl(u, absolute);
+  }
+
+  function parseBillToFilter(url) {
+    try {
+      const u = new URL(url, 'https://x.invalid');
+      const v = u.searchParams.get(URL_PARAM_BILL_TO);
+      return v ? v.split(',').map((s) => s.trim()).filter(Boolean) : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  // ¿El toggle debe verse encendido al recargar? Solo si el filtro de la URL es
+  // exactamente el de Proquipa. Un filtro puesto a mano (o que incluya otras direcciones)
+  // NO enciende el toggle: mentiría sobre lo que está aplicado.
+  function isProquipaFilterActive(url, groups) {
+    const ids = parseBillToFilter(url);
+    if (!ids.length) return false;
+    const pro = ((groups || {}).proquipa || []).map(String);
+    if (!pro.length) return false;
+    const setIds = new Set(ids);
+    const setPro = new Set(pro);
+    return ids.length === pro.length && pro.every((id) => setIds.has(id)) && ids.every((id) => setPro.has(id));
+  }
+
+  // ── Clasificación de resultados del buscador global ──
+  const RESULT_TYPES = { PO: 'PO', VENDOR: 'VENDOR', BILL: 'BILL' };
+
+  // FilterSearch de vendors devuelve display "#6 - ATOTECH DE MEXICO" (idInDomain + nombre).
+  // Se parte para poder mostrar el número aparte sin re-consultar.
+  function parseVendorDisplay(display) {
+    const s = String(display == null ? '' : display).trim();
+    const m = /^#(\d+)\s*-\s*(.*)$/.exec(s);
+    if (m) return { idInDomain: m[1], name: m[2].trim() };
+    return { idInDomain: null, name: s };
+  }
+
+  // ── Facturas: de dónde sale cada dato y POR QUÉ matchean ──
+  //
+  // `SearchBills.searchQuery` busca en VARIOS campos a la vez y no dice en cuál pegó, así
+  // que buscar "1841" devuelve facturas que a simple vista no tienen nada que ver (caso real
+  // reportado por el operador). Con los datos del nodo se puede explicar cada una:
+  //
+  //   Bill #1841  A&N FORWARDING     invoiceNumber 262034          PO 1617  → pegó el Bill #
+  //   Bill #2018  REACTOR AD         invoiceNumber 1841            PO 1790  → pegó el folio
+  //   Bill #2080  NORA LIZ PINEDA    invoiceNumber PO1841          PO 1841  → pegó la OC ★
+  //   Bill #1822  COMPUTO CONTABLE   invoiceNumber 260708121841049 PO 1597  → substring del folio
+  //
+  // La #2080 es la que el operador realmente buscaba. Mostrar el motivo convierte ruido
+  // aparente en información, y `MATCH_PO` permite subirla al principio.
+  const BILL_MATCH = { PO: 'po', INVOICE: 'invoice', BILL_ID: 'bill-id', OTHER: 'other' };
+
+  // El PO# de una factura vive en sus LÍNEAS (`purchaseOrderName`), no en el nodo raíz.
+  function extractBillPOs(bill) {
+    const nodes = (bill && bill.billLinesByBillId && bill.billLinesByBillId.nodes) || [];
+    const seen = new Set();
+    const out = [];
+    for (const l of nodes) {
+      const name = l && l.purchaseOrderName;
+      if (name == null || name === '') continue;
+      const s = String(name);
+      if (!seen.has(s)) { seen.add(s); out.push(s); }
+    }
+    return out;
+  }
+
+  // ¿Por qué esta factura salió en la búsqueda? Se evalúa en orden de relevancia: coincidir
+  // por OC es lo más informativo, luego el folio exacto, luego el propio Bill #.
+  function billMatchReason(bill, term) {
+    const t = String(term == null ? '' : term).trim().toLowerCase();
+    if (!t || !bill) return BILL_MATCH.OTHER;
+    if (extractBillPOs(bill).some((p) => p.toLowerCase() === t)) return BILL_MATCH.PO;
+    const inv = bill.invoiceNumber == null ? '' : String(bill.invoiceNumber).toLowerCase();
+    if (inv === t) return BILL_MATCH.INVOICE;
+    if (String(bill.idInDomain) === t) return BILL_MATCH.BILL_ID;
+    if (inv.includes(t)) return BILL_MATCH.INVOICE; // substring del folio (el caso 1822)
+    return BILL_MATCH.OTHER;
+  }
+
+  // raw = { vendors:[{display,identifier}], poByCategory:{<key>:[node]}, bills:[node] }
+  // → lista plana ordenada: proveedores, luego OCs (en el orden de PO_CATEGORIES), luego bills.
+  function classifyResults(raw) {
+    const r = raw || {};
+    const out = [];
+
+    for (const v of (r.vendors || [])) {
+      if (!v || v.identifier == null) continue;
+      const parsed = parseVendorDisplay(v.display);
+      out.push({
+        type: RESULT_TYPES.VENDOR,
+        id: String(v.identifier),
+        idInDomain: parsed.idInDomain,
+        label: parsed.name,
+      });
+    }
+
+    for (const cat of PO_CATEGORIES) {
+      const nodes = (r.poByCategory || {})[cat.key] || [];
+      for (const n of nodes) {
+        if (!n) continue;
+        out.push({
+          type: RESULT_TYPES.PO,
+          id: n.id == null ? null : String(n.id),
+          idInDomain: n.idInDomain == null ? null : String(n.idInDomain),
+          label: 'OC ' + (n.idInDomain == null ? '?' : n.idInDomain),
+          vendorName: (n.vendorByVendorId && n.vendorByVendorId.name) || null,
+          categoryKey: cat.key,
+          categoryLabel: cat.label,
+          stage: (n.currentStage && n.currentStage.name) || null,
+        });
+      }
+    }
+
+    // Las facturas que coinciden por OC van PRIMERO: son las que el operador buscaba cuando
+    // teclea un número de orden. El resto conserva el orden del server.
+    const bills = (r.bills || []).filter(Boolean).map((b) => {
+      const pos = extractBillPOs(b);
+      return {
+        type: RESULT_TYPES.BILL,
+        id: b.id == null ? null : String(b.id),
+        idInDomain: b.idInDomain == null ? null : String(b.idInDomain),
+        label: 'Factura ' + (b.idInDomain == null ? '?' : b.idInDomain),
+        vendorName: (b.vendorByVendorId && b.vendorByVendorId.name) || null,
+        invoiceNumber: b.invoiceNumber == null ? null : String(b.invoiceNumber),
+        poNames: pos,
+        poIdInDomain: pos.length === 1 ? pos[0] : null,
+        matchReason: billMatchReason(b, r.term),
+      };
+    });
+    const porOC = bills.filter((b) => b.matchReason === BILL_MATCH.PO);
+    const resto = bills.filter((b) => b.matchReason !== BILL_MATCH.PO);
+    out.push(...porOC, ...resto);
+
+    return out;
+  }
+
+  // Dedup de OCs que aparecen en varias vistas por el fan-out (no debería pasar — las 5 vistas
+  // son disjuntas — pero el fan-out por vendorIdFilter + searchQuery sí puede repetir dentro
+  // de la misma vista).
+  function dedupeResults(results) {
+    const seen = new Set();
+    const out = [];
+    for (const r of (results || [])) {
+      const k = r.type + ':' + (r.id || r.idInDomain || r.label);
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push(r);
+    }
+    return out;
+  }
+
+  // Salto al LISTADO filtrado.
+  //  · OC   → su vista exacta (una OC vive en UNA sola de las 5), filtrada por su PO#.
+  //  · PROV → listado por `vendorIdFilter`. `sectionKey` decide la sección; por defecto
+  //           'issued-all' (la más poblada) para que el <a href> sirva aunque los conteos
+  //           no se hayan podido consultar — el glue lo afina al clicar.
+  //  · FACT → listado de facturas filtrado.
+  function buildResultHref(result, domainId, sectionKey, baseUrl) {
+    if (!result || !domainId) return null;
+    if (result.type === RESULT_TYPES.PO) {
+      const base = baseUrl || ('/Domains/' + domainId + '/Purchasing/PurchaseOrders');
+      return buildCategoryUrl(base, result.categoryKey, { searchQuery: result.idInDomain });
+    }
+    if (result.type === RESULT_TYPES.BILL) {
+      return '/Domains/' + domainId + '/Bills?searchQuery=' + encodeURIComponent(result.idInDomain || '');
+    }
+    if (result.type === RESULT_TYPES.VENDOR) {
+      const base = baseUrl || ('/Domains/' + domainId + '/Purchasing/PurchaseOrders');
+      return buildCategoryUrl(base, sectionKey || 'issued-all', { vendorIdFilter: result.id });
+    }
+    return null;
+  }
+
+  // Salto a la FICHA del documento (la flechita ↗, que abre en pestaña aparte).
+  // Las tres rutas usan `idInDomain`, NO el id de BD — verificado en vivo:
+  //   · OC     /Domains/<d>/Purchasing/PurchaseOrders/1897  (1897 = el PO# visible)
+  //   · PROV   /Domains/<d>/Vendors/6                       (6 = el "#6" del display;
+  //                                                          /Vendors/6 abre ATOTECH DE MEXICO)
+  //   · FACT   /Domains/<d>/Bills/<idInDomain>
+  // Sin `idInDomain` no se inventa link: mejor sin flechita que una flechita que abre otro
+  // documento.
+  function buildDetailHref(result, domainId) {
+    if (!result || !domainId || !result.idInDomain) return null;
+    const id = encodeURIComponent(result.idInDomain);
+    if (result.type === RESULT_TYPES.PO) return '/Domains/' + domainId + '/Purchasing/PurchaseOrders/' + id;
+    if (result.type === RESULT_TYPES.VENDOR) return '/Domains/' + domainId + '/Vendors/' + id;
+    if (result.type === RESULT_TYPES.BILL) return '/Domains/' + domainId + '/Bills/' + id;
+    return null;
+  }
+
+  // Agrupa la lista plana para el render por secciones.
+  function groupResultsForRender(results) {
+    const list = dedupeResults(results);
+    return {
+      vendors: list.filter((r) => r.type === RESULT_TYPES.VENDOR),
+      pos: list.filter((r) => r.type === RESULT_TYPES.PO),
+      bills: list.filter((r) => r.type === RESULT_TYPES.BILL),
+      total: list.length,
+    };
+  }
+
+  // ── Presupuesto de consultas por búsqueda ──
+  //
+  // El /graphql de SH se cae alrededor de las 40 requests y NO se recupera recargando:
+  // tumba la pantalla nativa completa, no solo al applet (visto en vivo 2026-07-27).
+  // Por eso el fan-out está ACOTADO y es un invariante testeado, no una casualidad.
+  //
+  // Diseño: 5 vistas (searchQuery) + 1 de facturas + 1 de proveedores = 7 por búsqueda.
+  // NO se hace un segundo fan-out de 5 vistas por `vendorIdFilter` — eso llevaría a 12 y
+  // con 3-4 búsquedas seguidas el operador tumba su propia pantalla. El proveedor se
+  // entrega como resultado CLICKEABLE que lleva a sus OCs (buildResultHref), así que el
+  // valor se conserva: encuentras al proveedor que el buscador nativo esconde y de un
+  // clic ves sus órdenes, pagando 1 consulta en vez de 5.
+  const MAX_QUERIES_PER_SEARCH = 7;
+
+  // Plan declarativo de lo que se va a consultar. Devuelve descriptores, no promesas, para
+  // que el conteo sea verificable sin red.
+  //
+  // `currentCategoryKey` (la vista abierta) se consulta PRIMERO entre las 5: es donde el
+  // operador tiene más probabilidad de encontrar lo que busca, y con render incremental eso
+  // se traduce en que el resultado útil aparece antes aunque el total tarde lo mismo.
+  function planSearchQueries(term, currentCategoryKey) {
+    const t = String(term == null ? '' : term).trim();
+    if (!t) return [];
+    const plan = [{ kind: 'vendors', key: FILTER_KEY_VENDOR, term: t }];
+    const cats = PO_CATEGORIES.slice();
+    const i = cats.findIndex((c) => c.key === currentCategoryKey);
+    if (i > 0) cats.unshift(cats.splice(i, 1)[0]); // la vista actual al frente
+    for (const cat of cats) plan.push({ kind: 'pos', categoryKey: cat.key, term: t });
+    plan.push({ kind: 'bills', term: t });
+    return plan;
+  }
+
+  // ── Ids: string en la URL, ENTERO en GraphQL ──
+  //
+  // `FilterSearch` devuelve `identifier` como STRING ("89855"), y en la URL los filtros
+  // viajan como texto — ambas cosas están bien. Pero el schema declara estos filtros como
+  // listas de Int y GraphQL NO coacciona: mandar ["89855"] revienta con
+  //   Variable "$vendorIdFilter" got invalid value …
+  // y la consulta falla ENTERA (HTTP 400). Pasó en el deploy 1.7.208: los 3 conteos que
+  // resuelven a qué sección mandar al proveedor fallaban todos, así que siempre caía al
+  // fallback (Issued All) — mandando al operador a una vista vacía aunque el proveedor
+  // tuviera 35 OC en Fulfilled.
+  //
+  // Descarta lo que no sea numérico en vez de mandar NaN, que rompería igual.
+  function toIdList(ids) {
+    return (Array.isArray(ids) ? ids : [])
+      .map((x) => (typeof x === 'number' ? x : parseInt(String(x), 10)))
+      .filter((n) => Number.isInteger(n));
+  }
+
+  // ── Navegación por teclado del panel ──
+  // Índice activo con wrap-around. -1 = nada seleccionado (estado inicial: el primer ↓
+  // debe caer en el 0, y el primer ↑ en el último).
+  function moveActiveIndex(current, total, delta) {
+    const n = Math.max(0, Number(total) || 0);
+    if (!n) return -1;
+    const cur = Number.isInteger(current) ? current : -1;
+    if (cur < 0) return delta > 0 ? 0 : n - 1;
+    return ((cur + delta) % n + n) % n;
+  }
+
+  // ── Selección de anclajes (reglas puras; el glue les pasa el DOM ya medido) ──
+  //
+  // El DOM de Steelhead DUPLICA controles en variantes responsive: el botón "New Purchase
+  // Order" existe dos veces (css-eabxx0 = solo ícono, OCULTA en escritorio; css-165nl96 =
+  // botón completo, visible). Tomar el PRIMER match del querySelector ancla en la oculta y
+  // el widget se inyecta con ancho 0, invisible — pasó en el deploy 1.7.203.
+  //
+  // cands: [{visible:boolean, width:number, ref:any}] → el primero realmente visible.
+  function pickVisibleCandidate(cands) {
+    const arr = Array.isArray(cands) ? cands : [];
+    const hit = arr.find((c) => c && c.visible && (c.width == null || c.width > 0));
+    return hit ? hit.ref : null;
+  }
+
+  const api = {
+    PO_URL_RE, PO_CATEGORIES, PO_NAV_SECTIONS, MODES, RESULT_TYPES,
+    MAX_QUERIES_PER_SEARCH, planSearchQueries, moveActiveIndex, toIdList,
+    pickVisibleCandidate,
+    resolveFirstSectionWithResults, buildDetailHref,
+    planProquipaFilter, isProquipaFilterActive,
+    URL_PARAM_BILL_TO, FILTER_KEY_BILL_TO, FILTER_KEY_VENDOR, FILTER_SEARCH_LIMIT,
+    DEFAULT_COMPANY_CONFIG,
+    isPurchaseOrdersUrl, domainIdFromPath,
+    categoryByKey, parseCategoryFromUrl, buildCategoryUrl,
+    rootLocationName, companyOfLocation, groupLocationsByCompany,
+    buildCompanyFilterUrl, parseBillToFilter,
+    parseVendorDisplay, classifyResults, dedupeResults, buildResultHref, groupResultsForRender,
+    BILL_MATCH, extractBillPOs, billMatchReason,
+  };
+  if (typeof window !== 'undefined') window.POListingFiltersCore = api;
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+})();
+})();
+// ===== END scripts/po-listing-filters-core.js =====
+
+// ===== BEGIN scripts/po-listing-filters.js =====
+(function(){
+// Buscador global de OC + Toggle de empresa — glue (DOM + red).
+// Consume po-listing-filters-core.js. Pantalla: /Domains/<d>/Purchasing/PurchaseOrders
+//
+// Widget A — buscador global: va en el HEADER, junto al toggle, tras "New Purchase Order".
+//   Busca a la vez en las 5 vistas + proveedores + facturas, y etiqueta cada hallazgo
+//   (OC / PROVEEDOR / FACTURA) diciendo en qué vista vive. Resuelve que el `searchQuery`
+//   nativo NO busca por proveedor ('ATOTECH' → 0 resultados) y que obliga a adivinar la vista.
+//   Cada renglón tiene además una flechita ↗ que abre la FICHA en pestaña aparte.
+//   Al clicar un PROVEEDOR salta a la primera sección con resultados (Draft → Issued All →
+//   Fulfilled All), siempre a la variante "All". Una OC concreta va a SU vista exacta.
+//
+// Widget B — toggle "Sólo Proquipa": mismo contenedor (#sa-pof-bar), a la izquierda del
+//   buscador. Los dos JUNTOS y en dark-mode para que no se confundan con la UI nativa.
+//   Binario, no triple: el lado Ecoplating NO es expresable porque sus OC llevan la
+//   dirección del dominio y el filtro nativo no la acepta (bug de SH, ticket abierto por el
+//   operador 2026-07-27). Aplica `billToLocationIdFilter` (array, semántica OR) por URL.
+//
+// FRUGALIDAD OBLIGATORIA: el /graphql de SH deja de responder tras ~40-45 requests seguidas
+// (las peticiones quedan colgadas, sin 429 ni error, y no se recuperan al recargar) y eso
+// tumba también la pantalla NATIVA. De ahí el fan-out acotado a 7, el debounce y el timeout.
+// El pool es de 4 porque el límite castiga el VOLUMEN acumulado, no la concurrencia puntual.
+//
+// Estado singleton en window.__saPOF (no en el closure): injectAppScripts re-evalúa el IIFE
+// en cada acción del popup (lección surtido-guard/price-confirm-guard).
+(function () {
+  'use strict';
+
+  const Core = window.POListingFiltersCore;
+  if (!Core) { console.warn('[po-listing-filters] core ausente'); return; }
+  function api() { return window.SteelheadAPI; }
+
+  const BAR_ID = 'sa-pof-bar';   // contenedor común de ambos widgets, en el header
+  const SEARCH_ID = 'sa-pof-search';
+  const TOGGLE_ID = 'sa-pof-toggle';
+  const PANEL_ID = 'sa-pof-panel';
+  const STYLE_ID = 'sa-pof-style';
+  const DEBOUNCE_MS = 220;  // el fan-out está acotado a 7, así que no hace falta esperar tanto
+  const PER_CATEGORY = 5;   // `first` por vista: el panel es un atajo, no un reporte
+  // Concurrencia: el rate-limit de SH castiga el VOLUMEN acumulado (~40 requests), no la
+  // concurrencia puntual. Con un fan-out fijo de 7, un pool de 4 lo resuelve en 2 rondas en
+  // vez de 4 — la mitad del tiempo, mismo volumen total. No subir de aquí: 7/4 ya deja el
+  // pool ocioso en la segunda ronda.
+  const POOL = 4;
+  const TIMEOUT_MS = 9000;  // si una vista no respondió en 9s, mejor mostrar el resto
+
+  const S = (window.__saPOF = window.__saPOF || {
+    seq: 0, locations: null, groups: null, discovering: false, lastResults: null,
+    active: -1,   // índice del resultado activo por teclado (-1 = ninguno)
+    cache: null,  // { term, raw } de la última búsqueda completada (evita re-consultar)
+  });
+
+  // ── estilos ──
+  // TODO va en dark-mode (regla del repo), incluidos los controles del header: el operador
+  // confundía el buscador con el universal de SH cuando heredaba el look nativo. Fondo
+  // #141a23, texto #e6e9ee, acento #13a36f — se lee de un vistazo como UI de la extensión.
+  function injectStyles() {
+    const prev = document.getElementById(STYLE_ID);
+    if (prev) prev.remove();
+    const st = document.createElement('style');
+    st.id = STYLE_ID;
+    st.textContent = `
+      #${BAR_ID}{display:inline-flex;align-items:center;gap:6px;margin:0 8px;flex:0 0 auto;white-space:nowrap;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;vertical-align:middle;}
+      #${SEARCH_ID}{display:inline-flex;align-items:center;gap:6px;}
+      #${SEARCH_ID} .sa-pof-inp{background:#141a23;color:#e6e9ee;border:1px solid #3a4757;border-radius:6px;padding:5px 9px;font-size:12px;width:168px;outline:none;font-family:inherit;}
+      #${SEARCH_ID} .sa-pof-inp:focus{border-color:#13a36f;box-shadow:0 0 0 2px rgba(19,163,111,.25);}
+      #${SEARCH_ID} .sa-pof-inp::placeholder{color:#7f8b99;}
+      #${TOGGLE_ID}{display:inline-flex;align-items:center;gap:0;font-family:inherit;font-size:11px;border:1px solid #3a4757;border-radius:14px;overflow:hidden;background:#141a23;}
+      #${TOGGLE_ID} button{background:transparent;color:#cfd6de;border:0;padding:4px 9px;font-size:11px;cursor:pointer;line-height:1.6;font-family:inherit;}
+      #${TOGGLE_ID} button[aria-pressed="true"]{background:#13a36f;color:#fff;font-weight:600;}
+      #${TOGGLE_ID} button[disabled]{opacity:.45;cursor:not-allowed;}
+      #${PANEL_ID}{position:fixed;min-width:340px;max-width:520px;background:#1c2430;color:#e6e9ee;border:1px solid #33404f;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.45);z-index:2147483600;padding:10px;font-size:12px;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}
+      #${PANEL_ID} .sa-pof-sec{color:#7f8b99;font-size:10px;letter-spacing:.06em;text-transform:uppercase;margin:8px 0 4px;}
+      #${PANEL_ID} .sa-pof-sec:first-child{margin-top:0;}
+      #${PANEL_ID} ul{list-style:none;margin:0;padding:0;max-height:150px;overflow-y:auto;}
+      #${PANEL_ID} li{border-radius:4px;overflow:hidden;display:flex;align-items:center;gap:2px;}
+      #${PANEL_ID} .sa-pof-arrow{flex:0 0 auto;color:#7f8b99;text-decoration:none;padding:4px 6px;border-radius:4px;font-size:13px;line-height:1;}
+      #${PANEL_ID} .sa-pof-arrow:hover{color:#13a36f;background:#26313f;}
+      #${PANEL_ID} .sa-pof-arrow:focus-visible{outline:2px solid #13a36f;}
+      #${PANEL_ID} .sa-pof-link{flex:1 1 auto;min-width:0;padding:4px 5px;border-radius:4px;color:#cfd6de;cursor:pointer;display:flex;align-items:center;gap:7px;white-space:nowrap;overflow:hidden;text-decoration:none;}
+      #${PANEL_ID} .sa-pof-link:hover,#${PANEL_ID} .sa-pof-link.sa-pof-active{background:#26313f;color:#f0f3f7;}
+      #${PANEL_ID} .sa-pof-link.sa-pof-active{outline:1px solid #13a36f;outline-offset:-1px;}
+      #${PANEL_ID} .sa-pof-link:focus-visible{outline:2px solid #13a36f;}
+      #${PANEL_ID} .sa-pof-badge{flex:0 0 auto;font-size:9px;padding:1px 5px;border-radius:8px;font-weight:600;letter-spacing:.03em;}
+      #${PANEL_ID} .sa-pof-b-po{background:#1d4b6e;color:#8ecbff;}
+      #${PANEL_ID} .sa-pof-b-vendor{background:#134d3a;color:#6fe0b0;}
+      #${PANEL_ID} .sa-pof-b-bill{background:#5a3a1c;color:#f0b878;}
+      #${PANEL_ID} .sa-pof-main{flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;}
+      #${PANEL_ID} .sa-pof-meta{flex:0 0 auto;color:#7f8b99;font-size:10px;}
+      #${PANEL_ID} .sa-pof-why{flex:0 0 auto;color:#7f8b99;font-size:9px;font-style:italic;white-space:nowrap;}
+      #${PANEL_ID} .sa-pof-why-po{color:#6fe0b0;font-style:normal;font-weight:600;}
+      #${PANEL_ID} .sa-pof-head{color:#f0f3f7;font-weight:600;margin-bottom:6px;}
+      #${PANEL_ID} .sa-pof-note{color:#9aa7b5;font-size:11px;margin-top:8px;border-top:1px solid #263140;padding-top:6px;}
+      #${PANEL_ID} .sa-pof-warn{background:#3a2a1c;border:1px solid #6b4a2e;color:#f0a35e;border-radius:6px;padding:5px 7px;margin-top:8px;font-size:11px;white-space:normal;}
+    `;
+    document.head.appendChild(st);
+  }
+
+  // ── red ──
+  function withTimeout(promise, ms) {
+    return new Promise((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('timeout')), ms);
+      promise.then((v) => { clearTimeout(t); resolve(v); }, (e) => { clearTimeout(t); reject(e); });
+    });
+  }
+
+  // Pool con concurrencia acotada. Un fallo NO tumba a los demás (resultado null).
+  // `onEach` se invoca en cuanto CADA tarea termina → permite render incremental de verdad:
+  // el panel se repinta con lo que ya llegó en vez de esperar a la última consulta.
+  async function runPool(tasks, limit, onEach) {
+    const out = new Array(tasks.length).fill(null);
+    let i = 0;
+    async function worker() {
+      while (i < tasks.length) {
+        const idx = i++;
+        try { out[idx] = await tasks[idx](); }
+        catch (e) { out[idx] = null; if (e && e.persistedQueryRotated) S.rotated = e.rotatedOp; }
+        if (onEach) { try { onEach(out[idx], idx); } catch (_) { /* el render no debe romper el pool */ } }
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
+    return out;
+  }
+
+  function filterSearch(key, searchQuery) {
+    return withTimeout(
+      api().query('FilterSearch', { key, searchQuery: searchQuery || '' }, 'FilterSearch'),
+      TIMEOUT_MS
+    ).then((d) => (d && d.tableFilterSearch) || []);
+  }
+
+  // Los filtros de id van como ENTERO por GraphQL (el schema los declara [Int] y no
+  // coacciona; FilterSearch los entrega como string). Ver toIdList en el core.
+  function coerceIdFilters(extraVars) {
+    const v = Object.assign({}, extraVars || {});
+    for (const k of ['vendorIdFilter', 'billToLocationIdFilter', 'purchaseOrderStatusIdFilter']) {
+      if (v[k] != null) v[k] = Core.toIdList(v[k]);
+    }
+    return v;
+  }
+
+  function queryPOs(categoryKey, extraVars) {
+    const cat = Core.categoryByKey(categoryKey);
+    if (!cat) return Promise.resolve([]);
+    const vars = Object.assign({
+      includeArchived: 'NO',
+      filterDraftStageById: null,
+      purchaseOrderStatusIdFilter: null,
+      orderBy: ['ID_IN_DOMAIN_DESC'],
+      offset: 0,
+      first: PER_CATEGORY,
+      searchQuery: '',
+    }, cat.queryVars, coerceIdFilters(extraVars));
+    return withTimeout(api().query('PurchaseOrders', vars, 'PurchaseOrders'), TIMEOUT_MS)
+      .then((d) => (d && d.pagedData && d.pagedData.nodes) || []);
+  }
+
+  function queryBills(searchQuery) {
+    return withTimeout(api().query('SearchBills', {
+      includeArchived: 'NO', orderBy: ['ID_DESC'], offset: 0, first: PER_CATEGORY,
+      searchQuery: searchQuery || '',
+    }, 'SearchBills'), TIMEOUT_MS).then((d) => {
+      // El shape exacto de SearchBills no se pudo confirmar en la captura (rate-limit);
+      // se localiza el nodo paginado de forma defensiva en vez de asumir la ruta.
+      if (!d) return [];
+      for (const v of Object.values(d)) {
+        if (v && typeof v === 'object' && Array.isArray(v.nodes)) return v.nodes;
+      }
+      return [];
+    });
+  }
+
+  // ── descubrimiento de direcciones (una vez por carga) ──
+  // FilterSearch topa en 10 resultados y no pagina → varias sondas y unión de resultados.
+  // Si el tope se alcanza en TODAS las sondas, quedan direcciones sin descubrir: eso lo
+  // refleja `capped` y el toggle lo advierte en vez de filtrar creyendo que lo sabe todo.
+  const PROBES = ['', 'a', 'e', 'i', 'o', 'n', 'Eco', 'Pro', 'Planta', '.'];
+
+  async function discoverLocations() {
+    if (S.groups || S.discovering) return S.groups;
+    S.discovering = true;
+    try {
+      const tasks = PROBES.map((p) => () => filterSearch(Core.FILTER_KEY_BILL_TO, p));
+      const results = await runPool(tasks, POOL);
+      const ok = results.filter(Boolean);
+      if (!ok.length) return null;
+      const merged = ok.flat();
+      S.capped = ok.every((a) => a.length >= Core.FILTER_SEARCH_LIMIT);
+      S.locations = merged;
+      S.groups = Core.groupLocationsByCompany(merged);
+      return S.groups;
+    } finally {
+      S.discovering = false;
+    }
+  }
+
+  // Conteo puro de una vista/sección (solo interesa totalCount, por eso first:1).
+  // Lo usa la resolución de sección al clicar un proveedor.
+  function queryPOsCount(categoryKey, extraVars) {
+    const cat = Core.categoryByKey(categoryKey);
+    if (!cat) return Promise.resolve(null);
+    const vars = Object.assign({
+      includeArchived: 'NO', filterDraftStageById: null, purchaseOrderStatusIdFilter: null,
+      orderBy: ['ID_IN_DOMAIN_DESC'], offset: 0, first: 1, searchQuery: '',
+    }, cat.queryVars, coerceIdFilters(extraVars));
+    return withTimeout(api().query('PurchaseOrders', vars, 'PurchaseOrders'), TIMEOUT_MS)
+      .then((d) => (d && d.pagedData && d.pagedData.totalCount != null ? d.pagedData.totalCount : null))
+      .catch(() => null);
+  }
+
+  // ── búsqueda global ──
+  async function runSearch(term) {
+    const seq = ++S.seq;
+
+    // Caché de un slot: volver al mismo término (borrar y reescribir, o re-enfocar) no
+    // vuelve a consultar. Barato y quita la espera en el caso más común.
+    if (S.cache && S.cache.term === term) {
+      S.lastResults = S.cache.raw;
+      renderPanel(term, S.cache.raw, false);
+      return;
+    }
+
+    const raw = { term, vendors: [], poByCategory: {}, bills: [] };
+
+    // El plan viene del core y está ACOTADO a MAX_QUERIES_PER_SEARCH (ver allá el porqué:
+    // el endpoint se cae ~40 requests y tumba la pantalla nativa completa). El proveedor
+    // NO dispara un segundo fan-out de 5 vistas: se entrega clickeable y lleva a sus OCs.
+    // La vista ACTUAL va primero, así el resultado más probable aparece antes.
+    const plan = Core.planSearchQueries(term, Core.parseCategoryFromUrl(location.href));
+
+    renderPanel(term, raw, true); // "Buscando…" inmediato, sin esperar la primera respuesta
+
+    // TODAS las consultas van al mismo pool (antes los proveedores se esperaban en serie
+    // ANTES de arrancar las demás, y eso costaba un round-trip completo de latencia).
+    const tasks = plan.map((p) => {
+      if (p.kind === 'vendors') return () => filterSearch(p.key, p.term).then((v) => ['__vendors__', v]);
+      if (p.kind === 'bills') return () => queryBills(p.term).then((n) => ['__bills__', n]);
+      return () => queryPOs(p.categoryKey, { searchQuery: p.term }).then((n) => [p.categoryKey, n]);
+    });
+
+    // Render incremental REAL: cada consulta que vuelve repinta el panel.
+    const absorb = (r) => {
+      if (!r) return;
+      const [key, nodes] = r;
+      if (key === '__vendors__') raw.vendors = nodes;
+      else if (key === '__bills__') raw.bills = nodes;
+      else raw.poByCategory[key] = (raw.poByCategory[key] || []).concat(nodes);
+    };
+
+    await runPool(tasks, POOL, (r) => {
+      if (seq !== S.seq) return; // llegó una búsqueda más nueva: no pintes lo viejo
+      absorb(r);
+      renderPanel(term, raw, true);
+    });
+
+    if (seq !== S.seq) return;
+    S.lastResults = raw;
+    S.cache = { term, raw };
+    renderPanel(term, raw, false);
+  }
+
+  // ── panel ──
+  function positionPanel(anchor, p) {
+    const r = anchor.getBoundingClientRect();
+    p.style.top = (r.bottom + 4) + 'px';
+    p.style.left = r.left + 'px';
+  }
+  function ensurePanel(anchor) {
+    let p = document.getElementById(PANEL_ID);
+    if (!p) {
+      p = document.createElement('div');
+      p.id = PANEL_ID;
+      // Un mousedown DENTRO del panel no debe quitarle el foco al input: si lo quita, el
+      // blur programa hidePanel y el panel puede desaparecer antes de que el clic complete.
+      // Con esto el <a> recibe su clic con el panel todavía montado.
+      p.addEventListener('mousedown', (e) => e.preventDefault());
+      document.body.appendChild(p);
+    }
+    positionPanel(anchor, p);
+    return p;
+  }
+  function hidePanel() {
+    const p = document.getElementById(PANEL_ID);
+    if (p) p.remove();
+    S.active = -1;
+  }
+
+  function currentLinks() {
+    const p = document.getElementById(PANEL_ID);
+    return p ? Array.from(p.querySelectorAll('a.sa-pof-link')) : [];
+  }
+
+  function highlightActive(links) {
+    const list = links || currentLinks();
+    list.forEach((a, i) => {
+      const on = i === S.active;
+      a.classList.toggle('sa-pof-active', on);
+      if (on && a.scrollIntoView) a.scrollIntoView({ block: 'nearest' });
+    });
+  }
+
+  // Cada renglón es un <a href> REAL, no un <li> con listener de mousedown.
+  //
+  // El patrón mousedown+preventDefault era frágil: dependía de que el panel siguiera vivo
+  // entre mousedown y la navegación (el render incremental RECREA los renglones cuando
+  // llegan las OCs), competía con el hidePanel del blur, no funcionaba con teclado y no
+  // dejaba abrir en pestaña nueva. Un <a href> lo maneja el navegador: sobrevive al
+  // re-render, soporta ⌘/ctrl+clic y clic medio, y es accesible.
+  function mkRow(result, domainId) {
+    const li = document.createElement('li');
+    const href = Core.buildResultHref(result, domainId);
+    const row = document.createElement(href ? 'a' : 'span');
+    if (href) { row.href = href; row.className = 'sa-pof-link'; }
+    // Al clicar un PROVEEDOR se resuelve a qué sección mandarlo (la primera con
+    // resultados). El href ya apunta a 'issued-all', así que si la resolución falla o
+    // tarda, el enlace sigue sirviendo — por eso se intercepta en vez de generar el href
+    // de forma asíncrona.
+    if (href && result.type === Core.RESULT_TYPES.VENDOR) {
+      row.addEventListener('click', (e) => {
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return; // respeta pestaña nueva
+        e.preventDefault();
+        goToVendorBestSection(result, domainId, href);
+      });
+    }
+    const badge = document.createElement('span');
+    badge.className = 'sa-pof-badge ' + (
+      result.type === Core.RESULT_TYPES.PO ? 'sa-pof-b-po'
+        : result.type === Core.RESULT_TYPES.VENDOR ? 'sa-pof-b-vendor' : 'sa-pof-b-bill');
+    badge.textContent = result.type === Core.RESULT_TYPES.PO ? 'OC'
+      : result.type === Core.RESULT_TYPES.VENDOR ? 'PROV' : 'FACT';
+    row.appendChild(badge);
+
+    const main = document.createElement('span');
+    main.className = 'sa-pof-main';
+    // textContent SIEMPRE: los nombres de proveedor vienen de la API (vector cross-user).
+    let txt = result.label;
+    if (result.vendorName) txt += ' · ' + result.vendorName;
+    // La OC de la factura: sin esto, `SearchBills` devuelve coincidencias de folio o de
+    // Bill # que parecen no tener nada que ver con lo buscado (reporte del operador).
+    if (result.type === Core.RESULT_TYPES.BILL && result.poNames && result.poNames.length) {
+      txt += ' · OC ' + result.poNames.join('/');
+    }
+    main.textContent = txt;
+    main.title = txt;
+    row.appendChild(main);
+
+    // Motivo del match: convierte "¿por qué sale esto?" en información.
+    if (result.type === Core.RESULT_TYPES.BILL && result.matchReason) {
+      const why = document.createElement('span');
+      const R = Core.BILL_MATCH;
+      if (result.matchReason === R.PO) { why.className = 'sa-pof-why sa-pof-why-po'; why.textContent = 'de esta OC'; }
+      else if (result.matchReason === R.INVOICE) { why.className = 'sa-pof-why'; why.textContent = 'folio ' + (result.invoiceNumber || ''); }
+      else if (result.matchReason === R.BILL_ID) { why.className = 'sa-pof-why'; why.textContent = 'n.º de factura'; }
+      if (why.textContent) { why.title = 'Por qué apareció en la búsqueda'; row.appendChild(why); }
+    }
+
+    const meta = document.createElement('span');
+    meta.className = 'sa-pof-meta';
+    meta.textContent = result.categoryLabel || (result.idInDomain ? '#' + result.idInDomain : '');
+    row.appendChild(meta);
+
+    li.appendChild(row);
+
+    // Flechita ↗ — abre la FICHA del documento en pestaña aparte, sin perder la búsqueda.
+    // Sin idInDomain no se pinta: mejor sin flechita que una que abra otro documento.
+    const detail = Core.buildDetailHref(result, domainId);
+    if (detail) {
+      const arrow = document.createElement('a');
+      arrow.className = 'sa-pof-arrow';
+      arrow.href = detail;
+      arrow.target = '_blank';
+      arrow.rel = 'noopener noreferrer';
+      arrow.textContent = '↗';
+      const que = result.type === Core.RESULT_TYPES.PO ? 'la orden de compra'
+        : result.type === Core.RESULT_TYPES.VENDOR ? 'el proveedor' : 'la factura';
+      arrow.title = `Abrir ${que} en una pestaña nueva`;
+      arrow.setAttribute('aria-label', arrow.title);
+      li.appendChild(arrow);
+    }
+    return li;
+  }
+
+  // Manda al proveedor a la PRIMERA sección con resultados (Draft → Issued All →
+  // Fulfilled All), siempre a la variante "All" — nunca a Open ni a Closed.
+  // Son 3 consultas de conteo, y solo las paga quien hace clic.
+  async function goToVendorBestSection(result, domainId, fallbackHref) {
+    const counts = {};
+    try {
+      const tasks = Core.PO_NAV_SECTIONS.map((s) => () =>
+        queryPOsCount(s.key, { vendorIdFilter: [result.id] }).then((n) => [s.key, n]));
+      const res = await runPool(tasks, POOL);
+      for (const r of res) if (r) counts[r[0]] = r[1];
+    } catch (_) { /* se cae al fallback */ }
+    const section = Core.resolveFirstSectionWithResults(counts);
+    const href = section
+      ? Core.buildResultHref(result, domainId, section)
+      : fallbackHref; // ninguna sección respondió o todas vacías → el href por defecto
+    window.location.assign(href);
+  }
+
+  function renderPanel(term, raw, partial) {
+    const box = document.getElementById(SEARCH_ID);
+    if (!box) return;
+    const p = ensurePanel(box);
+    p.textContent = '';
+    const domainId = Core.domainIdFromPath(location.pathname);
+
+    const head = document.createElement('div');
+    head.className = 'sa-pof-head';
+    const g = Core.groupResultsForRender(Core.classifyResults(raw));
+    // En parcial se muestra lo que YA llegó, no solo "Buscando…": con render incremental el
+    // operador ve crecer el contador y puede clicar el primer resultado sin esperar el resto.
+    head.textContent = partial
+      ? (g.total ? `Buscando… ${g.total} hasta ahora` : `Buscando «${term}»…`)
+      : `${g.total} resultado${g.total === 1 ? '' : 's'} para «${term}»`;
+    p.appendChild(head);
+
+    if (S.rotated) {
+      const w = document.createElement('div');
+      w.className = 'sa-pof-warn';
+      w.textContent = `⚠️ No se pudo consultar «${S.rotated}» (hash rotado). Los resultados están incompletos.`;
+      p.appendChild(w);
+    }
+
+    const secs = [
+      ['Proveedor', g.vendors],
+      ['Órdenes de compra', g.pos],
+      ['Facturas', g.bills],
+    ];
+    let any = false;
+    for (const [title, items] of secs) {
+      if (!items.length) continue;
+      any = true;
+      const h = document.createElement('div');
+      h.className = 'sa-pof-sec';
+      h.textContent = title;
+      p.appendChild(h);
+      const ul = document.createElement('ul');
+      items.forEach((r) => ul.appendChild(mkRow(r, domainId)));
+      p.appendChild(ul);
+    }
+
+    if (!any && !partial) {
+      const n = document.createElement('div');
+      n.className = 'sa-pof-note';
+      n.textContent = 'Sin coincidencias en las 5 vistas, proveedores ni facturas.';
+      p.appendChild(n);
+    } else if (!partial) {
+      const n = document.createElement('div');
+      n.className = 'sa-pof-note';
+      n.textContent = 'Busca en las 5 vistas a la vez · ↑↓ y Enter, o clic';
+      p.appendChild(n);
+    }
+
+    // El render incremental RECREA los renglones; hay que reponer el resaltado sobre los
+    // nuevos nodos y recortar el índice si ahora hay menos resultados que antes.
+    const links = currentLinks();
+    if (S.active >= links.length) S.active = links.length ? links.length - 1 : -1;
+    if (S.active >= 0) highlightActive(links);
+  }
+
+  // ── anclajes DOM (bilingües ES+EN donde dependen de texto) ──
+  const NEW_PO_LABEL_RE = /new purchase order|nueva orden de compra/i;
+
+  // El botón "New Purchase Order" está DUPLICADO en dos variantes responsive: css-eabxx0
+  // (solo ícono, oculta en escritorio) y css-165nl96 (botón completo, visible). Hay que
+  // quedarse con la VISIBLE — anclar en la oculta mete el toggle en un contenedor de
+  // ancho 0 (bug del deploy 1.7.203: el toggle se inyectaba pero no se veía).
+  function findNewPoButton() {
+    const cands = [];
+    for (const b of document.querySelectorAll('button, [aria-label]')) {
+      const label = (b.getAttribute('aria-label') || '') + ' ' + (b.textContent || '');
+      if (!NEW_PO_LABEL_RE.test(label)) continue;
+      // El aria-label vive en un <span> que envuelve al botón; se sube al contenedor
+      // que sí está en el flujo del header.
+      const ref = b.closest('span[aria-label]') || b;
+      const r = ref.getBoundingClientRect();
+      cands.push({ visible: ref.offsetParent !== null, width: r.width, ref });
+    }
+    return Core.pickVisibleCandidate(cands);
+  }
+
+  // ── contenedor común de los dos widgets ──
+  // Ambos viven JUNTOS en el header, después de "New Purchase Order". El buscador estaba
+  // antes en la barra de filtros de la tabla, pegado al buscador nativo, y el operador lo
+  // confundía con el universal: dos cajas de búsqueda contiguas y casi idénticas. Aquí,
+  // agrupado con el toggle y en dark-mode, se lee de un vistazo como UI de la extensión.
+  // El botón vive envuelto en varios spans (`css-165nl96` es su wrapper responsive, de ancho
+  // fijo). Insertar ahí dentro mete la barra DENTRO del botón y se dibuja encima del header
+  // — bug del deploy 1.7.210. Hay que subir hasta el hijo DIRECTO del MuiPaper del header y
+  // ponerse como su hermano.
+  function headerRowChild(node) {
+    let el = node;
+    for (let i = 0; i < 6 && el && el.parentElement; i++) {
+      if (el.parentElement.classList && el.parentElement.classList.contains('MuiPaper-root')) return el;
+      el = el.parentElement;
+    }
+    return null;
+  }
+
+  function getBar() {
+    let bar = document.getElementById(BAR_ID);
+    if (bar) return bar;
+    const anchor = findNewPoButton();
+    if (!anchor) return null;
+    const sibling = headerRowChild(anchor);
+    if (!sibling || !sibling.parentElement) return null;
+    bar = document.createElement('div');
+    bar.id = BAR_ID;
+    sibling.parentElement.insertBefore(bar, sibling.nextSibling);
+    return bar;
+  }
+
+  // ── inyección: buscador ──
+  function injectSearch() {
+    if (document.getElementById(SEARCH_ID)) return true;
+    const bar = getBar();
+    if (!bar) return false;
+
+    const box = document.createElement('div');
+    box.id = SEARCH_ID;
+    const inp = document.createElement('input');
+    inp.className = 'sa-pof-inp';
+    inp.type = 'text';
+    inp.placeholder = 'OC, proveedor o factura…';
+    inp.setAttribute('aria-label', 'Buscar orden de compra, proveedor o factura en todas las vistas');
+
+    let timer = null;
+    inp.addEventListener('input', () => {
+      const term = inp.value.trim();
+      if (timer) clearTimeout(timer);
+      S.seq++;
+      S.rotated = null;
+      S.active = -1; // término nuevo → la selección anterior ya no aplica
+      if (!term) { hidePanel(); return; }
+      timer = setTimeout(() => runSearch(term), DEBOUNCE_MS);
+    });
+    // Teclado: ↑/↓ recorren los resultados, Enter abre el activo, Esc cierra.
+    inp.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') { hidePanel(); return; }
+      const links = currentLinks();
+      if (!links.length) return;
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        e.preventDefault();
+        S.active = Core.moveActiveIndex(S.active, links.length, e.key === 'ArrowDown' ? 1 : -1);
+        highlightActive(links);
+      } else if (e.key === 'Enter') {
+        const a = links[S.active];
+        if (a) { e.preventDefault(); window.location.assign(a.getAttribute('href')); }
+      }
+    });
+    // Sin timeout-race: el mousedown del panel ya evita este blur, así que cuando el blur
+    // SÍ ocurre es porque el foco se fue de verdad y el panel debe cerrarse.
+    inp.addEventListener('blur', hidePanel);
+    inp.addEventListener('focus', () => { if (inp.value.trim() && S.lastResults) renderPanel(inp.value.trim(), S.lastResults, false); });
+
+    box.appendChild(inp);
+    bar.appendChild(box); // tras el toggle (que se inyecta primero)
+    return true;
+  }
+
+  // ── inyección: toggle ──
+  function injectToggle() {
+    if (document.getElementById(TOGGLE_ID)) return true;
+    const bar = getBar();
+    if (!bar) return false;
+
+    const wrap = document.createElement('div');
+    wrap.id = TOGGLE_ID;
+    wrap.setAttribute('role', 'group');
+    wrap.setAttribute('aria-label', 'Filtrar órdenes de compra por empresa');
+
+    // Binario, no triple: el lado Ecoplating no es expresable con el filtro nativo
+    // (bug de SH con ticket abierto). Ver planProquipaFilter en el core.
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.textContent = 'Sólo Proquipa';
+    b.dataset.mode = Core.MODES.PROQUIPA;
+    b.setAttribute('aria-pressed', 'false');
+    b.disabled = true; // se habilita al descubrir las direcciones
+    b.addEventListener('click', () => {
+      const on = b.getAttribute('aria-pressed') === 'true';
+      applyProquipa(!on);
+    });
+    wrap.appendChild(b);
+    bar.appendChild(wrap);
+
+    // Descubrimiento diferido: no bloquea la inyección ni la carga de la pantalla.
+    discoverLocations().then((groups) => {
+      const el = document.getElementById(TOGGLE_ID);
+      if (!el) return;
+      if (!groups || (!groups.ecoplating.length && !groups.proquipa.length)) {
+        // Sin direcciones no se filtra a ciegas: se deja deshabilitado y se dice por qué.
+        el.title = 'No se pudieron leer las direcciones de facturación; el filtro por empresa no está disponible.';
+        return;
+      }
+      const on = Core.isProquipaFilterActive(location.href, groups);
+      const btn = el.querySelector('button');
+      if (btn) { btn.disabled = false; btn.setAttribute('aria-pressed', String(on)); }
+      el.title = S.capped
+        ? 'Aviso: puede haber direcciones sin descubrir (el filtro de Steelhead devuelve máximo 10 por consulta).'
+        : `Filtra las ${groups.proquipa.length} direcciones de Proquipa a la vez. `
+          + 'Ecoplating no se puede filtrar: sus OC llevan la dirección del dominio y el filtro '
+          + 'nativo de Steelhead no la acepta (ticket de soporte abierto).';
+    });
+    return true;
+  }
+
+  async function applyProquipa(enabled) {
+    const groups = S.groups || await discoverLocations();
+    if (!groups) return;
+    const plan = Core.planProquipaFilter(enabled, groups);
+    if (plan.kind === 'unavailable') {
+      alertNote('No hay direcciones de facturación de Proquipa en este dominio.');
+      return;
+    }
+    window.location.assign(Core.buildCompanyFilterUrl(location.href, plan.ids));
+  }
+
+  function alertNote(msg) {
+    const el = document.getElementById(TOGGLE_ID);
+    if (el) el.title = msg;
+    console.warn('[po-listing-filters] ' + msg);
+  }
+
+  // ── ciclo de vida ──
+  function injectAll() {
+    if (!Core.isPurchaseOrdersUrl(location.pathname)) return false;
+    injectStyles();
+    const b = injectToggle();   // primero el toggle…
+    const a = injectSearch();   // …y el buscador a su derecha
+    return a && b;
+  }
+
+  function removeAll() {
+    for (const id of [SEARCH_ID, TOGGLE_ID, PANEL_ID, BAR_ID]) {
+      const el = document.getElementById(id);
+      if (el) el.remove();
+    }
+  }
+
+  // Observer que se auto-desconecta al inyectar (la tabla de OCs re-renderiza mucho;
+  // un observer permanente sobre body.subtree sale caro).
+  let obs = null;
+  function stopObs() { if (obs) { obs.disconnect(); obs = null; } }
+  function startObs() {
+    if (obs) return;
+    obs = new MutationObserver(() => {
+      if (!Core.isPurchaseOrdersUrl(location.pathname)) { stopObs(); return; }
+      if (injectAll()) stopObs();
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
+  }
+
+  function onUrlChange() {
+    if (Core.isPurchaseOrdersUrl(location.pathname)) {
+      if (!injectAll()) startObs();
+    } else {
+      stopObs();
+      removeAll();
+    }
+  }
+
+  function patchHistory() {
+    if (window.__saPOFHistoryPatched) return;
+    window.__saPOFHistoryPatched = true;
+    for (const m of ['pushState', 'replaceState']) {
+      const orig = history[m];
+      history[m] = function () {
+        const r = orig.apply(this, arguments);
+        window.dispatchEvent(new Event('sa-pof-url'));
+        return r;
+      };
+    }
+    window.addEventListener('popstate', () => window.dispatchEvent(new Event('sa-pof-url')));
+    window.addEventListener('sa-pof-url', onUrlChange);
+  }
+
+  function init() { patchHistory(); onUrlChange(); }
+
+  if (document.body) init();
+  else document.addEventListener('DOMContentLoaded', init);
+
+  window.POListingFilters = { injectAll, removeAll, runSearch, applyProquipa, discoverLocations };
+})();
+})();
+// ===== END scripts/po-listing-filters.js =====
+
+// ===== BEGIN scripts/wo-schedule-core.js =====
+(function(){
+// Órdenes de Trabajo: PN + programación — módulo puro (sin DOM ni red).
+// Compartido por dos applets:
+//   - wo-listing-columns.js : columnas "Número de Parte" y "Programación" en /Domains/<d>/WorkOrders
+//   - wo-schedule-button.js : botón "Programación" en la ficha /Domains/<d>/WorkOrders/<id>
+// Aquí solo va la LÓGICA testeable; el DOM, el fetch y el memory-hardening viven en los glues.
+//
+// Fuentes de datos (persisted queries; el shape lo fija el server):
+//   PartNumbersByWorkOrderIdInDomain({idInDomain})  → PN(s) de una WO, con nombre.
+//     workOrderByIdInDomain.partLocationsByWorkOrderId.nodes[].partNumberByPartNumberId.{id,name}
+//     (soporta N PNs; hoy 1 por WO, pero puede haber varios).
+//   GetRelatedScheduleData (shape confirmado en surtido-guard-capture2.json) → tareas agendadas:
+//     allSchedules.nodes[].{ id, name,
+//        validScheduleTasks.nodes[].{ stationId, expectedStartTime, treatmentId, totalTimeMinutes,
+//           scheduleTaskElementsByScheduleTaskId.nodes[].{ partNumberId, recipeNodeId,
+//              associatedPartsTransferAccounts.nodes[].{ id, workOrderId } } } }
+//     El puente WO→tarea es associatedPartsTransferAccounts.workOrderId (= account de la WO).
+//   AllStations → stationId → name (para resolver la estación programada).
+(function () {
+  'use strict';
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Rutas
+  // ══════════════════════════════════════════════════════════════════════════
+  // Index de WOs de un dominio: /Domains/<d>/WorkOrders (con o sin trailing slash/query).
+  const WO_INDEX_RE = /\/Domains\/(\d+)\/WorkOrders\/?(?:[?#]|$)/i;
+  // Ficha individual: /Domains/<d>/WorkOrders/<idInDomain>
+  const WO_DETAIL_RE = /\/Domains\/(\d+)\/WorkOrders\/(\d+)(?:[/?#]|$)/i;
+  const DOMAIN_RE = /\/Domains\/(\d+)/i;
+
+  function isWorkOrdersIndexPath(pathname) {
+    return typeof pathname === 'string' && WO_INDEX_RE.test(pathname);
+  }
+  function isWorkOrderDetailPath(pathname) {
+    return typeof pathname === 'string' && WO_DETAIL_RE.test(pathname);
+  }
+  // idInDomain de la ficha (o del href de una fila del listado). null si no matchea.
+  function parseWorkOrderIdInDomain(pathOrHref) {
+    if (typeof pathOrHref !== 'string') return null;
+    const m = pathOrHref.match(WO_DETAIL_RE);
+    return m ? parseInt(m[2], 10) : null;
+  }
+  function parseDomainId(pathname) {
+    if (typeof pathname !== 'string') return null;
+    const m = pathname.match(DOMAIN_RE);
+    return m ? parseInt(m[1], 10) : null;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Número(s) de Parte
+  // ══════════════════════════════════════════════════════════════════════════
+  // Del response de PartNumbersByWorkOrderIdInDomain → [{ id, name }] (dedup por id,
+  // preserva orden). Fail-safe: shape inesperado → []. Soporta múltiples PNs por WO.
+  function extractPartNumbers(input) {
+    const wo = (input && input.workOrderByIdInDomain) ? input.workOrderByIdInDomain
+             : (input && input.data && input.data.workOrderByIdInDomain) ? input.data.workOrderByIdInDomain
+             : null;
+    if (!wo || typeof wo !== 'object') return [];
+    const nodes = (wo.partLocationsByWorkOrderId && wo.partLocationsByWorkOrderId.nodes) || [];
+    const out = [];
+    const seen = new Set();
+    nodes.forEach(function (n) {
+      const pn = n && n.partNumberByPartNumberId;
+      if (!pn || pn.id == null) return;
+      if (seen.has(pn.id)) return;
+      seen.add(pn.id);
+      out.push({ id: pn.id, name: (pn.name != null && pn.name !== '') ? String(pn.name) : ('PN ' + pn.id) });
+    });
+    return out;
+  }
+
+  // Link a la ficha del PN. Formato global /PartNumbers/<id> (confirmado por pn-specs-column).
+  function pnLink(id) {
+    return (id == null) ? null : '/PartNumbers/' + id;
+  }
+
+  // workOrderId GLOBAL (el `id`, no idInDomain) desde el response de
+  // PartNumbersByWorkOrderIdInDomain — necesario para cruzar contra WorkOrderSchedule.
+  function extractWorkOrderGlobalId(input) {
+    const wo = (input && input.workOrderByIdInDomain) ? input.workOrderByIdInDomain
+             : (input && input.data && input.data.workOrderByIdInDomain) ? input.data.workOrderByIdInDomain
+             : null;
+    return (wo && wo.id != null) ? wo.id : null;
+  }
+
+  // Detalle enriquecido de UN PN desde el response de GetPartNumber:
+  //   { description, labels: [{ name, color }] }
+  // - description = partNumberById.descriptionMarkdown (ej. "CONECTOR").
+  // - labels ACTIVOS (node.archivedAt == null) de partNumberLabelsByPartNumberId.
+  // Fail-safe: shape inesperado → { description:'', labels:[] }.
+  function extractPartNumberDetail(input) {
+    const pn = (input && input.partNumberById) ? input.partNumberById
+             : (input && input.data && input.data.partNumberById) ? input.data.partNumberById
+             : null;
+    if (!pn || typeof pn !== 'object') return { description: '', labels: [] };
+    const description = (pn.descriptionMarkdown != null) ? String(pn.descriptionMarkdown).trim() : '';
+    const nodes = (pn.partNumberLabelsByPartNumberId && pn.partNumberLabelsByPartNumberId.nodes) || [];
+    const labels = [];
+    const seen = new Set();
+    nodes.forEach(function (n) {
+      if (!n || n.archivedAt != null) return;                 // archivada → fuera
+      const l = n.labelByLabelId; if (!l || l.name == null) return;
+      const key = String(l.name);
+      if (seen.has(key)) return;
+      seen.add(key);
+      labels.push({ name: String(l.name), color: (l.color != null ? String(l.color) : '') });
+    });
+    return { description: description, labels: labels };
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Lote(s) (inventory batch) de la WO — desde el response de WorkOrder (ficha)
+  // ══════════════════════════════════════════════════════════════════════════
+  // WorkOrder({idInDomain}) es la query de la ficha (hash fc41042e, ya en config,
+  // la usa también wo-schedule-button). Por cada cuenta de la WO trae el lote + su
+  // Packing Slip del cliente + el receptor con la fecha real de recibido:
+  //   workOrderByIdInDomain.currentPartsTransferAccounts.nodes[]
+  //     .inventoryAccountByInventoryAccountId
+  //       .inventoryBatchByInventoryBatchId.{ id, idInDomain, name,
+  //           customInputs.DatosRecibo.PackingSlip,
+  //           inventoryItemByInventoryItemId.partNumberByPartNumberId.id }  ← pnId → link anidado
+  //       .receiverBomItemByReceiverBomItemId.receiverByReceiverId.receivedAt  ← fecha de recibido
+  // Devuelve [{ id, idInDomain, name, packingSlip, receivedAt, partNumberId }]
+  // (dedup por batch id, preserva orden; una WO puede ligar varios lotes). SLIM: solo
+  // los campos que se muestran → el response de 1156 campos se descarta tras extraer.
+  // Fail-safe: shape inesperado → [].
+  function extractWorkOrderBatches(input) {
+    const wo = (input && input.workOrderByIdInDomain) ? input.workOrderByIdInDomain
+             : (input && input.data && input.data.workOrderByIdInDomain) ? input.data.workOrderByIdInDomain
+             : null;
+    if (!wo || typeof wo !== 'object') return [];
+    const nodes = (wo.currentPartsTransferAccounts && wo.currentPartsTransferAccounts.nodes) || [];
+    const out = [];
+    const seen = new Set();
+    nodes.forEach(function (n) {
+      const acc = n && n.inventoryAccountByInventoryAccountId;
+      if (!acc) return;
+      const batch = acc.inventoryBatchByInventoryBatchId;
+      if (!batch || batch.id == null) return;
+      if (seen.has(batch.id)) return;   // dedup por batch id (varias cuentas → mismo lote)
+      seen.add(batch.id);
+      // pnId para el link anidado /PartNumbers/<pn>/Inventory/Batches/<idInDomain>
+      let partNumberId = null;
+      const item = batch.inventoryItemByInventoryItemId;
+      const pn = item && item.partNumberByPartNumberId;
+      if (pn && pn.id != null) partNumberId = pn.id;
+      // fecha de recibido: receptor ligado a la cuenta del lote (receivedAt real, no createdAt)
+      let receivedAt = null;
+      const rbi = acc.receiverBomItemByReceiverBomItemId;
+      const rcv = rbi && rbi.receiverByReceiverId;
+      if (rcv && rcv.receivedAt != null) receivedAt = String(rcv.receivedAt);
+      out.push({
+        id: batch.id,
+        idInDomain: batch.idInDomain != null ? batch.idInDomain : null,
+        name: (batch.name != null && batch.name !== '') ? String(batch.name) : ('Lote ' + batch.id),
+        packingSlip: packingSlipFromCI(batch.customInputs),
+        receivedAt: receivedAt,
+        partNumberId: partNumberId,
+      });
+    });
+    return out;
+  }
+
+  // customInputs del lote puede venir como objeto o como string JSON (el server varía).
+  // → DatosRecibo.PackingSlip ('' si falta o no parsea). Mismo criterio que board-metal-tooltip.
+  function packingSlipFromCI(ci) {
+    let o = ci;
+    if (typeof ci === 'string') { try { o = JSON.parse(ci); } catch (_) { o = null; } }
+    return (o && o.DatosRecibo && o.DatosRecibo.PackingSlip != null && o.DatosRecibo.PackingSlip !== '')
+      ? String(o.DatosRecibo.PackingSlip) : '';
+  }
+
+  // Link a la ficha del lote. Preferido: /PartNumbers/<pnId>/Inventory/Batches/<idInDomain>
+  // (forma REAL que renderiza SH → navegable). Sin pnId → forma bare /Inventory/Batches/<idInDomain>.
+  // null si no hay idInDomain.
+  function batchLink(idInDomain, partNumberId) {
+    if (idInDomain == null) return null;
+    return (partNumberId != null)
+      ? '/PartNumbers/' + partNumberId + '/Inventory/Batches/' + idInDomain
+      : '/Inventory/Batches/' + idInDomain;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Programación (índice workOrderId → tarea(s) agendada(s))
+  // ══════════════════════════════════════════════════════════════════════════
+  // Del response de GetRelatedScheduleData construye un índice:
+  //   { byWorkOrderId: { <workOrderId>: [ entry, ... ] }, byAccountId: { <accountId>: [ entry, ... ] } }
+  // entry = { workOrderId, accountId, scheduleId, scheduleName, stationId,
+  //           expectedStartTime, treatmentId, totalTimeMinutes, partNumberId, recipeNodeId }
+  // Cada entry se agrega tanto por workOrderId como por accountId (la WO puede tener
+  // varias cuentas/pasos, y una tarea liga una cuenta). Las entries de cada llave
+  // quedan ORDENADAS por expectedStartTime ascendente (la más próxima primero).
+  // Fail-safe: shape inesperado → índice vacío.
+  function buildScheduleIndex(input) {
+    const root = (input && input.allSchedules) ? input
+               : (input && input.data && input.data.allSchedules) ? input.data
+               : null;
+    const byWorkOrderId = Object.create(null);
+    const byAccountId = Object.create(null);
+    if (!root) return { byWorkOrderId: byWorkOrderId, byAccountId: byAccountId };
+
+    const schedules = (root.allSchedules && root.allSchedules.nodes) || [];
+    schedules.forEach(function (sch) {
+      if (!sch) return;
+      const scheduleId = sch.id != null ? sch.id : null;
+      const scheduleName = sch.name != null ? String(sch.name) : '';
+      const tasks = (sch.validScheduleTasks && sch.validScheduleTasks.nodes) || [];
+      tasks.forEach(function (task) {
+        if (!task) return;
+        const elements = (task.scheduleTaskElementsByScheduleTaskId && task.scheduleTaskElementsByScheduleTaskId.nodes) || [];
+        elements.forEach(function (el) {
+          if (!el) return;
+          const accounts = (el.associatedPartsTransferAccounts && el.associatedPartsTransferAccounts.nodes) || [];
+          accounts.forEach(function (acc) {
+            if (!acc || acc.workOrderId == null) return;
+            const entry = {
+              workOrderId: acc.workOrderId,
+              accountId: acc.id != null ? acc.id : null,
+              scheduleId: scheduleId,
+              scheduleName: scheduleName,
+              stationId: task.stationId != null ? task.stationId : null,
+              expectedStartTime: task.expectedStartTime != null ? task.expectedStartTime : null,
+              treatmentId: task.treatmentId != null ? task.treatmentId : null,
+              totalTimeMinutes: task.totalTimeMinutes != null ? task.totalTimeMinutes : null,
+              partNumberId: el.partNumberId != null ? el.partNumberId : null,
+              recipeNodeId: el.recipeNodeId != null ? el.recipeNodeId : null,
+            };
+            pushSorted(byWorkOrderId, acc.workOrderId, entry);
+            if (acc.id != null) pushSorted(byAccountId, acc.id, entry);
+          });
+        });
+      });
+    });
+    return { byWorkOrderId: byWorkOrderId, byAccountId: byAccountId };
+  }
+
+  // Inserta manteniendo orden ascendente por expectedStartTime (nulls al final).
+  function pushSorted(map, key, entry) {
+    const arr = map[key] || (map[key] = []);
+    arr.push(entry);
+    arr.sort(function (a, b) {
+      const ta = a.expectedStartTime, tb = b.expectedStartTime;
+      if (ta == null && tb == null) return 0;
+      if (ta == null) return 1;
+      if (tb == null) return -1;
+      return ta < tb ? -1 : (ta > tb ? 1 : 0);
+    });
+  }
+
+  // Tarea(s) de una WO (por workOrderId GLOBAL — el `id`, no idInDomain). [] si no está programada.
+  function resolveByWorkOrderId(index, workOrderId) {
+    if (!index || workOrderId == null) return [];
+    return index.byWorkOrderId[workOrderId] || [];
+  }
+  // Tarea(s) por conjunto de accountIds (los currentPartsTransferAccounts de la WO).
+  function resolveByAccountIds(index, accountIds) {
+    if (!index || !accountIds || !accountIds.length) return [];
+    const out = [];
+    const seen = new Set();
+    accountIds.forEach(function (id) {
+      (index.byAccountId[id] || []).forEach(function (e) {
+        const k = e.scheduleId + '|' + e.accountId + '|' + e.expectedStartTime + '|' + e.stationId;
+        if (seen.has(k)) return;
+        seen.add(k);
+        out.push(e);
+      });
+    });
+    return out;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // AllStations → stationId → name
+  // ══════════════════════════════════════════════════════════════════════════
+  function stationNameMap(input) {
+    const root = input && (input.data || input);
+    const nodes = (root && root.allStations && root.allStations.nodes) || [];
+    const map = Object.create(null);
+    nodes.forEach(function (s) { if (s && s.id != null) map[s.id] = s.name != null ? String(s.name) : ('Estación ' + s.id); });
+    return map;
+  }
+  function stationName(map, stationId) {
+    if (stationId == null) return '';
+    return (map && map[stationId]) || ('Estación ' + stationId);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Formateo (TZ-agnóstico y determinista para tests). El glue puede localizar con
+  // Date/toLocaleString; esto es el contrato canónico verificable de fallback.
+  // ══════════════════════════════════════════════════════════════════════════
+  // Parte una ISO 8601 (con o sin offset) a componentes tal cual aparecen en el string
+  // (NO convierte de zona). "2026-06-23T22:30:00.154+00:00" → {y,mo,d,h,mi}.
+  function parseIsoParts(iso) {
+    if (typeof iso !== 'string') return null;
+    const m = iso.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+    if (!m) return null;
+    return { y: +m[1], mo: +m[2], d: +m[3], h: +m[4], mi: +m[5] };
+  }
+  // "DD/MM HH:MM" a partir de la ISO (componentes crudos). "" si no parsea.
+  function formatShortDateTime(iso) {
+    const p = parseIsoParts(iso);
+    if (!p) return '';
+    const pad = function (n) { return (n < 10 ? '0' : '') + n; };
+    return pad(p.d) + '/' + pad(p.mo) + ' ' + pad(p.h) + ':' + pad(p.mi);
+  }
+
+  // Texto compacto de la programación de UNA WO para la celda del listado / fallback.
+  //   entries vacío        → "—"
+  //   1 tarea              → "Estación · 23/06 22:30 · Programa Diario"
+  //   N tareas             → "<primera>  (+N-1)"
+  // stationNames = mapa stationId→name (opcional).
+  function formatScheduleCell(entries, stationNames) {
+    if (!entries || !entries.length) return '—';
+    const first = entries[0];
+    const parts = [];
+    const st = stationName(stationNames, first.stationId);
+    if (st) parts.push(st);
+    const when = formatShortDateTime(first.expectedStartTime);
+    if (when) parts.push(when);
+    if (first.scheduleName) parts.push(first.scheduleName);
+    let s = parts.join(' · ') || '(programada)';
+    if (entries.length > 1) s += '  (+' + (entries.length - 1) + ')';
+    return s;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Índice de programación desde WorkOrderSchedule (query real de la ficha)
+  // ══════════════════════════════════════════════════════════════════════════
+  // WorkOrderSchedule({domainId, workOrderId}) devuelve el BOARD COMPLETO (todas las
+  // tareas del schedule del dominio, no solo las de la WO consultada — 767 tareas en
+  // el board 454). Ventaja: UNA llamada indexa a TODAS las WOs. El puente WO→tarea es
+  // element.recipeNodeByRecipeNodeId.workOrderId (workOrderId GLOBAL, no idInDomain).
+  // Shape (confirmado en scan real 2026-07-23):
+  //   allSchedules.nodes[].{ id,
+  //     validScheduleTasks.nodes[].{ id, expectedStartTime, stationId, status, isIntentional,
+  //        treatmentId, totalTimeMinutes, stationByStationId.{id,name},
+  //        scheduleTaskElementsByScheduleTaskId.nodes[].{ partCount,
+  //           recipeNodeByRecipeNodeId.workOrderId, partNumberByPartNumberId.name } } }
+  // Devuelve { byWorkOrderId: { <globalWorkOrderId>: [task, ...] } } (task ordenadas por
+  // expectedStartTime ascendente). Fail-safe: shape inesperado → índice vacío.
+  function buildBoardScheduleIndex(input) {
+    const root = (input && input.allSchedules) ? input
+               : (input && input.data && input.data.allSchedules) ? input.data
+               : null;
+    const byWorkOrderId = Object.create(null);
+    if (!root) return { byWorkOrderId: byWorkOrderId };
+    const schedules = (root.allSchedules && root.allSchedules.nodes) || [];
+    schedules.forEach(function (sch) {
+      if (!sch) return;
+      const scheduleId = sch.id != null ? sch.id : null;
+      const tasks = (sch.validScheduleTasks && sch.validScheduleTasks.nodes) || [];
+      tasks.forEach(function (task) {
+        if (!task) return;
+        const station = task.stationByStationId || {};
+        const base = {
+          taskId: task.id != null ? task.id : null,
+          scheduleId: scheduleId,
+          expectedStartTime: task.expectedStartTime != null ? task.expectedStartTime : null,
+          stationId: task.stationId != null ? task.stationId : (station.id != null ? station.id : null),
+          stationName: station.name != null ? String(station.name) : '',
+          status: task.status != null ? String(task.status) : '',
+          isIntentional: !!task.isIntentional,
+          treatmentId: task.treatmentId != null ? task.treatmentId : null,
+          totalTimeMinutes: task.totalTimeMinutes != null ? task.totalTimeMinutes : null,
+          // Necesarios para reconstruir el input de UpdateManyScheduleTasks (Fase 2).
+          cycleTimeMinutes: task.cycleTimeMinutes != null ? task.cycleTimeMinutes : null,
+          treatmentTimeMinutes: task.treatmentTimeMinutes != null ? task.treatmentTimeMinutes : null,
+        };
+        const els = (task.scheduleTaskElementsByScheduleTaskId && task.scheduleTaskElementsByScheduleTaskId.nodes) || [];
+        // Une los workOrderId de los elementos de la tarea (una tarea puede agrupar varios).
+        const woIds = new Set();
+        els.forEach(function (el) {
+          const rn = el && el.recipeNodeByRecipeNodeId;
+          if (rn && rn.workOrderId != null) woIds.add(rn.workOrderId);
+        });
+        woIds.forEach(function (woId) {
+          const arr = byWorkOrderId[woId] || (byWorkOrderId[woId] = []);
+          // dedup por taskId (una tarea aparece 1 vez por WO)
+          if (arr.some(function (t) { return t.taskId === base.taskId; })) return;
+          arr.push(base);
+        });
+      });
+    });
+    // ordena cada lista por expectedStartTime ascendente (nulls al final)
+    Object.keys(byWorkOrderId).forEach(function (k) {
+      byWorkOrderId[k].sort(function (a, b) {
+        const ta = a.expectedStartTime, tb = b.expectedStartTime;
+        if (ta == null && tb == null) return 0;
+        if (ta == null) return 1;
+        if (tb == null) return -1;
+        return ta < tb ? -1 : (ta > tb ? 1 : 0);
+      });
+    });
+    return { byWorkOrderId: byWorkOrderId };
+  }
+
+  // Tarea(s) de una WO (por workOrderId GLOBAL). [] si no está programada.
+  function resolveBoardScheduleForWO(index, workOrderId) {
+    if (!index || workOrderId == null) return [];
+    return index.byWorkOrderId[workOrderId] || [];
+  }
+
+  // Línea legible de UNA tarea: "T108-LI Níquel Electroless · 15/07 21:15 · En cola".
+  // (glue puede localizar la hora con Date; esto es el fallback determinista.)
+  function formatScheduleTaskLine(task) {
+    if (!task) return '—';
+    const parts = [];
+    if (task.stationName) parts.push(task.stationName);
+    const when = formatShortDateTime(task.expectedStartTime);
+    if (when) parts.push(when);
+    const st = scheduleStatusLabel(task.status);
+    if (st) parts.push(st);
+    return parts.join(' · ') || '(programada)';
+  }
+
+  // Traducción de los status de tarea a español (ES+EN tolerante). Desconocido → tal cual.
+  function scheduleStatusLabel(status) {
+    if (!status) return '';
+    const s = String(status).toUpperCase();
+    const MAP = {
+      QUEUED: 'En cola', IN_PROGRESS: 'En proceso', RUNNING: 'En proceso',
+      COMPLETED: 'Completada', DONE: 'Completada', PAUSED: 'Pausada',
+      SCHEDULED: 'Programada', CANCELLED: 'Cancelada', CANCELED: 'Cancelada',
+      BLOCKED: 'Bloqueada',
+    };
+    return MAP[s] || status;
+  }
+
+  // Texto compacto de la programación de UNA WO (celda del listado / fallback).
+  //   [] → "—" ; 1 tarea → línea ; N → "<primera>  (+N-1)"
+  function formatBoardScheduleCell(tasks) {
+    if (!tasks || !tasks.length) return '—';
+    let s = formatScheduleTaskLine(tasks[0]);
+    if (tasks.length > 1) s += '  (+' + (tasks.length - 1) + ')';
+    return s;
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // FASE 2 — programación INTENCIONAL (fijar una tarea existente): input de la
+  // mutación UpdateManyScheduleTasks. Confirmado en scan real (button:Update en la
+  // ficha): { scheduledTasks: [{ id, scheduleId, stationId, expectedStartTime,
+  //   totalTimeMinutes, cycleTimeMinutes, treatmentTimeMinutes, isIntentional }] }.
+  // STATIC-SCHEDULED = isIntentional:true. Es UPDATE por id (NO crea) → la tarea debe
+  // existir (auto-agendada). Para crear desde cero: CreateManyScheduleTasks (payload aparte).
+  // ══════════════════════════════════════════════════════════════════════════
+  // Echo de TODOS los campos existentes de la tarea (el server los espera) + override de
+  // expectedStartTime + isIntentional. `expectedStartTime` debe ir en ISO UTC (…Z).
+  // overrides: { expectedStartTime?, isIntentional? (default true) }. null si falta id.
+  function buildScheduleTaskUpdateInput(task, overrides) {
+    overrides = overrides || {};
+    if (!task || task.taskId == null) return null;
+    return {
+      scheduledTasks: [{
+        id: task.taskId,
+        scheduleId: task.scheduleId,
+        stationId: task.stationId,
+        expectedStartTime: (overrides.expectedStartTime != null) ? overrides.expectedStartTime : task.expectedStartTime,
+        totalTimeMinutes: task.totalTimeMinutes,
+        cycleTimeMinutes: task.cycleTimeMinutes,
+        treatmentTimeMinutes: task.treatmentTimeMinutes,
+        isIntentional: (overrides.isIntentional != null) ? !!overrides.isIntentional : true,
+      }],
+    };
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Impresión de PDFs (JobTag / Verbose / WorkOrder) — helpers puros
+  // ══════════════════════════════════════════════════════════════════════════
+  // El PDF se genera SERVER-SIDE (PDFGeneratorAPI) y se entrega como share-URL
+  //   https://app.gosteelhead.com/api/pdf/share/<shareId>/<token>?downloadName=<name>.pdf
+  // visible en el modal de preview como <object data="…">. NO reconstruimos el `data`
+  // del renderizador (lo arma el front, blob gigante) → el applet AUTO-MANEJA el flujo
+  // nativo (click "Imprimir Etiquetas" → modal → click "Imprimir Regular/Detallado") y
+  // toma la URL del <object>, sin mostrar el preview. Por-OT (una a la vez) = sin el
+  // techo de merge de PDFGeneratorAPI (~16-20 OTs en batch).
+  //
+  // Anclaje del botón del modal: ROBUSTO por posición (los 2 MuiButton-contained del
+  // modal "Imprimir Etiqueta de Trabajo": order 0 = Regular/JobTag, 1 = Detallado/Verbose)
+  // + confirmación por texto ES. EN = deuda bilingüe (falta el string real del otro locale;
+  // NO se adivina — el anclaje primario es estructural, el texto solo confirma).
+  const PRINT_TYPES = {
+    jobtag:  { key: 'jobtag',  order: 0, buttonTextEs: 'Imprimir Regular',   filenameStem: 'work-order-part-number' },
+    verbose: { key: 'verbose', order: 1, buttonTextEs: 'Imprimir Detallado', filenameStem: 'work-order-part-number-verbose' },
+  };
+  function printTypeList() { return Object.keys(PRINT_TYPES).map(function (k) { return PRINT_TYPES[k]; }); }
+  function printType(key) { return (key && PRINT_TYPES[key]) ? PRINT_TYPES[key] : null; }
+
+  // ?sa_print=jobtag|verbose → key válido o null. (Disparo remoto desde el listado.)
+  function parsePrintParam(search) {
+    if (typeof search !== 'string') return null;
+    const m = search.match(/[?&]sa_print=([a-z]+)/i);
+    if (!m) return null;
+    const v = m[1].toLowerCase();
+    return PRINT_TYPES[v] ? v : null;
+  }
+
+  // ¿Es una share-URL de PDF de Steelhead? (/api/pdf/share/<id>/<token>)
+  function isPdfShareUrl(url) {
+    return typeof url === 'string' && /\/api\/pdf\/share\/\d+\/[a-z0-9]+/i.test(url);
+  }
+  // Parte una share-URL → { shareId, token, downloadName }. null si no matchea.
+  function parsePdfShareUrl(url) {
+    if (typeof url !== 'string') return null;
+    const m = url.match(/\/api\/pdf\/share\/(\d+)\/([a-z0-9]+)/i);
+    if (!m) return null;
+    let downloadName = '';
+    const dn = url.match(/[?&]downloadName=([^&#]+)/i);
+    if (dn) { try { downloadName = decodeURIComponent(dn[1]); } catch (_) { downloadName = dn[1]; } }
+    return { shareId: m[1], token: m[2], downloadName: downloadName };
+  }
+  // Nombre de archivo del PDF: "WO<idInDomain>.pdf" (corto, pedido del operador). Verbose lleva sufijo.
+  function buildPdfFilename(typeKey, woIdInDomain) {
+    const t = printType(typeKey);
+    const suffix = (t && t.key === 'verbose') ? '-verbose' : '';
+    return 'WO' + (woIdInDomain != null ? woIdInDomain : '') + suffix + '.pdf';
+  }
+
+  // Encabezado del modal de selección de plantilla (ES confirmado; EN = deuda bilingüe).
+  function isPrintDialogHeading(text) {
+    if (typeof text !== 'string') return false;
+    return /imprimir\s+etiqueta\s+de\s+trabajo/i.test(text);
+  }
+  // Encabezado del modal de preview (ES confirmado; EN = deuda bilingüe).
+  function isPrintPreviewHeading(text) {
+    if (typeof text !== 'string') return false;
+    return /vista\s+previa\s+de\s+etiqueta/i.test(text);
+  }
+
+  const api = {
+    WO_INDEX_RE, WO_DETAIL_RE, DOMAIN_RE,
+    PRINT_TYPES, printTypeList, printType, parsePrintParam,
+    isPdfShareUrl, parsePdfShareUrl, buildPdfFilename,
+    isPrintDialogHeading, isPrintPreviewHeading,
+    isWorkOrdersIndexPath, isWorkOrderDetailPath, parseWorkOrderIdInDomain, parseDomainId,
+    extractPartNumbers, pnLink, extractWorkOrderGlobalId, extractPartNumberDetail,
+    extractWorkOrderBatches, batchLink,
+    buildScheduleIndex, resolveByWorkOrderId, resolveByAccountIds,
+    stationNameMap, stationName,
+    buildBoardScheduleIndex, resolveBoardScheduleForWO,
+    formatScheduleTaskLine, scheduleStatusLabel, formatBoardScheduleCell,
+    buildScheduleTaskUpdateInput,
+    parseIsoParts, formatShortDateTime, formatScheduleCell,
+  };
+  if (typeof window !== 'undefined') window.WoScheduleCore = api;
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+})();
+})();
+// ===== END scripts/wo-schedule-core.js =====
+
+// ===== BEGIN scripts/wo-schedule-button.js =====
+(function(){
+// Programación INLINE en la ficha de Orden de Trabajo — glue DOM.
+// En /Domains/<d>/WorkOrders/<idInDomain> muestra, DIRECTO en el header (entre "EDITAR
+// DETALLES" y "ABRIR PDF"), la programación de la OT: "📅 <estación · fecha · estado>".
+// NO requiere click: la info sale sola al entrar a la ficha. Motivo: en iPad la tarjeta
+// "Cliente" (con el ícono 📅 nativo) se colapsa; este readout arriba la muestra siempre.
+//
+// FASE 2 (a futuro): cuando se pueda PROGRAMAR desde aquí, el 📅 se vuelve clicable y
+// abrirá un modal de programación intencional (por eso el elemento ya lleva el 📅 al inicio).
+//
+// Datos: WorkOrder({idInDomain}) → workOrderId GLOBAL; WorkOrderSchedule({domainId,
+// workOrderId}) → board COMPLETO → WoScheduleCore.buildBoardScheduleIndex → tareas de la OT.
+// Para NO bajar ~4.6MB por ficha, se INTERCEPTA la WorkOrderSchedule que la propia ficha
+// dispara (patrón surtido-guard); solo se hace fetch propio como fallback si no aparece.
+//
+// Auto-inyectado (autoInject:true). Singleton en window.__saWoSched* para sobrevivir la
+// re-inyección del IIFE.
+const WoScheduleButton = (() => {
+  'use strict';
+
+  const Core = () => window.WoScheduleCore;
+
+  const INLINE_ID = 'sa-wosched-inline';
+  const PDF_ANCHOR = '[data-steelhead-component-id="WORK_ORDER_PAGE_HEADER_OPEN_PDF_BUTTON"]';
+  const BOARD_TTL_MS = 120000;    // frescura del índice de programación capturado/fetcheado
+  const WAIT_STEPS = 6, WAIT_MS = 300;   // ventana para que el interceptor capture la nativa
+
+  function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function onDetail() { return Core().isWorkOrderDetailPath(location.pathname); }
+  function currentWoIdInDomain() { return Core().parseWorkOrderIdInDomain(location.pathname); }
+
+  // Índice de programación del board (compartido; capturado por el interceptor o fetcheado).
+  function boardState() {
+    if (!window.__saWoSchedBoard) window.__saWoSchedBoard = { idx: null, at: 0, domainId: null };
+    return window.__saWoSchedBoard;
+  }
+  function boardFresh(domainId) {
+    const b = boardState();
+    return b.idx && b.domainId === domainId && (Date.now() - b.at) < BOARD_TTL_MS;
+  }
+  function setBoard(idx, domainId) {
+    const b = boardState(); b.idx = idx; b.domainId = domainId; b.at = Date.now();
+  }
+  // cache de tareas resueltas por idInDomain (para no recomputar al re-render/nav)
+  function resolvedCache() { if (!window.__saWoSchedResolved) window.__saWoSchedResolved = new Map(); return window.__saWoSchedResolved; }
+
+  // ── Estilos ────────────────────────────────────────────────────────────────
+  function injectStyles() {
+    if (document.getElementById('sa-wosched-style')) return;
+    const css = [
+      // Readout como TEXTO (no caja/botón): una fila por tarea = 📅 + texto que envuelve.
+      // El 📅 es el elemento accionable (Fase 2: click → programar ESE paso de la OT).
+      '#' + INLINE_ID + '{display:inline-flex;flex-direction:column;gap:2px;margin:0 8px;',
+      'max-width:min(46vw,460px);vertical-align:middle;',
+      'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}',
+      '#' + INLINE_ID + ' .sa-wosched-row2{display:flex;align-items:flex-start;gap:5px;font-size:12.5px;line-height:1.3;}',
+      // 📅 accionable (Fase 1: informativo; Fase 2: cursor:pointer + click).
+      '#' + INLINE_ID + ' .sa-wosched-cal{flex:0 0 auto;font-size:14px;line-height:1.25;cursor:default;user-select:none;}',
+      // Texto plano que ENVUELVE (sin ellipsis, sin truncar) → se ve completo.
+      '#' + INLINE_ID + ' .sa-wosched-txt2{white-space:normal;overflow-wrap:anywhere;color:#243244;font-weight:500;}',
+      '#' + INLINE_ID + ' .sa-wosched-txt2.muted{color:#6b7280;font-style:italic;font-weight:400;}',
+      '#' + INLINE_ID + ' .sa-wosched-txt2.err{color:#b04a3a;font-weight:500;}',
+    ].join('');
+    const s = document.createElement('style');
+    s.id = 'sa-wosched-style';
+    s.textContent = css;
+    document.head.appendChild(s);
+  }
+
+  // ── Elemento inline en el header ─────────────────────────────────────────────
+  function buildInline() {
+    injectStyles();
+    const el = document.createElement('div');
+    el.id = INLINE_ID;
+    renderLoading(el);
+    return el;
+  }
+
+  function ensureInline() {
+    if (!onDetail()) return null;
+    let el = document.getElementById(INLINE_ID);
+    if (el) return el;
+    const pdf = document.querySelector(PDF_ANCHOR);
+    if (!pdf || !pdf.parentElement) return null;   // header aún no renderiza: observer reintenta
+    el = buildInline();
+    pdf.parentElement.insertBefore(el, pdf);
+    return el;
+  }
+
+  function removeInline() { const el = document.getElementById(INLINE_ID); if (el) el.remove(); }
+
+  // Una fila = 📅 + texto. El 📅 es el elemento accionable (Fase 2: al capturar la
+  // mutación, su click programará ESE paso de la OT). Guarda la tarea en data-attrs.
+  function addRow(el, text, opts) {
+    opts = opts || {};
+    const row = document.createElement('div'); row.className = 'sa-wosched-row2';
+    const cal = document.createElement('span'); cal.className = 'sa-wosched-cal'; cal.textContent = '📅';
+    cal.title = opts.calTitle || 'Programación intencional (crear/editar): próximamente (Fase 2).';
+    if (opts.task) {
+      const t = opts.task;
+      if (t.stationId != null) cal.setAttribute('data-sa-station-id', String(t.stationId));
+      if (t.scheduleId != null) cal.setAttribute('data-sa-schedule-id', String(t.scheduleId));
+      if (t.taskId != null) cal.setAttribute('data-sa-task-id', String(t.taskId));
+    }
+    const txt = document.createElement('span');
+    txt.className = 'sa-wosched-txt2' + (opts.muted ? ' muted' : '') + (opts.err ? ' err' : '');
+    txt.textContent = text;
+    row.appendChild(cal); row.appendChild(txt);
+    el.appendChild(row);
+  }
+  function renderLoading(el) { if (!el) return; el.textContent = ''; el.title = 'Programación de esta OT'; addRow(el, 'Programación…', { muted: true }); }
+  function renderError(el, msg) { if (!el) return; el.textContent = ''; el.title = msg; addRow(el, msg, { err: true }); }
+
+  // Fecha/hora local (glue usa Date; el core da el fallback determinista).
+  function fmtLocal(iso) {
+    if (!iso) return '';
+    try { const d = new Date(iso); if (!isNaN(d.getTime())) return d.toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch (_) {}
+    return Core().formatShortDateTime(iso);
+  }
+  function taskText(t) {
+    const parts = [];
+    if (t.stationName) parts.push(t.stationName);
+    const w = fmtLocal(t.expectedStartTime); if (w) parts.push(w);
+    const s = Core().scheduleStatusLabel(t.status); if (s) parts.push(s);
+    return parts.join(' · ') || '(programada)';
+  }
+
+  function renderInline(el, tasks) {
+    if (!el) return;
+    el.textContent = '';
+    if (!tasks || !tasks.length) {
+      el.title = 'Esta OT no está programada.';
+      addRow(el, 'Sin programar', { muted: true, calTitle: 'Programar esta OT: próximamente (Fase 2).' });
+      return;
+    }
+    // Un 📅 por tarea/estación (Fase 2: cada 📅 programa ESE paso de la OT).
+    tasks.forEach(function (t) { addRow(el, taskText(t), { task: t }); });
+    el.title = tasks.map(function (t, i) { return (i + 1) + ') ' + taskText(t); }).join('\n');
+  }
+
+  // ── Carga de datos ───────────────────────────────────────────────────────────
+  // Resuelve las tareas de la OT UNA sola vez (memoizado + dedupe en-vuelo) → así el
+  // PREFETCH temprano (en init, sin esperar al header) y el render on-mount comparten el
+  // mismo fetch (nunca doble). Es el dato #1: arranca lo antes posible.
+  function inflight() { if (!window.__saWoSchedInflight) window.__saWoSchedInflight = new Map(); return window.__saWoSchedInflight; }
+  function ensureResolved(woIdInDomain) {
+    if (resolvedCache().has(woIdInDomain)) return Promise.resolve(resolvedCache().get(woIdInDomain));
+    if (inflight().has(woIdInDomain)) return inflight().get(woIdInDomain);
+    const p = (async function () {
+      const api = window.SteelheadAPI;
+      const domainId = Core().parseDomainId(location.pathname);
+      const data = await api.query('WorkOrder', { idInDomain: woIdInDomain }, 'WorkOrder');
+      let woGlobalId = Core().extractWorkOrderGlobalId(data);
+      if (woGlobalId == null && data && data.workOrderByIdInDomain) woGlobalId = data.workOrderByIdInDomain.id;
+      if (woGlobalId == null) { resolvedCache().set(woIdInDomain, []); return []; }
+      const idx = await ensureBoardIndex(domainId, woGlobalId);
+      const tasks = Core().resolveBoardScheduleForWO(idx, woGlobalId);
+      resolvedCache().set(woIdInDomain, tasks);
+      return tasks;
+    })();
+    inflight().set(woIdInDomain, p);
+    const done = function () { inflight().delete(woIdInDomain); };
+    p.then(done, done);
+    return p;
+  }
+
+  // Dispara el fetch YA (sin esperar al header). Si el readout ya está montado, lo pinta.
+  function prefetch(woIdInDomain) {
+    if (woIdInDomain == null) return;
+    ensureResolved(woIdInDomain).then(function (tasks) {
+      if (currentWoIdInDomain() !== woIdInDomain) return;
+      const el = document.getElementById(INLINE_ID);
+      if (el) renderInline(el, tasks);
+    }).catch(function () { /* el render on-mount reintenta y muestra el error */ });
+  }
+
+  async function loadInline(woIdInDomain, el) {
+    let tasks;
+    try { tasks = await ensureResolved(woIdInDomain); }
+    catch (e) {
+      renderError(el, (e && e.persistedQueryRotated)
+        ? 'El hash de WorkOrderSchedule/WorkOrder rotó — avísale a Claude.'
+        : 'No se pudo cargar la programación: ' + (e && e.message ? e.message : 'error'));
+      return;
+    }
+    // el DOM pudo cambiar (SPA nav) mientras esperábamos → re-ancla si sigue en la misma ficha
+    const live = (currentWoIdInDomain() === woIdInDomain) ? (document.getElementById(INLINE_ID) || el) : null;
+    if (live) renderInline(live, tasks);
+  }
+
+  // Devuelve el índice del board: usa el capturado (interceptor) si está fresco; si no,
+  // le da una ventana corta al interceptor (la ficha suele dispararlo) y, en última
+  // instancia, hace fetch propio.
+  async function ensureBoardIndex(domainId, woGlobalId) {
+    if (boardFresh(domainId)) return boardState().idx;
+    for (let i = 0; i < WAIT_STEPS; i++) { await sleep(WAIT_MS); if (boardFresh(domainId)) return boardState().idx; }
+    const api = window.SteelheadAPI;
+    const data = await api.query('WorkOrderSchedule', { domainId: domainId, workOrderId: woGlobalId }, 'WorkOrderSchedule');
+    const idx = Core().buildBoardScheduleIndex(data);
+    setBoard(idx, domainId);   // el raw (~4.6MB) se descarta al salir de scope; solo queda el índice slim
+    return idx;
+  }
+
+  // ── Interceptor de la WorkOrderSchedule nativa (evita el doble fetch de 4.6MB) ──
+  // Gauge de /graphql en vuelo (para saber cuándo la ficha "se calmó" antes de imprimir).
+  function gql() { if (!window.__saGqlGauge) window.__saGqlGauge = { inflight: 0, lastChange: Date.now() }; return window.__saGqlGauge; }
+  function waitForGraphqlIdle(idleMs, maxWaitMs) {
+    idleMs = idleMs || 1200; maxWaitMs = maxWaitMs || 12000;
+    return new Promise(function (resolve) {
+      const t0 = Date.now();
+      (function tick() {
+        const g = gql();
+        if (g.inflight <= 0 && (Date.now() - g.lastChange) >= idleMs) return resolve(true);
+        if (Date.now() - t0 > maxWaitMs) return resolve(false);
+        setTimeout(tick, 200);
+      })();
+    });
+  }
+
+  function patchFetch() {
+    if (window.__saWoSchedFetchPatched) return;
+    window.__saWoSchedFetchPatched = true;
+    const orig = window.fetch;
+    window.fetch = function (input, init) {
+      let isWos = false, domainId = null, isGql = false, isPdfOut = false;
+      try {
+        const url = (typeof input === 'string') ? input : (input && input.url) || '';
+        const body = (init && typeof init.body === 'string') ? init.body : '';
+        const hay = body || url;   // POST → body; GET APQ → url (?operationName=…)
+        if (url.indexOf('/graphql') !== -1) isGql = true;
+        if (hay.indexOf('GetPdfTemplateOutputV2') !== -1 || hay.indexOf('GetPdfTemplateOutputToUserFile') !== -1) isPdfOut = true;
+        if (hay.indexOf('WorkOrderSchedule') !== -1) {
+          isWos = true;
+          const dm = hay.match(/domainId(?:"\s*:\s*|=)(\d+)/);
+          domainId = dm ? parseInt(dm[1], 10) : Core().parseDomainId(location.pathname);
+        }
+      } catch (_) {}
+      if (isGql) { const g = gql(); g.inflight++; g.lastChange = Date.now(); }
+      const p = orig.apply(this, arguments);
+      if (isGql) { const settle = function () { const g = gql(); g.inflight = Math.max(0, g.inflight - 1); g.lastChange = Date.now(); }; p.then(settle, settle); }
+      // Intercepta la respuesta del renderizador → share-URL del PDF (sin depender del preview DOM).
+      if (isPdfOut) {
+        p.then(function (resp) {
+          try {
+            resp.clone().text().then(function (txt) {
+              try {
+                const clean = String(txt).replace(/\\\//g, '/').replace(/\\u002[fF]/g, '/');
+                const m = clean.match(/\/api\/pdf\/share\/\d+\/[a-z0-9]+(?:\?[^"'\\<> ]*)?/i);
+                if (m) {
+                  let u = m[0]; if (u.indexOf('http') !== 0) u = location.origin + u;
+                  window.__saLastPdfShare = { url: u, at: Date.now() };
+                  PLOG('GetPdfTemplateOutputV2 respondió → ' + u);
+                } else { PLOG('GetPdfTemplateOutputV2 respondió pero SIN /api/pdf/share/ (¿error?)'); }
+              } catch (_) {}
+            }).catch(function () {});
+          } catch (_) {}
+        }).catch(function () {});
+      }
+      if (isWos) {
+        p.then(function (resp) {
+          try {
+            resp.clone().json().then(function (j) {
+              try {
+                const data = (j && j.data) ? j.data : j;
+                if (data && data.allSchedules) { setBoard(Core().buildBoardScheduleIndex(data), domainId); refreshCurrent(); }
+              } catch (_) {}
+            }).catch(function () {});
+          } catch (_) {}
+        }).catch(function () {});
+      }
+      return p;
+    };
+  }
+
+  // Re-render del readout de la ficha actual cuando el interceptor captura datos nuevos.
+  function refreshCurrent() {
+    if (!onDetail()) return;
+    const woId = currentWoIdInDomain();
+    if (woId == null) return;
+    const b = boardState();
+    if (!b.idx) return;
+    const el = document.getElementById(INLINE_ID); if (!el) return;
+    // resolvemos con el índice fresco (necesitamos el woGlobalId; si ya está en cache, re-render directo)
+    // si no lo tenemos, loadInline lo obtendrá (y usará el board fresco).
+    resolvedCache().delete(woId);
+    inflight().delete(woId);
+    loadInline(woId, el);
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Impresión de PDFs (JobTag / Verbose) — AUTO-MANEJO del flujo nativo
+  // ══════════════════════════════════════════════════════════════════════════
+  // El `data` del renderizador lo arma el front (blob gigante, no reconstruible). Así que
+  // dejamos que SH haga TODO (fetch + ensamblado + render server-side) y solo:
+  //   1) click "Imprimir Etiquetas de Trabajo" (header)  → modal de selección
+  //   2) click "Imprimir Regular"/"Detallado" (por tipo) → SH renderiza → modal preview
+  //   3) tomamos la share-URL del <object data="…/api/pdf/share/…"> y la abrimos
+  //   4) cerramos los modales (sin mostrar el preview)
+  // Por-OT (una a la vez) → sin el techo de merge de PDFGeneratorAPI (~16-20 en batch).
+  // NO-destructivo (genera el mismo PDF que el flujo nativo). Fail-safe: ante cualquier
+  // fallo, deja el modal nativo abierto para que el operador termine a mano.
+  // Texto del botón del header — BILINGÜE (SH muestra locale mixto: header en EN "Print Job Tags"
+  // aunque el resto esté en ES). Solo confirma; el anclaje primario es el data-steelhead-component-id.
+  const PRINT_TRIGGER_RE = /imprimir\s+etiquetas\s+de\s+trabajo|print\s+(?:multiple\s+)?job\s+tags/i;
+  const PRINT_ANCHOR = '[data-steelhead-component-id="WORK_ORDER_PAGE_HEADER_PRINT_JOB_TAGS_BUTTON"]';
+  const PRINT_POLL_MS = 250, PRINT_TIMEOUT_MS = 12000;
+  function isVisible(el) { return !!(el && (el.offsetParent !== null || (el.getClientRects && el.getClientRects().length))); }
+  function PLOG(m) { try { console.log('[SA][print]', m); } catch (_) {} }
+
+  function btnText(b) { return (b && b.textContent ? b.textContent : '').replace(/\s+/g, ' ').trim(); }
+
+  // Espera a que `fn()` devuelva algo truthy; resuelve con ese valor o rechaza por timeout.
+  function waitFor(fn, timeoutMs) {
+    timeoutMs = timeoutMs || PRINT_TIMEOUT_MS;
+    return new Promise(function (resolve, reject) {
+      const t0 = Date.now();
+      (function tick() {
+        let v = null; try { v = fn(); } catch (_) {}
+        if (v) return resolve(v);
+        if (Date.now() - t0 > timeoutMs) return reject(new Error('timeout'));
+        setTimeout(tick, PRINT_POLL_MS);
+      })();
+    });
+  }
+
+  // Botón nativo del header que abre el modal de impresión. Anclaje PRIMARIO por el
+  // data-steelhead-component-id (idioma- y responsive-agnóstico = el mejor anclaje). Dentro
+  // del ancla, elige el elemento VISIBLE clicable: el <button> (vista normal) o la versión
+  // ICONO-solo (span con aria-label + QrCode2Icon, vista chica). Fallback legacy sin el ancla.
+  function findPrintTrigger() {
+    const anchor = document.querySelector(PRINT_ANCHOR);
+    if (anchor) {
+      const btn = Array.prototype.slice.call(anchor.querySelectorAll('button')).find(isVisible);
+      if (btn) return btn;
+      // vista chica: icono-solo (span aria-label con el QrCode2Icon, cursor:pointer)
+      const icon = Array.prototype.slice.call(anchor.querySelectorAll('[aria-label]'))
+        .find(function (e) { return isVisible(e) && e.querySelector && e.querySelector('svg[data-testid="QrCode2Icon"]'); });
+      if (icon) return icon;
+      if (isVisible(anchor)) return anchor;   // último recurso: el propio contenedor (click bubbling)
+    }
+    // FALLBACK legacy (sin el ancla): botón outlined con QrCode2Icon, o texto bilingüe.
+    const btns = document.querySelectorAll('button');
+    let byStruct = null;
+    for (let i = 0; i < btns.length; i++) {
+      const b = btns[i];
+      if (!b.querySelector('svg[data-testid="QrCode2Icon"]')) continue;
+      if (PRINT_TRIGGER_RE.test(btnText(b))) return b;
+      if (/MuiButton-outlined/.test(b.className || '') && !byStruct) byStruct = b;
+    }
+    return byStruct;
+  }
+  // Diagnóstico: vuelca el estado del ancla/botones si el trigger no aparece (para ver por qué).
+  function dumpTriggerCandidates() {
+    try {
+      const anchor = document.querySelector(PRINT_ANCHOR);
+      PLOG('ancla ' + (anchor ? ('presente, visible=' + isVisible(anchor)) : 'AUSENTE') +
+        ' · botones QrCode2Icon en página: ' + document.querySelectorAll('button svg[data-testid="QrCode2Icon"]').length);
+    } catch (_) {}
+  }
+  // El modal de selección de plantilla (dialog con sus 2 MuiButton-contained de impresión).
+  function findPrintDialog() {
+    const dialogs = document.querySelectorAll('[role="dialog"]');
+    for (let i = 0; i < dialogs.length; i++) {
+      const d = dialogs[i];
+      const heading = d.querySelector('h2,h6,[id="form-dialog-title"]');
+      const contained = d.querySelectorAll('button.MuiButton-contained');
+      if (contained.length >= 1 && (Core().isPrintDialogHeading(btnText(heading)) || contained.length >= 2)) {
+        // confirma que es el de impresión: algún contained trae QrCode2Icon
+        for (let k = 0; k < contained.length; k++) if (contained[k].querySelector('svg[data-testid="QrCode2Icon"]')) return d;
+      }
+    }
+    return null;
+  }
+  // El modal de impresión aunque esté en "Cargando…" (por su encabezado o sus botones).
+  function findAnyPrintDialog() {
+    const dialogs = document.querySelectorAll('[role="dialog"]');
+    for (let i = 0; i < dialogs.length; i++) {
+      const d = dialogs[i];
+      const heading = d.querySelector('h2,h6,[id="form-dialog-title"]');
+      if (Core().isPrintDialogHeading(btnText(heading))) return d;
+      if (d.querySelector('button.MuiButton-contained svg[data-testid="QrCode2Icon"]')) return d;
+    }
+    return null;
+  }
+  // Botón "Imprimir Regular/Detallado" del modal para el tipo pedido (texto ES → fallback orden).
+  function findModalPrintButton(dialog, typeKey) {
+    const t = Core().printType(typeKey); if (!dialog || !t) return null;
+    const btns = Array.prototype.slice.call(dialog.querySelectorAll('button.MuiButton-contained'))
+      .filter(function (b) { return b.querySelector('svg[data-testid="QrCode2Icon"]'); });
+    // 1) por texto exacto ES; 2) fallback por orden (0=Regular, 1=Detallado)
+    const byText = btns.find(function (b) { return btnText(b).toLowerCase() === t.buttonTextEs.toLowerCase(); });
+    if (byText) return byText;
+    return btns[t.order] || null;
+  }
+  // Descarga el PDF a la carpeta Descargas (sin navegar) — la share-URL es same-origin, así que
+  // el atributo `download` fuerza la descarga con nombre. Funciona aun en pestaña de 2º plano.
+  function downloadPdf(url, typeKey) {
+    try {
+      const parsed = Core().parsePdfShareUrl(url);
+      const name = (parsed && parsed.downloadName) ? parsed.downloadName : Core().buildPdfFilename(typeKey, currentWoIdInDomain());
+      // La URL INTERCEPTADA de GetPdfTemplateOutputV2 NO trae ?downloadName= (el <object> del
+      // preview sí lo agrega); el server nombra el archivo por ESE param → si falta, baja con el
+      // TOKEN como nombre. Reponemos el param con el nombre correcto. a.download es respaldo.
+      const dlUrl = url.split('?')[0] + '?downloadName=' + encodeURIComponent(name);
+      const a = document.createElement('a');
+      a.href = dlUrl; a.download = name; a.rel = 'noopener';
+      document.body.appendChild(a); a.click(); a.remove();
+      PLOG('descarga disparada: ' + name);
+    } catch (e) { PLOG('descarga falló → navego: ' + (e && e.message)); try { location.href = url; } catch (_) {} }
+  }
+  // Share-URL interceptada de GetPdfTemplateOutputV2, si es MÁS reciente que el click actual.
+  function freshPdfUrl(sinceMs) {
+    const s = window.__saLastPdfShare;
+    return (s && s.at >= sinceMs && Core().isPdfShareUrl(s.url)) ? s.url : null;
+  }
+  // Share-URL del PDF en el modal de preview (o cualquier <object>/<a> que la traiga).
+  function findShareUrl() {
+    const nodes = document.querySelectorAll('object[data*="/api/pdf/share/"], a[href*="/api/pdf/share/"], iframe[src*="/api/pdf/share/"]');
+    for (let i = 0; i < nodes.length; i++) {
+      const u = nodes[i].getAttribute('data') || nodes[i].getAttribute('href') || nodes[i].getAttribute('src') || '';
+      if (Core().isPdfShareUrl(u)) return u.indexOf('http') === 0 ? u : (location.origin + u);
+    }
+    return null;
+  }
+  // Cierra los modales de impresión/preview (botón Cerrar/Cancelar, o Escape).
+  function closePrintDialogs() {
+    document.querySelectorAll('[role="dialog"]').forEach(function (d) {
+      const heading = d.querySelector('h2,h6');
+      if (Core().isPrintPreviewHeading(btnText(heading)) || Core().isPrintDialogHeading(btnText(heading)) || d.querySelector('object[data*="/api/pdf/share/"]')) {
+        const closeBtn = d.querySelector('button svg[data-testid="CloseIcon"]');
+        const cancel = Array.prototype.slice.call(d.querySelectorAll('button')).find(function (b) { return /cancelar|cerrar|close|cancel/i.test(btnText(b)); });
+        const b = (closeBtn && closeBtn.closest('button')) || cancel;
+        if (b) { try { b.click(); } catch (_) {} }
+      }
+    });
+    try { document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true })); } catch (_) {}
+  }
+
+  // Click robusto para botones MUI/React: secuencia de eventos de puntero + click nativo.
+  // (`.click()` solo a veces no dispara el handler; la secuencia completa cubre onMouseDown/
+  // onPointerDown/onClick.) Un solo evento 'click' al final → no doble-dispara el render.
+  function clickButtonRobust(b) {
+    try { if (b.focus) b.focus(); } catch (_) {}
+    const opts = { bubbles: true, cancelable: true, view: window, button: 0 };
+    ['pointerover', 'pointerenter', 'pointerdown', 'mousedown', 'pointerup', 'mouseup'].forEach(function (type) {
+      try { b.dispatchEvent(new MouseEvent(type, opts)); } catch (_) {}
+    });
+    try { b.click(); } catch (_) {}
+  }
+
+  // Orquestador. openTarget: 'newtab' (gesto del usuario) | 'self' (auto-disparo remoto).
+  // Devuelve la share-URL. En 'newtab' preserva el gesto abriendo la pestaña YA.
+  async function autoPrint(typeKey, openTarget) {
+    const t = Core().printType(typeKey);
+    if (!t) return null;
+    // Abre la pestaña ANTES de los awaits (preserva el user-gesture → no lo bloquea el popup blocker).
+    let win = null;
+    if (openTarget === 'newtab') { try { win = window.open('', '_blank'); } catch (_) {} }
+    const fail = function (msg) {
+      if (win) { try { win.close(); } catch (_) {} }
+      printToast('⚠️ ' + msg + ' — abrí el modal nativo y termina a mano.');
+    };
+    try {
+      // Hasta 2 intentos: el modal a veces se queda en "Cargando…" si se abre mientras la
+      // ficha aún baja datos → cerramos y reabrimos con la red ya calmada.
+      let pbtn = null;
+      for (let attempt = 0; attempt < 2 && !pbtn; attempt++) {
+        if (!findAnyPrintDialog()) {
+          const trigger = findPrintTrigger();
+          if (!trigger) { fail('No encontré el botón "Imprimir Etiquetas de Trabajo"'); return null; }
+          PLOG('abro modal (intento ' + (attempt + 1) + ')'); trigger.click();
+        } else { PLOG('modal ya abierto (intento ' + (attempt + 1) + ')'); }
+        // Espera a que el modal esté LISTO: sin "Cargando…", con el dropdown de plantilla YA
+        // poblado (si no, "Imprimir Regular" no tiene plantilla → no-op) y el botón habilitado.
+        pbtn = await waitFor(function () {
+          const d = findAnyPrintDialog(); if (!d) return null;
+          if (/cargando|loading/i.test(d.textContent || '')) return null;   // aún cargando su contenido
+          const val = d.querySelector('[class*="singleValue"]');
+          if (val && !btnText(val)) return null;                            // dropdown existe pero SIN valor → esperar
+          const b = findModalPrintButton(d, typeKey);
+          return (b && !b.disabled) ? b : null;
+        }, 12000).catch(function () { return null; });
+        if (!pbtn && attempt === 0) {
+          PLOG('modal en "Cargando…" tras 11s → cierro, espero red-idle y reintento');
+          closePrintDialogs(); await sleep(900); await waitForGraphqlIdle(1000, 8000);
+        }
+      }
+      if (!pbtn) { fail('El modal se quedó en "Cargando…" o el dropdown de plantilla no cargó'); return null; }
+      // Margen FIJO para que el modal asiente antes de imprimir (si clicamos demasiado rápido
+      // el render puede salir EN BLANCO). Un sleep corto — el waitForGraphqlIdle largo hacía la
+      // corrida MUY lenta en 2º plano (throttled); el dropdown ya confirma que el modal cargó.
+      await sleep(1000);
+      const clickAt = Date.now();
+      PLOG('click "' + t.buttonTextEs + '" (dropdown OK, disabled=' + !!pbtn.disabled + ')');
+      clickButtonRobust(pbtn);
+      // Toma la share-URL de la respuesta INTERCEPTADA de GetPdfTemplateOutputV2 (robusto, apenas
+      // el server responde) O del <object> del preview (fallback DOM). Hasta 40s (render server-side).
+      let url;
+      try { url = await waitFor(function () { return freshPdfUrl(clickAt) || findShareUrl(); }, 40000); }
+      catch (e) {
+        const fired = window.__saLastPdfShare && window.__saLastPdfShare.at >= clickAt;
+        fail(fired ? 'El render respondió pero no traía la URL del PDF' : 'El render (GetPdfTemplateOutputV2) no respondió tras el click');
+        return null;
+      }
+      PLOG('PDF listo: ' + url);
+      if (openTarget === 'download') {
+        downloadPdf(url, typeKey);
+        setTimeout(closePrintDialogs, 300);
+        setTimeout(function () { try { window.close(); } catch (_) {} }, 2000);   // cierra la pestaña de 2º plano (best-effort)
+      } else {
+        if (win) { try { win.location.href = url; } catch (_) { window.open(url, '_blank'); } }
+        else if (openTarget === 'self') { location.href = url; }
+        else { window.open(url, '_blank'); }
+        setTimeout(closePrintDialogs, 400);   // deja que el <object> exista antes de cerrar
+        printToast('🏷️ PDF ' + t.key + ' generado.');
+      }
+      return url;
+    } catch (e) {
+      fail('No pude generar el PDF (' + (e && e.message ? e.message : 'error') + ')');
+      return null;
+    }
+  }
+
+  // Auto-disparo remoto: /WorkOrders/<id>?sa_print=jobtag → genera y navega al PDF (una vez).
+  // Espera a que la ficha CARGUE del todo (readyState + red /graphql calmada) antes de abrir el
+  // modal — abrirlo durante la carga pesada (WorkOrderSchedule 4.6MB) lo deja en "Cargando…".
+  function maybeAutoPrintFromParam() {
+    if (!onDetail()) return;
+    const typeKey = Core().parsePrintParam(location.search);
+    if (!typeKey || window.__saWoPrintFired) return;
+    window.__saWoPrintFired = true;
+    const dl = /[?&]sa_dl=1/i.test(location.search);   // modo DESCARGA (pestaña de 2º plano)
+    PLOG('auto-disparo remoto: ' + typeKey + (dl ? ' [descarga]' : '') + ' visible=' + document.visibilityState);
+    (async function run() {
+      try {
+        PLOG('run(): esperando el botón "Imprimir Etiquetas" del header…');
+        // La pestaña se abre en 2º PLANO (para lanzar varias en paralelo): los timers se
+        // estrangulan → damos MUCHA paciencia. El render y la descarga corren igual en 2º plano.
+        try { await waitFor(findPrintTrigger, 6000); }
+        catch (_) { dumpTriggerCandidates(); await waitFor(findPrintTrigger, 90000); }
+        PLOG('trigger encontrado → espero red-idle');
+        await waitForGraphqlIdle(1000, 15000);
+        await sleep(400);
+        PLOG('página lista → auto-imprimo ' + typeKey);
+        autoPrint(typeKey, dl ? 'download' : 'self');
+      } catch (e) {
+        PLOG('auto-disparo no completó (' + (e && e.message) + ')');
+        dumpTriggerCandidates();
+        openModalForManual(typeKey);
+      }
+    })();
+  }
+  // Fallback: si el auto-manejo no completa, deja el modal nativo abierto para el último clic.
+  async function openModalForManual(typeKey) {
+    try {
+      if (!findAnyPrintDialog()) { const trg = findPrintTrigger(); if (trg) trg.click(); }
+      const t = Core().printType(typeKey);
+      printToast('🏷️ Abrí el modal de etiquetas — dale clic a "' + (t ? t.buttonTextEs : 'Imprimir Regular') + '".');
+    } catch (_) {}
+  }
+
+  let printToastTimer = null;
+  function printToast(msg) {
+    let el = document.getElementById('sa-woprint-toast');
+    if (!el) {
+      el = document.createElement('div'); el.id = 'sa-woprint-toast';
+      el.style.cssText = 'position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:2147483600;' +
+        'background:#1c2430;color:#e6e9ee;border:1px solid #2b3645;border-left:4px solid #13a36f;border-radius:10px;' +
+        'padding:12px 18px;font-size:14px;max-width:80vw;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.45);';
+      document.body.appendChild(el);
+    }
+    el.textContent = msg;
+    if (printToastTimer) clearTimeout(printToastTimer);
+    printToastTimer = setTimeout(function () { const e = document.getElementById('sa-woprint-toast'); if (e) e.remove(); }, 4500);
+  }
+
+  // NOTA: la impresión NO pone botones en la ficha (decisión del usuario 2026-07-24: el
+  // botón vive SOLO en la columna Acciones del listado). Aquí el auto-manejo es INVISIBLE:
+  // se dispara por el parámetro ?sa_print= (maybeAutoPrintFromParam) cuando el botón del
+  // listado abre la ficha en pestaña nueva. `autoPrint` queda expuesto para ese disparo.
+
+  // ── Montaje idempotente + observer + navegación SPA ──────────────────────────
+  let obsTimer = null;
+  function scheduleEnsure() {
+    if (obsTimer) return;
+    obsTimer = setTimeout(function () {
+      obsTimer = null;
+      try {
+        const el = ensureInline();
+        if (el && !el.getAttribute('data-sa-loading')) {   // carga una vez por montaje
+          const woId = currentWoIdInDomain();
+          // PRIORIDAD: la programación es el dato #1 (supervisor escanea QR → "¿a qué hora
+          // está programada?"). Arranca YA, sin diferir ni esperar idle.
+          if (woId != null) { el.setAttribute('data-sa-loading', '1'); loadInline(woId, el); }
+        }
+      } catch (_) {}
+    }, 120);
+  }
+
+  function observe() {
+    if (window.__saWoSchedObs) return;
+    const obs = new MutationObserver(function () { if (onDetail()) scheduleEnsure(); });
+    obs.observe(document.body, { childList: true, subtree: true });
+    window.__saWoSchedObs = obs;
+  }
+
+  function installUrlChangeListener() {
+    if (window.__saWoSchedUrlListener) return;
+    window.__saWoSchedUrlListener = true;
+    const fire = function () { window.dispatchEvent(new Event('sa-wosched-urlchange')); };
+    ['pushState', 'replaceState'].forEach(function (m) { const orig = history[m]; history[m] = function () { const r = orig.apply(this, arguments); fire(); return r; }; });
+    window.addEventListener('popstate', fire);
+    window.addEventListener('sa-wosched-urlchange', function () {
+      removeInline();                    // se re-crea para la nueva ficha
+      window.__saWoPrintFired = false;   // permite auto-disparo en la nueva ficha (?sa_print=)
+      if (onDetail()) { prefetch(currentWoIdInDomain()); scheduleEnsure(); maybeAutoPrintFromParam(); }
+    });
+  }
+
+  function init() {
+    if (window.__saWoSchedInit) return;
+    window.__saWoSchedInit = true;
+    patchFetch();               // ANTES de que la ficha dispare la nativa
+    installUrlChangeListener();
+    observe();
+    // Dato #1: dispara el fetch de programación YA en init (sin esperar al header),
+    // para que sea de lo primero que carga (antes que vale-almacén / paro-de-línea).
+    if (onDetail()) { prefetch(currentWoIdInDomain()); scheduleEnsure(); maybeAutoPrintFromParam(); }
+    console.log('[SA] WoScheduleButton activo (readout de programación + impresión en la ficha de OT)');
+  }
+
+  // Popup: informa el estado (no abre modal en Fase 1).
+  function openFromPopup() {
+    if (!onDetail()) return { ok: false, reason: 'No estás en la ficha de una OT.' };
+    scheduleEnsure();
+    return { ok: true, note: 'La programación se muestra inline en el header (📅). El modal de programación intencional llega en la Fase 2.' };
+  }
+
+  return { init, openFromPopup, autoPrint: autoPrint };
+})();
+
+if (typeof window !== 'undefined') {
+  window.WoScheduleButton = WoScheduleButton;
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { WoScheduleButton.init(); });
+  } else {
+    WoScheduleButton.init();
+  }
+}
+})();
+// ===== END scripts/wo-schedule-button.js =====
+
+// ===== BEGIN scripts/wo-listing-columns.js =====
+(function(){
+// Columnas en el listado de Órdenes de Trabajo — glue DOM.
+// En /Domains/<d>/WorkOrders agrega dos columnas opt-in (dos toggles):
+//   🔩 "Número de Parte"  — cada PN = link a /PartNumbers/<id> (soporta N PNs).
+//   📅 "Programación"      — estación · fecha/hora · estado de la tarea agendada.
+// La decisión pura vive en WoScheduleCore; aquí solo va el DOM, el fetch y el
+// memory-hardening. Molde: pn-specs-column.js.
+//
+// Fetch:
+//   - Por FILA: PartNumbersByWorkOrderIdInDomain({idInDomain}) → {pns, woGlobalId}
+//     (AllWorkOrders NO trae el nombre del PN; esta query es ligera). Da también el
+//     workOrderId GLOBAL, necesario para cruzar contra la programación.
+//   - Por PÁGINA (una sola vez): WorkOrderSchedule({domainId, workOrderId}) → board
+//     COMPLETO (todas las tareas del schedule) → índice slim workOrderId→tareas → llena
+//     todas las celdas de Programación. Es ~4.6MB pero UNA llamada; el raw se descarta
+//     tras indexar (solo se guarda el índice slim).
+//
+// Auto-inyectado (autoInject:true). Singleton en window.__saWoCols* para sobrevivir la
+// re-inyección del IIFE.
+const WoListingColumns = (() => {
+  'use strict';
+
+  const Core = () => window.WoScheduleCore;
+  const Cleanup = () => window.SteelheadHostCleanup;
+
+  const PN_KEY = 'sa_wo_pn_col_enabled';       // persistente, default OFF
+  const SCHED_KEY = 'sa_wo_sched_col_enabled'; // persistente, default OFF
+  const LOTE_KEY = 'sa_wo_lote_col_enabled';   // persistente, default OFF
+  const LABELS_KEY = 'sa_wo_labels_enabled';   // persistente, default OFF (botón 🏷️ en Acciones)
+  const MAX_CONC = 4;
+  const MIN_GAP_MS = 130;
+  const RETRY_BACKOFF = [0, 800, 2500];
+  const OBS_DEBOUNCE_MS = 160;
+
+  const COLS = [
+    { key: 'pn',    cls: 'sa-wocol-pn',    label: 'Número de Parte', on: isPnOn },
+    { key: 'sched', cls: 'sa-wocol-sched', label: 'Programación',    on: isSchedOn },
+    { key: 'lote',  cls: 'sa-wocol-lote',  label: 'Lote',            on: isLoteOn },
+  ];
+
+  // ── Estado persistente / singleton ─────────────────────────────────────────
+  function getFlag(k) { try { return localStorage.getItem(k) === '1'; } catch (_) { return false; } }
+  function setFlag(k, v) { try { localStorage.setItem(k, v ? '1' : '0'); } catch (_) {} }
+  function isPnOn() { return getFlag(PN_KEY); }
+  function isSchedOn() { return getFlag(SCHED_KEY); }
+  function isLoteOn() { return getFlag(LOTE_KEY); }
+  function isLabelsOn() { return getFlag(LABELS_KEY); }
+  function anyOn() { return isPnOn() || isSchedOn() || isLoteOn() || isLabelsOn(); }
+  function isOnFor(kind) { return kind === 'pn' ? isPnOn() : kind === 'sched' ? isSchedOn() : kind === 'lote' ? isLoteOn() : isLabelsOn(); }
+  function keyFor(kind) { return kind === 'pn' ? PN_KEY : kind === 'sched' ? SCHED_KEY : kind === 'lote' ? LOTE_KEY : LABELS_KEY; }
+  function onIndex() { return Core().isWorkOrdersIndexPath(location.pathname); }
+
+  // Cache slim por idInDomain: { pns:[{id,name}], woGlobalId }.
+  function cache() {
+    if (!window.__saWoRowCache) window.__saWoRowCache = new Map();
+    return window.__saWoRowCache;
+  }
+  // Índice de programación slim (byWorkOrderId) — se guarda el índice, NO el raw de 4.6MB.
+  function board() {
+    if (!window.__saWoBoard) window.__saWoBoard = { idx: null, state: 'idle' }; // idle|loading|ready|error
+    return window.__saWoBoard;
+  }
+
+  // ── Estilos ──────────────────────────────────────────────────────────────
+  function injectStyles() {
+    if (document.getElementById('sa-wocol-style')) return;
+    const css = [
+      '.sa-wocol-bar{display:flex;align-items:center;flex-wrap:wrap;gap:0;margin:6px 0;}',
+      '.sa-wocol-toggle{display:inline-flex;align-items:center;gap:6px;background:#1c2430;',
+      'color:#e6e9ee;border:1px solid #2b3645;border-radius:6px;',
+      'padding:3px 10px;margin:0 8px 4px 0;font-size:11px;font-weight:600;cursor:pointer;user-select:none;',
+      'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;white-space:nowrap;line-height:1.35;}',
+      '.sa-wocol-toggle:hover{border-color:#13a36f;}',
+      '.sa-wocol-sw{position:relative;width:26px;height:14px;border-radius:7px;',
+      'background:#394452;transition:background .15s;flex:0 0 auto;}',
+      '.sa-wocol-sw::after{content:"";position:absolute;top:2px;left:2px;width:10px;height:10px;',
+      'border-radius:50%;background:#e6e9ee;transition:transform .15s;}',
+      '.sa-wocol-toggle.on .sa-wocol-sw{background:#13a36f;}',
+      '.sa-wocol-toggle.on .sa-wocol-sw::after{transform:translateX(12px);}',
+      '.sa-wocol-count{font-weight:400;color:#9aa7b5;font-size:10px;}',
+      'th.sa-wocol-pn,th.sa-wocol-sched,th.sa-wocol-lote{border-left:1px dashed #c7ccd1 !important;white-space:nowrap;}',
+      'td.sa-wocol-pn,td.sa-wocol-sched,td.sa-wocol-lote{border-left:1px dashed #c7ccd1 !important;vertical-align:middle;}',
+      // Borde derecho punteado en la ÚLTIMA de nuestras columnas → frontera clara con las nativas.
+      'th.sa-wocol-edge,td.sa-wocol-edge{border-right:1px dashed #c7ccd1 !important;}',
+      'td.sa-wocol-pn{min-width:120px;max-width:280px;}',
+      'td.sa-wocol-sched{min-width:150px;max-width:300px;}',
+      'td.sa-wocol-lote{min-width:150px;max-width:320px;}',
+      '.sa-wocol-lote-item{padding:2px 0;}',
+      '.sa-wocol-lote-item + .sa-wocol-lote-item{border-top:1px dashed #e1e5ea;margin-top:3px;padding-top:3px;}',
+      'a.sa-wocol-lote-link{color:#0969da;cursor:pointer;text-decoration:none;font-size:12px;font-weight:600;display:inline-block;}',
+      'a.sa-wocol-lote-link:hover{text-decoration:underline;}',
+      '.sa-wocol-lote-meta{color:#5a6b7a;font-size:11px;display:block;line-height:1.35;}',
+      '.sa-wocol-lote-meta b{color:#3a4a58;font-weight:600;}',
+      '.sa-wocol-pn-item{margin:0 0 4px 0;}',
+      '.sa-wocol-pn-item:last-child{margin-bottom:0;}',
+      'a.sa-wocol-pn-link{color:#0969da;cursor:pointer;text-decoration:none;display:inline-block;font-size:12px;font-weight:600;}',
+      'a.sa-wocol-pn-link:hover{text-decoration:underline;}',
+      '.sa-wocol-chips{display:block;margin-top:2px;line-height:1.5;}',
+      '.sa-wocol-chip{display:inline-block;border:1px solid #cfd6dd;border-radius:8px;padding:0 6px;',
+      'margin:1px 4px 1px 0;font-size:10px;font-weight:600;white-space:nowrap;vertical-align:middle;}',
+      '.sa-wocol-sched-item{padding:2px 0;}',
+      '.sa-wocol-sched-item + .sa-wocol-sched-item{border-top:1px dashed #e1e5ea;}',
+      '.sa-wocol-sched-st{font-weight:600;color:#0d6b49;font-size:12px;display:block;}',
+      '.sa-wocol-sched-meta{color:#5a6b7a;font-size:11px;display:block;}',
+      '.sa-wocol-muted{color:#8a97a5;font-style:italic;font-size:12px;}',
+      '.sa-wocol-err{color:#b04a3a;font-size:12px;}',
+      // Botón 🏷️ (link <a>) en la celda de Acciones (junto a Editar/Archivar). Acento verde = extensión.
+      '.sa-wolabel-btn{display:inline-flex;align-items:center;justify-content:center;',
+      'width:26px;height:26px;padding:0;margin-left:2px;border:1px solid #13a36f;border-radius:6px;',
+      'background:#fff;color:#0d6b49;font-size:14px;line-height:1;cursor:pointer;vertical-align:middle;',
+      'text-decoration:none;box-sizing:border-box;}',
+      '.sa-wolabel-btn:hover{background:#e9f7f1;text-decoration:none;}',
+      '.sa-wolabel-btn:active{background:#d6efe4;}',
+      '.sa-wocol-toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);z-index:2147483600;',
+      'background:#1c2430;color:#e6e9ee;border:1px solid #2b3645;border-left:4px solid #13a36f;',
+      'border-radius:10px;padding:12px 18px;font-size:14px;max-width:80vw;',
+      'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;box-shadow:0 8px 24px rgba(0,0,0,.45);}',
+    ].join('');
+    const s = document.createElement('style');
+    s.id = 'sa-wocol-style';
+    s.textContent = css;
+    document.head.appendChild(s);
+  }
+
+  let toastTimer = null;
+  function toast(msg) {
+    injectStyles();
+    let el = document.getElementById('sa-wocol-toast');
+    if (!el) { el = document.createElement('div'); el.id = 'sa-wocol-toast'; el.className = 'sa-wocol-toast'; document.body.appendChild(el); }
+    el.textContent = msg;
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { const e = document.getElementById('sa-wocol-toast'); if (e) e.remove(); }, 4500);
+  }
+
+  // ── Toggles (barra propia antes de la tabla) ────────────────────────────────
+  function getTable() { return document.querySelector('table.MuiTable-root, table'); }
+
+  function buildToggle(kind, label, icon) {
+    const on = isOnFor(kind);
+    const wrap = document.createElement('div');
+    wrap.className = 'sa-wocol-toggle' + (on ? ' on' : '');
+    wrap.id = 'sa-wocol-toggle-' + kind;
+    wrap.title = kind === 'pn'
+      ? 'Muestra el Número de Parte de cada OT (1 consulta por OT visible).'
+      : kind === 'sched'
+        ? 'Muestra la programación (estación · fecha · estado) de cada OT (1 consulta del tablero por página).'
+        : kind === 'lote'
+          ? 'Muestra el Lote de cada OT: nombre (idInDomain), PS Cliente y fecha de recibido (1 consulta por OT visible).'
+          : 'Agrega un botón 🏷️ en la columna Acciones que genera el PDF de etiquetas (JobTag) de esa OT en pestaña nueva.';
+    const sw = document.createElement('span'); sw.className = 'sa-wocol-sw';
+    const txt = document.createElement('span'); txt.textContent = icon + ' ' + label;
+    const cnt = document.createElement('span'); cnt.className = 'sa-wocol-count'; cnt.id = 'sa-wocol-count-' + kind;
+    wrap.appendChild(sw); wrap.appendChild(txt); wrap.appendChild(cnt);
+    wrap.addEventListener('click', function () { toggle(kind); });
+    return wrap;
+  }
+
+  function ensureToggles() {
+    if (!onIndex()) return;
+    if (document.getElementById('sa-wocol-bar')) return;
+    const table = getTable();
+    if (!table) return;
+    injectStyles();
+    const anchor = table.parentElement || table;
+    const bar = document.createElement('div');
+    bar.className = 'sa-wocol-bar';
+    bar.id = 'sa-wocol-bar';
+    bar.appendChild(buildToggle('pn', 'Núm. de Parte', '🔩'));
+    bar.appendChild(buildToggle('sched', 'Programación', '📅'));
+    bar.appendChild(buildToggle('lote', 'Lote', '📦'));
+    bar.appendChild(buildToggle('labels', 'Etiquetas', '🏷️'));
+    const mem = document.createElement('span'); mem.className = 'sa-wocol-count'; mem.id = 'sa-wocol-mem'; bar.appendChild(mem);
+    anchor.parentElement ? anchor.parentElement.insertBefore(bar, anchor) : anchor.insertBefore(bar, anchor.firstChild);
+    refreshToggleUI();
+  }
+
+  function refreshToggleUI() {
+    const tp = document.getElementById('sa-wocol-toggle-pn'); if (tp) tp.classList.toggle('on', isPnOn());
+    const ts = document.getElementById('sa-wocol-toggle-sched'); if (ts) ts.classList.toggle('on', isSchedOn());
+    const tl = document.getElementById('sa-wocol-toggle-lote'); if (tl) tl.classList.toggle('on', isLoteOn());
+    const tb = document.getElementById('sa-wocol-toggle-labels'); if (tb) tb.classList.toggle('on', isLabelsOn());
+    updateCount();
+  }
+
+  function updateCount() {
+    ['pn', 'sched', 'lote'].forEach(function (k) {
+      const c = document.getElementById('sa-wocol-count-' + k);
+      if (!c) return;
+      const on = isOnFor(k);
+      if (!on) { c.textContent = ''; return; }
+      const total = document.querySelectorAll('td.sa-wocol-' + k).length;
+      const done = document.querySelectorAll('td.sa-wocol-' + k + '[data-sa-state="done"]').length;
+      const err = document.querySelectorAll('td.sa-wocol-' + k + '[data-sa-state="error"]').length;
+      c.textContent = total ? '  ' + (done + err) + '/' + total : '';
+    });
+    const cb = document.getElementById('sa-wocol-count-labels');
+    if (cb) { const n = document.querySelectorAll('.sa-wolabel-btn').length; cb.textContent = isLabelsOn() && n ? '  ' + n : ''; }
+  }
+
+  // ── Columnas (siempre al INICIO de la fila, orden canónico [pn, sched]) ───────
+  // A diferencia de pn-specs (que van al final), aquí el usuario las quiere al inicio.
+  // moveToFront() reordena SOLO si no están ya en su lugar (evita churn/loop del observer).
+  function moveToFront(row) {
+    const desired = COLS.filter(function (c) { return c.on(); })
+      .map(function (c) { return row.querySelector(':scope > .' + c.cls); })
+      .filter(Boolean);
+    if (!desired.length) return;
+    // La última de nuestras columnas lleva el borde derecho (frontera con las nativas).
+    desired.forEach(function (c, i) { c.classList.toggle('sa-wocol-edge', i === desired.length - 1); });
+    let ok = true;
+    for (let i = 0; i < desired.length; i++) { if (row.children[i] !== desired[i]) { ok = false; break; } }
+    if (ok) return;
+    for (let i = desired.length - 1; i >= 0; i--) row.insertBefore(desired[i], row.firstChild);
+  }
+
+  function ensureHeaderCells(table) {
+    const headRow = table.querySelector('thead tr');
+    if (!headRow) return;
+    COLS.forEach(function (col) {
+      let th = headRow.querySelector(':scope > .' + col.cls);
+      if (!col.on()) { if (th) th.remove(); return; }
+      if (!th) {
+        th = document.createElement('th');
+        const nativeTh = headRow.querySelector('th:not(.sa-wocol-pn):not(.sa-wocol-sched):not(.sa-wocol-lote)');
+        th.className = (nativeTh ? nativeTh.className + ' ' : '') + col.cls;
+        th.setAttribute('scope', 'col');
+        th.textContent = col.label;
+        headRow.appendChild(th);   // adjunta al DOM; moveToFront lo reposiciona al inicio
+      }
+    });
+    moveToFront(headRow);
+  }
+
+  function ensureBodyCells(table) {
+    const rows = table.querySelectorAll('tbody tr');
+    const toFetch = [];
+    rows.forEach(function (tr) {
+      const link = tr.querySelector('td a[href*="/WorkOrders/"]');
+      const woIdInDomain = link ? Core().parseWorkOrderIdInDomain(link.getAttribute('href') || link.href) : null;
+      const cached = woIdInDomain ? cache().get(woIdInDomain) : null;
+      // El cache PartNumbers alimenta SOLO pn+sched. Lote usa su propio pool (WorkOrder).
+      if (woIdInDomain && !cached && (isPnOn() || isSchedOn())) toFetch.push(woIdInDomain);
+
+      COLS.forEach(function (col) {
+        let td = tr.querySelector(':scope > .' + col.cls);
+        if (!col.on()) { if (td) td.remove(); return; }
+        if (!td) {
+          td = document.createElement('td');
+          const nativeTd = tr.querySelector('td:not(.sa-wocol-pn):not(.sa-wocol-sched):not(.sa-wocol-lote)');
+          td.className = (nativeTd ? nativeTd.className + ' ' : '') + col.cls;
+          if (woIdInDomain != null) td.setAttribute('data-sa-woid', String(woIdInDomain));
+          fillCellInitial(col.key, td, woIdInDomain, cached);
+          tr.appendChild(td);   // adjunta al DOM; moveToFront lo reposiciona al inicio
+        }
+      });
+      moveToFront(tr);   // reposiciona al INICIO, en orden [pn, sched]
+    });
+    return toFetch;
+  }
+
+  function fillCellInitial(kind, td, woIdInDomain, cached) {
+    if (woIdInDomain == null) { markNa(td); return; }
+    if (kind === 'pn') {
+      if (cached) renderPnCell(td, cached.pns); else pending(td);
+    } else if (kind === 'sched') {
+      if (cached && cached.woGlobalId != null && board().state === 'ready') {
+        renderSchedCell(td, Core().resolveBoardScheduleForWO(board().idx, cached.woGlobalId));
+      } else { pending(td); }
+    } else { // lote (cache propio: WorkOrder por WO)
+      const lc = loteCache().get(woIdInDomain);
+      if (lc) renderLoteCell(td, lc.batches); else pending(td);
+    }
+  }
+
+  function pending(td) { td.setAttribute('data-sa-state', 'pending'); td.textContent = ''; const s = document.createElement('span'); s.className = 'sa-wocol-muted'; s.textContent = '⏳'; td.appendChild(s); }
+  function markNa(td) { td.setAttribute('data-sa-state', 'na'); td.textContent = ''; const s = document.createElement('span'); s.className = 'sa-wocol-muted'; s.textContent = '—'; td.appendChild(s); }
+
+  function renderPnCell(td, pns) {
+    td.setAttribute('data-sa-state', 'done'); td.textContent = '';
+    if (!pns || !pns.length) { td.appendChild(mutedSpan('sin PN')); return; }
+    pns.forEach(function (pn) {
+      const item = document.createElement('div'); item.className = 'sa-wocol-pn-item';
+      const a = document.createElement('a'); a.className = 'sa-wocol-pn-link'; a.textContent = pn.name;
+      const href = Core().pnLink(pn.id);
+      if (href) { a.href = href; a.target = '_blank'; a.rel = 'noopener'; }
+      item.appendChild(a);
+      // Chips de etiquetas (2º query ligero GetPartNumberForPartNumberPage; se llenan al resolver).
+      const detail = detailCache().get(pn.id);
+      if (detail && detail.labels && detail.labels.length) {
+        const chips = document.createElement('span'); chips.className = 'sa-wocol-chips';
+        detail.labels.forEach(function (l) {
+          const c = document.createElement('span'); c.className = 'sa-wocol-chip'; c.textContent = l.name;
+          if (l.color && /^#[0-9a-fA-F]{3,8}$/.test(l.color)) {
+            c.style.backgroundColor = l.color; c.style.borderColor = l.color; c.style.color = pickTextColor(l.color);
+          }
+          chips.appendChild(c);
+        });
+        item.appendChild(chips);
+      }
+      td.appendChild(item);
+    });
+  }
+
+  // Blanco o gris oscuro según luminancia del fondo (chips legibles con cualquier color).
+  function pickTextColor(hex) {
+    let h = hex.replace('#', '');
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    const r = parseInt(h.substr(0, 2), 16), g = parseInt(h.substr(2, 2), 16), b = parseInt(h.substr(4, 2), 16);
+    if (isNaN(r) || isNaN(g) || isNaN(b)) return '#1c2430';
+    const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+    return lum > 0.6 ? '#1c2430' : '#ffffff';
+  }
+
+  function renderSchedCell(td, tasks) {
+    td.setAttribute('data-sa-state', 'done'); td.textContent = '';
+    if (!tasks || !tasks.length) { td.appendChild(mutedSpan('no programada')); return; }
+    // TODAS las tareas apiladas (una OT multi-tratamiento se agenda en varias líneas).
+    tasks.forEach(function (t) {
+      const item = document.createElement('div'); item.className = 'sa-wocol-sched-item';
+      const st = document.createElement('span'); st.className = 'sa-wocol-sched-st';
+      st.textContent = t.stationName || ('estación ' + (t.stationId != null ? t.stationId : '?'));
+      item.appendChild(st);
+      const meta = document.createElement('span'); meta.className = 'sa-wocol-sched-meta';
+      meta.textContent = [fmtLocalDateTime(t.expectedStartTime), Core().scheduleStatusLabel(t.status)].filter(Boolean).join(' · ');
+      item.appendChild(meta);
+      td.appendChild(item);
+    });
+  }
+
+  function fmtLocalDateTime(iso) {
+    if (!iso) return '';
+    try { const d = new Date(iso); if (!isNaN(d.getTime())) return d.toLocaleString('es-MX', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }); } catch (_) {}
+    return Core().formatShortDateTime(iso);
+  }
+
+  // ── Render de la celda Lote (nombre (idInDomain) link · PS Cliente · fecha recibido) ──
+  function renderLoteCell(td, batches) {
+    td.setAttribute('data-sa-state', 'done'); td.textContent = '';
+    if (!batches || !batches.length) { td.appendChild(mutedSpan('sin lote')); return; }
+    // Una WO puede ligar varios lotes → apilados (cada uno con su PS y fecha).
+    batches.forEach(function (b) {
+      const item = document.createElement('div'); item.className = 'sa-wocol-lote-item';
+      const a = document.createElement('a'); a.className = 'sa-wocol-lote-link';
+      a.textContent = b.name + (b.idInDomain != null ? ' (' + b.idInDomain + ')' : '');
+      const href = Core().batchLink(b.idInDomain, b.partNumberId);
+      if (href) { a.href = href; a.target = '_blank'; a.rel = 'noopener'; }
+      item.appendChild(a);
+      if (b.packingSlip) item.appendChild(loteMeta('PS: ', b.packingSlip));       // textContent → anti-XSS
+      if (b.receivedAt) item.appendChild(loteMeta('Recibido: ', fmtLocalDate(b.receivedAt)));
+      td.appendChild(item);
+    });
+  }
+  function loteMeta(label, value) {
+    const s = document.createElement('span'); s.className = 'sa-wocol-lote-meta';
+    const b = document.createElement('b'); b.textContent = label; s.appendChild(b);
+    s.appendChild(document.createTextNode(value));
+    return s;
+  }
+  function fmtLocalDate(iso) {
+    if (!iso) return '';
+    try { const d = new Date(iso); if (!isNaN(d.getTime())) return d.toLocaleDateString('es-MX', { day: 'numeric', month: 'short', year: 'numeric' }); } catch (_) {}
+    return Core().formatShortDateTime(iso);
+  }
+
+  function renderCellError(td) { td.setAttribute('data-sa-state', 'error'); td.textContent = ''; const e = document.createElement('span'); e.className = 'sa-wocol-err'; e.textContent = '⚠️ error'; td.appendChild(e); }
+  function mutedSpan(t) { const s = document.createElement('span'); s.className = 'sa-wocol-muted'; s.textContent = t; return s; }
+
+  function removeColumns() {
+    document.querySelectorAll('.sa-wocol-pn, .sa-wocol-sched, .sa-wocol-lote').forEach(function (el) { el.remove(); });
+  }
+  function removeColumnClass(cls) { document.querySelectorAll('.' + cls).forEach(function (el) { el.remove(); }); }
+
+  // ── Enriquecimiento por fila (PartNumbersByWorkOrderIdInDomain) ──────────────
+  function pool() {
+    if (!window.__saWoPool) window.__saWoPool = { queue: [], inFlight: 0, lastLaunch: 0, drain: null, count: 0 };
+    return window.__saWoPool;
+  }
+  function enqueue(ids) {
+    const p = pool();
+    const seen = new Set(p.queue);
+    ids.forEach(function (id) { if (!seen.has(id) && !cache().has(id)) { p.queue.push(id); seen.add(id); } });
+    pump();
+  }
+  function isTransient(err) {
+    if (!err) return false;
+    if (err.persistedQueryRotated) return false;
+    const m = (err.message || '').toLowerCase();
+    return /timeout|network|failed to fetch|50\d|429|aborted/.test(m);
+  }
+  async function fetchRow(woIdInDomain) {
+    const api = window.SteelheadAPI;
+    for (let attempt = 0; attempt < RETRY_BACKOFF.length; attempt++) {
+      if (attempt) await new Promise(function (r) { setTimeout(r, RETRY_BACKOFF[attempt]); });
+      try {
+        const data = await api.query('PartNumbersByWorkOrderIdInDomain', { idInDomain: woIdInDomain }, 'PartNumbersByWorkOrderIdInDomain');
+        return { pns: Core().extractPartNumbers(data), woGlobalId: Core().extractWorkOrderGlobalId(data) };
+      } catch (e) {
+        if (attempt === RETRY_BACKOFF.length - 1 || !isTransient(e)) throw e;
+      }
+    }
+  }
+  function fillRow(woIdInDomain, rowData, isError) {
+    document.querySelectorAll('td.sa-wocol-pn[data-sa-woid="' + woIdInDomain + '"]').forEach(function (td) {
+      if (isError) renderCellError(td); else renderPnCell(td, rowData.pns);
+    });
+    document.querySelectorAll('td.sa-wocol-sched[data-sa-woid="' + woIdInDomain + '"]').forEach(function (td) {
+      if (isError) { renderCellError(td); return; }
+      if (board().state === 'ready' && rowData.woGlobalId != null) {
+        renderSchedCell(td, Core().resolveBoardScheduleForWO(board().idx, rowData.woGlobalId));
+      }
+      // si el board aún no está listo, la celda queda ⏳ hasta fillAllSchedCells()
+    });
+    updateCount();
+  }
+  function pump() {
+    const p = pool();
+    if (!anyOn() || !onIndex()) return;
+    while (p.inFlight < MAX_CONC && p.queue.length) {
+      const wait = p.lastLaunch + MIN_GAP_MS - Date.now();
+      if (wait > 0) { setTimeout(pump, wait + 5); return; }
+      const woId = p.queue.shift();
+      p.inFlight++;
+      p.lastLaunch = Date.now();
+      try { if (Cleanup() && !window.__sa_dd_stopped) Cleanup().stopDatadogSessionReplay(); } catch (_) {}
+      fetchRow(woId).then(function (rowData) {
+        cache().set(woId, rowData);
+        fillRow(woId, rowData, false);
+        if (isPnOn()) enqueueDetails((rowData.pns || []).map(function (p) { return p.id; }));   // chips de etiquetas
+        if (isSchedOn()) maybeLoadBoard();   // ya tenemos un woGlobalId → dispara el board
+      }).catch(function (e) {
+        fillRow(woId, null, true);
+        if (e && e.persistedQueryRotated) toast('⚠️ El hash de PartNumbersByWorkOrderIdInDomain rotó — avísale a Claude.');
+        else console.warn('[SA] wo-cols: fila ' + woId + ' falló:', e && e.message);
+      }).then(function () {
+        p.inFlight--; p.count++;
+        try { if (p.drain) p.drain(); } catch (_) {}
+        pump();
+      });
+    }
+  }
+
+  // ── 2º query LIGERO por PN: etiquetas como chips (GetPartNumberForPartNumberPage) ──
+  // Sin descripción (esa solo vive en GetPartNumber, 504 campos → mucho peso; decisión
+  // del usuario: priorizar chips de etiquetas y dejar la descripción).
+  function detailCache() { if (!window.__saWoPnDetail) window.__saWoPnDetail = new Map(); return window.__saWoPnDetail; }
+  function detailPool() { if (!window.__saWoPnDetailPool) window.__saWoPnDetailPool = { queue: [], inFlight: 0, lastLaunch: 0 }; return window.__saWoPnDetailPool; }
+
+  function enqueueDetails(pnIds) {
+    if (!isPnOn()) return;
+    const p = detailPool(); const seen = new Set(p.queue);
+    pnIds.forEach(function (id) { if (id != null && !seen.has(id) && !detailCache().has(id)) { p.queue.push(id); seen.add(id); } });
+    pumpDetails();
+  }
+  async function fetchDetail(pnId) {
+    const api = window.SteelheadAPI;
+    for (let attempt = 0; attempt < RETRY_BACKOFF.length; attempt++) {
+      if (attempt) await new Promise(function (r) { setTimeout(r, RETRY_BACKOFF[attempt]); });
+      try {
+        const data = await api.query('GetPartNumberForPartNumberPage', { partNumberId: pnId }, 'GetPartNumberForPartNumberPage');
+        return { labels: Core().extractPartNumberDetail(data).labels };   // slim
+      } catch (e) { if (attempt === RETRY_BACKOFF.length - 1 || !isTransient(e)) throw e; }
+    }
+  }
+  function pumpDetails() {
+    const p = detailPool();
+    if (!isPnOn() || !onIndex()) return;
+    while (p.inFlight < MAX_CONC && p.queue.length) {
+      const wait = p.lastLaunch + MIN_GAP_MS - Date.now();
+      if (wait > 0) { setTimeout(pumpDetails, wait + 5); return; }
+      const pnId = p.queue.shift(); p.inFlight++; p.lastLaunch = Date.now();
+      fetchDetail(pnId).then(function (d) {
+        detailCache().set(pnId, d);
+        repaintPnCellsWith(pnId);
+      }).catch(function (e) {
+        if (e && e.persistedQueryRotated) toast('⚠️ El hash de GetPartNumberForPartNumberPage rotó — avísale a Claude.');
+        else console.warn('[SA] wo-cols: labels PN ' + pnId + ' falló:', e && e.message);
+      }).then(function () {
+        p.inFlight--;
+        try { if (pool().drain) pool().drain(); } catch (_) {}
+        pumpDetails();
+      });
+    }
+  }
+  // Re-pinta la celda PN de las WOs cuyo cache incluye este pnId (mete/actualiza los chips).
+  function repaintPnCellsWith(pnId) {
+    document.querySelectorAll('td.sa-wocol-pn[data-sa-woid]').forEach(function (td) {
+      const woIdInDomain = parseInt(td.getAttribute('data-sa-woid'), 10);
+      const cached = cache().get(woIdInDomain);
+      if (cached && cached.pns && cached.pns.some(function (p) { return p.id === pnId; })) renderPnCell(td, cached.pns);
+    });
+  }
+  // Encola las etiquetas de todos los PN conocidos (al activar el toggle sobre filas ya cacheadas).
+  function enqueueKnownDetails() {
+    if (!isPnOn()) return;
+    const ids = [];
+    cache().forEach(function (v) { if (v && v.pns) v.pns.forEach(function (p) { ids.push(p.id); }); });
+    if (ids.length) enqueueDetails(ids);
+  }
+
+  // ── Query por WO: Lote (WorkOrder → currentPartsTransferAccounts, SLIM) ──────
+  // WorkOrder({idInDomain}) es la query de la ficha (1156 campos): pesada. Extraemos
+  // SLIM {batches:[{id,idInDomain,name,packingSlip,receivedAt,partNumberId}]} y el raw
+  // sale de scope de inmediato (EJE A: slim responses, no guardar el response completo).
+  // Pool propio con la misma disciplina de concurrencia que el de PartNumbers.
+  function loteCache() { if (!window.__saWoLoteCache) window.__saWoLoteCache = new Map(); return window.__saWoLoteCache; }
+  function lotePool() { if (!window.__saWoLotePool) window.__saWoLotePool = { queue: [], inFlight: 0, lastLaunch: 0 }; return window.__saWoLotePool; }
+
+  function enqueueLote(ids) {
+    if (!isLoteOn()) return;
+    const p = lotePool(); const seen = new Set(p.queue);
+    ids.forEach(function (id) { if (id != null && !seen.has(id) && !loteCache().has(id)) { p.queue.push(id); seen.add(id); } });
+    pumpLote();
+  }
+  // Encola los lotes de las filas visibles aún no cacheadas (al activar el toggle o paginar).
+  function enqueueVisibleLote() {
+    if (!isLoteOn()) return;
+    const ids = [];
+    document.querySelectorAll('td.sa-wocol-lote[data-sa-woid]').forEach(function (td) {
+      const id = parseInt(td.getAttribute('data-sa-woid'), 10);
+      if (!isNaN(id) && !loteCache().has(id)) ids.push(id);
+    });
+    if (ids.length) enqueueLote(ids);
+  }
+  async function fetchLote(woIdInDomain) {
+    const api = window.SteelheadAPI;
+    for (let attempt = 0; attempt < RETRY_BACKOFF.length; attempt++) {
+      if (attempt) await new Promise(function (r) { setTimeout(r, RETRY_BACKOFF[attempt]); });
+      try {
+        const data = await api.query('WorkOrder', { idInDomain: woIdInDomain }, 'WorkOrder');
+        return { batches: Core().extractWorkOrderBatches(data) };   // SLIM; el raw se descarta
+      } catch (e) { if (attempt === RETRY_BACKOFF.length - 1 || !isTransient(e)) throw e; }
+    }
+  }
+  function pumpLote() {
+    const p = lotePool();
+    if (!isLoteOn() || !onIndex()) return;
+    while (p.inFlight < MAX_CONC && p.queue.length) {
+      const wait = p.lastLaunch + MIN_GAP_MS - Date.now();
+      if (wait > 0) { setTimeout(pumpLote, wait + 5); return; }
+      const woId = p.queue.shift(); p.inFlight++; p.lastLaunch = Date.now();
+      try { if (Cleanup() && !window.__sa_dd_stopped) Cleanup().stopDatadogSessionReplay(); } catch (_) {}
+      fetchLote(woId).then(function (slim) {
+        loteCache().set(woId, slim);
+        fillLoteCells(woId, slim.batches, false);
+      }).catch(function (e) {
+        fillLoteCells(woId, null, true);
+        if (e && e.persistedQueryRotated) toast('⚠️ El hash de WorkOrder rotó — avísale a Claude.');
+        else console.warn('[SA] wo-cols: lote ' + woId + ' falló:', e && e.message);
+      }).then(function () {
+        p.inFlight--;
+        try { if (pool().drain) pool().drain(); } catch (_) {}   // Apollo drain tras query pesada
+        pumpLote();
+      });
+    }
+  }
+  function fillLoteCells(woIdInDomain, batches, isError) {
+    document.querySelectorAll('td.sa-wocol-lote[data-sa-woid="' + woIdInDomain + '"]').forEach(function (td) {
+      if (isError) renderCellError(td); else renderLoteCell(td, batches);
+    });
+    updateCount();
+  }
+
+  // ── Índice de programación del board (UNA sola llamada por página) ───────────
+  function firstWoGlobalId() {
+    let found = null;
+    cache().forEach(function (v) { if (found == null && v && v.woGlobalId != null) found = v.woGlobalId; });
+    return found;
+  }
+  function maybeLoadBoard() {
+    if (!isSchedOn() || !onIndex()) return;
+    const b = board();
+    if (b.state === 'loading' || b.state === 'ready') return;
+    const woGlobal = firstWoGlobalId();
+    if (woGlobal == null) return;   // aún no hay ninguna fila resuelta; se reintenta al resolver
+    const domainId = Core().parseDomainId(location.pathname);
+    b.state = 'loading';
+    const api = window.SteelheadAPI;
+    api.query('WorkOrderSchedule', { domainId: domainId, workOrderId: woGlobal }, 'WorkOrderSchedule')
+      .then(function (data) {
+        // Guarda SOLO el índice slim; el raw (~4.6MB) se descarta al salir de scope.
+        b.idx = Core().buildBoardScheduleIndex(data);
+        b.state = 'ready';
+        try { if (pool().drain) pool().drain(); } catch (_) {}   // Apollo drain tras el fetch pesado
+        fillAllSchedCells();
+      })
+      .catch(function (e) {
+        b.state = 'error';
+        document.querySelectorAll('td.sa-wocol-sched[data-sa-state="pending"]').forEach(renderCellError);
+        if (e && e.persistedQueryRotated) toast('⚠️ El hash de WorkOrderSchedule rotó — avísale a Claude.');
+        else console.warn('[SA] wo-cols: WorkOrderSchedule falló:', e && e.message);
+      });
+  }
+  function fillAllSchedCells() {
+    const b = board();
+    if (b.state !== 'ready') return;
+    document.querySelectorAll('td.sa-wocol-sched[data-sa-woid]').forEach(function (td) {
+      const woIdInDomain = parseInt(td.getAttribute('data-sa-woid'), 10);
+      const cached = cache().get(woIdInDomain);
+      if (cached && cached.woGlobalId != null) renderSchedCell(td, Core().resolveBoardScheduleForWO(b.idx, cached.woGlobalId));
+    });
+    updateCount();
+  }
+
+  // ── Memory hardening (EJE B) ────────────────────────────────────────────────
+  function startMonitor() {
+    const c = Cleanup(); if (!c) return;
+    const p = pool();
+    if (!p.drain && typeof c.makePeriodicDrain === 'function') p.drain = c.makePeriodicDrain(25);
+    if (window.__saWoColsMon || typeof c.createMemMonitor !== 'function') return;
+    window.__saWoColsMon = c.createMemMonitor({
+      getElement: function () { return document.getElementById('sa-wocol-mem'); },
+      onGuardrail: function (pct) { pool().queue.length = 0; toast('🛑 Memoria alta (' + pct + '%) — enriquecimiento pausado. Recarga si notas lentitud.'); },
+    });
+    window.__saWoColsMon.start();
+  }
+  function stopMonitor() { if (window.__saWoColsMon) { try { window.__saWoColsMon.stop(); } catch (_) {} window.__saWoColsMon = null; } }
+
+  // ── Observer + sync ──────────────────────────────────────────────────────────
+  let obsTimer = null;
+  function scheduleSync() { if (obsTimer) return; obsTimer = setTimeout(function () { obsTimer = null; try { syncColumns(); } catch (_) {} }, OBS_DEBOUNCE_MS); }
+
+  // ── Botón 🏷️ Etiquetas en la celda NATIVA de Acciones (por fila) ─────────────
+  // NO es una columna nuestra: inyecta un botón en la celda de Acciones (la que tiene
+  // Editar/Archivar). Click → abre la ficha en pestaña nueva con ?sa_print=jobtag; ahí
+  // wo-schedule-button AUTO-MANEJA el flujo nativo y suelta el PDF (server-side, POR-OT
+  // → sin el techo ~16-20 de PDFGeneratorAPI en batch). Re-inyecta en cada sync (idempotente).
+  function findActionsCell(tr) {
+    // Celda de Acciones = la que tiene el botón Editar/Archivar (testids idioma-agnósticos).
+    const icon = tr.querySelector('td svg[data-testid="EditIcon"], td svg[data-testid="ArchiveIcon"]');
+    if (icon && icon.closest('td')) return icon.closest('td');
+    // Fallback: última td que no sea nuestra.
+    const tds = tr.querySelectorAll('td:not(.sa-wocol-pn):not(.sa-wocol-sched):not(.sa-wocol-lote)');
+    return tds.length ? tds[tds.length - 1] : null;
+  }
+  // Botones 🏷️ (JobTag/Regular) y 📋 (Verbose/Detallado): generan el PDF en un IFRAME OCULTO
+  // dentro del dashboard → NO abren pestaña (no roban foco) y NO se estrangulan (rápido).
+  // Fallback a pestaña si SH bloquea enmarcar o el iframe falla (tras 1 reintento).
+  const LABEL_TYPES = [
+    { key: 'jobtag',  emoji: '🏷️', title: 'Descargar el JobTag (etiqueta Regular) de esta OT — en 2º plano, sin salir del dashboard.' },
+    { key: 'verbose', emoji: '📋', title: 'Descargar el Verbose (etiqueta Detallada) de esta OT — en 2º plano, sin salir del dashboard.' },
+  ];
+  function labelEmoji(typeKey) { const s = LABEL_TYPES.find(function (x) { return x.key === typeKey; }); return s ? s.emoji : '🏷️'; }
+  function buildLabelButton(fichaHref, spec) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'sa-wolabel-btn';
+    b.setAttribute('data-sa-print-type', spec.key);
+    b.textContent = spec.emoji;
+    b.title = spec.title;
+    b.setAttribute('aria-label', spec.title);
+    b.addEventListener('click', function (e) { e.preventDefault(); e.stopPropagation(); driveLabel(b, fichaHref, spec.key); });
+    return b;
+  }
+
+  // ── Generación via IFRAME OCULTO (same-origin → el PADRE maneja el modal dentro) ──────
+  // La extensión NO inyecta en iframes (manifest sin all_frames), pero el iframe es same-origin,
+  // así que desde el dashboard (world:MAIN) accedemos a iframe.contentDocument y manejamos su
+  // modal directo. Ventaja: sin pestaña (no roba foco) y sin throttle (rápido). Fallback: pestaña.
+  const PRINT_ANCHOR_SEL = '[data-steelhead-component-id="WORK_ORDER_PAGE_HEADER_PRINT_JOB_TAGS_BUTTON"]';
+  function isVis(el) { return !!(el && (el.offsetParent !== null || (el.getClientRects && el.getClientRects().length))); }
+  function txtOf(el) { return (el && el.textContent ? el.textContent : '').replace(/\s+/g, ' ').trim(); }
+  function sleepP(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function waitForIn(fn, timeoutMs) {
+    return new Promise(function (res) {
+      const t0 = Date.now();
+      (function tick() { let v = null; try { v = fn(); } catch (_) {} if (v) return res(v); if (Date.now() - t0 > timeoutMs) return res(null); setTimeout(tick, 200); })();
+    });
+  }
+  function findTriggerIn(doc) {
+    if (!doc) return null;
+    const a = doc.querySelector(PRINT_ANCHOR_SEL);
+    if (a) {
+      const btn = Array.prototype.slice.call(a.querySelectorAll('button')).find(isVis); if (btn) return btn;
+      const ic = Array.prototype.slice.call(a.querySelectorAll('[aria-label]')).find(function (e) { return isVis(e) && e.querySelector && e.querySelector('svg[data-testid="QrCode2Icon"]'); }); if (ic) return ic;
+      if (isVis(a)) return a;
+    }
+    return null;
+  }
+  function findDialogIn(doc) {
+    if (!doc) return null;
+    const dgs = doc.querySelectorAll('[role="dialog"]');
+    for (let i = 0; i < dgs.length; i++) {
+      const d = dgs[i]; const h = d.querySelector('h2,h6');
+      if (/imprimir\s+etiqueta\s+de\s+trabajo|print\s+(?:multiple\s+)?job\s+tag/i.test(txtOf(h))) return d;
+      if (d.querySelector('button.MuiButton-contained svg[data-testid="QrCode2Icon"]')) return d;
+    }
+    return null;
+  }
+  function findModalBtnIn(dlg, typeKey) {
+    const t = Core().printType(typeKey); if (!dlg || !t) return null;
+    const bs = Array.prototype.slice.call(dlg.querySelectorAll('button.MuiButton-contained')).filter(function (b) { return b.querySelector('svg[data-testid="QrCode2Icon"]'); });
+    const byText = bs.find(function (b) { return txtOf(b).toLowerCase() === t.buttonTextEs.toLowerCase(); });
+    return byText || bs[t.order] || null;
+  }
+  function findShareUrlIn(doc) {
+    if (!doc) return null;
+    const ns = doc.querySelectorAll('object[data*="/api/pdf/share/"],a[href*="/api/pdf/share/"],iframe[src*="/api/pdf/share/"]');
+    for (let i = 0; i < ns.length; i++) { const u = ns[i].getAttribute('data') || ns[i].getAttribute('href') || ns[i].getAttribute('src') || ''; if (Core().isPdfShareUrl(u)) return u.indexOf('http') === 0 ? u : (location.origin + u); }
+    return null;
+  }
+  function clickRobustIn(b, win) {
+    const W = win || window;
+    try { if (b.focus) b.focus(); } catch (_) {}
+    const opts = { bubbles: true, cancelable: true, view: W, button: 0 };
+    ['pointerdown', 'mousedown', 'pointerup', 'mouseup'].forEach(function (ty) { try { b.dispatchEvent(new (W.MouseEvent || MouseEvent)(ty, opts)); } catch (_) {} });
+    try { b.click(); } catch (_) {}
+  }
+  function downloadShort(url, typeKey, woIdInDomain) {
+    try {
+      const name = Core().buildPdfFilename(typeKey, woIdInDomain);
+      const dlUrl = url.split('?')[0] + '?downloadName=' + encodeURIComponent(name);
+      const a = document.createElement('a'); a.href = dlUrl; a.download = name; a.rel = 'noopener';
+      document.body.appendChild(a); a.click(); a.remove();
+      return name;
+    } catch (_) { return null; }
+  }
+  // Maneja el modal DENTRO del iframe. true si generó+descargó; false si bloqueado/no cargó.
+  async function runIframePrint(iframe, typeKey, woIdInDomain) {
+    const getDoc = function () { try { return iframe.contentDocument; } catch (_) { return null; } };
+    const getWin = function () { try { return iframe.contentWindow; } catch (_) { return null; } };
+    const trigger = await waitForIn(function () { return findTriggerIn(getDoc()); }, 30000);
+    if (!trigger) return false;   // enmarcado bloqueado (X-Frame-Options) o la ficha no cargó
+    clickRobustIn(trigger, getWin());
+    const pbtn = await waitForIn(function () {
+      const d = getDoc(); if (!d) return null;
+      const dlg = findDialogIn(d); if (!dlg) return null;
+      if (/cargando|loading/i.test(dlg.textContent || '')) return null;
+      const val = dlg.querySelector('[class*="singleValue"]'); if (val && !txtOf(val)) return null;
+      const b = findModalBtnIn(dlg, typeKey); return (b && !b.disabled) ? b : null;
+    }, 30000);
+    if (!pbtn) return false;
+    await sleepP(900);                       // margen anti-blanco
+    clickRobustIn(pbtn, getWin());
+    const url = await waitForIn(function () { return findShareUrlIn(getDoc()); }, 45000);
+    if (!url) return false;
+    downloadShort(url, typeKey, woIdInDomain);
+    return true;
+  }
+  // Tope de concurrencia: cada iframe carga un SPA completo (pesado) → máx N a la vez, encola.
+  function labelQueue() { if (!window.__saLabelQ) window.__saLabelQ = { active: 0, max: 4, waiting: [] }; return window.__saLabelQ; }
+  async function driveLabel(btn, fichaHref, typeKey) {
+    const q = labelQueue();
+    if (q.active >= q.max) { if (btn) btn.textContent = '⋯'; await new Promise(function (res) { q.waiting.push(res); }); }
+    q.active++;
+    try { await driveLabelCore(btn, fichaHref, typeKey); }
+    finally { q.active--; const next = q.waiting.shift(); if (next) next(); }
+  }
+  async function driveLabelCore(btn, fichaHref, typeKey) {
+    const woId = Core().parseWorkOrderIdInDomain(fichaHref);
+    const emoji = labelEmoji(typeKey);
+    if (btn) { btn.textContent = '⏳'; btn.style.pointerEvents = 'none'; }
+    let ok = false;
+    // Reintenta el IFRAME una vez antes de caer a pestaña: el hipo de sesión bajo carga
+    // (`You're not logged in`) suele resolverse en el 2º intento → menos fallbacks a pestaña.
+    for (let attempt = 0; attempt < 2 && !ok; attempt++) {
+      const iframe = document.createElement('iframe');
+      iframe.setAttribute('aria-hidden', 'true');
+      // Offscreen con dimensiones REALES (no display:none, que impide render) → el SPA renderiza el
+      // modal completo (botón grande, no la versión icono chica). opacity:0 evita cualquier flash.
+      iframe.style.cssText = 'position:fixed;left:-10000px;top:0;width:1400px;height:950px;border:0;opacity:0;pointer-events:none;';
+      iframe.src = fichaHref;   // sin ?sa_print: el applet NO corre dentro; el PADRE maneja
+      document.body.appendChild(iframe);
+      try { ok = await runIframePrint(iframe, typeKey, woId); }
+      catch (e) { console.warn('[SA] wo-labels iframe:', e && e.message); }
+      try { iframe.remove(); } catch (_) {}
+      if (!ok && attempt === 0) { if (btn) btn.textContent = '↻'; await sleepP(600); }   // respiro + reintento
+    }
+    if (btn) { btn.textContent = ok ? '✅' : emoji; btn.style.pointerEvents = ''; if (ok) setTimeout(function () { if (btn) btn.textContent = emoji; }, 2500); }
+    if (ok) { toast('🏷️ WO' + (woId != null ? woId : '') + (typeKey === 'verbose' ? '-verbose' : '') + '.pdf descargado.'); }
+    else {
+      // Fallback tras 2 intentos: SH bloquea enmarcar (o falló) → pestaña (⌘/Ctrl+clic no pierde foco).
+      toast('🏷️ No se pudo en 2º plano (2 intentos) — abro pestaña. ⌘/Ctrl+clic evita perder el foco.');
+      window.open(fichaHref + (fichaHref.indexOf('?') >= 0 ? '&' : '?') + 'sa_print=' + typeKey + '&sa_dl=1', '_blank');
+    }
+  }
+  function ensureActionButtons(table) {
+    if (!isLabelsOn()) return;
+    table.querySelectorAll('tbody tr').forEach(function (tr) {
+      const link = tr.querySelector('td a[href*="/WorkOrders/"]');
+      const href = link ? (link.getAttribute('href') || link.href || '') : '';
+      if (!href || Core().parseWorkOrderIdInDomain(href) == null) return;
+      const cell = findActionsCell(tr);
+      if (!cell) return;
+      LABEL_TYPES.forEach(function (spec) {   // idempotente POR TIPO
+        if (cell.querySelector('.sa-wolabel-btn[data-sa-print-type="' + spec.key + '"]')) return;
+        cell.appendChild(buildLabelButton(href, spec));
+      });
+    });
+  }
+  function removeLabelButtons() { document.querySelectorAll('.sa-wolabel-btn').forEach(function (b) { b.remove(); }); }
+
+  function syncColumns() {
+    if (!onIndex()) return;
+    // La barra de toggles se monta SIEMPRE, aunque no haya ninguno encendido: es la UI de
+    // entrada del applet, y si no está el operador no tiene cómo encender nada.
+    //
+    // Antes esto vivía detrás de `!anyOn() → return` y el bug quedaba oculto por pura
+    // suerte de timing: `ensureToggles()` necesita que la tabla exista para anclarse, en el
+    // init todavía no está, y el único reintento es este observer. Con el loader viejo (79
+    // archivos en serie) el applet llegaba tan tarde que la tabla ya estaba pintada y
+    // montaba a la primera. Al acelerar el loader (2026-07-27) el applet pasó a correr
+    // ANTES de que React pintara la tabla y los toggles dejaron de aparecer: sólo volvían
+    // al forzar un re-render (el botón de márgenes). Ver docs/architecture/applet-load-gating.md.
+    ensureToggles();
+    if (!anyOn()) return;   // el trabajo pesado sí depende de que haya algo encendido
+    const table = getTable(); if (!table) return;
+    injectStyles();
+    ensureHeaderCells(table);
+    const toFetch = ensureBodyCells(table);
+    if (toFetch.length) enqueue(toFetch);
+    if (isPnOn()) enqueueKnownDetails();   // chips para filas ya cacheadas (p.ej. al activar el toggle)
+    if (isSchedOn()) { if (board().state === 'ready') fillAllSchedCells(); else maybeLoadBoard(); }
+    if (isLoteOn()) enqueueVisibleLote();
+    if (isLabelsOn()) ensureActionButtons(table);
+    updateCount();
+  }
+
+  function observe() {
+    if (window.__saWoColsObs) return;
+    const obs = new MutationObserver(function () { scheduleSync(); });
+    obs.observe(document.body, { childList: true, subtree: true });
+    window.__saWoColsObs = obs;
+  }
+  function teardownObserver() { if (window.__saWoColsObs) { window.__saWoColsObs.disconnect(); window.__saWoColsObs = null; } if (obsTimer) { clearTimeout(obsTimer); obsTimer = null; } }
+
+  // ── Activar / desactivar ──────────────────────────────────────────────────────
+  function activate() {
+    if (!onIndex()) return;
+    injectStyles(); startMonitor(); observe(); syncColumns();
+  }
+  function deactivate() {
+    const p = pool(); p.queue.length = 0;
+    detailPool().queue.length = 0;
+    lotePool().queue.length = 0;
+    teardownObserver(); stopMonitor(); removeColumns(); removeLabelButtons(); refreshToggleUI();
+  }
+
+  function toggle(kind) {
+    const key = keyFor(kind);
+    const next = !getFlag(key);
+    setFlag(key, next);
+    refreshToggleUI();
+    const label = kind === 'pn' ? '🔩 Núm. de Parte' : kind === 'sched' ? '📅 Programación' : kind === 'lote' ? '📦 Lote' : '🏷️ Etiquetas';
+    if (next) {
+      toast(label + (kind === 'labels' ? ': ACTIVADO — botón en Acciones' : ': ACTIVADO — cargando…'));
+      if (kind === 'sched') { board().state = 'idle'; }  // recarga el board si hace falta
+      activate();
+    } else {
+      toast(label + ': DESACTIVADO');
+      if (kind === 'pn') detailPool().queue.length = 0;   // corta la carga de etiquetas
+      if (kind === 'lote') lotePool().queue.length = 0;   // corta la carga de lotes
+      if (kind === 'labels') removeLabelButtons();        // quita los botones de Acciones
+      else removeColumnClass('sa-wocol-' + kind);
+      if (!anyOn()) deactivate();
+      else { refreshToggleUI(); syncColumns(); }
+    }
+    return { pn: isPnOn(), sched: isSchedOn(), lote: isLoteOn(), labels: isLabelsOn() };
+  }
+
+  function toggleFromPopup() { return toggle('pn'); }
+  function toggleSchedFromPopup() { return toggle('sched'); }
+  function toggleLoteFromPopup() { return toggle('lote'); }
+  function toggleLabelsFromPopup() { return toggle('labels'); }
+
+  // ── Navegación SPA ─────────────────────────────────────────────────────────
+  function installUrlChangeListener() {
+    if (!window.__saWoColsUrlListener) {
+      window.__saWoColsUrlListener = true;
+      const fire = function () { window.dispatchEvent(new Event('sa-wocol-urlchange')); };
+      ['pushState', 'replaceState'].forEach(function (m) { const orig = history[m]; history[m] = function () { const r = orig.apply(this, arguments); fire(); return r; }; });
+      window.addEventListener('popstate', fire);
+    }
+    window.addEventListener('sa-wocol-urlchange', function () {
+      if (onIndex()) { ensureToggles(); observe(); if (anyOn()) activate(); }
+      else {
+        deactivate(); cache().clear();
+        window.__saWoBoard = { idx: null, state: 'idle' };   // libera el índice al salir
+        window.__saWoPnDetail = new Map(); window.__saWoPnDetailPool = { queue: [], inFlight: 0, lastLaunch: 0 };
+        window.__saWoLoteCache = new Map(); window.__saWoLotePool = { queue: [], inFlight: 0, lastLaunch: 0 };
+        const bar = document.getElementById('sa-wocol-bar'); if (bar) bar.remove();
+      }
+    });
+  }
+
+  function init() {
+    if (window.__saWoColsInit) return;
+    window.__saWoColsInit = true;
+    installUrlChangeListener();
+    if (onIndex()) { ensureToggles(); observe(); if (anyOn()) activate(); }
+    console.log('[SA] WoListingColumns activo (columnas Núm. de Parte + Programación en /WorkOrders)');
+  }
+
+  return {
+    init, toggle, toggleFromPopup, toggleSchedFromPopup, toggleLoteFromPopup, toggleLabelsFromPopup,
+    _getState: function () {
+      const p = pool(), b = board(), lp = lotePool();
+      return {
+        pn: isPnOn(), sched: isSchedOn(), lote: isLoteOn(), labels: isLabelsOn(), onIndex: onIndex(),
+        rows: document.querySelectorAll('td.sa-wocol-pn, td.sa-wocol-sched, td.sa-wocol-lote').length,
+        cached: cache().size, queue: p.queue.length, inFlight: p.inFlight, board: b.state,
+        loteCached: loteCache().size, loteQueue: lp.queue.length, loteInFlight: lp.inFlight,
+        labelBtns: document.querySelectorAll('.sa-wolabel-btn').length,
+      };
+    },
+  };
+})();
+
+if (typeof window !== 'undefined') {
+  window.WoListingColumns = WoListingColumns;
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () { WoListingColumns.init(); });
+  } else {
+    WoListingColumns.init();
+  }
+}
+})();
+// ===== END scripts/wo-listing-columns.js =====
 
 // ===== BEGIN sa-bootstrap.js =====
 (function(){

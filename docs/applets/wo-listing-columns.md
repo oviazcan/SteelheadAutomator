@@ -90,3 +90,15 @@ Producción pidió (2026-07-24) un botón en la columna **Acciones** del listado
 
 - `PartNumbersByWorkOrderIdInDomain`, `AllStations`, `WorkOrder`, `WorkOrderSchedule`: **ya en config**, sin hash nuevo introducido por las columnas. La columna Lote usa `WorkOrder({idInDomain})` (mismo hash que `wo-schedule-button`). Ruta de captura de `PartNumbersByWorkOrderIdInDomain`/`WorkOrder`: navegar a la ficha `/Domains/<d>/WorkOrders/<id>` — verificar/registrar en `route-catalog.json`.
 - **`AllWorkOrders` NO rotó (corrección 2026-07-24):** el hash de config `aaeb9dc0…` **sigue válido server-side** (el validador no lo reporta). El front sencillamente usa un bundle más nuevo (`4a1ce04a…`); la persisted query vieja sigue registrada. `wo-listing-columns` **no** llama `AllWorkOrders` (lo menciona solo en comentario). Sin acción.
+
+
+## Safari / iPad (bundle v0.6.0, 2026-07-27)
+
+Integrado al bundle del iPad. El scanner (`tools/safari-bundle-scan.py`) lo clasificaba
+**NO-APLICA** por detectar `a.download`, pero esa descarga es la **generación del PDF**: una
+función **lateral y opt-in**, no el flujo core del applet. La regla correcta es *NO-APLICA solo
+cuando el FLUJO CORE es la descarga* (auditor, carga-masiva, file-uploader…); si es una función
+más, el applet sí va al bundle y en iOS simplemente esa función no opera.
+
+Recordatorio: el bundle es **estático** (Apple 2.5.2 prohíbe código remoto) — editar
+`remote/scripts` NO llega al iPad hasta correr `tools/build-safari.sh` y **recompilar en Xcode**.
