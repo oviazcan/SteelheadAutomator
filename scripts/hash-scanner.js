@@ -364,6 +364,9 @@ const HashScanner = (() => {
   const BACKUP_VARS_PER_OP = 2;
   const BACKUP_RESPONSES_PER_OP = 1;
   const BACKUP_ARRAY_CAP = 8;          // elementos por array en la muestra guardada
+  // Escalera de recorte: se prueba de mayor a menor y se guarda el PRIMERO que quepa.
+  // Preferimos una muestra pobre a ninguna: la forma se conserva aunque los arrays midan 1.
+  const BACKUP_ARRAY_CAPS = [BACKUP_ARRAY_CAP, 3, 1];
   const BACKUP_BYTES_PER_OP = 120000;  // tope duro por op
   const BACKUP_BUDGET = 1500000;       // presupuesto total de muestras
 
@@ -407,17 +410,35 @@ const HashScanner = (() => {
     // Dos vueltas a propósito: las VARIABLES son chicas y son lo más valioso (dan la
     // firma exacta de la llamada), así que se sirven ANTES que las respuestas. Con una
     // sola vuelta op-por-op, una respuesta gigante de la primera op dejaba al resto sin nada.
+    // DEGRADAR antes que descartar. La versión previa hacía UN recorte (arrays a 8) y, si
+    // aun así no cabía, tiraba la muestra ENTERA — castigando justo a las ops PESADAS, que
+    // son las más caras de recapturar. Caso real: `CreateManyScheduleTasks` (crear tarea de
+    // programación) llevaba desde el 2026-07-23 con hash y `count`, pero SIN una sola
+    // variable, así que no se podía escribir la llamada; su hermana `UpdateManyScheduleTasks`
+    // (245 B) sí sobrevivía. Una muestra con arrays de 1 elemento sigue dando la FORMA
+    // completa —que es para lo que sirve—; cero muestras no da nada.
     const take = (sample, bucket) => {
-      const cut = truncateForBackup(sample);
-      const size = jsonSize(cut);
-      if (size > BACKUP_BYTES_PER_OP || size > budget) return;
-      bucket.push(cut);
-      budget -= size;
+      for (const cap of BACKUP_ARRAY_CAPS) {
+        const cut = truncateForBackup(sample, cap);
+        const size = jsonSize(cut);
+        if (size <= BACKUP_BYTES_PER_OP && size <= budget) {
+          bucket.push(cut);
+          budget -= size;
+          return true;
+        }
+      }
+      return false;   // ni con arrays de 1 elemento cabe → el caller lo marca como perdido
     };
+
+    // Una entrada restaurada SIN muestras es la peor de las dos posibles: tiene hash y
+    // `count`, así que a simple vista parece cubierta, pero no alcanza para escribir la
+    // llamada — y si la op no se vuelve a disparar, nunca se rellena sola. Se marca para
+    // que el export lo diga en vez de dejarlo deducir por un array vacío.
+    const marcar = (op, cupo) => { if (!cupo) out[op].samplesLost = true; };
 
     for (const [op, v] of pend) {
       for (const s of (v.variablesSamples || []).slice(0, BACKUP_VARS_PER_OP)) {
-        take(s, out[op].variablesSamples);
+        marcar(op, take(s, out[op].variablesSamples));
       }
       // Los errores son chicos y explican por qué una op nueva falló (hash deprecado, 400…).
       for (const e of (v.errorSamples || []).slice(0, 1)) take(e, out[op].errorSamples);
@@ -425,7 +446,7 @@ const HashScanner = (() => {
     }
     for (const [op, v] of pend) {
       for (const s of (v.responseSamples || []).slice(0, BACKUP_RESPONSES_PER_OP)) {
-        take(s, out[op].responseSamples);
+        marcar(op, take(s, out[op].responseSamples));
       }
     }
     return out;
