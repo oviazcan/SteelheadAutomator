@@ -1,7 +1,7 @@
 # `po-listing-filters` — Buscador global de OC + Toggle de empresa
 
-**Versión:** 0.3.0 · **Pantalla:** `/Domains/<d>/Purchasing/PurchaseOrders` · **`autoInject: true`**
-**Estado:** VIVO en **config 1.7.212**. Core 73/73 golden, suite 955/955.
+**Versión:** 0.4.0 · **Pantalla:** `/Domains/<d>/Purchasing/PurchaseOrders` · **`autoInject: true`**
+**Estado:** VIVO. Core 80/80 golden, suite 962/962.
 
 Diseño completo en [`docs/superpowers/specs/2026-07-27-po-listing-filters-design.md`](../superpowers/specs/2026-07-27-po-listing-filters-design.md).
 
@@ -85,6 +85,29 @@ duplique ni pierda vistas.
 
 Panel dark-mode con secciones **PROVEEDOR / ÓRDENES DE COMPRA / FACTURAS**; cada renglón lleva
 badge de tipo y **en qué vista vive**.
+
+## Facturas: por qué aparece cada una
+
+`SearchBills.searchQuery` busca en **varios campos a la vez y no dice en cuál pegó**. Buscando
+"1841" devuelve cuatro facturas que a simple vista no tienen relación — reporte real del
+operador (2026-07-27). Con los datos del nodo se explica cada una:
+
+| Bill # | Proveedor | Folio (`invoiceNumber`) | OC | Por qué salió |
+|---|---|---|---|---|
+| 1841 | A&N FORWARDING | 262034 | 1617 | su **Bill #** es 1841 |
+| 2018 | REACTOR AD | **1841** | 1790 | su **folio** es 1841 |
+| **2080** | **NORA LIZ PINEDA** | PO1841 | **1841** | **es la factura DE la OC 1841** ★ |
+| 1822 | COMPUTO CONTABLE | 26070812**1841**049 | 1597 | "1841" va dentro del folio |
+
+La #2080 era justo la que el operador buscaba, pero quedaba enterrada entre las otras tres.
+
+**El PO# de una factura vive en sus LÍNEAS** (`billLinesByBillId.nodes[].purchaseOrderName`),
+no en el nodo raíz — `SearchBills` **no** expone `purchaseOrderByPurchaseOrderId`, que es lo
+que el código asumía al principio (por eso la OC nunca se mostraba).
+
+Con eso, cada renglón de factura ahora muestra **su OC** y una nota del motivo
+(`billMatchReason`): «de esta OC» en verde, «folio …», «n.º de factura». Y las que coinciden
+**por OC se ordenan primero**, porque son las que se buscaban al teclear un número de orden.
 
 ## Navegación de los resultados
 

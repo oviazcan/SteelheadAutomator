@@ -283,6 +283,48 @@
     return { idInDomain: null, name: s };
   }
 
+  // ── Facturas: de dónde sale cada dato y POR QUÉ matchean ──
+  //
+  // `SearchBills.searchQuery` busca en VARIOS campos a la vez y no dice en cuál pegó, así
+  // que buscar "1841" devuelve facturas que a simple vista no tienen nada que ver (caso real
+  // reportado por el operador). Con los datos del nodo se puede explicar cada una:
+  //
+  //   Bill #1841  A&N FORWARDING     invoiceNumber 262034          PO 1617  → pegó el Bill #
+  //   Bill #2018  REACTOR AD         invoiceNumber 1841            PO 1790  → pegó el folio
+  //   Bill #2080  NORA LIZ PINEDA    invoiceNumber PO1841          PO 1841  → pegó la OC ★
+  //   Bill #1822  COMPUTO CONTABLE   invoiceNumber 260708121841049 PO 1597  → substring del folio
+  //
+  // La #2080 es la que el operador realmente buscaba. Mostrar el motivo convierte ruido
+  // aparente en información, y `MATCH_PO` permite subirla al principio.
+  const BILL_MATCH = { PO: 'po', INVOICE: 'invoice', BILL_ID: 'bill-id', OTHER: 'other' };
+
+  // El PO# de una factura vive en sus LÍNEAS (`purchaseOrderName`), no en el nodo raíz.
+  function extractBillPOs(bill) {
+    const nodes = (bill && bill.billLinesByBillId && bill.billLinesByBillId.nodes) || [];
+    const seen = new Set();
+    const out = [];
+    for (const l of nodes) {
+      const name = l && l.purchaseOrderName;
+      if (name == null || name === '') continue;
+      const s = String(name);
+      if (!seen.has(s)) { seen.add(s); out.push(s); }
+    }
+    return out;
+  }
+
+  // ¿Por qué esta factura salió en la búsqueda? Se evalúa en orden de relevancia: coincidir
+  // por OC es lo más informativo, luego el folio exacto, luego el propio Bill #.
+  function billMatchReason(bill, term) {
+    const t = String(term == null ? '' : term).trim().toLowerCase();
+    if (!t || !bill) return BILL_MATCH.OTHER;
+    if (extractBillPOs(bill).some((p) => p.toLowerCase() === t)) return BILL_MATCH.PO;
+    const inv = bill.invoiceNumber == null ? '' : String(bill.invoiceNumber).toLowerCase();
+    if (inv === t) return BILL_MATCH.INVOICE;
+    if (String(bill.idInDomain) === t) return BILL_MATCH.BILL_ID;
+    if (inv.includes(t)) return BILL_MATCH.INVOICE; // substring del folio (el caso 1822)
+    return BILL_MATCH.OTHER;
+  }
+
   // raw = { vendors:[{display,identifier}], poByCategory:{<key>:[node]}, bills:[node] }
   // → lista plana ordenada: proveedores, luego OCs (en el orden de PO_CATEGORIES), luego bills.
   function classifyResults(raw) {
@@ -317,19 +359,25 @@
       }
     }
 
-    for (const b of (r.bills || [])) {
-      if (!b) continue;
-      out.push({
+    // Las facturas que coinciden por OC van PRIMERO: son las que el operador buscaba cuando
+    // teclea un número de orden. El resto conserva el orden del server.
+    const bills = (r.bills || []).filter(Boolean).map((b) => {
+      const pos = extractBillPOs(b);
+      return {
         type: RESULT_TYPES.BILL,
         id: b.id == null ? null : String(b.id),
         idInDomain: b.idInDomain == null ? null : String(b.idInDomain),
         label: 'Factura ' + (b.idInDomain == null ? '?' : b.idInDomain),
         vendorName: (b.vendorByVendorId && b.vendorByVendorId.name) || null,
-        poIdInDomain: b.purchaseOrderByPurchaseOrderId
-          ? String(b.purchaseOrderByPurchaseOrderId.idInDomain)
-          : null,
-      });
-    }
+        invoiceNumber: b.invoiceNumber == null ? null : String(b.invoiceNumber),
+        poNames: pos,
+        poIdInDomain: pos.length === 1 ? pos[0] : null,
+        matchReason: billMatchReason(b, r.term),
+      };
+    });
+    const porOC = bills.filter((b) => b.matchReason === BILL_MATCH.PO);
+    const resto = bills.filter((b) => b.matchReason !== BILL_MATCH.PO);
+    out.push(...porOC, ...resto);
 
     return out;
   }
@@ -487,6 +535,7 @@
     rootLocationName, companyOfLocation, groupLocationsByCompany,
     buildCompanyFilterUrl, parseBillToFilter,
     parseVendorDisplay, classifyResults, dedupeResults, buildResultHref, groupResultsForRender,
+    BILL_MATCH, extractBillPOs, billMatchReason,
   };
   if (typeof window !== 'undefined') window.POListingFiltersCore = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

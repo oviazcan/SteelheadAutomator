@@ -250,7 +250,9 @@ const RAW = {
     ],
   },
   bills: [
-    { id: 553, idInDomain: 553, vendorByVendorId: { name: 'ATOTECH DE MEXICO' }, purchaseOrderByPurchaseOrderId: { idInDomain: 1842 } },
+    // shape REAL de SearchBills: el PO vive en las líneas (`purchaseOrderName`), no en el raíz.
+    { id: 553, idInDomain: 553, invoiceNumber: 'F-900', vendorByVendorId: { name: 'ATOTECH DE MEXICO' },
+      billLinesByBillId: { nodes: [{ purchaseOrderName: '1842' }] } },
   ],
 };
 
@@ -268,8 +270,9 @@ test('classifyResults: cada OC dice en qué vista vive (el dolor original)', () 
   assert.equal(pos[1].categoryLabel, 'Surtida · Cerrada');
 });
 
-test('classifyResults: la factura conserva su OC', () => {
+test('classifyResults: la factura conserva su OC (leída de las líneas)', () => {
   const bill = Core.classifyResults(RAW).find((r) => r.type === 'BILL');
+  assert.deepEqual(bill.poNames, ['1842']);
   assert.equal(bill.poIdInDomain, '1842');
   assert.equal(bill.label, 'Factura 553');
 });
@@ -567,4 +570,65 @@ test('pickVisibleCandidate: sin candidatos visibles → null (no ancla a ciegas)
   assert.equal(Core.pickVisibleCandidate([{ visible: false, width: 0, ref: 'a' }]), null);
   assert.equal(Core.pickVisibleCandidate([]), null);
   assert.equal(Core.pickVisibleCandidate(null), null);
+});
+
+// ---------- facturas: por qué matchean (reporte del operador, "1841") ----------
+// SearchBills.searchQuery busca en VARIOS campos y no dice en cuál pegó, así que "1841"
+// devolvía facturas que a simple vista no tenían nada que ver. Datos reales del dominio 344.
+
+const BILLS_1841 = [
+  { id: 45897, idInDomain: 1841, invoiceNumber: '262034', vendorByVendorId: { name: 'A&N FORWARDING INC' },
+    billLinesByBillId: { nodes: [{ purchaseOrderName: '1617' }] } },
+  { id: 2, idInDomain: 2018, invoiceNumber: '1841', vendorByVendorId: { name: 'REACTOR AD SISTEMAS' },
+    billLinesByBillId: { nodes: [{ purchaseOrderName: '1790' }] } },
+  { id: 3, idInDomain: 2080, invoiceNumber: 'PO1841', vendorByVendorId: { name: 'NORA LIZ PINEDA PEREZ' },
+    billLinesByBillId: { nodes: [{ purchaseOrderName: '1841' }] } },
+  { id: 4, idInDomain: 1822, invoiceNumber: '260708121841049', vendorByVendorId: { name: 'COMPUTO CONTABLE SOFT' },
+    billLinesByBillId: { nodes: [{ purchaseOrderName: '1597' }] } },
+];
+
+test('extractBillPOs: el PO vive en las LÍNEAS, no en el nodo raíz', () => {
+  assert.deepEqual(Core.extractBillPOs(BILLS_1841[2]), ['1841']);
+  assert.deepEqual(Core.extractBillPOs({ billLinesByBillId: { nodes: [] } }), []);
+  assert.deepEqual(Core.extractBillPOs(null), []);
+});
+
+test('extractBillPOs: dedup de líneas de la misma OC', () => {
+  const b = { billLinesByBillId: { nodes: [{ purchaseOrderName: '99' }, { purchaseOrderName: '99' }, { purchaseOrderName: null }] } };
+  assert.deepEqual(Core.extractBillPOs(b), ['99']);
+});
+
+test('billMatchReason: distingue los 4 casos reales de "1841"', () => {
+  assert.equal(Core.billMatchReason(BILLS_1841[0], '1841'), Core.BILL_MATCH.BILL_ID, 'Bill #1841');
+  assert.equal(Core.billMatchReason(BILLS_1841[1], '1841'), Core.BILL_MATCH.INVOICE, 'folio exacto 1841');
+  assert.equal(Core.billMatchReason(BILLS_1841[2], '1841'), Core.BILL_MATCH.PO, 'ES la factura de la OC 1841');
+  assert.equal(Core.billMatchReason(BILLS_1841[3], '1841'), Core.BILL_MATCH.INVOICE, 'substring del folio');
+});
+
+test('billMatchReason: la OC gana sobre el folio cuando ambos coinciden', () => {
+  // La #2080 tiene folio "PO1841" (substring) Y OC 1841: debe reportar la OC, que informa más.
+  assert.equal(Core.billMatchReason(BILLS_1841[2], '1841'), Core.BILL_MATCH.PO);
+});
+
+test('classifyResults: las facturas DE la OC buscada van primero', () => {
+  const list = Core.classifyResults({ term: '1841', bills: BILLS_1841 });
+  const bills = list.filter((r) => r.type === 'BILL');
+  assert.equal(bills[0].idInDomain, '2080', 'la factura de la OC 1841 encabeza');
+  assert.equal(bills[0].matchReason, Core.BILL_MATCH.PO);
+  assert.equal(bills.length, 4, 'las demás no se pierden, solo bajan');
+});
+
+test('classifyResults: cada factura expone su OC y su folio para poder explicarse', () => {
+  const bills = Core.classifyResults({ term: '1841', bills: BILLS_1841 }).filter((r) => r.type === 'BILL');
+  const b2080 = bills.find((b) => b.idInDomain === '2080');
+  assert.deepEqual(b2080.poNames, ['1841']);
+  assert.equal(b2080.invoiceNumber, 'PO1841');
+  const b1841 = bills.find((b) => b.idInDomain === '1841');
+  assert.deepEqual(b1841.poNames, ['1617'], 'su OC es otra: por eso parecía no tener relación');
+});
+
+test('classifyResults: sin término no truena ni inventa motivos', () => {
+  const bills = Core.classifyResults({ bills: BILLS_1841 }).filter((r) => r.type === 'BILL');
+  assert.equal(bills.length, 4);
+  assert.equal(bills.every((b) => b.matchReason === Core.BILL_MATCH.OTHER), true);
 });

@@ -86,6 +86,8 @@
       #${PANEL_ID} .sa-pof-b-bill{background:#5a3a1c;color:#f0b878;}
       #${PANEL_ID} .sa-pof-main{flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;}
       #${PANEL_ID} .sa-pof-meta{flex:0 0 auto;color:#7f8b99;font-size:10px;}
+      #${PANEL_ID} .sa-pof-why{flex:0 0 auto;color:#7f8b99;font-size:9px;font-style:italic;white-space:nowrap;}
+      #${PANEL_ID} .sa-pof-why-po{color:#6fe0b0;font-style:normal;font-weight:600;}
       #${PANEL_ID} .sa-pof-head{color:#f0f3f7;font-weight:600;margin-bottom:6px;}
       #${PANEL_ID} .sa-pof-note{color:#9aa7b5;font-size:11px;margin-top:8px;border-top:1px solid #263140;padding-top:6px;}
       #${PANEL_ID} .sa-pof-warn{background:#3a2a1c;border:1px solid #6b4a2e;color:#f0a35e;border-radius:6px;padding:5px 7px;margin-top:8px;font-size:11px;white-space:normal;}
@@ -217,7 +219,7 @@
       return;
     }
 
-    const raw = { vendors: [], poByCategory: {}, bills: [] };
+    const raw = { term, vendors: [], poByCategory: {}, bills: [] };
 
     // El plan viene del core y está ACOTADO a MAX_QUERIES_PER_SEARCH (ver allá el porqué:
     // el endpoint se cae ~40 requests y tumba la pantalla nativa completa). El proveedor
@@ -332,10 +334,24 @@
     // textContent SIEMPRE: los nombres de proveedor vienen de la API (vector cross-user).
     let txt = result.label;
     if (result.vendorName) txt += ' · ' + result.vendorName;
-    if (result.type === Core.RESULT_TYPES.BILL && result.poIdInDomain) txt += ' · OC ' + result.poIdInDomain;
+    // La OC de la factura: sin esto, `SearchBills` devuelve coincidencias de folio o de
+    // Bill # que parecen no tener nada que ver con lo buscado (reporte del operador).
+    if (result.type === Core.RESULT_TYPES.BILL && result.poNames && result.poNames.length) {
+      txt += ' · OC ' + result.poNames.join('/');
+    }
     main.textContent = txt;
     main.title = txt;
     row.appendChild(main);
+
+    // Motivo del match: convierte "¿por qué sale esto?" en información.
+    if (result.type === Core.RESULT_TYPES.BILL && result.matchReason) {
+      const why = document.createElement('span');
+      const R = Core.BILL_MATCH;
+      if (result.matchReason === R.PO) { why.className = 'sa-pof-why sa-pof-why-po'; why.textContent = 'de esta OC'; }
+      else if (result.matchReason === R.INVOICE) { why.className = 'sa-pof-why'; why.textContent = 'folio ' + (result.invoiceNumber || ''); }
+      else if (result.matchReason === R.BILL_ID) { why.className = 'sa-pof-why'; why.textContent = 'n.º de factura'; }
+      if (why.textContent) { why.title = 'Por qué apareció en la búsqueda'; row.appendChild(why); }
+    }
 
     const meta = document.createElement('span');
     meta.className = 'sa-pof-meta';
