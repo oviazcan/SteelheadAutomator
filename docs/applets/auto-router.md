@@ -352,21 +352,49 @@ Secuencia de partición (validada contra el tráfico real): `FindPartGroupQuery`
 NO es idempotente:** pedir "100" tres veces deja tres grupos "100" en el catálogo del cliente. El panel
 valida las cantidades **antes** de crear ningún grupo, para no dejar huérfanos si la suma no cuadra.
 
-### Hashes agregados a `config.json`
-`GroupPartsDialogQuery` `f9538d72…` · `GroupPartsDialogPartLocation` `63fd5f93…` ·
-`GroupMultiplePartsDialogQuery` `951b9ffc…` · `FindPartGroupQuery` `85121b64…` ·
-`CreateNewPartGroup` `7ee30dd4…` · `CreateManyPartGroups` `f4c9d369…`.
-`WorkOrder`, `CreateManyPartsTransfersChecked` y `AddPartsToWorkOrders` ya estaban y coinciden con el scan.
+### Hashes en `config.json` y sus rutas de regeneración
+Solo se agregaron los dos que el applet **llama de verdad**: `FindPartGroupQuery` `85121b64…` y
+`CreateNewPartGroup` `7ee30dd4…`. Los otros cuatro del flujo de agrupación
+(`GroupPartsDialogQuery`, `GroupPartsDialogPartLocation`, `GroupMultiplePartsDialogQuery`,
+`CreateManyPartGroups`) se capturaron en el scan pero **ningún script los usa**, así que se
+sacaron de `config.json`: un hash sin uso es superficie de mantenimiento sin beneficio.
+`WorkOrder`, `CreateManyPartsTransfersChecked`, `AddPartsToWorkOrders`, `StationTreatmentByWorkOrder`
+y `CreateUpdateDeleteRoutes` ya estaban y coinciden con el scan.
+
+**Cobertura (2026-07-27):** `FindPartGroupQuery` ya la capturaba la ruta `receiving-list`
+(navegación simple a `/Receiving/CustomerParts`). Las tres mutations que faltaban tienen ahora
+entidad centinela sobre la **OT Sentinela 11677**, todas con **captura-y-aborta**:
+
+| Entidad | Op | Disparador |
+|---|---|---|
+| `workOrderRoutes` | `CreateUpdateDeleteRoutes` | `#stationRouting-section` → checkbox → *Create Default Routes* → modal *Crear rutas* → Guardar |
+| `partGroupCreate` | `CreateNewPartGroup` | tres puntos → *Agrupar/Serializar Piezas* → `+ Agregar` → nombre inexistente + Enter |
+| `partsSplitTransfer` | `CreateManyPartsTransfersChecked` | mismo diálogo, grupo **existente** + cantidad → Guardar |
+
+Anclas por **`data-steelhead-component-id`** (`WORK_ORDER_PAGE_PARTS_OPTIONS_ALL_OPTIONS`,
+`…_GROUP_SERIALIZE_PARTS`) y por el id `#stationRouting-section`: estables e
+idioma-independientes. Importa aquí más que en otras pantallas — esta **mezcla idiomas**
+("Enrutamiento de Estación" junto a "Create Default Routes" y "Select All"), así que anclar por
+texto se rompería solo. `partsSplitTransfer` elige un grupo **existente** a propósito: crear uno
+dependería de `CreateNewPartGroup`, que en el mismo ciclo va abortado.
+
+**`CreateUpdateDeleteRoutes` cierra una deuda vieja:** es LA mutation del auto-ruteador desde su
+fase 1 y **nunca tuvo ruta de regeneración**. Si Steelhead la rotaba, el applet quedaba muerto
+hasta una captura manual.
+
+**Trinquete anti-deuda (`tools/test/hash-regen-coverage.test.js`).** La regla "un hash sin ruta de
+regeneración es deuda" estaba en `CLAUDE.md` pero **nada la verificaba**, y por eso entraba en
+silencio. El test mide la cobertura real —**57 huérfanas de 184** al 2026-07-27: las queries están
+casi resueltas (110/115), el hueco son las mutations (17/69)— y falla si el número **sube**. Saldar
+deuda vieja obliga a bajar la línea base en el mismo commit, así el número solo va hacia abajo.
 
 ## Riesgos abiertos
 - **Ruteo por pistas y partición: SIN validar en vivo.** El núcleo tiene golden tests y los payloads
   salen de tráfico real capturado, pero ninguna corrida contra producción está registrada. Partir
   piezas **mueve material físico**: primer uso en una orden de prueba.
-- **Ruta de regeneración de hash PENDIENTE (deuda).** Los 6 hashes nuevos no están en
-  `route-catalog.json` ni en `sentinels-config.json`, así que el `hash-autopilot` no los puede
-  regenerar solo cuando Steelhead los rote. Regla del repo: un hash sin ruta de regeneración es deuda.
-  Las mutaciones (`CreateNewPartGroup`, `CreateManyPartGroups`) necesitan captura-y-aborta
-  (`sink.abortOps`) — crean objetos reales.
+- **Los 3 ciclos centinela nuevos NO se han corrido headless.** Las rutas salen del DOM que dio el
+  operador y los selectores son coherentes con él, pero ninguna corrida real las validó. Hasta
+  entonces son rutas *declaradas*, no *probadas*; el `_nota` de cada entidad lo dice.
 - **`activeRoutes` filtradas por grupo, sin confirmar.** `StationTreatmentByWorkOrder` se llama con
   todos los `partGroupIds` de la orden, pero no está verificado si devuelve las rutas de TODOS los
   grupos o solo las de los pedidos. El diff aísla por pista, así que el riesgo es sub-reportar

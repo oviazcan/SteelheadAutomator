@@ -122,6 +122,36 @@
       ],
       "_estrategia": "capture-abort",
       "_nota": "ArchiveReport (usedBy report-liberator) por CAPTURA-Y-ABORTA sobre el REPORTE 'Sentinela' en /Reporting/Edit. Fila = div.jss24 con div.jss50 :text-is('Sentinela') + svg[aria-label='Archive report']. Clic archivar → modal 'Confirmar' ('Are you sure you wish to archive this report?') → botón 'Sí'/'Yes' → aborta (NO archiva). Doble candado: fila 'Sentinela' exacta + abort. Rotó 2026-07-20 (cfg 796eb308 muerto). Requiere un reporte 'Sentinela' persistente en /Reporting/Edit."
+    },
+    "partGroupCreate": {
+      "id": 11677,
+      "screenPath": "/Domains/{domain}/WorkOrders/{id}",
+      "marker": "Sentinela",
+      "_para": [
+        "CreateNewPartGroup"
+      ],
+      "_estrategia": "capture-abort",
+      "_nota": "OT Sentinela 11677. CreateNewPartGroup se dispara al teclear un nombre INEXISTENTE en el react-select 'Crear o buscar grupos' del dialogo 'Agrupar/Serializar Piezas' (tres puntos de la primera partida) y confirmar con Enter la opcion 'Crear ...'. CAPTURA-Y-ABORTA: la op se marca en sink.abortOps ANTES de abrir el dialogo, el interceptor registra el sha256Hash y ABORTA -> el grupo NO nace (importa: CreateNewPartGroup no es idempotente, cada llamada crea uno). Doble candado: la ficha debe decir 'Sentinela' (isSentinel fail-closed) + abort. Anclas IDIOMA-INDEPENDIENTES por data-steelhead-component-id (WORK_ORDER_PAGE_PARTS_OPTIONS_ALL_OPTIONS y ..._GROUP_SERIALIZE_PARTS) - esta pantalla mezcla idiomas, el texto no sirve de ancla. Ruta provista por el operador 2026-07-27; PENDIENTE de correr headless. usedBy: auto-router-lanes (partir piezas)."
+    },
+    "partsSplitTransfer": {
+      "id": 11677,
+      "screenPath": "/Domains/{domain}/WorkOrders/{id}",
+      "marker": "Sentinela",
+      "_para": [
+        "CreateManyPartsTransfersChecked"
+      ],
+      "_estrategia": "capture-abort",
+      "_nota": "OT Sentinela 11677. CreateManyPartsTransfersChecked se dispara al GUARDAR el dialogo 'Agrupar/Serializar Piezas' con un grupo y su cantidad. Se elige un grupo EXISTENTE (ArrowDown+Enter en el combo) para NO depender de CreateNewPartGroup, que en el mismo ciclo va abortado. CAPTURA-Y-ABORTA -> las piezas NO se mueven (mueve material fisico: el abort es la salvaguarda, no un detalle). Doble candado: 'Sentinela' + abort. usedBy: auto-router-lanes (partir piezas); surtido-guard la INTERCEPTA, no la emite."
+    },
+    "workOrderRoutes": {
+      "id": 11677,
+      "screenPath": "/Domains/{domain}/WorkOrders/{id}",
+      "marker": "Sentinela",
+      "_para": [
+        "CreateUpdateDeleteRoutes"
+      ],
+      "_estrategia": "capture-abort",
+      "_nota": "OT Sentinela 11677. CIERRA UNA DEUDA VIEJA: CreateUpdateDeleteRoutes es LA mutation del auto-ruteador desde su fase 1 y nunca tuvo ruta de regeneracion. Se dispara al GUARDAR el modal 'Crear rutas', que abre el boton 'Create Default Routes' de la seccion 'Enrutamiento de Estacion' (id #stationRouting-section, al final de la ficha) tras marcar el checkbox de 'Rutas Predeterminadas de Orden de Trabajo' - el boton solo aparece con algo marcado. CAPTURA-Y-ABORTA -> no se crea ninguna ruta. Ancla por el id de la seccion (estable e idioma-independiente); el boton se matchea EN+ES porque el DOM lo trae en ingles aunque la UI este en espanol. Ruta provista por el operador 2026-07-27; PENDIENTE de correr headless. usedBy: auto-router, auto-router-lanes."
     }
   },
   "_dominio": "TLC/344 (Toluca — los sentinelas viven aquí; 344 es TLC, NO MTY. MTY es otro dominio sin datos aún)"

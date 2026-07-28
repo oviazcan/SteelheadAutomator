@@ -331,6 +331,150 @@ async function saveWoPartCountAborted(page, sink, { url }) {
   if (dbg) console.log(`       [dbg] Save → ${sink && sink.hashes && sink.hashes.AddPartsToWorkOrders ? 'CAPTURADO' : 'sin hash aún'}`);
 }
 
+// Carga la ficha de la OT Sentinela y confirma el marcador. Fail-closed: si el texto
+// "Sentinela" no aparece, devuelve name vacío y el runner aborta el ciclo sin mutar.
+async function loadWorkOrderSentinel(page, { url }) {
+  await page.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  let isSent = false;
+  const deadline = Date.now() + 25000;
+  while (Date.now() < deadline && !isSent) {
+    isSent = await page.evaluate(() => /Sentinela/i.test(document.body ? document.body.innerText : '')).catch(() => false);
+    if (!isSent) await page.waitForTimeout(700);
+  }
+  if (process.env.SA_DBG) console.log(`       [dbg] OT sentinela load isSentinela=${isSent}`);
+  return { name: isSent ? 'Sentinela' : '' };
+}
+
+// ── Mutations del AUTO-RUTEADOR y de GRUPOS DE PIEZAS (captura-y-aborta) ────
+// Las tres escriben, así que se capturan marcando la op en sink.abortOps ANTES de tocar el
+// disparador: el interceptor registra el sha256Hash y ABORTA el request → cero persistencia.
+// Doble candado: la OT es la Sentinela 11677 (isSentinel fail-closed) + el abort.
+// Flujo y DOM confirmados por el operador 2026-07-27.
+//
+// Los anclajes usan `data-steelhead-component-id`, que es IDIOMA-INDEPENDIENTE y estable
+// (mejor que el texto: esta pantalla mezcla español e inglés — "Enrutamiento de Estación"
+// junto a "Create Default Routes" y "Select All").
+
+// Abre el diálogo "Agrupar/Serializar Piezas" de la primera partida de la OT.
+// Devuelve el locator del diálogo, o null si no abrió.
+async function openGroupPartsDialog(page, url) {
+  const dbg = process.env.SA_DBG;
+  await page.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) {
+    if (await page.evaluate(() => /Sentinela/i.test(document.body ? document.body.innerText : '')).catch(() => false)) break;
+    await page.waitForTimeout(1500);
+  }
+  // "Más Opciones" (tres puntos) de la primera partida.
+  const masOpciones = page.locator('[data-steelhead-component-id="WORK_ORDER_PAGE_PARTS_OPTIONS_ALL_OPTIONS"] button').first();
+  await masOpciones.waitFor({ state: 'visible', timeout: 20000 });
+  await masOpciones.scrollIntoViewIfNeeded().catch(() => {});
+  await masOpciones.click({ timeout: 10000 });
+  // "Agrupar/Serializar Piezas" — por component-id, no por texto.
+  const item = page.locator('[data-steelhead-component-id="WORK_ORDER_PAGE_PARTS_OPTIONS_GROUP_SERIALIZE_PARTS"] li').first();
+  await item.waitFor({ state: 'visible', timeout: 15000 });
+  await item.click({ timeout: 10000 });
+  const dialog = page.locator('[role="dialog"]').first();
+  await dialog.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
+  const abierto = await dialog.count().catch(() => 0);
+  if (dbg) console.log(`       [dbg] diálogo Agrupar/Serializar ${abierto ? 'abierto' : 'NO abrió'}`);
+  return abierto ? dialog : null;
+}
+
+// CreateNewPartGroup: se dispara al teclear un nombre INEXISTENTE en el react-select
+// "Crear o buscar grupos" y confirmar la opción "Crear …". Se aborta → el grupo no nace.
+async function createPartGroupAborted(page, sink, { url }) {
+  const dbg = process.env.SA_DBG;
+  if (sink && sink.abortOps) sink.abortOps.add('CreateNewPartGroup');
+  const dialog = await openGroupPartsDialog(page, url);
+  if (!dialog) return;
+  // "+ Agregar" añade el renglón con el combo. Bilingüe; si no aparece, el combo ya está.
+  await dialog.locator('button').filter({ hasText: /^\+\s*(Agregar|Add)$/i }).first()
+    .click({ timeout: 8000 }).catch(() => {});
+  await page.waitForTimeout(500);
+  // El input del react-select: aria-label del contenedor + role=combobox (idioma-agnóstico
+  // por el role; el aria-label es solo un desempate si hubiera varios).
+  const combo = dialog.locator('input[role="combobox"]').first();
+  await combo.waitFor({ state: 'visible', timeout: 10000 });
+  await combo.click({ timeout: 5000 }).catch(() => {});
+  // Nombre que NO existe → el menú ofrece "Crear …"; Enter dispara CreateNewPartGroup.
+  await combo.type('SentinelaHashAutopilot', { delay: 40 }).catch(() => {});
+  await page.waitForTimeout(1200);
+  await combo.press('Enter').catch(() => {});
+  await page.waitForTimeout(2500);
+  if (dbg) console.log(`       [dbg] crear grupo → ${sink?.hashes?.CreateNewPartGroup ? 'CAPTURADO' : 'sin hash aún'}`);
+}
+
+// CreateManyPartsTransfersChecked: se dispara al GUARDAR el diálogo de agrupación con al
+// menos un grupo y su cantidad. Se elige un grupo EXISTENTE (primera opción del menú) para
+// no depender de CreateNewPartGroup, que en este mismo ciclo va abortado.
+async function splitPartsAborted(page, sink, { url }) {
+  const dbg = process.env.SA_DBG;
+  if (sink && sink.abortOps) {
+    sink.abortOps.add('CreateManyPartsTransfersChecked');
+    sink.abortOps.add('CreateNewPartGroup'); // por si el combo intentara crear: tampoco escribe
+  }
+  const dialog = await openGroupPartsDialog(page, url);
+  if (!dialog) return;
+  await dialog.locator('button').filter({ hasText: /^\+\s*(Agregar|Add)$/i }).first()
+    .click({ timeout: 8000 }).catch(() => {});
+  await page.waitForTimeout(500);
+  const combo = dialog.locator('input[role="combobox"]').first();
+  await combo.waitFor({ state: 'visible', timeout: 10000 });
+  await combo.click({ timeout: 5000 }).catch(() => {});
+  await page.waitForTimeout(1200);
+  await combo.press('ArrowDown').catch(() => {});   // primera opción EXISTENTE del menú
+  await combo.press('Enter').catch(() => {});
+  await page.waitForTimeout(600);
+  // Cantidad: el input de texto del renglón (el combo es role=combobox, no matchea).
+  await dialog.locator('input[type="text"]:not([role="combobox"])').first()
+    .fill('1').catch(() => {});
+  await page.waitForTimeout(500);
+  await dialog.locator('button').filter({ hasText: /^(Guardar|Save)$/i }).first()
+    .click({ timeout: 10000 }).catch(() => {});
+  await page.waitForTimeout(3000);
+  if (dbg) console.log(`       [dbg] Guardar agrupación → ${sink?.hashes?.CreateManyPartsTransfersChecked ? 'CAPTURADO' : 'sin hash aún'}`);
+}
+
+// CreateUpdateDeleteRoutes: la mutation del AUTO-RUTEADOR, que nunca tuvo ruta de
+// regeneración (deuda desde su fase 1). Se dispara al GUARDAR el modal "Crear rutas", que
+// abre el botón "Create Default Routes" de la sección "Enrutamiento de Estación" al final
+// de la ficha de la OT, tras marcar el checkbox de "Rutas Predeterminadas de Orden de
+// Trabajo". Ancla: el id `#stationRouting-section`, estable e idioma-independiente.
+async function createRoutesAborted(page, sink, { url }) {
+  const dbg = process.env.SA_DBG;
+  if (sink && sink.abortOps) sink.abortOps.add('CreateUpdateDeleteRoutes');
+  await page.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) {
+    if (await page.evaluate(() => /Sentinela/i.test(document.body ? document.body.innerText : '')).catch(() => false)) break;
+    await page.waitForTimeout(1500);
+  }
+  const seccion = page.locator('#stationRouting-section');
+  await seccion.waitFor({ state: 'attached', timeout: 20000 });
+  await seccion.scrollIntoViewIfNeeded().catch(() => {});
+  await page.waitForTimeout(800);
+  // Primer checkbox de la sección = la fila del PN en "Rutas Predeterminadas".
+  const cb = seccion.locator('input[type="checkbox"]').first();
+  await cb.waitFor({ state: 'attached', timeout: 15000 });
+  await cb.click({ force: true, timeout: 10000 }).catch(() => {});
+  await page.waitForTimeout(800);
+  // El botón aparece SOLO con algo marcado. En el DOM real sale en inglés aunque la UI
+  // esté en español; se acepta el español por si lo traducen.
+  const btn = seccion.locator('button')
+    .filter({ hasText: /Create Default Routes|Crear Rutas Predeterminadas/i }).first();
+  await btn.waitFor({ state: 'visible', timeout: 15000 });
+  await btn.click({ timeout: 10000 });
+  // fail-closed: confirmar que abrió el modal correcto antes de guardar.
+  const dialog = page.locator('[role="dialog"]').filter({ hasText: /Crear rutas|Create routes/i }).first();
+  await dialog.waitFor({ state: 'visible', timeout: 20000 });
+  if (dbg) console.log('       [dbg] modal "Crear rutas" abierto');
+  await dialog.locator('button').filter({ hasText: /^(Guardar|Save)$/i }).first()
+    .click({ timeout: 10000 }).catch(() => {});
+  await page.waitForTimeout(3000);
+  if (dbg) console.log(`       [dbg] Guardar rutas → ${sink?.hashes?.CreateUpdateDeleteRoutes ? 'CAPTURADO' : 'sin hash aún'}`);
+}
+
 // ── Mutations de REPORTES (captura-y-aborta) ────────────────────────────────
 // Las 4 mutations del módulo Reporting rotaron el 2026-07-20 (report-liberator usa las 3 de
 // /Reporting/Edit; report-regen usa GenerateDuckDb). Se recapturan por CAPTURA-Y-ABORTA: se
@@ -566,6 +710,32 @@ const HANDLERS = {
     async restore(page, { sink }) {
       // Save abortado → nada persistió → nada que restaurar. Solo desmarcar la op (higiene del sink).
       if (sink && sink.abortOps) sink.abortOps.delete('AddPartsToWorkOrders');
+    },
+  },
+  // ── OT Sentinela 11677: grupos de piezas y rutas (todas captura-y-aborta) ──
+  // Las tres comparten el mismo load: la ficha de la OT debe decir "Sentinela".
+  partGroupCreate: {
+    async load(page, ctx) { return loadWorkOrderSentinel(page, ctx); },
+    async mutate(page, ctx) { await createPartGroupAborted(page, ctx.sink, ctx); },
+    async restore(page, { sink }) {
+      if (sink && sink.abortOps) sink.abortOps.delete('CreateNewPartGroup');
+    },
+  },
+  partsSplitTransfer: {
+    async load(page, ctx) { return loadWorkOrderSentinel(page, ctx); },
+    async mutate(page, ctx) { await splitPartsAborted(page, ctx.sink, ctx); },
+    async restore(page, { sink }) {
+      if (sink && sink.abortOps) {
+        sink.abortOps.delete('CreateManyPartsTransfersChecked');
+        sink.abortOps.delete('CreateNewPartGroup');
+      }
+    },
+  },
+  workOrderRoutes: {
+    async load(page, ctx) { return loadWorkOrderSentinel(page, ctx); },
+    async mutate(page, ctx) { await createRoutesAborted(page, ctx.sink, ctx); },
+    async restore(page, { sink }) {
+      if (sink && sink.abortOps) sink.abortOps.delete('CreateUpdateDeleteRoutes');
     },
   },
   maintenanceNode: {
