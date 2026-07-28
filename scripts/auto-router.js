@@ -4,7 +4,8 @@
 //   ruteo nativo de Steelhead) para capturar GRATIS el contexto de la orden:
 //   workOrderId, partNumberId y el árbol completo de recipeNodes. El modal nativo
 //   funciona como "selector de orden" — el applet no necesita pedir IDs internos.
-// · Muestra un FAB 🔀 cuando hay contexto capturado y abre el panel de preview.
+// · Muestra un FAB 🔀 cuando hay contexto capturado (panel single-order) y un FAB 📦 en
+//   la ficha de una OT que abre el ruteo POR GRUPOS — entrada propia, sin pasar por el popup.
 // · Expone las entradas del popup (`AutoRouter.open*FromPopup`), que el background
 //   ejecuta con executeScript en el mundo MAIN — ver §"Entradas desde el popup".
 //
@@ -18,7 +19,7 @@
 const AutoRouter = (() => {
   'use strict';
 
-  const VERSION = '0.3.1';
+  const VERSION = '0.3.2';
   const LOG = '[AR]';
   const api = () => window.SteelheadAPI;
   const log = (m) => api()?.log?.(m) ?? console.log(LOG, m);
@@ -98,7 +99,12 @@ const AutoRouter = (() => {
       .sa-ar-fab:hover{transform:scale(1.08);background:#0d8a63;}
       .sa-ar-fab .sa-ar-badge{position:absolute;top:-4px;right:-4px;background:#e8513a;
         color:#fff;font-size:11px;font-weight:700;min-width:18px;height:18px;border-radius:9px;
-        display:flex;align-items:center;justify-content:center;padding:0 4px;}`;
+        display:flex;align-items:center;justify-content:center;padding:0 4px;}
+      /* FAB del ruteo POR GRUPOS: se apila ENCIMA del 🔀 y vive solo en la ficha de una
+         OT. Los dos paneles se parecen y sus dos botones del popup también, así que el
+         operador acababa abriendo el single-order creyendo que era el de grupos. */
+      .sa-ar-fab-lanes{bottom:82px;background:#1c2430;border:1px solid #2c3a4b;font-size:22px;}
+      .sa-ar-fab-lanes:hover{background:#26364a;}`;
     const s = document.createElement('style');
     s.id = 'sa-ar-style';
     s.textContent = css;
@@ -165,6 +171,39 @@ const AutoRouter = (() => {
         fab.appendChild(b);
       }
     }
+  }
+
+  // ── FAB del ruteo por grupos ───────────────────────────────────────────────
+  // Vive SOLO en la ficha de una OT y NO depende del contexto capturado: el panel de
+  // pistas necesita TODOS los grupos de la orden, no el que trae el modal nativo. Es la
+  // única entrada del applet que no exige pasar por el popup.
+  function isWorkOrderDetail() {
+    return /\/Domains\/\d+\/WorkOrders\/\d+/i.test(location.pathname);
+  }
+
+  function syncLanesFab() {
+    const show = isWorkOrderDetail();
+    let fab = document.getElementById('sa-ar-fab-lanes');
+    if (show && !fab) {
+      fab = document.createElement('button');
+      fab.id = 'sa-ar-fab-lanes';
+      fab.className = 'sa-ar-fab sa-ar-fab-lanes';
+      fab.textContent = '📦';
+      fab.title = 'Ruteo por grupos — la orden completa y/o cada grupo de piezas a su línea';
+      fab.onclick = openLanes;
+      document.body.appendChild(fab);
+    } else if (!show && fab) {
+      fab.remove();
+      return;
+    }
+    // El 🔀 solo se monta en la ficha cuando hay contexto capturado del modal nativo:
+    // sin él, este baja a ocupar su lugar en vez de flotar sobre un hueco.
+    if (fab) fab.style.bottom = document.getElementById('sa-ar-fab') ? '82px' : '20px';
+  }
+
+  function syncFabs() {
+    syncFab();
+    syncLanesFab();
   }
 
   function onFab() {
@@ -304,10 +343,10 @@ const AutoRouter = (() => {
     injectStyles();
     patchFetch();
     installUrlListener();
-    window.addEventListener('sa-ar-context', syncFab);
+    window.addEventListener('sa-ar-context', syncFabs);
     window.addEventListener('sa-ar-url', () => {
       checkBoardChange(); // cambio de board O de estación → limpia selección + contexto (FAB se quita al salir)
-      syncFab();
+      syncFabs();
     });
     // Rastreo de selección del board + badge en vivo: al marcar/desmarcar un checkbox,
     // acumula/quita el idInDomain de esa fila (sobrevive la virtualización del scroll).
@@ -318,9 +357,9 @@ const AutoRouter = (() => {
       checkBoardChange(); // por si el selector de estación cambió sin disparar sa-ar-url
       const id = woIdFromRow(t.closest('tr'));
       if (id) { if (t.checked) boardSelection.add(id); else boardSelection.delete(id); }
-      syncFab();
+      syncFabs();
     }, true);
-    syncFab();
+    syncFabs();
     log(`cargado · v${VERSION}`);
   }
 
