@@ -131,7 +131,7 @@ const HashScanner = (() => {
     // Salvavidas ante recarga/cierre: backup SLIM SÍNCRONO a localStorage. chrome.storage
     // es async y NO completa en pagehide → sin esto, lo navegado en los segundos previos
     // a una recarga se perdía (causa raíz del bug "recarga pierde el scan").
-    pageHideHandler = () => { try { localStorage.setItem('__sa_scan_backup', JSON.stringify(slimForBackup())); } catch (_) {} };
+    pageHideHandler = () => { persistBackup(); };
     window.addEventListener('pagehide', pageHideHandler);
 
     window.fetch = async function (...args) {
@@ -180,7 +180,7 @@ const HashScanner = (() => {
     if (window.__saScanPersistInterval) clearInterval(window.__saScanPersistInterval);
     window.__saScanPersistInterval = setInterval(() => {
       if (!isScanning) return;
-      try { localStorage.setItem('__sa_scan_backup', JSON.stringify(slimForBackup())); } catch (_) {}
+      persistBackup();
     }, 10000);
   }
 
@@ -352,9 +352,45 @@ const HashScanner = (() => {
     return paths;
   }
 
-  // Backup mínimo para localStorage (pagehide): hash + screens + estado, SIN los samples
-  // pesados (evita exceder la cuota de localStorage en scans grandes).
-  function slimForBackup() {
+  // ── Backup a localStorage: qué se conserva y con qué presupuesto ────────────────
+  // El backup existe para sobrevivir una recarga. De las ops 'known' basta el hash: ya
+  // están documentadas en config.json y son la mayoría del volumen. Las 'new'/'changed'
+  // son las que se están descubriendo, y si la página recarga antes de que se vuelvan a
+  // disparar sus payloads se pierden PARA SIEMPRE — incidente 2026-07-27: el flujo de
+  // "Agrupar/Serializar Piezas" dejó 8 hashes nuevos sin una sola variable capturada,
+  // suficiente para saber que la operación existe e insuficiente para llamarla. Por eso
+  // esas sí van con muestras, acotadas para no reventar la cuota (~5 MB por origen).
+  const BACKUP_KEY = '__sa_scan_backup';
+  const BACKUP_VARS_PER_OP = 2;
+  const BACKUP_RESPONSES_PER_OP = 1;
+  const BACKUP_ARRAY_CAP = 8;          // elementos por array en la muestra guardada
+  const BACKUP_BYTES_PER_OP = 120000;  // tope duro por op
+  const BACKUP_BUDGET = 1500000;       // presupuesto total de muestras
+
+  // Recorta arrays largos preservando la FORMA del objeto — que es lo que sirve para
+  // escribir la llamada. Un `nodes` de 20k elementos y uno de 8 documentan lo mismo.
+  function truncateForBackup(value, arrayCap = BACKUP_ARRAY_CAP, depth = 0) {
+    if (value === null || typeof value !== 'object') return value;
+    if (depth > 12) return null;
+    if (Array.isArray(value)) {
+      const head = value.slice(0, arrayCap).map((v) => truncateForBackup(v, arrayCap, depth + 1));
+      if (value.length > arrayCap) head.push({ __saTruncated: value.length - arrayCap });
+      return head;
+    }
+    const out = {};
+    for (const [k, v] of Object.entries(value)) out[k] = truncateForBackup(v, arrayCap, depth + 1);
+    return out;
+  }
+
+  function jsonSize(v) {
+    try { return JSON.stringify(v)?.length ?? 0; } catch (_) { return Infinity; }
+  }
+
+  // Backup para localStorage (pagehide): hash + screens + estado de TODAS las ops, más
+  // las muestras de las que están en descubrimiento. `{samples:false}` da el backup
+  // mínimo de siempre — el fallback cuando ni así cabe.
+  function slimForBackup(opts = {}) {
+    const withSamples = opts.samples !== false;
     const out = {};
     for (const [op, v] of Object.entries(discovered)) {
       // Incluye los arrays VACÍOS (no su contenido pesado): mergeResults/recordOperation
@@ -362,7 +398,53 @@ const HashScanner = (() => {
       out[op] = { hash: v.hash, count: v.count, status: v.status, configKey: v.configKey,
         screens: v.screens || [], variablesSamples: [], responseSamples: [], errorSamples: [], errorCount: 0 };
     }
+    if (!withSamples) return out;
+
+    const pend = Object.entries(discovered)
+      .filter(([, v]) => v.status === 'new' || v.status === 'changed');
+    let budget = BACKUP_BUDGET;
+
+    // Dos vueltas a propósito: las VARIABLES son chicas y son lo más valioso (dan la
+    // firma exacta de la llamada), así que se sirven ANTES que las respuestas. Con una
+    // sola vuelta op-por-op, una respuesta gigante de la primera op dejaba al resto sin nada.
+    const take = (sample, bucket) => {
+      const cut = truncateForBackup(sample);
+      const size = jsonSize(cut);
+      if (size > BACKUP_BYTES_PER_OP || size > budget) return;
+      bucket.push(cut);
+      budget -= size;
+    };
+
+    for (const [op, v] of pend) {
+      for (const s of (v.variablesSamples || []).slice(0, BACKUP_VARS_PER_OP)) {
+        take(s, out[op].variablesSamples);
+      }
+      // Los errores son chicos y explican por qué una op nueva falló (hash deprecado, 400…).
+      for (const e of (v.errorSamples || []).slice(0, 1)) take(e, out[op].errorSamples);
+      out[op].errorCount = v.errorCount || 0;
+    }
+    for (const [op, v] of pend) {
+      for (const s of (v.responseSamples || []).slice(0, BACKUP_RESPONSES_PER_OP)) {
+        take(s, out[op].responseSamples);
+      }
+    }
     return out;
+  }
+
+  // Escribe el backup. Si la cuota revienta, reintenta con el mínimo: perder las
+  // muestras es malo, perder los hashes es peor. Devuelve si algo quedó guardado.
+  function persistBackup(store) {
+    const ls = store || (typeof localStorage !== 'undefined' ? localStorage : null);
+    if (!ls) return false;
+    try {
+      ls.setItem(BACKUP_KEY, JSON.stringify(slimForBackup()));
+      return true;
+    } catch (_) {
+      try {
+        ls.setItem(BACKUP_KEY, JSON.stringify(slimForBackup({ samples: false })));
+        return true;
+      } catch (_) { return false; }
+    }
   }
 
   function getResults() {
@@ -465,7 +547,7 @@ const HashScanner = (() => {
   return {
     init, start, stop, getResults, getStats, isActive, exportConfig, clear, mergeResults,
     analyzeSchema, mergeSchema,
-    _internal: { sanitizeValue, sanitizeVariables, analyzeSchema, mergeSchema, extractFieldPaths, shapeSignature, recordOperation, describeClickTarget, recordScreen, slimForBackup, discovered, eventLog, knownHashMap, knownOpMap }
+    _internal: { sanitizeValue, sanitizeVariables, analyzeSchema, mergeSchema, extractFieldPaths, shapeSignature, recordOperation, describeClickTarget, recordScreen, slimForBackup, truncateForBackup, persistBackup, discovered, eventLog, knownHashMap, knownOpMap }
   };
 })();
 
