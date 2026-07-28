@@ -415,11 +415,18 @@
 
   // Plan declarativo de lo que se va a consultar. Devuelve descriptores, no promesas, para
   // que el conteo sea verificable sin red.
-  function planSearchQueries(term) {
+  //
+  // `currentCategoryKey` (la vista abierta) se consulta PRIMERO entre las 5: es donde el
+  // operador tiene más probabilidad de encontrar lo que busca, y con render incremental eso
+  // se traduce en que el resultado útil aparece antes aunque el total tarde lo mismo.
+  function planSearchQueries(term, currentCategoryKey) {
     const t = String(term == null ? '' : term).trim();
     if (!t) return [];
     const plan = [{ kind: 'vendors', key: FILTER_KEY_VENDOR, term: t }];
-    for (const cat of PO_CATEGORIES) plan.push({ kind: 'pos', categoryKey: cat.key, term: t });
+    const cats = PO_CATEGORIES.slice();
+    const i = cats.findIndex((c) => c.key === currentCategoryKey);
+    if (i > 0) cats.unshift(cats.splice(i, 1)[0]); // la vista actual al frente
+    for (const cat of cats) plan.push({ kind: 'pos', categoryKey: cat.key, term: t });
     plan.push({ kind: 'bills', term: t });
     return plan;
   }
@@ -456,10 +463,9 @@
   // ── Selección de anclajes (reglas puras; el glue les pasa el DOM ya medido) ──
   //
   // El DOM de Steelhead DUPLICA controles en variantes responsive: el botón "New Purchase
-  // Order" existe dos veces (css-eabxx0 = solo ícono, oculta en escritorio; css-165nl96 =
-  // botón completo, visible), y hay 4 `SearchIcon` en la pantalla (el global del header, el
-  // de la tabla, el del chat…). Tomar el PRIMER match del querySelector ancla en el
-  // control equivocado — pasó en el deploy 1.7.203 con ambos widgets.
+  // Order" existe dos veces (css-eabxx0 = solo ícono, OCULTA en escritorio; css-165nl96 =
+  // botón completo, visible). Tomar el PRIMER match del querySelector ancla en la oculta y
+  // el widget se inyecta con ancho 0, invisible — pasó en el deploy 1.7.203.
   //
   // cands: [{visible:boolean, width:number, ref:any}] → el primero realmente visible.
   function pickVisibleCandidate(cands) {
@@ -468,20 +474,10 @@
     return hit ? hit.ref : null;
   }
 
-  // cands: [{depth:number|null, ref:any}] → el de MENOR profundidad (el más cercano al
-  // hermano de referencia). `depth` null = no comparte contenedor → descartado.
-  function pickNearestByDepth(cands) {
-    const arr = (Array.isArray(cands) ? cands : []).filter((c) => c && c.depth != null);
-    if (!arr.length) return null;
-    let best = arr[0];
-    for (const c of arr) if (c.depth < best.depth) best = c;
-    return best.ref;
-  }
-
   const api = {
     PO_URL_RE, PO_CATEGORIES, PO_NAV_SECTIONS, MODES, RESULT_TYPES,
     MAX_QUERIES_PER_SEARCH, planSearchQueries, moveActiveIndex, toIdList,
-    pickVisibleCandidate, pickNearestByDepth,
+    pickVisibleCandidate,
     resolveFirstSectionWithResults, buildDetailHref,
     planProquipaFilter, isProquipaFilterActive,
     URL_PARAM_BILL_TO, FILTER_KEY_BILL_TO, FILTER_KEY_VENDOR, FILTER_SEARCH_LIMIT,

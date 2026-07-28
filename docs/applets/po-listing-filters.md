@@ -1,7 +1,7 @@
 # `po-listing-filters` — Buscador global de OC + Toggle de empresa
 
-**Versión:** 0.2.0 · **Pantalla:** `/Domains/<d>/Purchasing/PurchaseOrders` · **`autoInject: true`**
-**Estado:** VIVO. Core 69/69 golden, suite 951/951.
+**Versión:** 0.3.0 · **Pantalla:** `/Domains/<d>/Purchasing/PurchaseOrders` · **`autoInject: true`**
+**Estado:** VIVO. Core 73/73 golden, suite 955/955.
 
 Diseño completo en [`docs/superpowers/specs/2026-07-27-po-listing-filters-design.md`](../superpowers/specs/2026-07-27-po-listing-filters-design.md).
 
@@ -34,34 +34,49 @@ varias direcciones de la misma empresa de un jalón.
 
 ## Widget A — Buscador global
 
-Se inyecta **después del buscador nativo** (anclado por `svg[data-testid="SearchIcon"]`, no por
-el placeholder, que sí cambia con el locale) → queda antes de los filtros "Creado Por"…
+Se inyecta en el **header, junto al toggle**, dentro de un contenedor común
+(`#sa-pof-bar`) anclado tras "New Purchase Order". **Antes vivía en la barra de filtros de la
+tabla, pegado al buscador nativo, y el operador lo confundía con el universal** — dos cajas de
+búsqueda contiguas y casi idénticas. Agrupado con el toggle y en **dark-mode pleno** (fondo
+`#141a23`, texto `#e6e9ee`, acento `#13a36f`) se lee de un vistazo como UI de la extensión.
 
-Fan-out por término, **acotado a 7 consultas** (`MAX_QUERIES_PER_SEARCH`), con pool ≤2:
+Fan-out por término, **acotado a 7 consultas** (`MAX_QUERIES_PER_SEARCH`):
 
 1. `FilterSearch(vendorIdFilter, q)` → proveedores — **1 consulta**
 2. `PurchaseOrders` × 5 vistas con `searchQuery`, `first:5` — **5 consultas**
 3. `SearchBills(searchQuery)` → facturas — **1 consulta**
 
-**Por qué NO hay un segundo fan-out por proveedor.** La versión inicial expandía los ids del
-proveedor a las 5 vistas otra vez → **12 consultas por búsqueda**. Con el endpoint cayéndose
-alrededor de las 40 (ver §Lección operativa), 3-4 búsquedas seguidas dejan al operador **sin la
-pantalla nativa**. El proveedor se entrega como **resultado clickeable** que lleva a sus OCs
-(`buildResultHref` → `?vendorIdFilter=<id>`), así que el valor se conserva —encuentras al
-proveedor que el nativo esconde y de un clic ves sus órdenes— pagando **1 consulta en vez de 5**.
+### Velocidad
+
+La primera versión se sentía lenta. Cuatro cosas la explicaban, y las cuatro están resueltas:
+
+| Problema | Arreglo |
+|---|---|
+| Los proveedores se esperaban **en serie** antes de arrancar las otras 6 | Las 7 van al **mismo pool** |
+| Pool de 2 → 4 rondas de latencia | **Pool de 4** → 2 rondas, mismo volumen total |
+| El panel esperaba a que TODAS terminaran para pintar | **Render incremental real**: `runPool` avisa por cada consulta que vuelve y el panel se repinta |
+| Debounce de 350 ms | **220 ms** (el fan-out ya está acotado, no hace falta esperar tanto) |
+
+Además: la **vista actual se consulta primero** (`planSearchQueries(term, currentCategory)`), que
+es donde el operador tiene más probabilidad de encontrar lo que busca; **caché de un slot** por
+término (borrar y reescribir no vuelve a consultar); y el encabezado muestra el conteo parcial
+(«Buscando… 3 hasta ahora») para poder clicar el primer resultado sin esperar el resto.
+
+> **No subir el pool de 4.** El rate-limit de SH castiga el **volumen acumulado** (~40
+> requests), no la concurrencia puntual — pero con 7 tareas, un pool de 4 ya deja el pool
+> ocioso en la segunda ronda: subirlo no gana nada y sí acerca el límite.
 
 `planSearchQueries` devuelve el plan como descriptores (no promesas) para que el conteo sea
-**verificable sin red**; hay 5 tests que fijan el invariante, incluido uno que truena si alguien
-reintroduce el fan-out por proveedor.
+**verificable sin red**; hay tests que fijan el invariante, incluido uno que truena si alguien
+reintroduce el fan-out por proveedor, y otros que verifican que priorizar la vista actual no
+duplique ni pierda vistas.
 
 > **`vendorIdFilter` CONFIRMADO** por el operador (2026-07-27): el filtro nativo de Proveedor
 > genera `?category=Issued&offset=0&vendorIdFilter=89855`, y `89855` es exactamente el
-> `identifier` que devuelve `FilterSearch` para "ATOTECH DE MEXICO". El nombre de la variable y
-> el id son los correctos.
+> `identifier` que devuelve `FilterSearch` para "ATOTECH DE MEXICO".
 
 Panel dark-mode con secciones **PROVEEDOR / ÓRDENES DE COMPRA / FACTURAS**; cada renglón lleva
-badge de tipo y **en qué vista vive**. Render incremental: los proveedores pintan en cuanto
-llegan, sin esperar al resto.
+badge de tipo y **en qué vista vive**.
 
 ## Navegación de los resultados
 

@@ -523,9 +523,32 @@ test('planSearchQueries: término vacío no consulta nada', () => {
   assert.deepEqual(Core.planSearchQueries(null), []);
 });
 
+test('planSearchQueries: la vista ACTUAL se consulta primero', () => {
+  // Con render incremental, el orden decide qué ve el operador antes.
+  const plan = Core.planSearchQueries('x', 'fulfilled-closed');
+  const pos = plan.filter((p) => p.kind === 'pos');
+  assert.equal(pos[0].categoryKey, 'fulfilled-closed');
+  assert.equal(pos.length, 5, 'sigue cubriendo las 5, solo cambia el orden');
+});
+
+test('planSearchQueries: priorizar no duplica ni pierde vistas', () => {
+  for (const key of Core.PO_CATEGORIES.map((c) => c.key)) {
+    const keys = Core.planSearchQueries('x', key).filter((p) => p.kind === 'pos').map((p) => p.categoryKey);
+    assert.deepEqual(keys.slice().sort(), Core.PO_CATEGORIES.map((c) => c.key).sort(), 'con ' + key);
+    assert.equal(keys[0], key);
+    assert.equal(new Set(keys).size, 5, 'sin repetidos con ' + key);
+  }
+});
+
+test('planSearchQueries: sin vista actual (o desconocida) conserva el orden natural', () => {
+  const natural = Core.PO_CATEGORIES.map((c) => c.key);
+  assert.deepEqual(Core.planSearchQueries('x').filter((p) => p.kind === 'pos').map((p) => p.categoryKey), natural);
+  assert.deepEqual(Core.planSearchQueries('x', 'no-existe').filter((p) => p.kind === 'pos').map((p) => p.categoryKey), natural);
+});
+
 // ---------- selección de anclajes (regresión del deploy 1.7.203) ----------
-// El DOM de SH duplica controles en variantes responsive y repite iconos: tomar el primer
-// match del querySelector ancló ambos widgets en el control equivocado.
+// El DOM de SH duplica el botón "New Purchase Order" en dos variantes responsive; tomar el
+// primer match del querySelector anclaba en la OCULTA y el widget quedaba con ancho 0.
 
 test('pickVisibleCandidate: ignora la variante responsive oculta (css-eabxx0)', () => {
   // Caso REAL medido en vivo: el botón "New Purchase Order" existe 2 veces.
@@ -544,26 +567,4 @@ test('pickVisibleCandidate: sin candidatos visibles → null (no ancla a ciegas)
   assert.equal(Core.pickVisibleCandidate([{ visible: false, width: 0, ref: 'a' }]), null);
   assert.equal(Core.pickVisibleCandidate([]), null);
   assert.equal(Core.pickVisibleCandidate(null), null);
-});
-
-test('pickNearestByDepth: elige el SearchIcon de la tabla, no el del header', () => {
-  // Caso REAL: 4 SearchIcon; el de la tabla comparte contenedor con el botón de exportar
-  // al nivel 2, otro al nivel 5 (ancestro lejano), y los del header/chat no lo comparten.
-  const cands = [
-    { depth: null, ref: 'header global "Buscar..."' },
-    { depth: 5, ref: 'ancestro lejano' },
-    { depth: 2, ref: 'barra de filtros de la tabla' },
-    { depth: null, ref: 'chat' },
-  ];
-  assert.equal(Core.pickNearestByDepth(cands), 'barra de filtros de la tabla');
-});
-
-test('pickNearestByDepth: sin ninguno que comparta contenedor → null', () => {
-  assert.equal(Core.pickNearestByDepth([{ depth: null, ref: 'a' }, { depth: null, ref: 'b' }]), null);
-  assert.equal(Core.pickNearestByDepth([]), null);
-  assert.equal(Core.pickNearestByDepth(null), null);
-});
-
-test('pickNearestByDepth: depth 0 es válido (no lo confunde con ausencia)', () => {
-  assert.equal(Core.pickNearestByDepth([{ depth: 3, ref: 'lejos' }, { depth: 0, ref: 'mismo nivel' }]), 'mismo nivel');
 });

@@ -1,7 +1,7 @@
 // Buscador global de OC + Toggle de empresa — glue (DOM + red).
 // Consume po-listing-filters-core.js. Pantalla: /Domains/<d>/Purchasing/PurchaseOrders
 //
-// Widget A — buscador global: va entre el buscador nativo y los filtros ("Creado Por"…).
+// Widget A — buscador global: va en el HEADER, junto al toggle, tras "New Purchase Order".
 //   Busca a la vez en las 5 vistas + proveedores + facturas, y etiqueta cada hallazgo
 //   (OC / PROVEEDOR / FACTURA) diciendo en qué vista vive. Resuelve que el `searchQuery`
 //   nativo NO busca por proveedor ('ATOTECH' → 0 resultados) y que obliga a adivinar la vista.
@@ -9,7 +9,8 @@
 //   Al clicar un PROVEEDOR salta a la primera sección con resultados (Draft → Issued All →
 //   Fulfilled All), siempre a la variante "All". Una OC concreta va a SU vista exacta.
 //
-// Widget B — toggle "Sólo Proquipa": va después del botón "New Purchase Order".
+// Widget B — toggle "Sólo Proquipa": mismo contenedor (#sa-pof-bar), a la izquierda del
+//   buscador. Los dos JUNTOS y en dark-mode para que no se confundan con la UI nativa.
 //   Binario, no triple: el lado Ecoplating NO es expresable porque sus OC llevan la
 //   dirección del dominio y el filtro nativo no la acepta (bug de SH, ticket abierto por el
 //   operador 2026-07-27). Aplica `billToLocationIdFilter` (array, semántica OR) por URL.
@@ -27,18 +28,24 @@
   if (!Core) { console.warn('[po-listing-filters] core ausente'); return; }
   function api() { return window.SteelheadAPI; }
 
+  const BAR_ID = 'sa-pof-bar';   // contenedor común de ambos widgets, en el header
   const SEARCH_ID = 'sa-pof-search';
   const TOGGLE_ID = 'sa-pof-toggle';
   const PANEL_ID = 'sa-pof-panel';
   const STYLE_ID = 'sa-pof-style';
-  const DEBOUNCE_MS = 350;
+  const DEBOUNCE_MS = 220;  // el fan-out está acotado a 7, así que no hace falta esperar tanto
   const PER_CATEGORY = 5;   // `first` por vista: el panel es un atajo, no un reporte
-  const POOL = 2;           // concurrencia máxima (ver FRUGALIDAD arriba)
-  const TIMEOUT_MS = 12000;
+  // Concurrencia: el rate-limit de SH castiga el VOLUMEN acumulado (~40 requests), no la
+  // concurrencia puntual. Con un fan-out fijo de 7, un pool de 4 lo resuelve en 2 rondas en
+  // vez de 4 — la mitad del tiempo, mismo volumen total. No subir de aquí: 7/4 ya deja el
+  // pool ocioso en la segunda ronda.
+  const POOL = 4;
+  const TIMEOUT_MS = 9000;  // si una vista no respondió en 9s, mejor mostrar el resto
 
   const S = (window.__saPOF = window.__saPOF || {
     seq: 0, locations: null, groups: null, discovering: false, lastResults: null,
-    active: -1, // índice del resultado activo por teclado (-1 = ninguno)
+    active: -1,   // índice del resultado activo por teclado (-1 = ninguno)
+    cache: null,  // { term, raw } de la última búsqueda completada (evita re-consultar)
   });
 
   // ── estilos ──
@@ -52,15 +59,15 @@
     const st = document.createElement('style');
     st.id = STYLE_ID;
     st.textContent = `
-      #${SEARCH_ID}{display:inline-flex;align-items:center;gap:6px;margin:0 10px;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}
-      #${SEARCH_ID} .sa-pof-inp{background:transparent;color:inherit;border:1px solid #13a36f;border-radius:6px;padding:5px 8px;font-size:12px;width:190px;outline:none;}
-      #${SEARCH_ID} .sa-pof-inp:focus{box-shadow:0 0 0 2px rgba(19,163,111,.25);}
-      #${SEARCH_ID} .sa-pof-inp::placeholder{opacity:.6;}
-      #${TOGGLE_ID}{display:inline-flex;align-items:center;gap:0;margin:0 10px;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;font-size:11px;border:1px solid #13a36f;border-radius:14px;overflow:hidden;}
-      #${TOGGLE_ID} button{background:transparent;color:inherit;border:0;padding:4px 10px;font-size:11px;cursor:pointer;line-height:1.6;font-family:inherit;}
-      #${TOGGLE_ID} button+button{border-left:1px solid rgba(19,163,111,.45);}
+      #${BAR_ID}{display:inline-flex;align-items:center;gap:8px;margin:0 10px;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;vertical-align:middle;}
+      #${SEARCH_ID}{display:inline-flex;align-items:center;gap:6px;}
+      #${SEARCH_ID} .sa-pof-inp{background:#141a23;color:#e6e9ee;border:1px solid #3a4757;border-radius:6px;padding:5px 9px;font-size:12px;width:200px;outline:none;font-family:inherit;}
+      #${SEARCH_ID} .sa-pof-inp:focus{border-color:#13a36f;box-shadow:0 0 0 2px rgba(19,163,111,.25);}
+      #${SEARCH_ID} .sa-pof-inp::placeholder{color:#7f8b99;}
+      #${TOGGLE_ID}{display:inline-flex;align-items:center;gap:0;font-family:inherit;font-size:11px;border:1px solid #3a4757;border-radius:14px;overflow:hidden;background:#141a23;}
+      #${TOGGLE_ID} button{background:transparent;color:#cfd6de;border:0;padding:4px 11px;font-size:11px;cursor:pointer;line-height:1.6;font-family:inherit;}
       #${TOGGLE_ID} button[aria-pressed="true"]{background:#13a36f;color:#fff;font-weight:600;}
-      #${TOGGLE_ID} button[disabled]{opacity:.4;cursor:not-allowed;}
+      #${TOGGLE_ID} button[disabled]{opacity:.45;cursor:not-allowed;}
       #${PANEL_ID}{position:fixed;min-width:340px;max-width:520px;background:#1c2430;color:#e6e9ee;border:1px solid #33404f;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.45);z-index:2147483600;padding:10px;font-size:12px;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}
       #${PANEL_ID} .sa-pof-sec{color:#7f8b99;font-size:10px;letter-spacing:.06em;text-transform:uppercase;margin:8px 0 4px;}
       #${PANEL_ID} .sa-pof-sec:first-child{margin-top:0;}
@@ -94,8 +101,10 @@
     });
   }
 
-  // Pool secuencial con concurrencia acotada. Un fallo NO tumba a los demás (resultado null).
-  async function runPool(tasks, limit) {
+  // Pool con concurrencia acotada. Un fallo NO tumba a los demás (resultado null).
+  // `onEach` se invoca en cuanto CADA tarea termina → permite render incremental de verdad:
+  // el panel se repinta con lo que ya llegó en vez de esperar a la última consulta.
+  async function runPool(tasks, limit, onEach) {
     const out = new Array(tasks.length).fill(null);
     let i = 0;
     async function worker() {
@@ -103,6 +112,7 @@
         const idx = i++;
         try { out[idx] = await tasks[idx](); }
         catch (e) { out[idx] = null; if (e && e.persistedQueryRotated) S.rotated = e.rotatedOp; }
+        if (onEach) { try { onEach(out[idx], idx); } catch (_) { /* el render no debe romper el pool */ } }
       }
     }
     await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
@@ -198,37 +208,51 @@
   // ── búsqueda global ──
   async function runSearch(term) {
     const seq = ++S.seq;
+
+    // Caché de un slot: volver al mismo término (borrar y reescribir, o re-enfocar) no
+    // vuelve a consultar. Barato y quita la espera en el caso más común.
+    if (S.cache && S.cache.term === term) {
+      S.lastResults = S.cache.raw;
+      renderPanel(term, S.cache.raw, false);
+      return;
+    }
+
     const raw = { vendors: [], poByCategory: {}, bills: [] };
 
     // El plan viene del core y está ACOTADO a MAX_QUERIES_PER_SEARCH (ver allá el porqué:
     // el endpoint se cae ~40 requests y tumba la pantalla nativa completa). El proveedor
     // NO dispara un segundo fan-out de 5 vistas: se entrega clickeable y lleva a sus OCs.
-    const plan = Core.planSearchQueries(term);
+    // La vista ACTUAL va primero, así el resultado más probable aparece antes.
+    const plan = Core.planSearchQueries(term, Core.parseCategoryFromUrl(location.href));
 
-    // 1) proveedores primero: pintan de inmediato (render incremental) porque son lo que
-    //    el searchQuery nativo no encuentra.
-    try {
-      const vendors = await filterSearch(Core.FILTER_KEY_VENDOR, term);
-      if (seq !== S.seq) return;
-      raw.vendors = vendors;
-      renderPanel(term, raw, true);
-    } catch (_) { /* sigue sin proveedores */ }
+    renderPanel(term, raw, true); // "Buscando…" inmediato, sin esperar la primera respuesta
 
-    // 2) resto del plan: las 5 vistas por texto + facturas.
-    const tasks = plan.filter((p) => p.kind !== 'vendors').map((p) => {
+    // TODAS las consultas van al mismo pool (antes los proveedores se esperaban en serie
+    // ANTES de arrancar las demás, y eso costaba un round-trip completo de latencia).
+    const tasks = plan.map((p) => {
+      if (p.kind === 'vendors') return () => filterSearch(p.key, p.term).then((v) => ['__vendors__', v]);
       if (p.kind === 'bills') return () => queryBills(p.term).then((n) => ['__bills__', n]);
       return () => queryPOs(p.categoryKey, { searchQuery: p.term }).then((n) => [p.categoryKey, n]);
     });
 
-    const results = await runPool(tasks, POOL);
-    if (seq !== S.seq) return;
-    for (const r of results) {
-      if (!r) continue;
+    // Render incremental REAL: cada consulta que vuelve repinta el panel.
+    const absorb = (r) => {
+      if (!r) return;
       const [key, nodes] = r;
-      if (key === '__bills__') raw.bills = nodes;
+      if (key === '__vendors__') raw.vendors = nodes;
+      else if (key === '__bills__') raw.bills = nodes;
       else raw.poByCategory[key] = (raw.poByCategory[key] || []).concat(nodes);
-    }
+    };
+
+    await runPool(tasks, POOL, (r) => {
+      if (seq !== S.seq) return; // llegó una búsqueda más nueva: no pintes lo viejo
+      absorb(r);
+      renderPanel(term, raw, true);
+    });
+
+    if (seq !== S.seq) return;
     S.lastResults = raw;
+    S.cache = { term, raw };
     renderPanel(term, raw, false);
   }
 
@@ -367,7 +391,11 @@
     const head = document.createElement('div');
     head.className = 'sa-pof-head';
     const g = Core.groupResultsForRender(Core.classifyResults(raw));
-    head.textContent = partial ? `Buscando «${term}»…` : `${g.total} resultado${g.total === 1 ? '' : 's'} para «${term}»`;
+    // En parcial se muestra lo que YA llegó, no solo "Buscando…": con render incremental el
+    // operador ve crecer el contador y puede clicar el primer resultado sin esperar el resto.
+    head.textContent = partial
+      ? (g.total ? `Buscando… ${g.total} hasta ahora` : `Buscando «${term}»…`)
+      : `${g.total} resultado${g.total === 1 ? '' : 's'} para «${term}»`;
     p.appendChild(head);
 
     if (S.rotated) {
@@ -417,46 +445,6 @@
   // ── anclajes DOM (bilingües ES+EN donde dependen de texto) ──
   const NEW_PO_LABEL_RE = /new purchase order|nueva orden de compra/i;
 
-  // El buscador nativo se ancla por su ícono (data-testid, idioma-agnóstico), no por el
-  // placeholder, que sí cambia con el locale.
-  //
-  // OJO: hay 4 `SearchIcon` en la pantalla (el global del header de SH, el de la tabla, el
-  // del chat…). El de la tabla se identifica porque COMPARTE CONTENEDOR con el botón de
-  // exportar CSV (`DownloadForOfflineOutlinedIcon`) al nivel más cercano — anclaje
-  // estructural, sin depender de textos ni de clases generadas.
-  const EXPORT_ICON_SEL = 'svg[data-testid="DownloadForOfflineOutlinedIcon"]';
-
-  function findNativeSearchBox() {
-    const icons = Array.from(document.querySelectorAll('svg[data-testid="SearchIcon"]'));
-    const cands = icons.map((icon) => {
-      // contenedor del input al que pertenece este ícono
-      let box = null;
-      let el = icon.parentElement;
-      for (let i = 0; i < 5 && el; i++) {
-        if (el.querySelector('input')) { box = el; break; }
-        el = el.parentElement;
-      }
-      if (!box) return { depth: null, ref: null };
-      // ¿a qué distancia comparte ancestro con el botón de exportar?
-      let depth = null;
-      let anc = icon.parentElement;
-      for (let k = 0; k < 6 && anc; k++) {
-        if (anc.querySelector(EXPORT_ICON_SEL)) { depth = k; break; }
-        anc = anc.parentElement;
-      }
-      return { depth, ref: box };
-    });
-    const hit = Core.pickNearestByDepth(cands);
-    if (hit) return hit;
-    // Fallback: el primero visible que no esté pegado al tope de la ventana (header de SH).
-    return Core.pickVisibleCandidate(icons.map((icon) => {
-      let el = icon.parentElement;
-      for (let i = 0; i < 5 && el; i++) { if (el.querySelector('input')) break; el = el.parentElement; }
-      const r = el ? el.getBoundingClientRect() : null;
-      return { visible: !!(el && el.offsetParent !== null && r && r.top > 80), width: r ? r.width : 0, ref: el };
-    }));
-  }
-
   // El botón "New Purchase Order" está DUPLICADO en dos variantes responsive: css-eabxx0
   // (solo ícono, oculta en escritorio) y css-165nl96 (botón completo, visible). Hay que
   // quedarse con la VISIBLE — anclar en la oculta mete el toggle en un contenedor de
@@ -475,11 +463,27 @@
     return Core.pickVisibleCandidate(cands);
   }
 
+  // ── contenedor común de los dos widgets ──
+  // Ambos viven JUNTOS en el header, después de "New Purchase Order". El buscador estaba
+  // antes en la barra de filtros de la tabla, pegado al buscador nativo, y el operador lo
+  // confundía con el universal: dos cajas de búsqueda contiguas y casi idénticas. Aquí,
+  // agrupado con el toggle y en dark-mode, se lee de un vistazo como UI de la extensión.
+  function getBar() {
+    let bar = document.getElementById(BAR_ID);
+    if (bar) return bar;
+    const anchor = findNewPoButton();
+    if (!anchor || !anchor.parentElement) return null;
+    bar = document.createElement('div');
+    bar.id = BAR_ID;
+    anchor.parentElement.insertBefore(bar, anchor.nextSibling);
+    return bar;
+  }
+
   // ── inyección: buscador ──
   function injectSearch() {
     if (document.getElementById(SEARCH_ID)) return true;
-    const nativeBox = findNativeSearchBox();
-    if (!nativeBox || !nativeBox.parentElement) return false;
+    const bar = getBar();
+    if (!bar) return false;
 
     const box = document.createElement('div');
     box.id = SEARCH_ID;
@@ -519,16 +523,15 @@
     inp.addEventListener('focus', () => { if (inp.value.trim() && S.lastResults) renderPanel(inp.value.trim(), S.lastResults, false); });
 
     box.appendChild(inp);
-    // Va DESPUÉS del buscador nativo → queda antes de los filtros ("Creado Por"…).
-    nativeBox.parentElement.insertBefore(box, nativeBox.nextSibling);
+    bar.appendChild(box); // tras el toggle (que se inyecta primero)
     return true;
   }
 
   // ── inyección: toggle ──
   function injectToggle() {
     if (document.getElementById(TOGGLE_ID)) return true;
-    const anchor = findNewPoButton();
-    if (!anchor || !anchor.parentElement) return false;
+    const bar = getBar();
+    if (!bar) return false;
 
     const wrap = document.createElement('div');
     wrap.id = TOGGLE_ID;
@@ -548,7 +551,7 @@
       applyProquipa(!on);
     });
     wrap.appendChild(b);
-    anchor.parentElement.insertBefore(wrap, anchor.nextSibling);
+    bar.appendChild(wrap);
 
     // Descubrimiento diferido: no bloquea la inyección ni la carga de la pantalla.
     discoverLocations().then((groups) => {
@@ -592,13 +595,13 @@
   function injectAll() {
     if (!Core.isPurchaseOrdersUrl(location.pathname)) return false;
     injectStyles();
-    const a = injectSearch();
-    const b = injectToggle();
+    const b = injectToggle();   // primero el toggle…
+    const a = injectSearch();   // …y el buscador a su derecha
     return a && b;
   }
 
   function removeAll() {
-    for (const id of [SEARCH_ID, TOGGLE_ID, PANEL_ID]) {
+    for (const id of [SEARCH_ID, TOGGLE_ID, PANEL_ID, BAR_ID]) {
       const el = document.getElementById(id);
       if (el) el.remove();
     }
