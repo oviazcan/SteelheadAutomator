@@ -127,15 +127,26 @@ const AutoRouterLanes = (() => {
   }
 
   // ── Apertura ────────────────────────────────────────────────────────────────
-  async function open(ctx) {
+  // Dos puertas al mismo panel, con vistas de arranque distintas porque son trabajos
+  // distintos: RUTEAR decide a qué línea va cada pista (no mueve nada hasta aplicar);
+  // PARTIR/REAGRUPAR mueve material real y además es lo que TIENE QUE PASAR ANTES —
+  // un grupo no se puede rutear hasta que existe. Arrancar las dos en la misma pantalla
+  // las hacía indistinguibles desde el FAB.
+  async function open(ctx) { return openAt(ctx, 'lanes'); }
+  async function openSplit(ctx) { return openAt(ctx, 'split'); }
+
+  async function openAt(ctx, vista) {
     injectStyles();
     state = fresh();
     state.ctx = ctx;
-    renderShell(`🔀 Ruteo por grupos · OT ${ctx.idInDomain ?? ctx.workOrderId}`);
+    const ot = ctx.idInDomain ?? ctx.workOrderId;
+    renderShell(vista === 'split'
+      ? `✂️ Partir / reagrupar piezas · OT ${ot}`
+      : `🔀 Ruteo de la orden · OT ${ot}`);
     renderBody(el('div', { class: 'sa-arl-note', text: 'Cargando piezas y rutas…' }));
     try {
       await load();
-      renderLanes();
+      if (vista === 'split') renderSplit(); else renderLanes();
     } catch (e) {
       log(`Error cargando: ${e.message}`);
       renderBody(el('div', { class: 'sa-arl-warn', text: `No se pudo cargar la orden: ${e.message}` }));
@@ -263,18 +274,13 @@ const AutoRouterLanes = (() => {
     tb.appendChild(tbody);
     cont.appendChild(tb);
 
-    // Acciones sobre las piezas — separadas del ruteo a propósito: mueven material.
-    const acciones = el('span', {}, [
-      el('button', { class: 'sa-arl-btn ghost sm', text: '✂️ Partir en grupos', onclick: renderSplit }),
-    ]);
-    if (state.accounts.partLocations.length > 1) {
-      acciones.appendChild(document.createTextNode(' '));
-      acciones.appendChild(el('button', { class: 'sa-arl-btn ghost sm', text: '🔗 Reagrupar', onclick: renderRegroup }));
-    }
-    cont.appendChild(el('div', { class: 'sa-arl-sec' }, [el('h3', { text: 'Piezas' }), acciones]));
+    // Partir/reagrupar NO viven aquí: son otro trabajo (mueven material real) y tienen
+    // su propia puerta, el FAB ✂️. Mezclarlos en esta pantalla era lo que hacía que las
+    // dos entradas se sintieran "el mismo link".
     cont.appendChild(el('div', { class: 'sa-arl-note',
-      text: 'Partir crea grupos nuevos y reparte las piezas; reagrupar junta varias cuentas en un solo grupo. '
-          + 'Las dos mueven material real, por eso van aparte del ruteo.' }));
+      text: 'Esta pantalla solo decide RUTAS. Para partir las piezas en grupos o reagruparlas '
+          + 'usa el botón ✂️ de la esquina — eso mueve material real y hay que hacerlo antes '
+          + 'de poder rutear un grupo.' }));
 
     renderBody(cont);
     refreshFooter();
@@ -363,7 +369,7 @@ const AutoRouterLanes = (() => {
     const cuentas = state.accounts.partLocations;
     if (!cuentas.length) {
       renderBody(el('div', { class: 'sa-arl-warn', text: 'Esta orden no tiene cuentas de piezas que partir.' }));
-      renderFooter(el('button', { class: 'sa-arl-btn ghost', text: 'Volver', onclick: renderLanes }));
+      renderFooter(el('button', { class: 'sa-arl-btn ghost', text: '🔀 Rutear', onclick: renderLanes }));
       return;
     }
 
@@ -418,10 +424,14 @@ const AutoRouterLanes = (() => {
     pinta();
 
     renderBody(cont);
-    renderFooter(
-      el('button', { class: 'sa-arl-btn ghost', text: 'Volver', onclick: renderLanes }),
-      el('button', { class: 'sa-arl-btn primary', text: '✂️ Partir', onclick: () => confirmarSplit(origen, filas, errBox) }),
-    );
+    // La vista de partir es autosuficiente: reagrupar es su operación hermana (también
+    // mueve material) y "🔀 Rutear" es el paso SIGUIENTE natural, no un "volver".
+    const pie = [el('button', { class: 'sa-arl-btn ghost', text: '🔀 Rutear', onclick: renderLanes })];
+    if (cuentas.length > 1) {
+      pie.push(el('button', { class: 'sa-arl-btn ghost', text: '🔗 Reagrupar', onclick: renderRegroup }));
+    }
+    pie.push(el('button', { class: 'sa-arl-btn primary', text: '✂️ Partir', onclick: () => confirmarSplit(origen, filas, errBox) }));
+    renderFooter.apply(null, pie);
   }
 
   async function confirmarSplit(origen, filas, errBox) {
@@ -499,7 +509,7 @@ const AutoRouterLanes = (() => {
     if (!gruposEnOrden.length) {
       renderBody(el('div', { class: 'sa-arl-warn',
         text: 'Esta orden no tiene grupos a los cuales reagrupar. Parte las piezas primero.' }));
-      renderFooter(el('button', { class: 'sa-arl-btn ghost', text: 'Volver', onclick: renderLanes }));
+      renderFooter(el('button', { class: 'sa-arl-btn ghost', text: '✂️ Partir', onclick: renderSplit }));
       return;
     }
     let destino = gruposEnOrden[0].id;
@@ -547,7 +557,8 @@ const AutoRouterLanes = (() => {
 
     renderBody(cont);
     renderFooter(
-      el('button', { class: 'sa-arl-btn ghost', text: 'Volver', onclick: renderLanes }),
+      el('button', { class: 'sa-arl-btn ghost', text: '✂️ Partir', onclick: renderSplit }),
+      el('button', { class: 'sa-arl-btn ghost', text: '🔀 Rutear', onclick: renderLanes }),
       el('button', { class: 'sa-arl-btn primary', text: '🔗 Reagrupar',
         onclick: () => confirmarRegroup(cuentas, marcadas, () => destino, errBox) }),
     );
@@ -579,6 +590,6 @@ const AutoRouterLanes = (() => {
     }
   }
 
-  if (typeof window !== 'undefined') window.AutoRouterLanes = { open, close };
+  if (typeof window !== 'undefined') window.AutoRouterLanes = { open, openSplit, close };
   return { open, close };
 })();
