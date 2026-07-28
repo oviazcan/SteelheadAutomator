@@ -27,7 +27,7 @@
 (function () {
   'use strict';
 
-  const APPLET_VERSION = '0.3.3';
+  const APPLET_VERSION = '0.3.4';
 
   // ── Singleton guard + teardown de versión previa (re-inyección en SPA / bump) ──
   if (window.ReportRegen && window.ReportRegen.__version === APPLET_VERSION) return;
@@ -39,7 +39,12 @@
   const BTN_ID = 'sa-report-regen-btn';
   const SEP_ID = 'sa-report-regen-sep';
   const STYLE_ID = 'sa-report-regen-style';
-  const REQUIRED_PERMISSION = 'MANAGE_REPORTING';
+  // Steelhead FRAGMENTÓ `MANAGE_REPORTING` en cinco permisos granulares y el viejo dejó de
+  // existir (verificado el 2026-07-27 contra /Users/Access/PermissionsReference). El que
+  // corresponde aquí es, textual en su catálogo: "Admin-level reporting actions: regenerate
+  // the reporting database, view and change reporting settings." Exigir el fantasma dejaba
+  // el botón invisible para TODOS, en silencio. El de config.json manda sobre esta constante.
+  const REQUIRED_PERMISSION = 'MANAGE_REPORTING_SETTINGS';
   const OBSERVER_DEBOUNCE_MS = 300;
   // Memoria del último veredicto REAL de permisos en este navegador ('1'/'0').
   // `_v2` porque la v0.3.1 pudo grabar un "no" ESPURIO (ver evalAllowed): al versionar la
