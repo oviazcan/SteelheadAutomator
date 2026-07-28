@@ -5,7 +5,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { classifyOp, hasShape, planDeploy, missingCoverage, isValidatedCapture, pruneNeedsAttention } = require('../hash-autopilot/hash-autopilot-core.mjs');
+const { classifyOp, hasShape, planDeploy, missingCoverage, isValidatedCapture, pruneNeedsAttention, escalableNotCaptured } = require('../hash-autopilot/hash-autopilot-core.mjs');
 
 const R = (op, verdict) => ({ op, verdict, cfgHash: 'old', liveHash: verdict === 'vigente' ? 'old' : 'new' });
 
@@ -123,4 +123,38 @@ test('pruneNeedsAttention: resolvedOps vacío → payload intacto', () => {
 test('pruneNeedsAttention: payload nulo / sin ops → null (fail-safe)', () => {
   assert.equal(pruneNeedsAttention(null, ['A']), null);
   assert.equal(pruneNeedsAttention({ date: 'd' }, ['A']), null);
+});
+
+// ── escalableNotCaptured: quién merece despertar al Nivel B ────────────────────
+test('escalableNotCaptured: excluye las suppressPendingReport (bug 2026-07-25)', () => {
+  const nc = [{ op: 'CreateInvoicePdf' }, { op: 'SearchUnits' }];
+  const out = escalableNotCaptured(nc, { suppressPending: ['CreateInvoicePdf'] });
+  assert.deepEqual(out.map((r) => r.op), ['SearchUnits'],
+    'CreateInvoicePdf es VIGENTE con captura flaky ya investigada → no escala ni alerta');
+});
+
+test('escalableNotCaptured: excluye también los huecos conocidos sin ruta', () => {
+  const nc = [{ op: 'A' }, { op: 'B' }, { op: 'C' }];
+  const out = escalableNotCaptured(nc, { knownNoRoute: ['A'], suppressPending: ['C'] });
+  assert.deepEqual(out.map((r) => r.op), ['B']);
+});
+
+test('escalableNotCaptured: sin exclusiones → pasa todo (fail-open)', () => {
+  const nc = [{ op: 'A' }, { op: 'B' }];
+  assert.deepEqual(escalableNotCaptured(nc).map((r) => r.op), ['A', 'B']);
+  assert.deepEqual(escalableNotCaptured(nc, {}).map((r) => r.op), ['A', 'B']);
+});
+
+test('escalableNotCaptured: entrada nula/sucia no truena', () => {
+  assert.deepEqual(escalableNotCaptured(null, { suppressPending: ['X'] }), []);
+  assert.deepEqual(escalableNotCaptured([null, { op: 'A' }], {}).map((r) => r.op), ['A']);
+});
+
+test('escalableNotCaptured: una suppressPending que SÍ capturó no pasa por aquí', () => {
+  // Invariante de no-pérdida-de-detección: si el intento best-effort captura un hash
+  // rotado, la op cae en toDeploy (verdict rotadoValidado), no en notCaptured.
+  const results = [{ op: 'CreateInvoicePdf', verdict: 'rotadoValidado', cfgHash: 'old', liveHash: 'new' }];
+  const plan = planDeploy(results, {});
+  assert.deepEqual(plan.toDeploy.map((r) => r.op), ['CreateInvoicePdf']);
+  assert.deepEqual(escalableNotCaptured(plan.notCaptured, { suppressPending: ['CreateInvoicePdf'] }), []);
 });

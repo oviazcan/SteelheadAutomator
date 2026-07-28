@@ -10,7 +10,7 @@ import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
 import { execFileSync } from 'child_process';
 import { installInterceptor, runRecipe } from './recipe-runner.mjs';
-import { classifyOp, planDeploy, isValidatedCapture, buildNeedsAttention, pruneNeedsAttention } from './hash-autopilot-core.mjs';
+import { classifyOp, planDeploy, isValidatedCapture, buildNeedsAttention, pruneNeedsAttention, escalableNotCaptured } from './hash-autopilot-core.mjs';
 import { classifyCycleOutcomes, formatSentinelAlert } from './sentinel-health.mjs';
 import { readConfigHashes } from './config-io.mjs';
 import { syncExternalToSinks } from './external-sync.mjs';
@@ -384,9 +384,13 @@ async function main() {
     }
   }
 
-  // Excluye los huecos conocidos (SESSION_SENSITIVE sin ruta) de la señal de
-  // escalamiento y de la notificación — son estáticos, no un cambio de UI nuevo.
-  const notCapturedNew = plan.notCaptured.filter((r) => !knownNoRoute.has(r.op));
+  // Excluye de la señal de escalamiento y de la notificación: los huecos conocidos
+  // (SESSION_SENSITIVE sin ruta — estáticos, no un cambio de UI nuevo) y las
+  // suppressPendingReport (vigentes de captura flaky ya investigada — su fallo va solo
+  // al log). Ver escalableNotCaptured.
+  const notCapturedNew = escalableNotCaptured(plan.notCaptured, {
+    knownNoRoute: [...knownNoRoute], suppressPending: [...SUPPRESS_PENDING],
+  });
 
   // Gating por probe (señal primaria): de las no-capturadas, separa rotación REAL
   // (probe 'stale') de FALSA ALARMA (probe 'vigente' = el hash del config vive; el
@@ -419,8 +423,14 @@ async function main() {
   // Escalamiento (Task 9): rutas que no capturaron → señal para el cron de Claude.
   // Solo las escalables (rotación real + no-concluyentes); las falsas alarmas
   // (probe=vigente) NO gastan el cron.
+  // La razón REAL de un ciclo centinela abortado (identidad, sin hash, …) viaja al Nivel B:
+  // "objeto cargado NO es centinela" pide desarchivar/renombrar el centinela, no re-descubrir
+  // la receta. Sin esto el escalamiento del 2026-07-24 mandó al agente a buscar lo que no era.
+  const cycleReasons = Object.fromEntries(
+    cycleOutcomes.filter((c) => c && !c.captured && c.reason).map((c) => [c.op, `ciclo centinela abortó: ${c.reason}`])
+  );
   if (!DRY && notCapturedEscalate.length) {
-    writeNeedsAttention(notCapturedEscalate, catalog.routes, RUN_DATE);
+    writeNeedsAttention(notCapturedEscalate, catalog.routes, RUN_DATE, cycleReasons);
   }
 
   // Notificación por correo — UN solo correo con el reporte completo de éxito/fallo.
@@ -436,7 +446,7 @@ async function main() {
     const sec = [];
     // Centinela ROTO/ARCHIVADO (identidad no verificada en Fase C): un centinela declarado
     // que quedó archivado hace abortar su ciclo en silencio. Alerta accionable (desarchivar).
-    const sentinelBroken = classifyCycleOutcomes(cycleOutcomes).broken;
+    const sentinelBroken = classifyCycleOutcomes(cycleOutcomes, { suppressPending: [...SUPPRESS_PENDING] }).broken;
     const sentinelAlert = formatSentinelAlert(sentinelBroken);
     if (sentinelAlert) sec.push(sentinelAlert);
     if (deployed && plan.toDeploy.length) {
@@ -533,10 +543,10 @@ function notify(tipo, asunto, cuerpo) {
   catch (e) { console.log(`(notify falló: ${String(e).slice(0, 80)})`); }
 }
 
-function writeNeedsAttention(notCaptured, recipes, date) {
+function writeNeedsAttention(notCaptured, recipes, date, observedByOp = {}) {
   try {
     mkdirSync(RESULTS_DIR, { recursive: true });
-    const payload = buildNeedsAttention(notCaptured, recipes, date);
+    const payload = buildNeedsAttention(notCaptured, recipes, date, observedByOp);
     writeFileSync(join(RESULTS_DIR, 'needs-attention.json'), JSON.stringify(payload, null, 2));
     console.log(`  señal de escalamiento escrita (${payload.ops.length} op).`);
   } catch (e) { console.log(`(no se pudo escribir needs-attention: ${String(e).slice(0, 80)})`); }

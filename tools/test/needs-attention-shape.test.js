@@ -18,3 +18,19 @@ test('buildNeedsAttention: op sin receta → recipeTried null, steps null', () =
   assert.equal(na.ops[0].recipeTried, null);
   assert.equal(na.ops[0].steps, null);
 });
+
+test('buildNeedsAttention: observed lleva la razón REAL del ciclo centinela', () => {
+  // El 2026-07-24 SaveManyPartNumberPrices escaló con el genérico de queries aunque el ciclo
+  // había abortado por IDENTIDAD → el Nivel B arrancó a re-descubrir la receta en vez de
+  // revisar el centinela. La razón del ciclo debe viajar al payload.
+  const na = buildNeedsAttention([{ op: 'SaveManyPartNumberPrices' }], {}, 'd', {
+    SaveManyPartNumberPrices: 'ciclo centinela abortó: objeto cargado NO es centinela (identidad)',
+  });
+  assert.match(na.ops[0].observed, /identidad/);
+});
+
+test('buildNeedsAttention: sin razón declarada → genérico de siempre (retrocompat)', () => {
+  const na = buildNeedsAttention([{ op: 'Otra' }], {}, 'd', { SaveManyPartNumberPrices: 'x' });
+  assert.equal(na.ops[0].observed, 'la receta no disparó la op (0 capturas)');
+  assert.equal(buildNeedsAttention([{ op: 'Otra' }], {}, 'd').ops[0].observed, 'la receta no disparó la op (0 capturas)');
+});

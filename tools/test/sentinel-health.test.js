@@ -39,6 +39,25 @@ test('classifyCycleOutcomes: tolera null / vacío', () => {
   assert.deepEqual(classifyCycleOutcomes(null), { broken: [], captured: [], other: [] });
 });
 
+test('classifyCycleOutcomes: una suppressPending con fallo de identidad NO es centinela roto', () => {
+  // invoicePdf es un PSEUDO-centinela (no hay objeto "Centinela" que desarchivar): su load
+  // solo mira si la lista rindió. Alertar "DESARCHIVA el centinela" era un consejo imposible
+  // repetido cada corrida completa (bug 2026-07-25).
+  const results = [
+    { op: 'CreateInvoicePdf', entityType: 'invoicePdf', captured: false, escalated: true, reason: 'objeto cargado NO es centinela (identidad)' },
+    { op: 'UpdateReceivedOrder', entityType: 'receivedOrderEdit', captured: false, escalated: true, reason: 'objeto cargado NO es centinela (identidad)' },
+  ];
+  const { broken, other } = classifyCycleOutcomes(results, { suppressPending: ['CreateInvoicePdf'] });
+  assert.deepEqual(broken.map((b) => b.op), ['UpdateReceivedOrder'], 'el centinela REAL sí alerta');
+  assert.deepEqual(other.map((o) => o.op), ['CreateInvoicePdf'], 'el pseudo-centinela queda solo en el log');
+});
+
+test('classifyCycleOutcomes: sin opts se comporta igual que antes (retrocompat)', () => {
+  const results = [{ op: 'CreateInvoicePdf', escalated: true, reason: 'objeto cargado NO es centinela (identidad)' }];
+  assert.equal(classifyCycleOutcomes(results).broken.length, 1);
+  assert.equal(classifyCycleOutcomes(results, {}).broken.length, 1);
+});
+
 test('formatSentinelAlert: vacío → cadena vacía (sin sección en el correo)', () => {
   assert.equal(formatSentinelAlert([]), '');
   assert.equal(formatSentinelAlert(null), '');
