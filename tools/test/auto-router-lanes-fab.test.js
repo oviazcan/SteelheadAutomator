@@ -1,7 +1,8 @@
 // tools/test/auto-router-lanes-fab.test.js
-// Los FABs de la ficha de OT: 🔀 rutea (orden completa o grupos) y ✂️ parte/reagrupa
-// las piezas. Su gate de ruta tiene que cubrir exactamente las fichas de OT que el
-// applet declara en config, ni más ni menos.
+// Los FABs del auto-ruteador: 🔀 rutea (orden completa o grupos) y ✂️ parte/reagrupa
+// las piezas. Su gate de ruta tiene que cubrir exactamente las pantallas que el applet
+// declara en config, ni más ni menos — el 🔀 en la ficha y el tablero, el ✂️ en ambas
+// desde 2026-07-28 (partir es una decisión de planificación, no de la ficha).
 // Run: node --test tools/test/auto-router-lanes-fab.test.js
 //
 // ── Por qué (2026-07-27) ────────────────────────────────────────────────────
@@ -35,13 +36,32 @@ test('los FABs de la ficha se montan en la ficha de una OT', () => {
   assert.equal(gateOf('isWorkOrderDetail').test(FICHA), true);
 });
 
-test('NO se monta en el listado de OTs ni en el board', () => {
-  const gate = gateOf('isWorkOrderDetail');
+test('NO se monta en el listado de OTs', () => {
   // El listado no tiene número de orden: el panel no sabría qué cargar.
-  assert.equal(gate.test(LISTADO), false);
-  // En el board manda el 🔀 (multi-selección); meter un segundo FAB ahí confunde
-  // más de lo que ayuda, y el panel de pistas es de UNA orden.
-  assert.equal(gate.test(BOARD), false);
+  assert.equal(gateOf('isWorkOrderDetail').test(LISTADO), false);
+  assert.equal(gateOf('isBoardPage').test(LISTADO), false);
+});
+
+// ── El ✂️ también vive en el tablero (2026-07-28) ───────────────────────────
+// Antes solo estaba en la ficha, y eso mandaba al operador a buscar la orden para
+// cortar piezas justo cuando estaba planificando. La orden la da la fila marcada.
+test('el ✂️ se monta en la ficha Y en el tablero de planificación', () => {
+  assert.match(SRC, /function splitFabApplies\(\)\s*\{\s*return isWorkOrderDetail\(\) \|\| isBoardPage\(\);/,
+    'splitFabApplies() debe cubrir ficha y tablero');
+  assert.match(SRC, /const show = splitFabApplies\(\);/,
+    'syncSplitFab() debe decidir con splitFabApplies()');
+  const aplica = (p) => gateOf('isWorkOrderDetail').test(p) || gateOf('isBoardPage').test(p);
+  assert.equal(aplica(FICHA), true);
+  assert.equal(aplica(BOARD), true);
+  assert.equal(aplica(LISTADO), false);
+});
+
+test('el gate del ✂️ en el tablero cae dentro de los urlPatterns del config', () => {
+  const app = (config.apps || []).find(a => a.id === 'auto-router');
+  const patterns = (app.urlPatterns || app.urlPatternsDisabled || []).map(p => new RegExp(p));
+  // Si el config dejara de inyectar en el board, el ✂️ no existiría ahí por más que
+  // su gate diga que sí — el mismo modo de fallo silencioso del 0.3.0.
+  assert.ok(patterns.some(p => p.test(BOARD)), 'el config ya no inyecta el applet en el tablero');
 });
 
 test('el gate del FAB cae dentro de los urlPatterns que el config inyecta', () => {
@@ -53,7 +73,7 @@ test('el gate del FAB cae dentro de los urlPatterns que el config inyecta', () =
   assert.ok(patterns.some(p => p.test(FICHA)), 'el config ya no inyecta el applet en la ficha de OT');
 });
 
-test('el board sigue siendo territorio del 🔀', () => {
+test('el board sigue siendo territorio del 🔀 para el ruteo por selección', () => {
   assert.equal(gateOf('isBoardPage').test(BOARD), true);
   assert.equal(gateOf('isBoardPage').test(FICHA), false);
 });

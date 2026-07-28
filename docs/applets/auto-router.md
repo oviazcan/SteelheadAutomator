@@ -422,6 +422,63 @@ título **al navegar dentro** del panel quedó desplegado pero **sin confirmar e
 `/graphql` de la sesión empezó a atorarse por las recargas de prueba (límite por sesión, ver
 `po-listing-filters`) y no valía la pena arriesgar la sesión del operador por un `textContent`.
 
+### Partir desde el TABLERO de planificación (0.4.0, 2026-07-28)
+
+Reporte del operador: *"el ruteador por grupos sólo nos aparece en la pestaña de la WO, pero en
+el dashboard de planificación no; tendríamos que ser capaces de partir desde ahí"*. Tenía razón
+de fondo: **partir es una decisión de planificación**, no de la ficha. El operador está viendo el
+tablero, decide que un lote se divide, y hasta ahora tenía que salir a buscar la ficha de la
+orden para cortar y volver.
+
+**El ✂️ ahora vive también en el tablero.** La orden la da la **fila marcada**, con las mismas
+reglas de selección que ya usa el 🔀 (rastreo que sobrevive la virtualización). La traducción
+selección→orden es núcleo puro (`AutoRouterGroups.splitTargetFromSelection`, 5 tests):
+
+| Selección | Qué hace |
+|---|---|
+| 1 orden | abre el panel de partir sobre esa orden |
+| 0 | pide marcar una — **no adivina** |
+| N > 1 | dice cuántas hay marcadas y pide dejar una |
+
+Que **no adivine** es el punto: partir es de UNA orden (la cuenta origen y sus grupos son suyos),
+así que tomar "la primera" en silencio cortaría material de una orden que nadie eligió. El FAB
+lleva **badge** con el conteo — sin él, "marca una sola" es un regaño sin contexto, porque la
+selección sobrevive al scroll y no siempre está a la vista.
+
+**El tablero es una FOTO y hay que decirlo.** Un panel que escribe material sobre una pantalla
+que no se entera es peor que uno que no escribe: el operador se queda viendo el estado anterior y
+lo cree vigente. Por eso `ctx.fromBoard` no es cosmético y recorre las dos puntas:
+- **Antes** — la vista de partir advierte que las piezas se mueven de inmediato y que al terminar
+  se ofrece actualizar el tablero. (Fuera del tablero el aviso dice lo suyo: no hay preview ni
+  deshacer; para revertir hay que reagrupar.)
+- **Después** — pantalla de resultado con **`🔄 Actualizar tablero`** como botón **primario**.
+  Ahí es donde los grupos nuevos ya se pueden **programar**, que es a lo que iba el pedido.
+
+Mismo trato para reagrupar y para el resultado del ruteo (las estaciones tampoco se actualizan
+solas en el tablero).
+
+**Carga en dos fases.** Partir y reagrupar solo necesitan las cuentas de piezas (`WorkOrder`,
+ligera); el árbol `StationTreatmentByWorkOrder` es la consulta **pesada** y solo hace falta para
+decidir rutas. Antes se traía siempre — castigando justo el caso nuevo, porque el tablero es la
+pantalla donde el `/graphql` de la sesión ya viene cargado (ver la lección de ráfaga en
+`po-listing-filters`). Ahora `loadAccounts()` / `loadRoutes()` van por separado e `irARutear()`
+trae el árbol solo si se pide la vista de ruteo.
+
+**Invalidación tras mover piezas.** Al partir o reagrupar, `accounts` y `routeData` se ponen en
+`null`: nacieron grupos que antes no existían y rutear sobre las pistas viejas apuntaría a
+material que ya no está ahí. Antes se recargaba en el acto (dos queries, una pesada) para volver
+a una vista que el operador quizá no quería.
+
+**Popup coherente:** desde el tablero, las acciones de rutear/partir toman la orden de la
+selección en vez de preguntar el número con `prompt()`. Y si la selección no es válida, el error
+se devuelve **al popup** — un `alert` sobre la página se pierde, porque el popup se cierra al
+hacer clic.
+
+**No implementado (a propósito): programar por API.** Los grupos se programan en el tablero
+nativo una vez que aparecen. Hacerlo desde el applet significaría
+`CreateManyScheduleTasks`/`CreateManyStationTasks` — mutaciones sin hash en `config.json` ni ruta
+de regeneración, es decir un applet nuevo, no un ajuste de éste.
+
 ### 🔴 ABIERTO — el dropdown de LÍNEA DESTINO solo ofrece la línea actual
 
 Reporte del operador (2026-07-27): *"el ruteador no me está dando más que la estación default, no

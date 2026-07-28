@@ -270,3 +270,43 @@ test('parseWorkOrderAccounts: respuesta vacía no truena', () => {
   assert.equal(r.workOrderId, null);
   assert.deepEqual(r.partLocations, []);
 });
+
+// ── splitTargetFromSelection ─────────────────────────────────────────────────
+// El ✂️ vive ahora en el tablero de planificación, donde el operador puede tener N
+// órdenes marcadas. Partir es de UNA: la cuenta origen y sus grupos pertenecen a esa
+// orden. Tomar "la primera" en silencio partiría material de una orden que nadie
+// eligió — con consecuencia física — así que la ambigüedad se devuelve explícita.
+test('splitTargetFromSelection: una sola marcada → esa es la orden', () => {
+  const r = Groups.splitTargetFromSelection(['15990']);
+  assert.deepEqual(r, { ok: true, reason: 'one', count: 1, idInDomain: 15990 });
+});
+
+test('splitTargetFromSelection: sin selección no adivina', () => {
+  const r = Groups.splitTargetFromSelection([]);
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'none');
+  assert.equal(r.idInDomain, null);
+});
+
+test('splitTargetFromSelection: varias marcadas → NO elige una', () => {
+  const r = Groups.splitTargetFromSelection(['15990', '15991', '15992']);
+  assert.equal(r.ok, false);
+  assert.equal(r.reason, 'many');
+  assert.equal(r.count, 3);
+  assert.equal(r.idInDomain, null, 'no puede proponer una: partiría material ajeno');
+});
+
+test('splitTargetFromSelection: la misma orden repetida sigue siendo una', () => {
+  // El rastreo del board une la selección persistente con las filas visibles; una
+  // orden puede llegar dos veces sin que el operador haya marcado dos.
+  const r = Groups.splitTargetFromSelection(['15990', '15990']);
+  assert.equal(r.ok, true);
+  assert.equal(r.idInDomain, 15990);
+});
+
+test('splitTargetFromSelection: descarta basura y no truena con null', () => {
+  assert.equal(Groups.splitTargetFromSelection(null).reason, 'none');
+  assert.equal(Groups.splitTargetFromSelection([null, '', '  ']).reason, 'none');
+  // Un href mal leído no debe convertirse en un número de orden inventado.
+  assert.equal(Groups.splitTargetFromSelection(['abc', '15990']).idInDomain, 15990);
+});
