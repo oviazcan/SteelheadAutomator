@@ -303,3 +303,51 @@ test('isSaveErrorAlert: detecta el alert de error de guardado de precio', () => 
   assert.equal(Core.isSaveErrorAlert(''), false);
   assert.equal(Core.isSaveErrorAlert(null), false);
 });
+
+test('isSaveErrorAlert: string REAL en español (capturado en producción 2026-07-27)', () => {
+  // Sin esto el alert nativo —que es BLOQUEANTE— congela la pestaña tras cada cancelación
+  // cuando la UI está en español.
+  assert.equal(Core.isSaveErrorAlert('Error al guardar el precio'), true);
+  assert.equal(Core.isSaveErrorAlert('ERROR AL GUARDAR EL PRECIO'), true);
+  // No se traga alertas ajenas que solo mencionen "precio".
+  assert.equal(Core.isSaveErrorAlert('El precio no puede ser negativo'), false);
+});
+
+// ---------- isPriceModal: gate del candado — ESTRUCTURA antes que TEXTO ----------
+// Contexto: el modal de precio se llama "Part Number Price" en inglés y
+// "Precio del número de parte" en español (ambos observados en producción, 2026-07-27).
+// El gate NO puede depender de ese texto: si no matchea, el precio se guarda sin reconfirmar.
+
+test('isPriceModal: el schema RJSF del precio manda, sin importar el idioma del título', () => {
+  assert.equal(Core.isPriceModal({ hasPriceSchema: true, title: 'Precio del número de parte' }), true);
+  assert.equal(Core.isPriceModal({ hasPriceSchema: true, title: 'Part Number Price' }), true);
+  // Aunque el título sea de otro modal (o SH lo traduzca a un idioma que no conocemos).
+  assert.equal(Core.isPriceModal({ hasPriceSchema: true, title: 'Prix du numéro de pièce' }), true);
+  assert.equal(Core.isPriceModal({ hasPriceSchema: true, title: '' }), true);
+});
+
+test('isPriceModal: sin schema, el título ES o EN sirve de red de seguridad', () => {
+  assert.equal(Core.isPriceModal({ hasPriceSchema: false, title: 'Part Number Price' }), true);
+  assert.equal(Core.isPriceModal({ hasPriceSchema: false, title: 'part number price' }), true);
+  // String real del modal en español, con y sin acento.
+  assert.equal(Core.isPriceModal({ hasPriceSchema: false, title: 'Precio del número de parte' }), true);
+  assert.equal(Core.isPriceModal({ hasPriceSchema: false, title: 'Precio del numero de parte' }), true);
+  // El título real trae el resto del encabezado pegado (textContent del MuiDialogTitle).
+  assert.equal(Core.isPriceModal({ hasPriceSchema: false, title: 'Precio del número de parteNombre del Precio' }), true);
+});
+
+test('isPriceModal: otros modales NO matchean (no intercepta lo que no es precio)', () => {
+  assert.equal(Core.isPriceModal({ hasPriceSchema: false, title: 'Edit Part Number' }), false);
+  assert.equal(Core.isPriceModal({ hasPriceSchema: false, title: 'Editar Número de Parte' }), false);
+  assert.equal(Core.isPriceModal({ hasPriceSchema: false, title: 'Carga masiva de cotizaciones' }), false);
+  assert.equal(Core.isPriceModal({ hasPriceSchema: false, title: '' }), false);
+});
+
+test('isPriceModal: entradas degeneradas → false (nunca truena el gate)', () => {
+  assert.equal(Core.isPriceModal(), false);
+  assert.equal(Core.isPriceModal(null), false);
+  assert.equal(Core.isPriceModal({}), false);
+  assert.equal(Core.isPriceModal({ hasPriceSchema: null, title: null }), false);
+  // hasPriceSchema debe ser booleano estricto: un truthy accidental no abre el gate por texto.
+  assert.equal(Core.isPriceModal({ hasPriceSchema: 'no', title: 'Edit Part Number' }), false);
+});

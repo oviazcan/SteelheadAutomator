@@ -72,10 +72,38 @@
     return unitId == null;
   }
 
-  // El alert nativo que SH dispara ("Error saving price") cuando nuestro bloqueo devuelve un
-  // error sintético. Se suprime solo en la ventana posterior a un bloqueo (glue en el guard).
+  // El alert nativo que SH dispara ("Error saving price" / "Error al guardar el precio") cuando
+  // nuestro bloqueo devuelve un error sintético. Se suprime solo en la ventana posterior a un
+  // bloqueo (glue en el guard).
+  //
+  // Aquí NO hay estructura que anclar —es un `window.alert`, solo texto—, así que este SÍ es un
+  // anclaje bilingüe legítimo. Ambos strings están OBSERVADOS en producción (el de español, el
+  // 2026-07-27 con la UI en ese idioma); no se traducen a ojo. Fallar el match no es cosmético:
+  // el alert nativo es BLOQUEANTE y congela la pestaña hasta que el operador lo cierre.
+  const SAVE_ERROR_ALERT_RE = /saving\s+price|guardar\s+el\s+precio/i;
   function isSaveErrorAlert(msg) {
-    return /saving\s+price/i.test(String(msg == null ? '' : msg));
+    return SAVE_ERROR_ALERT_RE.test(String(msg == null ? '' : msg));
+  }
+
+  // ── Identificación del modal nativo de precio (gate del candado) ────────────
+  // ESTRUCTURA ANTES QUE TEXTO. El texto visible de Steelhead cambia de idioma por usuario:
+  // el MISMO modal es "Part Number Price" en inglés y "Precio del número de parte" en español
+  // (verificado en producción el 2026-07-27, dominio 344, con la UI en español). Un gate por
+  // título se rompe en SILENCIO al cambiar el locale — y este applet es un CANDADO: si el gate
+  // no matchea, el precio se guarda SIN reconfirmar. Por eso la señal primaria es estructural:
+  // el formulario RJSF del precio (ids `root_DatosPrecio*`), que solo existe en ese modal y no
+  // depende del idioma. El glue del guard hace la consulta al DOM; aquí vive la decisión pura.
+  //
+  // El título queda como RED DE SEGURIDAD (ES+EN, ambos strings observados — no traducidos a
+  // ojo): solo AMPLÍA el gate, así que si algún día el schema se renombra el candado sigue
+  // disparando. Nunca lo reduce.
+  const PRICE_MODAL_TITLE_RE = /Part\s*Number\s*Price|Precio\s+del\s+n[úu]mero\s+de\s+parte/i;
+
+  // sig: { hasPriceSchema:boolean, title:string } → ¿este diálogo es el modal de precio?
+  function isPriceModal(sig) {
+    const s = sig || {};
+    if (s.hasPriceSchema === true) return true; // 1) estructura (preferida, idioma-indep)
+    return PRICE_MODAL_TITLE_RE.test(String(s.title == null ? '' : s.title)); // 2) texto
   }
 
   function unitLabel(unitId) {
@@ -122,6 +150,8 @@
 
   const api = {
     UNIT_BY_ID,
+    PRICE_MODAL_TITLE_RE,
+    isPriceModal,
     extractLines,
     hasDivisa,
     pricesMatch,

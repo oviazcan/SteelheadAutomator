@@ -1,6 +1,7 @@
 # Applet: `price-confirm-guard` — Candado de Confirmación de Precio
 
-**Versión actual:** 0.1.4 (suprime el `alert` nativo "Error saving price" que SH dispara tras nuestro bloqueo —ventana corta post-bloqueo vía `window.__saPriceGuardSuppressUntil`, parche de `window.alert`, `isSaveErrorAlert` puro—; los errores de guardado legítimos siguen mostrándose. Core 27/27. **preview multi-unidad** (v0.1.3): precio convertido a todas las unidades disponibles del NP. Factor DOM-first (Panel A + tabla Units → API → manual). **✅ validado en vivo** — core + preview multi-unidad, operador 2026-07-17, confirmado 2026-07-22)
+**Versión actual:** 0.1.5 (**gate ESTRUCTURAL, no bilingüe** — el modal de precio se llama «Precio del número de parte» en español y el gate por título `/Part Number Price/i` **nunca matcheaba**; hoy la señal primaria es el schema RJSF `root_DatosPrecio*` y el título quedó como red de seguridad ES+EN. Además `isSaveErrorAlert` reconoce el string REAL en español «Error al guardar el precio» —ese alert es BLOQUEANTE y congelaba la pestaña tras cada cancelación—. Core 32/32. Verificado en vivo el 2026-07-27: `gatePorTitulo:false`, `gatePorSchema:true`)
+**Versión previa:** 0.1.4 (suprime el `alert` nativo "Error saving price" que SH dispara tras nuestro bloqueo —ventana corta post-bloqueo vía `window.__saPriceGuardSuppressUntil`, parche de `window.alert`, `isSaveErrorAlert` puro—; los errores de guardado legítimos siguen mostrándose. Core 27/27. **preview multi-unidad** (v0.1.3): precio convertido a todas las unidades disponibles del NP. Factor DOM-first (Panel A + tabla Units → API → manual). **✅ validado en vivo** — core + preview multi-unidad, operador 2026-07-17, confirmado 2026-07-22)
 **Archivos:** `remote/scripts/price-confirm-guard.js` (glue DOM/red) + `remote/scripts/price-confirm-core.js` (puro)
 **Tests:** `tools/test/price-confirm-core.test.js` (27/27 verdes)
 **Global:** `window.PriceConfirmGuard` · core `window.PriceConfirmCore` · estado en `window.__saPriceGuard*`
@@ -82,6 +83,58 @@ para cada unidad `V` con factor. Sirve para validar p. ej. "capturé por ft² �
 `document.body`) → queda dentro del trap y no-inert. Mismo espíritu que la inyección de `surtido-guard`
 en `.MuiDialogContent-root`. **Regla:** cualquier UI propia que conviva con un MUI Dialog abierto debe
 montarse dentro del contenedor del dialog, no en `body`.
+
+## Lección (v0.1.5): la respuesta a un anclaje mono-idioma es ESTRUCTURA, no traducirlo
+**Verificado en vivo el 2026-07-27** (dominio 344, UI en español, NP 3235631):
+
+| Señal | Valor real |
+|---|---|
+| Título del sub-modal de precio | **«Precio del número de parte»** (español) |
+| `MODAL_TITLE_RE.test(título)` | **false** |
+| `[id^="root_DatosPrecio"]` presente | **true** ← lo único que sostenía el gate |
+| `alert` nativo tras bloquear | **«Error al guardar el precio»** (español) |
+
+El gate vivía de `MODAL_TITLE_RE || hasPriceSchema`. Con la UI en español el primer término
+**siempre era falso**: el candado se sostenía entero del ancla de schema que se agregó el
+2026-07-16 (`dc0717b`) — es decir, **antes de esa fecha el candado no se disparaba en el
+sub-modal de precio del asistente Editar NP**. Eso es lo peligroso de un anclaje por texto en un
+candado: no falla ruidosamente, **se apaga en silencio** y el precio se guarda sin reconfirmar.
+
+**La corrección NO fue "hacerlo bilingüe"**, fue invertir la jerarquía (el repo ya se movió a
+anclas del HTML: `data-steelhead-component-id`, ids de schema RJSF, estructura de tabla):
+1. **Estructura primero** — `root_DatosPrecio*`, el formulario RJSF del precio. Solo existe en
+   ese modal y no depende del idioma. Es la señal que decide.
+2. **Texto como red de seguridad** — el título ES+EN (ambos strings **observados**, no
+   traducidos a ojo). Solo AMPLÍA el gate: si SH renombra el schema, el candado sigue vivo.
+   Nunca lo reduce.
+
+La decisión vive en el core puro (`PriceConfirmCore.isPriceModal({hasPriceSchema, title})`,
+7 casos golden incl. un título en un idioma que no conocemos → matchea igual por estructura);
+el selector DOM vive en el glue, con fallback a la señal estructural si el core no cargó.
+
+**Dónde SÍ va un anclaje bilingüe:** `isSaveErrorAlert`. Es un `window.alert` — **no hay
+estructura que anclar, solo texto**. Ahí el bilingüe es la única herramienta, y por eso se
+capturó el string real en producción en vez de traducirlo. No es cosmético: el alert nativo es
+**bloqueante** y congela la pestaña hasta que alguien lo cierre (pasó durante esta misma
+investigación).
+
+## Nota: el borrado del asistente Editar NP NO lo causa este applet (bug de Steelhead)
+Reporte del operador (2026-07-27): «capturo datos en el modal Editar NP, adjunto un precio, y al
+guardar el precio **después del candado** se borra todo lo capturado». Se investigó con
+experimento controlado, y el candado quedó **descartado**:
+
+| Corrida | ¿Se guarda el precio? | Datos del asistente |
+|---|---|---|
+| Candado **apagado** (prueba del operador) | sí | **se borran** |
+| Candado **bloqueando** (Cancelar; verificado 2026-07-27) | no | **sobreviven intactos** |
+
+⇒ Lo que borra es **el guardado del precio en sí**, no nuestro modal, ni el robo de foco, ni la
+retención del `fetch`. Contexto que lo explica: el asistente **desmonta los pasos inactivos**
+(sus valores viven solo en el estado de React) y el sub-modal de precio **renderiza su propia
+copia del formulario de entradas personalizadas del NP** (mismos ids `root_*`) cargada del
+servidor, o sea sin lo que el operador acaba de teclear. Reportado a `support@gosteelhead.com`.
+**Mitigación para piso:** adjuntar el precio ANTES de capturar, o guardar el asistente y
+reabrirlo para el precio.
 
 ## Lección: suprimir el `alert` nativo de SH tras un bloqueo
 Al cancelar/bloquear devolvemos un `Response` sintético con `errors`; SH reacciona con un
