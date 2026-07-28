@@ -444,6 +444,37 @@
   // Echo de TODOS los campos existentes de la tarea (el server los espera) + override de
   // expectedStartTime + isIntentional. `expectedStartTime` debe ir en ISO UTC (…Z).
   // overrides: { expectedStartTime?, isIntentional? (default true) }. null si falta id.
+  // ── Conversión ISO ↔ <input type="datetime-local"> ──────────────────────────
+  // El servidor habla ISO en UTC ("2026-07-22T22:00:00.000Z") y el input del modal
+  // habla hora LOCAL sin zona ("2026-07-22T16:00"). Esta conversión es el punto donde
+  // un error no se ve: no truena, solo programa la OT a otra hora. Por eso va PURA y
+  // con el offset EXPLÍCITO (minutos, convención de `Date.getTimezoneOffset()`:
+  // positivo al oeste de Greenwich — UTC-6 ⇒ 360). El glue calcula el offset con Date
+  // para la fecha en cuestión, así el horario de verano queda del lado del navegador y
+  // no de una constante nuestra.
+  const ISO_LOCAL_RE = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2})/;
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+  function isoToLocalInput(iso, offsetMinutes) {
+    if (typeof iso !== 'string') return '';
+    const ms = Date.parse(iso);
+    if (isNaN(ms)) return '';
+    const off = Number(offsetMinutes) || 0;
+    const d = new Date(ms - off * 60000);   // corre el reloj a local y lee en UTC
+    return d.getUTCFullYear() + '-' + pad2(d.getUTCMonth() + 1) + '-' + pad2(d.getUTCDate())
+      + 'T' + pad2(d.getUTCHours()) + ':' + pad2(d.getUTCMinutes());
+  }
+
+  function localInputToIso(local, offsetMinutes) {
+    if (typeof local !== 'string') return null;
+    const m = local.match(ISO_LOCAL_RE);
+    if (!m) return null;
+    const off = Number(offsetMinutes) || 0;
+    const ms = Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], 0, 0) + off * 60000;
+    if (isNaN(ms)) return null;
+    return new Date(ms).toISOString();
+  }
+
   function buildScheduleTaskUpdateInput(task, overrides) {
     overrides = overrides || {};
     if (!task || task.taskId == null) return null;
@@ -459,6 +490,28 @@
         isIntentional: (overrides.isIntentional != null) ? !!overrides.isIntentional : true,
       }],
     };
+  }
+
+  // Verificación post-escritura. `UpdateManyScheduleTasks` responde
+  // `{mnUpdateScheduleTaskById:{clientMutationId:null}}` — o sea, NO confirma nada de
+  // lo que se pidió. Es el mismo modo de fallo que costó el fix "load-before-save" del
+  // auto-ruteador: el servidor acepta la mutación y no aplica el cambio, y la UI dice
+  // "✅ listo". La única prueba es RELEER la tarea y compararla.
+  // Se compara el INSTANTE, no la cadena: el servidor normaliza el formato ISO.
+  function verifyScheduleTaskApplied(task, want) {
+    const reasons = [];
+    if (!task) return { ok: false, reasons: ['La tarea ya no aparece en el programa.'] };
+    want = want || {};
+    if (want.expectedStartTime != null) {
+      const a = Date.parse(task.expectedStartTime), b = Date.parse(want.expectedStartTime);
+      if (isNaN(a) || isNaN(b) || a !== b) reasons.push('La fecha/hora no quedó como se pidió.');
+    }
+    if (want.isIntentional != null && !!task.isIntentional !== !!want.isIntentional) {
+      reasons.push(want.isIntentional
+        ? 'La tarea no quedó marcada como intencional.'
+        : 'La tarea sigue marcada como intencional.');
+    }
+    return { ok: reasons.length === 0, reasons: reasons };
   }
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -536,7 +589,8 @@
     stationNameMap, stationName,
     buildBoardScheduleIndex, resolveBoardScheduleForWO,
     formatScheduleTaskLine, scheduleStatusLabel, formatBoardScheduleCell,
-    buildScheduleTaskUpdateInput,
+    buildScheduleTaskUpdateInput, verifyScheduleTaskApplied,
+    isoToLocalInput, localInputToIso,
     parseIsoParts, formatShortDateTime, formatScheduleCell,
   };
   if (typeof window !== 'undefined') window.WoScheduleCore = api;
