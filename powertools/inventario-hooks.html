@@ -57,6 +57,7 @@ td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:now
 .st.on{background:var(--accent-wash);color:var(--accent-ink)}
 .st.off{background:var(--hair);color:var(--muted)}
 .st.diag{background:var(--warn-wash);color:var(--warn)}
+.st.free{background:var(--ti-wash);color:var(--ti);border:1px dashed color-mix(in srgb,var(--ti) 45%,transparent)}
 .who{display:inline-block;font-size:.68rem;font-weight:700;padding:2px 8px;border-radius:6px;white-space:nowrap}
 .who.ku{background:var(--ku-wash);color:var(--ku)} .who.ti{background:var(--ti-wash);color:var(--ti)}
 /* buscador */
@@ -112,7 +113,7 @@ td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:now
 
   <div class="callout warn">
     <p class="ct">Cambios de este corte respecto al anterior</p>
-    <p><strong>Toluca pasó de 19 a 21 ventanillas.</strong> Los dos renglones nuevos —<em>orden de venta</em> y <em>embarque</em>— no son ventanillas recién abiertas por el ERP: existían desde mayo de 2026 y estaban <strong>fuera del radar de la herramienta de sincronización</strong>, que solo buscaba los tipos que tenía en su lista. Al ampliarla aparecieron. Ambas están en formato de fábrica. Aparte, Steelhead <strong>liberó en julio la ventanilla de carga masiva de usuarios</strong>, que aún está por llenarse (ver §02).</p>
+    <p><strong>Toluca pasó de 19 a 21 ventanillas con código, más 2 que quedaron listas para estrenarse.</strong> Los dos renglones nuevos —<em>orden de venta</em> y <em>embarque</em>— no son ventanillas recién abiertas por el ERP: existían desde mayo de 2026 y estaban <strong>fuera del radar de la herramienta de sincronización</strong>, que solo buscaba los tipos que tenía en su lista. Al ampliarla aparecieron. Ambas están en formato de fábrica. Aparte, Steelhead <strong>liberó en julio la ventanilla de carga masiva de usuarios</strong>, que aún está por llenarse: aparece en la tabla marcada <span class="st free">Sin estrenar</span>, sin id de versión porque todavía no hay ninguna.</p>
   </div>
 
   <div class="callout meta">
@@ -121,8 +122,8 @@ td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:now
   </div>
 
   <!-- ============ 01 VENTANILLAS ============ -->
-  <h2 class="sec"><span class="num">01</span>Las 21 ventanillas de Power Tools</h2>
-  <p class="sec-lead">Ordenadas por el momento del proceso en que se disparan. “Atendida” significa que hay código de Ecoplating corriendo ahí; “formato de fábrica” significa que la ventanilla existe pero seguimos usando lo que trae Steelhead. Al corte: <strong>16 atendidas · 4 en formato de fábrica · 1 en diagnóstico</strong>.</p>
+  <h2 class="sec"><span class="num">01</span>Las ventanillas de Power Tools</h2>
+  <p class="sec-lead">Ordenadas por el momento del proceso en que se disparan. Al corte: <strong>16 atendidas</strong> (hay código de Ecoplating corriendo ahí) · <strong>4 en formato de fábrica</strong> (la ventanilla existe pero se usa lo que trae Steelhead) · <strong>1 en diagnóstico</strong> · <strong>2 sin estrenar</strong> (el ERP las admite pero no tienen ninguna versión guardada — por eso van sin id).</p>
 
   <div class="search noprint">
     <input id="q" type="search" placeholder="Filtrar por nombre, documento o palabra clave…" aria-label="Filtrar ventanillas">
@@ -282,6 +283,20 @@ td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:now
           <td><span class="st off">Formato de fábrica</span></td>
           <td class="num">10479</td><td>—</td>
         </tr>
+        <tr>
+          <td><strong>Administración — alta de usuarios</strong><br><span style="color:var(--faint);font-size:.82rem">Importación masiva de usuarios</span></td>
+          <td><code>file-import:USER_IMPORT</code></td>
+          <td>Dar de alta usuarios en bloque desde un archivo, en vez de uno por uno — igual que hoy se importan cotizaciones. <strong>Liberada por Steelhead en julio de 2026 y todavía sin estrenar:</strong> la ventanilla existe y el sincronizador ya la reconoce, falta escribir el hook.</td>
+          <td><span class="st free">Sin estrenar</span></td>
+          <td>—</td><td>—</td>
+        </tr>
+        <tr>
+          <td><strong>Ingeniería — transformación de partes</strong><br><span style="color:var(--faint);font-size:.82rem">Importación de transformaciones</span></td>
+          <td><code>file-import:PART_TRANSFORM_IMPORT</code></td>
+          <td>Importar transformaciones de números de parte desde un archivo. Ventanilla disponible, sin ninguna versión guardada en ninguna de las dos plantas.</td>
+          <td><span class="st free">Sin estrenar</span></td>
+          <td>—</td><td>—</td>
+        </tr>
       </tbody>
     </table>
   </div>
@@ -296,35 +311,13 @@ td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:now
     <p><code>RECEIVED_ORDER_TEMPLATE</code> y <code>SHIPMENT_TEMPLATE</code> tienen una versión en Toluca —el esqueleto que el ERP creó solo— y <strong>ninguna en Monterrey</strong> (columna en blanco). Como las dos están en formato de fábrica, <strong>hoy no hay diferencia de comportamiento</strong> entre plantas: ambas imprimen el formato estándar. Pero en cuanto una de las dos se atienda, habrá que publicarla también en Monterrey.</p>
   </div>
 
-  <!-- ============ 02 DISPONIBLES SIN CÓDIGO ============ -->
-  <h2 class="sec"><span class="num">02</span>Ventanillas disponibles que todavía nadie usa</h2>
-  <p class="sec-lead">El ERP admite estos tipos, pero <strong>no tienen ninguna versión guardada</strong> en ninguna de las dos plantas: ni siquiera el esqueleto. No aparecen en la tabla de arriba porque no hay nada que listar — y aparecerán solas en cuanto alguien publique la primera versión.</p>
-
-  <div class="tablewrap">
-    <table style="min-width:520px">
-      <thead><tr><th>Tipo</th><th>Para qué serviría</th><th>Estado al corte</th></tr></thead>
-      <tbody>
-        <tr>
-          <td><strong>Carga masiva de usuarios</strong><br><code>file-import:USER_IMPORT</code></td>
-          <td>Dar de alta usuarios en bloque desde un archivo, en vez de uno por uno — igual que hoy se importan cotizaciones.</td>
-          <td><strong>Recién liberada por Steelhead (julio de 2026) y todavía sin llenar.</strong> El tipo ya existe en el ERP y la herramienta de sincronización ya lo reconoce; falta escribir el hook. En cuanto se publique la primera versión aparecerá sola en la tabla de arriba.</td>
-        </tr>
-        <tr>
-          <td><strong>Transformación de partes</strong><br><code>file-import:PART_TRANSFORM_IMPORT</code></td>
-          <td>Importar transformaciones de números de parte desde un archivo.</td>
-          <td>Sin código en ninguna planta.</td>
-        </tr>
-      </tbody>
-    </table>
-  </div>
-
   <div class="callout info">
     <p class="ct">Cómo se descubren estas ventanillas</p>
     <p>Steelhead <strong>no publica la lista</strong> de tipos que admite: hay que preguntarle por uno concreto y ver si lo reconoce. La herramienta de sincronización lleva su propia lista de tipos conocidos, y por eso una ventanilla puede existir meses sin que la veamos —fue el caso de <em>orden de venta</em> y <em>embarque</em>—. Cuando la operación mencione una capacidad nueva, el primer paso es sondear el tipo y darlo de alta en esa lista.</p>
   </div>
 
   <!-- ============ 02 PLANES DE MANTENIMIENTO ============ -->
-  <h2 class="sec"><span class="num">03</span>Los 26 planes de mantenimiento</h2>
+  <h2 class="sec"><span class="num">02</span>Los 26 planes de mantenimiento</h2>
   <p class="sec-lead">Además de las ventanillas, Steelhead ejecuta código propio en cada <strong>plan de mantenimiento</strong>: toma las titulaciones que captura el laboratorio, calcula la concentración y devuelve la dosis de corrección como instrucción en pantalla. Detalle del funcionamiento en la <a href="ficha-maintenance-plans.html">ficha de planes de mantenimiento</a>.</p>
   <p class="sec-lead" style="margin-top:-.6rem"><strong>24 son baños químicos</strong> de las líneas T205 y T107. Los otros dos son distintos: uno es la <em>consolidación de plata</em> generada desde la tabla de química, y el otro <strong>no es un baño</strong> — es el plan de mantenimiento preventivo de equipos informáticos, que usa la misma mecánica del ERP para otra cosa.</p>
 
@@ -374,8 +367,8 @@ td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:now
     <p><strong>El desarrollo de este frente está pausado:</strong> Steelhead tiene en su hoja de ruta un rediseño completo del módulo de mantenimiento, y hoy la planta opera capturando a mano en los <strong>nodos</strong> de mantenimiento en vez de apoyarse en los planes con código — mismo resultado, más trabajo manual. El material se puede <em>bajar</em> del ERP (<code>python3 sync/maintenance_plans_sync.py pull</code>) para revisarlo, versionarlo y auditar su química, pero <strong>la publicación de vuelta no está implementada</strong>. La auditoría de química de la que habla la ficha se hizo sobre los <strong>24 planes de baño</strong> (105 versiones históricas, 31 mediciones registradas, Toluca, junio de 2026); los planes 44 y 45 son posteriores.</p>
   </div>
 
-  <!-- ============ 04 QUÉ MANTIENE EL INVENTARIO ============ -->
-  <h2 class="sec"><span class="num">04</span>Cuándo se actualiza este documento</h2>
+  <!-- ============ 03 QUÉ MANTIENE EL INVENTARIO ============ -->
+  <h2 class="sec"><span class="num">03</span>Cuándo se actualiza este documento</h2>
   <p class="sec-lead">Este es el único documento del paquete que caduca rápido. Se actualiza cuando pasa alguna de estas cosas — y solo entonces.</p>
 
   <div class="tablewrap">
