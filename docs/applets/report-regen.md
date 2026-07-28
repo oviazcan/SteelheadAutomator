@@ -1,6 +1,6 @@
 # Applet: `report-regen` (Regenerar Reportes)
 
-**Versión actual:** 0.3.0
+**Versión actual:** 0.3.1
 **Archivo:** `remote/scripts/report-regen.js`
 **Tipo:** `autoInject` + acción de popup. Inyecta un botón en el header secundario de Steelhead.
 **Permiso requerido:** `MANAGE_REPORTING` (gating en runtime, no sólo popup).
@@ -11,6 +11,50 @@ Steelhead refresca su base de reportes (DuckDB) cada noche, pero también se pue
 manualmente — sólo que el botón nativo está enterrado 3-5 clicks. Este applet expone un
 botón **♻️** en la barra de breadcrumb (junto a los iconos play ▶ y correo ✉) que dispara la
 regeneración con un click, muestra el progreso, y arranca un timer de enfriamiento.
+
+## v0.3.1 (2026-07-27) — el botón "de pronto dejó de aparecer": el gate se comía a sí mismo
+
+Reporte del operador. Diagnóstico en vivo con el applet cargado (0.3.0):
+
+```
+applet: 0.3.0            ← carga bien
+botón en DOM: false      ← pero no se monta
+ancla del header: ✅      ← el ancla NO es el problema
+Apollo expuesto: false   ← ¡el fallback nunca sirvió!
+```
+
+**Causa.** El gating v0.2.0 tenía dos vías para conocer los permisos, y en producción
+**ninguna funciona de forma confiable**:
+
+1. **Sniffer de `fetch`** — solo caza respuestas de `CurrentUser`/`Profile` que el front pida
+   **después** de que el applet ya está montado. Pero el front las pide **al arrancar la SPA**,
+   antes de que la extensión inyecte nada. La ventana casi siempre está cerrada.
+2. **Apollo cache** — `window.__APOLLO_CLIENT__` **no está expuesto** en el front de producción
+   (verificado en vivo). Además se intentaba **una sola vez**, sin reintentos.
+
+Sin ninguna de las dos, `allowed` se quedaba en `null` para siempre y, siendo **fail-closed**,
+el botón no se montaba nunca.
+
+**Por qué "de pronto".** Es una carrera, y su probabilidad venía creciendo con el número de
+applets: `report-regen` era el 6º de 28 inyectados **en serie**, detrás de 79 descargas y 79
+verificaciones de firma ECDSA (ver [`../architecture/applet-load-gating.md`](../architecture/applet-load-gating.md)).
+No dejó de funcionar de golpe: fue perdiendo la ventana cada vez más seguido. **Mismo problema
+raíz que el gate de carga.**
+
+**Fix.** Función pura `decideGate(caps, req, remembered, timedOut)` con dos apoyos que no
+dependen de la carrera:
+
+- **Memoria** (`localStorage.sa_rr_perm`): el último veredicto **real** conocido en ese
+  navegador. Basta una carga afortunada para que el botón aparezca siempre desde entonces.
+- **Timeout** (5s): sin ningún dato, se monta igual. Es coherente con lo que el applet **ya
+  hacía al ejecutar** (`triggerFromPopup` procede con `allowed === null` tras su espera,
+  *"el server valida el permiso al ejecutar"*): **la autoridad es el servidor, no este gate**.
+
+Un `false` **real o recordado siempre gana** — si se supo que el usuario no tiene el permiso,
+no se monta. El peor caso pasa de *"nadie ve el botón"* a *"alguien sin permiso ve un botón que
+el servidor le rechaza"*. Solo se recuerda el veredicto real, nunca la decisión del timeout.
+
+4 golden tests nuevos (`tools/test/report-regen.test.js`, 31/31).
 
 ## El insight clave: el timer es GLOBAL del domain, server-side, sin backend propio
 
