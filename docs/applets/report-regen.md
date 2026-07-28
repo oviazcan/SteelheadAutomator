@@ -1,6 +1,6 @@
 # Applet: `report-regen` (Regenerar Reportes)
 
-**Versión actual:** 0.3.1
+**Versión actual:** 0.3.2
 **Archivo:** `remote/scripts/report-regen.js`
 **Tipo:** `autoInject` + acción de popup. Inyecta un botón en el header secundario de Steelhead.
 **Permiso requerido:** `MANAGE_REPORTING` (gating en runtime, no sólo popup).
@@ -11,6 +11,42 @@ Steelhead refresca su base de reportes (DuckDB) cada noche, pero también se pue
 manualmente — sólo que el botón nativo está enterrado 3-5 clicks. Este applet expone un
 botón **♻️** en la barra de breadcrumb (junto a los iconos play ▶ y correo ✉) que dispara la
 regeneración con un click, muestra el progreso, y arranca un timer de enfriamiento.
+
+## v0.3.2 (2026-07-27) — la causa REAL: "no sé qué permisos tiene" se leía como "no tiene"
+
+La v0.3.1 no bastó: el operador reportó `report-regen: '0.3.1'` con `botón ♻️: false`.
+
+**Causa.** `onUserData` normalizaba las capacidades así:
+
+```js
+const partial = { isAdmin: !!u.isAdmin, isSuperUser: !!u.isSuperUser };
+if (source === 'CurrentUser' && ...) partial.perms = u.currentManagedPermissions;
+capturedPerms = Object.assign({ isAdmin: false, isSuperUser: false, perms: [] }, ...);
+```
+
+`Profile` trae `isAdmin`/`isSuperUser` pero **no** la lista de permisos. Ese `perms: []` por
+defecto hacía que `evalAllowed` concluyera **`false`** para cualquier usuario no-admin: un
+**"no" espurio**, porque la lista estaba **ausente**, no vacía. Y con `allowed === false` el
+applet llama `removeButton()`.
+
+**Este bug ya existía en 0.3.0** — es la causa de que el botón desapareciera. La v0.3.1 lo
+**empeoró**: al persistir el veredicto, ese "no" falso quedaba grabado en `localStorage` y
+bloqueaba el botón **para siempre**, en vez de solo hasta la siguiente carga.
+
+**Fix.**
+- `evalAllowed` devuelve **`null` (desconocido)** cuando no hay lista de permisos y el usuario
+  no es admin/superuser. Sólo devuelve `false` con una lista **real** que no contiene el
+  permiso. *Ausente ≠ vacío.*
+- `onUserData` deja de inventar `perms: []`; la lista sólo existe si de verdad llegó.
+- La clave de memoria se versiona a `sa_rr_perm_v2` y se **borra la vieja**, para que el "no"
+  envenenado que la 0.3.1 pudo grabar no siga bloqueando el botón.
+
+Con esto, un `Profile` de no-admin ya no descarta nada: el gate espera, y si no llega un
+veredicto real, el timeout de v0.3.1 monta el botón igual.
+
+**Lección.** Un test previo fijaba `evalAllowed: perms ausente se trata como []` → `false`.
+Estaba **codificando el bug como si fuera la intención**. Un test verde no prueba que el
+comportamiento sea correcto: prueba que es el que alguien escribió.
 
 ## v0.3.1 (2026-07-27) — el botón "de pronto dejó de aparecer": el gate se comía a sí mismo
 

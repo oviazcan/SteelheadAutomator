@@ -27,7 +27,7 @@
 (function () {
   'use strict';
 
-  const APPLET_VERSION = '0.3.1';
+  const APPLET_VERSION = '0.3.2';
 
   // ── Singleton guard + teardown de versión previa (re-inyección en SPA / bump) ──
   if (window.ReportRegen && window.ReportRegen.__version === APPLET_VERSION) return;
@@ -42,7 +42,10 @@
   const REQUIRED_PERMISSION = 'MANAGE_REPORTING';
   const OBSERVER_DEBOUNCE_MS = 300;
   // Memoria del último veredicto REAL de permisos en este navegador ('1'/'0').
-  const REMEMBER_KEY = 'sa_rr_perm';
+  // `_v2` porque la v0.3.1 pudo grabar un "no" ESPURIO (ver evalAllowed): al versionar la
+  // clave, ese valor envenenado se ignora en vez de bloquear el botón para siempre.
+  const REMEMBER_KEY = 'sa_rr_perm_v2';
+  const REMEMBER_KEY_LEGACY = 'sa_rr_perm';
   // Cuánto se espera a que el front pida CurrentUser/Profile antes de montar igual.
   const GATE_TIMEOUT_MS = 5000;
   const POLL_REGEN_MS = 10000;    // job propio activo → poll JobQuery
@@ -203,11 +206,17 @@
   // isAdmin/isSuperUser). Fallback: leer del Apollo cache si está expuesto.
 
   // Lógica pura (testeable): dado caps + permisos requeridos → true|false|null.
+  //
+  // "No sé qué permisos tiene" NO es "sé que no los tiene" (bug 2026-07-27, v0.3.2).
+  // `Profile` trae isAdmin/isSuperUser pero NO la lista de permisos; tratando esa lista
+  // ausente como vacía, cualquier usuario no-admin daba un `false` **espurio** y el botón
+  // se desmontaba. Peor aún desde v0.3.1, que empezó a PERSISTIR el veredicto: ese "no"
+  // falso quedaba grabado y bloqueaba el botón para siempre. Sin lista conocida → null.
   function evalAllowed(caps, req) {
-    if (!caps) return null; // aún no se conocen permisos
+    if (!caps) return null;                       // aún no se sabe nada
     if (caps.isAdmin || caps.isSuperUser) return true;
-    const perms = Array.isArray(caps.perms) ? caps.perms : [];
-    return req.every((p) => perms.includes(p));
+    if (!Array.isArray(caps.perms)) return null;  // sólo llegó Profile: permisos desconocidos
+    return req.every((p) => caps.perms.includes(p));
   }
 
   // Decisión del gate cuando NO hay veredicto real (el caso normal, no la excepción).
@@ -276,7 +285,9 @@
       if (source === 'CurrentUser' && Array.isArray(u.currentManagedPermissions)) {
         partial.perms = u.currentManagedPermissions;
       }
-      capturedPerms = Object.assign({ isAdmin: false, isSuperUser: false, perms: [] }, capturedPerms || {}, partial);
+      // Sin `perms: []` por default: la lista solo existe si de verdad llegó (CurrentUser).
+      // Inventarla vacía es lo que producía el `false` espurio desde Profile — ver evalAllowed.
+      capturedPerms = Object.assign({ isAdmin: false, isSuperUser: false }, capturedPerms || {}, partial);
       reevaluateGate();
     } catch (_) {}
   }
@@ -579,6 +590,8 @@
       const ok = await waitForDeps(20000);
       booted = true;
       if (!ok) return; // deps no llegaron; queda inerte
+      // Tira la memoria envenenada de v0.3.1 (pudo grabar un "no" espurio desde Profile).
+      try { localStorage.removeItem(REMEMBER_KEY_LEGACY); } catch (_) {}
       installPermSniffer(); // captura permisos de CurrentUser/Profile que pida el front
       tryApolloCache();     // cache del front (en producción NO está expuesto — ver decideGate)
       // Con la memoria de un veredicto anterior esto monta de inmediato; si no hay nada,

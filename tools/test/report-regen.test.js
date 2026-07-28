@@ -207,8 +207,11 @@ test('evalAllowed: no-admin SIN el permiso no pasa', () => {
 test('evalAllowed: caps null → null (desconocido = fail-closed)', () => {
   assert.strictEqual(RR.evalAllowed(null, ['MANAGE_REPORTING']), null);
 });
-test('evalAllowed: perms ausente se trata como []', () => {
-  assert.strictEqual(RR.evalAllowed({ isAdmin: false }, ['MANAGE_REPORTING']), false);
+// CAMBIÓ EN v0.3.2. Este test fijaba "perms ausente se trata como []" → false, que era
+// justamente EL BUG: `Profile` no trae la lista de permisos, así que cualquier usuario
+// no-admin salía `false` y el botón se desmontaba. Ausente ≠ vacío.
+test('evalAllowed: perms ausente es DESCONOCIDO (null), no "no tiene" (false)', () => {
+  assert.strictEqual(RR.evalAllowed({ isAdmin: false }, ['MANAGE_REPORTING']), null);
 });
 
 // ── decideGate: el gate ya no depende de cazar la petición al vuelo ──────────
@@ -236,4 +239,31 @@ test('decideGate: sin dato alguno espera, y al expirar monta (el server valida a
   const req = ['MANAGE_REPORTING'];
   assert.strictEqual(RR.decideGate(null, req, null, false), null);   // todavía esperando
   assert.strictEqual(RR.decideGate(null, req, null, true), true);    // se acabó la espera
+});
+
+// ── evalAllowed: "no sé" ≠ "no tiene" (bug 2026-07-27, v0.3.2) ───────────────
+// Profile trae isAdmin/isSuperUser pero NO la lista de permisos. Tratar esa lista ausente
+// como vacía daba un `false` espurio para cualquier no-admin, y desde v0.3.1 ese "no" falso
+// se PERSISTÍA y bloqueaba el botón para siempre.
+
+test('evalAllowed: sólo Profile (sin lista de permisos) y no-admin → null, NO false', () => {
+  assert.strictEqual(RR.evalAllowed({ isAdmin: false, isSuperUser: false }, ['MANAGE_REPORTING']), null);
+});
+
+test('evalAllowed: lista REAL sin el permiso → false (ahí sí se sabe)', () => {
+  assert.strictEqual(RR.evalAllowed({ isAdmin: false, isSuperUser: false, perms: [] }, ['MANAGE_REPORTING']), false);
+  assert.strictEqual(RR.evalAllowed({ isAdmin: false, isSuperUser: false, perms: ['OTRO'] }, ['MANAGE_REPORTING']), false);
+});
+
+test('evalAllowed: lista REAL con el permiso, o admin/superuser → true', () => {
+  assert.strictEqual(RR.evalAllowed({ isAdmin: false, perms: ['MANAGE_REPORTING'] }, ['MANAGE_REPORTING']), true);
+  assert.strictEqual(RR.evalAllowed({ isAdmin: true }, ['MANAGE_REPORTING']), true);
+  assert.strictEqual(RR.evalAllowed({ isSuperUser: true }, ['MANAGE_REPORTING']), true);
+});
+
+test('un Profile de no-admin ya no envenena la memoria: espera y monta por timeout', () => {
+  const req = ['MANAGE_REPORTING'];
+  const soloProfile = { isAdmin: false, isSuperUser: false };
+  assert.strictEqual(RR.decideGate(soloProfile, req, null, false), null);  // espera, no descarta
+  assert.strictEqual(RR.decideGate(soloProfile, req, null, true), true);   // y acaba montando
 });
