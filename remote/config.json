@@ -663,7 +663,7 @@
       "icon": "📅",
       "category": "Órdenes de Trabajo",
       "autoInject": true,
-      "urlPatternsDisabled": [
+      "urlPatterns": [
         "/Domains/\\d+/WorkOrders/\\d+(?:[/?#]|$)"
       ],
       "scripts": [
@@ -694,7 +694,7 @@
       "icon": "⚙️",
       "category": "Números de Parte",
       "autoInject": true,
-      "urlPatternsDisabled": [
+      "urlPatterns": [
         "(?:^|/)PartNumbers(?:/|$)",
         "/Receiving/CustomerParts(?:/|$)",
         "/Domains/\\d+/Quotes(?:/|$)",
@@ -728,7 +728,7 @@
       "icon": "🧮",
       "category": "Números de Parte",
       "autoInject": true,
-      "urlPatternsDisabled": [
+      "urlPatterns": [
         "(?:^|/)PartNumbers(?:/|$)",
         "/Receiving/CustomerParts(?:/|$)",
         "/Domains/\\d+/Quotes(?:/|$)",
@@ -747,7 +747,7 @@
       "icon": "🏷️",
       "category": "Herramientas",
       "autoInject": true,
-      "urlPatternsDisabled": [
+      "urlPatterns": [
         "^/Domains/\\d+/Shipping/?(?:[?#]|$)"
       ],
       "scripts": [
@@ -764,7 +764,7 @@
       "icon": "🏷️",
       "category": "Herramientas",
       "autoInject": true,
-      "urlPatternsDisabled": [
+      "urlPatterns": [
         "^/Schedules/\\d+/ScheduleBoard/\\d+/?(?:[?#]|$)"
       ],
       "scripts": [
@@ -1158,7 +1158,7 @@
         "READ_RECEIVED_ORDERS"
       ],
       "autoInject": true,
-      "urlPatternsDisabled": [
+      "urlPatterns": [
         "/Domains/\\d+/ReceivedOrders(?:/|$|\\?)"
       ],
       "actions": [
@@ -1216,7 +1216,7 @@
         "READ_WORK_ORDER"
       ],
       "autoInject": true,
-      "urlPatternsDisabled": [
+      "urlPatterns": [
         "/Domains/\\d+/ReceivedOrders/\\d+"
       ],
       "actions": [
@@ -1270,7 +1270,7 @@
         "scripts/cfdi-attacher.js"
       ],
       "autoInject": true,
-      "urlPatternsDisabled": [
+      "urlPatterns": [
         "/Domains/\\d+/Invoices(?:/|$)"
       ],
       "requiredPermissions": [
@@ -1299,7 +1299,7 @@
         "scripts/invoice-auto-regen.js"
       ],
       "autoInject": true,
-      "urlPatternsDisabled": [
+      "urlPatterns": [
         "/Domains/\\d+/Invoices(?:/|$)"
       ],
       "requiredPermissions": [
@@ -1327,7 +1327,7 @@
         "scripts/invoice-default-tab.js"
       ],
       "autoInject": true,
-      "urlPatternsDisabled": [
+      "urlPatterns": [
         "/Domains/\\d+/Invoices/?$"
       ],
       "actions": [
@@ -1352,7 +1352,7 @@
         "scripts/invoice-listing-marker.js"
       ],
       "autoInject": true,
-      "urlPatternsDisabled": [
+      "urlPatterns": [
         "/Domains/\\d+/Invoices(?:/|$)"
       ],
       "actions": [
@@ -1408,7 +1408,7 @@
         "scripts/paros-linea.js"
       ],
       "autoInject": true,
-      "urlPatternsDisabled": [
+      "urlPatterns": [
         "^/Domains/\\d+/(?:Workboards(?:/|$)|WorkOrders/\\d+)"
       ],
       "requiredPermissions": [
@@ -1447,7 +1447,7 @@
         "scripts/vale-almacen.js"
       ],
       "autoInject": true,
-      "urlPatternsDisabled": [
+      "urlPatterns": [
         "^/Domains/\\d+/(?:(?:Workboards|Maintenance\\w*|SensorDashboards?|Sensors|Inventory\\w*)(?:/|$)|WorkOrders/\\d+)"
       ],
       "requiredPermissions": [
@@ -1477,7 +1477,7 @@
         "scripts/weight-quick-entry.js"
       ],
       "autoInject": true,
-      "urlPatternsDisabled": [
+      "urlPatterns": [
         "/Receiving/CustomerParts(?:/|$)",
         "/Domains/\\d+/SalesOrders(?:/|$)"
       ],
@@ -1508,7 +1508,7 @@
         "scripts/unit-autoconvert.js"
       ],
       "autoInject": true,
-      "urlPatternsDisabled": [
+      "urlPatterns": [
         "(?:^|/)PartNumbers(?:/|$)",
         "/Receiving/CustomerParts(?:/|$)",
         "/Domains/\\d+/Quotes(?:/|$)",
@@ -1552,7 +1552,7 @@
         "scripts/receiver-date-override.js"
       ],
       "autoInject": true,
-      "urlPatternsDisabled": [
+      "urlPatterns": [
         "/Receiving/CustomerParts(?:/|$)",
         "/Domains/\\d+/SalesOrders(?:/|$)"
       ],
@@ -1582,7 +1582,7 @@
         "scripts/warehouse-location-prefill.js"
       ],
       "autoInject": true,
-      "urlPatternsDisabled": [
+      "urlPatterns": [
         "/Receiving/CustomerParts(?:/|$)",
         "/Domains/\\d+/SalesOrders(?:/|$)"
       ],
@@ -1613,7 +1613,7 @@
         "scripts/create-order-autofill.js"
       ],
       "autoInject": true,
-      "urlPatternsDisabled": [
+      "urlPatterns": [
         "/Receiving/CustomerParts(?:/|$)",
         "/Domains/\\d+/SalesOrders/?$"
       ],
@@ -1643,7 +1643,7 @@
         "scripts/bill-autofill.js"
       ],
       "autoInject": true,
-      "urlPatternsDisabled": [
+      "urlPatterns": [
         "/Domains/\\d+/Bills(?:/|$)"
       ],
       "requiredPermissions": [
@@ -1672,7 +1672,7 @@
         "scripts/invoice-autofill.js"
       ],
       "autoInject": true,
-      "urlPatternsDisabled": [
+      "urlPatterns": [
         "/Domains/\\d+/(?:Invoices|Shipping/PackingSlips)(?:/|$)"
       ],
       "requiredPermissions": [
@@ -1787,7 +1787,7 @@
       "icon": "👁",
       "category": "Producción",
       "autoInject": true,
-      "urlPatternsDisabled": [
+      "urlPatterns": [
         "/sensor-?dashboards/\\d+(?:[/?#]|$)"
       ],
       "scripts": [
@@ -1816,7 +1816,7 @@
       "icon": "🧪",
       "category": "Números de Parte",
       "autoInject": true,
-      "urlPatternsDisabled": [
+      "urlPatterns": [
         "(?:^|/)PartNumbers/?(?:[?#]|$)"
       ],
       "scripts": [
@@ -1848,7 +1848,7 @@
       "icon": "🔩",
       "category": "Órdenes de Trabajo",
       "autoInject": true,
-      "urlPatternsDisabled": [
+      "urlPatterns": [
         "/Domains/\\d+/WorkOrders/?(?:[?#]|$)"
       ],
       "scripts": [
@@ -1890,7 +1890,7 @@
       "icon": "🔀",
       "category": "Producción",
       "autoInject": true,
-      "urlPatternsDisabled": [
+      "urlPatterns": [
         "/Schedules/\\d+/ScheduleBoard/\\d+"
       ],
       "scripts": [
@@ -1931,7 +1931,7 @@
       "icon": "🔒",
       "category": "Producción",
       "autoInject": true,
-      "urlPatternsDisabled": [
+      "urlPatterns": [
         "^/Domains/\\d+/Workboards/\\d+"
       ],
       "scripts": [

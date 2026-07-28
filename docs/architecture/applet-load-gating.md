@@ -1,11 +1,11 @@
 # Carga de applets: por qué tardaba y cómo se acotó
 
-**Estado:** **VIVO en producción (2026-07-27)** — config **1.7.215**, tag `v1.7.215`, zip de la
-extensión **1.7.0** publicado y verificado en vivo (firma del config OK, `unzip -p … manifest.json`
-del zip SERVIDO reporta 1.7.0). **Falta validar en piso** y que cada máquina actualice la
-extensión desde el banner del popup — hasta que lo haga, sigue con el loader viejo, que ignora
-`urlPatterns` y se comporta exactamente como antes. Diagnóstico original reportado por el
-operador el 2026-07-27:
+**Estado:** **VIVO y validado en piso (2026-07-27)** — extensión **1.7.1**, 26 patrones activos.
+El camino no fue recto: se publicó, causó una regresión al navegar dentro de la SPA (§B), se
+apagó en minutos sin republicar la extensión, se corrigió la detección y se reactivó por canario
+(§B.1). Falta que cada máquina actualice desde el banner del popup; hasta que lo haga, esa
+máquina usa el loader viejo, que ignora `urlPatterns` y se comporta como antes. Diagnóstico
+original reportado por el operador el 2026-07-27:
 *"conforme vamos agregando applets, cada vez tardan más en cargar… en Purchasing no necesito
 cargar ni vales de almacén ni paros de línea"*.
 
@@ -121,13 +121,16 @@ service worker porque MV3 lo suspende, y porque ese latch debe morir con el `win
 **Resultado neto: se re-inyecta MENOS que antes**, no más. Antes cada carga dura re-evaluaba
 los 28; ahora, al navegar, solo entra lo que falta.
 
-### B.1 Reactivación por canario (estado actual)
+### B.1 Reactivación por canario (hecha)
 
-Los 26 patrones siguen en `urlPatternsDisabled`. **`po-listing-filters` está activo como
-canario**: es visible (el buscador del header de Compras), de bajo riesgo y conocido por el
-operador. La prueba que importa es **llegar a Compras navegando dentro de la SPA** (sin
-recargar) y ver que el buscador aparece. Si el canario pasa, se reactivan los otros 25 con un
-deploy de config (sin tocar el zip). Si falla, se apaga igual de barato.
+Se reactivó en dos tiempos. Primero **`po-listing-filters` solo, como canario**: visible (el
+buscador del header de Compras), de bajo riesgo y conocido por el operador. La prueba que
+importaba no era recargar —la carga dura nunca estuvo rota— sino **llegar a Compras navegando
+dentro de la app**. El operador lo confirmó así, con la extensión 1.7.1 instalada. Con esa
+evidencia se encendieron los 25 restantes en un deploy de config, sin tocar el zip.
+
+Si alguna vez hay que volver a apagarlo: mover los patrones a `urlPatternsDisabled` y ajustar
+el test que vigila que no queden residuales. Sigue sin requerir republicar la extensión.
 
 Un test (`el gate por ruta sigue en cuarentena, salvo el canario`) se pone rojo si alguien
 reactiva un patrón de más.

@@ -147,7 +147,7 @@ Toda la documentación del modelo de procesos en Steelhead vive en [`docs/proces
 
 Antes de tocar `process-canon.js` o cualquier mutación de árbol, leerlo. Lecciones nuevas se agregan ahí.
 
-## Carga de applets: gate por URL (EN CANARIO — ext 1.7.1; 25 de 26 patrones en cuarentena)
+## Carga de applets: gate por URL (VIVO — ext 1.7.1, 26 patrones activos, validado en piso)
 
 **Problema medido el 2026-07-27** (reporte del operador: *"cada vez tardan más en cargar"*):
 `extension/background.js` inyectaba **los 28 applets `autoInject`** en CADA carga de página, sin

@@ -11,16 +11,16 @@ const config = require('../../remote/config.json');
 
 const R = p => path.join(__dirname, '../../remote/scripts', p);
 
-// ── Gate EN CUARENTENA (2026-07-27) ──────────────────────────────────────────
-// El gate por ruta se apagó en producción tras una regresión: al navegar DENTRO de la
-// SPA, `chrome.tabs.onUpdated` no entrega el pushState de forma confiable, así que los
-// applets de la pantalla a la que se llegaba navegando nunca se inyectaban (síntomas:
-// sin toggles en Work Orders, y Bills quedándose con el invoice-autofill que sobrevivía
-// de la pantalla anterior). Apagarlo fue posible SIN republicar la extensión gracias al
-// diseño fail-open: los patrones se movieron a `urlPatternsDisabled`, que el loader
-// ignora. Se reactivan cuando la detección de navegación SPA sea confiable (vía
-// content.js → background, sin permisos nuevos).
-// Los tests de contrato siguen corriendo sobre los patrones, re-activándolos aquí.
+// ── Historia del gate (2026-07-27) ───────────────────────────────────────────
+// El gate se apagó unas horas tras publicarlo: al navegar DENTRO de la SPA,
+// `chrome.tabs.onUpdated` no entrega el pushState de forma confiable, así que el applet
+// de la pantalla a la que se llegaba navegando nunca se inyectaba (sin toggles en Work
+// Orders; Bills quedándose con el invoice-autofill que sobrevivía de la pantalla
+// anterior). Apagarlo no requirió republicar la extensión: los patrones se movieron a
+// `urlPatternsDisabled`, que el loader ignora — el diseño fail-open pagándose solo.
+// Se reactivó tras mover la detección a content.js (sondeo de location.pathname) y
+// validar EN PISO, navegando, que el canario llegaba. `patternsOf` tolera ambas formas
+// por si hay que volver a apagarlo.
 const patternsOf = app => app.urlPatterns || app.urlPatternsDisabled || null;
 const appsWithGate = () => (config.apps || []).map(a => {
   const p = patternsOf(a);
@@ -391,17 +391,12 @@ test('en el orden dedupeado, ningún applet del config se evalúa antes que sus 
   assert.deepEqual(Gate.findDependencyViolations(config.apps), []);
 });
 
-// CANDADO DE CUARENTENA — si este test se pone rojo, léelo antes de "arreglarlo".
-test('el gate por ruta sigue en cuarentena, salvo el canario (2026-07-27)', () => {
-  const activos = (config.apps || []).filter(a => a.urlPatterns).map(a => a.id);
-  assert.deepEqual(activos, ['po-listing-filters'],
-    'El gate por ruta está apagado a propósito: al navegar DENTRO de la SPA, ' +
-    'chrome.tabs.onUpdated no entrega el pushState de forma confiable y los applets de la ' +
-    'pantalla a la que se llega navegando nunca se inyectan (regresión en piso 2026-07-27: ' +
-    'sin toggles en Work Orders; Bills se quedaba con el invoice-autofill de la pantalla ' +
-    'anterior). Antes de mover un patrón de `urlPatternsDisabled` a `urlPatterns`, la ' +
-    'detección de navegación SPA tiene que ser confiable (content.js → background) y ' +
-    'validada en piso. po-listing-filters está activo como CANARIO: es visible y de bajo ' +
-    'riesgo, y sirve para comprobar en piso que al navegar por la SPA a Compras el applet ' +
-    'sí llega. Ver docs/architecture/applet-load-gating.md.');
+// CANDADO — si este test se pone rojo, léelo antes de "arreglarlo".
+test('no quedan patrones en cuarentena (`urlPatternsDisabled` residual)', () => {
+  const enCuarentena = (config.apps || []).filter(a => a.urlPatternsDisabled).map(a => a.id);
+  assert.deepEqual(enCuarentena, [],
+    'El gate se reactivó por completo el 2026-07-27 tras validar en piso, NAVEGANDO dentro ' +
+    'de la SPA, que el canario (po-listing-filters) llegaba a Compras. Un `urlPatternsDisabled` ' +
+    'residual es un patrón muerto: ni filtra ni se ve. Si hay que volver a apagar el gate, ' +
+    'muévelos TODOS y deja este test reflejando esa decisión.');
 });
