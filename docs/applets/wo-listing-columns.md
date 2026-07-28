@@ -102,3 +102,33 @@ más, el applet sí va al bundle y en iOS simplemente esa función no opera.
 
 Recordatorio: el bundle es **estático** (Apple 2.5.2 prohíbe código remoto) — editar
 `remote/scripts` NO llega al iPad hasta correr `tools/build-safari.sh` y **recompilar en Xcode**.
+
+## v0.8.1 (2026-07-27) — los toggles dejaron de aparecer al cargar
+
+Reporte del operador: los 4 toggles no salían al entrar al listado, **pero sí al pulsar el
+botón de márgenes** (que fuerza un re-render), y al recargar volvían a esconderse.
+
+**Causa.** `ensureToggles()` necesita la tabla para anclarse; en el `init` todavía no está
+pintada, y el único reintento —el `MutationObserver`— vivía detrás de:
+
+```js
+function syncColumns() {
+  if (!anyOn() || !onIndex()) return;   // ← con todos los toggles apagados, sale aquí
+  ensureToggles();                       // ← y nunca monta la barra
+```
+
+Como los toggles arrancan **apagados**, ese reintento nunca corría: la UI que sirve para
+encenderlos estaba condicionada a que ya estuvieran encendidos.
+
+**Por qué apareció justo ahora.** El bug llevaba meses ahí, tapado por el timing: con el loader
+viejo el applet iba detrás de 79 descargas **en serie**, y llegaba tan tarde que React ya había
+pintado la tabla → `ensureToggles()` montaba a la primera. Al acelerar el loader ese mismo día
+(ver [`../architecture/applet-load-gating.md`](../architecture/applet-load-gating.md)) el applet
+pasó a correr **antes** que React y el bug salió a la luz.
+
+**Fix.** `ensureToggles()` se llama SIEMPRE que la ruta aplique; sólo el trabajo pesado queda
+detrás de `anyOn()`. De aquí sale una regla de repo (en `CLAUDE.md`): *la UI de ENTRADA de un
+applet se monta siempre; sólo el trabajo pesado va detrás del gate de estado.* Y su corolario:
+**no asumas que el DOM ya está pintado cuando corre tu `init()`**.
+
+Mismo bug y mismo fix en `pn-specs-column` (el molde del que salió este applet).

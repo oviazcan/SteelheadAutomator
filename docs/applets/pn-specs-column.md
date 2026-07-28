@@ -119,3 +119,23 @@ A pedido del usuario, la columna se integra al look nativo en vez de destacar en
 
 ## Safari/iPad (2026-07-09)
 Integrado al bundle Safari/iPad (`safari/bundle.json` **v0.5.3**, `safari-bundle-sync`). Es **FAB-only**: `autoInject:true` pone el toggle en el header de `/PartNumbers` (control en página, no requiere lanzador de popup). Sin bloqueadores iOS (read-only, sin descarga/clipboard). Rebuild `tools/build-safari.sh` (build-safari test 10/10). **Requiere recompilar en Xcode** para que llegue al iPad (el bundle es estático).
+
+## v0.2.1 (2026-07-27) — el toggle no se montaba si arrancaba apagado
+
+Mismo bug que `wo-listing-columns` (este applet es su molde) y encontrado a raíz de aquél:
+
+```js
+function syncColumn() {
+  if (!isEnabled() || !onIndex()) return;   // ← toggle apagado = no reintenta
+  ensureToggle();                            // ← nunca monta
+```
+
+`ensureToggle()` ancla al botón "NUEVO NÚMERO DE PARTE", que en el `init` puede no estar
+renderizado; el `MutationObserver` es el único reintento y estaba capado por `isEnabled()`.
+Como el toggle arranca apagado, si el applet llegaba antes que React el operador se quedaba sin
+forma de encenderlo.
+
+Estuvo oculto por timing hasta que se aceleró el loader el mismo día (ver
+[`../architecture/applet-load-gating.md`](../architecture/applet-load-gating.md)).
+
+**Fix:** `ensureToggle()` siempre que la ruta aplique; el trabajo pesado detrás de `isEnabled()`.
