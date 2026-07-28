@@ -264,8 +264,62 @@ tag `v1.7.120`, 2026-07-15); `auto-router-engine.js` en vivo ya sin `set.delete`
 era la versión vieja (esperaba exclusión) → al deployar se actualizó al golden correcto; el batch de
 `main` ya usaba `effectiveChangeCount` (L50/L317), así que el comportamiento quedó coherente.
 
+## Modelo de GRUPOS DE PARTES — confirmado en vivo 2026-07-27
+
+Evidencia: WO 15074 y 15075 del dominio 344, capturas del operador + scan
+`scan_results_2026-07-27_202908.json`. La pantalla es **"Enrutamiento de Estación"** de la ficha
+de la orden (`/Domains/<d>/WorkOrders/<idInDomain>`), con tres bloques: *Rutas Predeterminadas de
+Orden de Trabajo*, *Work Order Part Group Routes* (botón **CREATE OVERRIDE ROUTES**) y
+*Current Routes* (tabla con columna **Part Group** y bote de basura por renglón).
+
+**Semántica (el hallazgo):**
+- Ruta con `partGroupId = null` → **GLOBAL** de la orden. Aplica a los grupos sin override.
+- Ruta con `partGroupId = X` → **OVERRIDE** del grupo X. **Toma precedencia** sobre la global.
+- **Las dos COEXISTEN para el mismo `recipeNode`.** En la WO 15074, *Current Routes* lista
+  `TR-PRM-010 Recibo de Orden` dos veces: sin grupo → `T204-EN00-001`, y grupo 2 → `T205-EN00-001`.
+- Un grupo sin override hereda la global; sin global, el default de la receta. En la WO 15075 solo
+  se ruteó el grupo "200" (todo a T205) y el "100" siguió mostrando T204 **sin rutas propias**.
+
+**Consecuencia de diseño: el ruteo por grupo es ADITIVO.** Mandar un grupo a otra línea NO obliga
+a reescribir ni borrar las rutas globales — basta con crear sus override. (La duda que bloqueaba
+el diseño queda cerrada.)
+
+**Payload confirmado** (`CreateUpdateDeleteRoutes`, 33 rutas, HTTP 200):
+```json
+{ "partNumberId": 3028455, "workOrderId": 1908434, "treatmentId": 94832,
+  "stationId": 13740, "recipeNodeId": 46711342, "partGroupId": 948192 }
+```
+Ojo al leer el response: `createdRoutes[]` devuelve solo `{nodeId, id, priorityNumber}` — **no**
+incluye `partGroupId`. Su ausencia NO significa que el servidor lo ignore (error de lectura que
+casi se documenta como hallazgo). La confirmación de que se persiste vino de *Current Routes*.
+
+`StationTreatmentByWorkOrder` **filtra por grupo**: al pedir `partGroupIds:[948191]`, `allPartGroups`
+devuelve solo ese grupo. El modal nativo rutea **un grupo a la vez** y trabaja ruta por ruta
+(72 llamadas a la mutación en una sesión).
+
+### Fix 2026-07-27 — `diffRoutes` pisaba pistas entre sí (riesgo con consecuencia física)
+
+`diffRoutes` indexaba las rutas activas **solo por `recipeNodeId`**:
+`activeByNode.set(a.recipeNodeId, a)`. En una WO con override, dos rutas activas comparten
+`recipeNodeId` (una global, una del grupo) → **la segunda pisaba a la primera en el Map**. De ahí:
+- **update cruzado** — rutear la global podía emitir el `id` de la override y **mover el grupo**;
+- **borrado colateral** — el barrido final borraba toda activa cuyo nodo no estuviera en las
+  deseadas, incluidas las override de otros grupos.
+
+Con piezas de por medio eso es un error físico: material a la tina equivocada.
+
+**Fix:** la unidad es la **PISTA** `(recipeNodeId, partGroupId)`, con `laneKey()` y normalización
+`undefined ≡ null`. El borrado se acota a los `partGroupId` presentes en las rutas **deseadas**
+(`scopedGroups`), así una pista nunca toca a otra; sin rutas deseadas no se borra nada (fail-safe:
+no hay pista declarada). Tests: `tools/test/auto-router-part-groups.test.js` (9), golden del engine
+intacto (12). Suite 73/0.
+
 ## Riesgos abiertos
-- **`partGroupId: null`** hardcodeado (el ground-truth lo tiene null; revisar WOs con grupos de partes).
+- **Un solo grupo por orden en la capa de datos.** `auto-router-api.js:159` (`resolveWorkOrder`)
+  toma `locs[0]?.partGroupByPartGroupId` → si la orden tiene varios grupos **ve el primero e ignora
+  el resto en silencio**. La WO 15075 tiene "100" (948191) y "200" (948192): el applet solo vería
+  "100". `parseRouteData` tampoco reparte `activeRoutes` por `partGroupId`, ni el panel ofrece una
+  línea destino por grupo. Es el trabajo pendiente para rutear grupo por grupo.
 - **Momentum** de enjuagues: best-effort por diseño (≈50% exacto en genéricos; las 22 rutas críticas son
   exactas). El preview editable es la red de seguridad. No vale la pena sobreajustar (las elecciones del
   operador en el cluster Desengrase/Decapado son batching físico, no una regla geométrica).
