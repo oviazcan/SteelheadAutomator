@@ -238,24 +238,38 @@
   //   · (tina sin cambio → se omite, no-op).
   // activeRoutes: nodos crudos de StationTreatmentByWorkOrder.activeRoutes
   //   ({ id, stationId, recipeNodeId, ... }).
+  // Una PISTA de ruteo es (recipeNode, partGroup). La global es la pista de partGroup
+  // null; cada grupo con override tiene la suya, y ambas COEXISTEN para el mismo
+  // recipeNode (evidencia en vivo WO 15074: "Recibo de Orden" aparece dos veces, una
+  // sin grupo → T204 y otra del grupo 2 → T205, y la del grupo gana para ese grupo).
+  // Indexar solo por recipeNodeId hacía que la override pisara a la global en el Map:
+  // el diff podía mover el grupo equivocado o borrarle sus rutas.
+  const laneKey = (recipeNodeId, partGroupId) => `${recipeNodeId}::${partGroupId ?? 'null'}`;
+
   function diffRoutes(desiredRoutes, activeRoutes) {
-    const activeByNode = new Map();
+    const activeByLane = new Map();
     for (const a of activeRoutes || []) {
-      if (a && a.recipeNodeId != null) activeByNode.set(a.recipeNodeId, a);
+      if (a && a.recipeNodeId != null) activeByLane.set(laneKey(a.recipeNodeId, a.partGroupId), a);
     }
     const routesToCreate = [];
     const routesToUpdate = [];
     const routesToDelete = [];
-    const desiredNodes = new Set();
+    const desiredLanes = new Set();
+    // Solo se tocan las pistas que el llamador declaró al pedir estas rutas. Sin rutas
+    // deseadas no hay pista declarada → no se borra nada (fail-safe).
+    const scopedGroups = new Set();
     for (const r of desiredRoutes || []) {
-      desiredNodes.add(r.recipeNodeId);
-      const a = activeByNode.get(r.recipeNodeId);
+      desiredLanes.add(laneKey(r.recipeNodeId, r.partGroupId));
+      scopedGroups.add(r.partGroupId ?? null);
+      const a = activeByLane.get(laneKey(r.recipeNodeId, r.partGroupId));
       if (!a) routesToCreate.push(r);
       else if (a.stationId !== r.stationId) routesToUpdate.push({ id: a.id, stationId: r.stationId });
       // misma tina → no-op
     }
     for (const a of activeRoutes || []) {
-      if (a && a.id != null && !desiredNodes.has(a.recipeNodeId)) routesToDelete.push(a.id);
+      if (!a || a.id == null) continue;
+      if (!scopedGroups.has(a.partGroupId ?? null)) continue; // otra pista: no es asunto nuestro
+      if (!desiredLanes.has(laneKey(a.recipeNodeId, a.partGroupId))) routesToDelete.push(a.id);
     }
     return { routesToCreate, routesToUpdate, routesToDelete };
   }
