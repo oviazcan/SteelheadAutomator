@@ -1,6 +1,10 @@
 # Applet `auto-router` — Auto-Ruteador de Órdenes
 
-> Versión: **0.2.0** (bitácora). **OJO discrepancia (confirmada 2026-07-15):** la constante
+> Versión: **0.3.0** (bitácora) — **ruteo POR PISTAS + partir/reagrupar piezas**, deployado en
+> config **1.7.223** (tag `v1.7.223`, 2026-07-27) y **SIN validar en vivo**. Ver
+> §"Modelo de GRUPOS DE PARTES", §"Ruteo POR PISTAS" y §"Riesgos abiertos".
+>
+> **OJO discrepancia (confirmada 2026-07-15):** la constante
 > `VERSION` dentro de `remote/scripts/auto-router.js` sigue en `'0.1.0'` — nunca se bumpeó según
 > avanzaron las fases; el applet evolucionó vía bumps de `config.json` (deploys), no del literal
 > del script. No fuerces un número "corregido" en el código sin que alguien lo revise a propósito;
@@ -387,6 +391,29 @@ regeneración es deuda" estaba en `CLAUDE.md` pero **nada la verificaba**, y por
 silencio. El test mide la cobertura real —**57 huérfanas de 184** al 2026-07-27: las queries están
 casi resueltas (110/115), el hueco son las mutations (17/69)— y falla si el número **sube**. Saldar
 deuda vieja obliga a bajar la línea base en el mismo commit, así el número solo va hacia abajo.
+
+### Deploy 2026-07-27 — config **1.7.223**, tag `v1.7.223`
+
+**DEPLOYADO a producción** (`main` = `gh-pages` = EN VIVO = 1.7.223, invariante byte-a-byte
+verificado, firma KMS validada en vivo). Suite **77/0**.
+
+El merge de `main` (que había avanzado ~100 commits en paralelo) obligó a **tres ajustes de
+fondo**, no simples resoluciones de conflicto. Los tres son fallos que la suite no habría
+atrapado:
+
+1. **Gate por ruta (`urlPatterns`).** `main` introdujo la carga gateada por URL
+   ([`docs/architecture/applet-load-gating.md`](../architecture/applet-load-gating.md)) y el
+   `auto-router` solo cargaba en `/Schedules/\d+/ScheduleBoard/\d+`. El panel de pistas se abre
+   desde la **ficha de la OT**, así que ahí el script nunca se habría inyectado y el popup
+   habría respondido con silencio. Se agregó `/Domains/\d+/WorkOrders/\d+` al gate.
+2. **El marcador centinela se renombró a «Centinela»** (español correcto; `main` lo hizo en su
+   Fase 4). Las 3 entidades nuevas y sus handlers usaban «Sentinela» → el `isSentinel`
+   fail-closed **las habría rechazado todas** y los ciclos abortarían sin capturar nada. Es un
+   fallo que solo se habría manifestado dentro de meses, cuando el autopilot intentara
+   regenerar un hash.
+3. **Línea base del trinquete.** `main` trajo 4 hashes nuevos, 3 sin ruta: la deuda pasó de
+   **57/184 a 60/188** (queries 110/119, mutations 18/69). Se subió la base al número real
+   medido tras el merge.
 
 ## Riesgos abiertos
 - **Ruteo por pistas y partición: SIN validar en vivo.** El núcleo tiene golden tests y los payloads
