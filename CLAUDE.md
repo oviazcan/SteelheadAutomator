@@ -147,26 +147,41 @@ Toda la documentación del modelo de procesos en Steelhead vive en [`docs/proces
 
 Antes de tocar `process-canon.js` o cualquier mutación de árbol, leerlo. Lecciones nuevas se agregan ahí.
 
-## Carga de applets: gate por URL (PENDIENTE, alto impacto)
+## Carga de applets: gate por URL (IMPLEMENTADO en `main`, falta republicar el .zip)
 
 **Problema medido el 2026-07-27** (reporte del operador: *"cada vez tardan más en cargar"*):
-`extension/background.js:183-207` inyecta **los 28 applets `autoInject`** —**79 archivos `.js`**
-descargados, verificados y evaluados— **en CADA carga de página**, sin ningún filtro por ruta,
-y además **en serie** (`for` + `await`). En `/Purchasing/PurchaseOrders` se cargan
-`vale-almacen`, `paros-linea`, `invoice-*`, `wo-*`… ninguno aplica. Cada applet ya tiene su gate
-por URL, pero **corre dentro del script**, o sea después de pagar la descarga.
+`extension/background.js` inyectaba **los 28 applets `autoInject`** en CADA carga de página, sin
+filtro por ruta y **en serie**. Al implementar aparecieron dos causas más, peores: el mismo
+archivo se bajaba **una vez por applet** (`steelhead-api.js` **24 veces**) y `loadConfig()` se
+llamaba **una vez por script**, bajando y **verificando la firma ECDSA de `config.json` 79 veces**.
+Total real: **~237 requests de red, 79 verificaciones de firma y 79 `executeScript` por carga.**
 
-Efecto secundario: el applet agregado más recientemente queda **último** en `config.apps[]`, así
-que es el último en aparecer — por eso se nota justo en la pantalla donde se acaba de trabajar.
+**Solución (hecha):** módulo puro [`extension/applet-gate.js`](extension/applet-gate.js) —
+29 tests en `tools/test/applet-gate.test.js` — con: gate por `urlPatterns` (**fail-open**:
+sin patrón, patrón vacío o regex inválida ⇒ se inyecta como siempre), dedup de archivos, lotes
+de evaluación, `runPool` de concurrencia 6, caché de código verificado en `storage.local`
+(clave por `version`, hash re-verificado SIEMPRE), `loadConfig()` con TTL, y una sola lectura de
+storage para el on/off. En Compras: **28→11 applets, 79→18 archivos, 79→2 `executeScript`**.
 
-**Solución propuesta** (retrocompatible, sin big-bang): campo `urlPatterns` por app en
-`config.json` + filtro en el loader antes de inyectar, y paralelizar con concurrencia acotada.
-Estimado: de 28 applets/79 archivos a ~3-4/~10 en esa pantalla.
+**Dos reglas que salieron de aquí:**
+1. **El gate por ruta obliga a atender la navegación SPA.** Con `pushState`, `tabs.onUpdated`
+   NO emite `status:'complete'` — sin atender `changeInfo.url`, un applet desaparecería para
+   quien llega a esa pantalla navegando. El latch de "ya cargado" vive en la PÁGINA
+   (`window.__saLoadedApps`), no en el service worker (MV3 lo suspende).
+2. **`urlPatterns` solo se pone con evidencia.** Se puso a **18 de 28**: los que ya tenían un
+   gate por URL escrito y probado (el patrón se copia de ahí, y un test ata config↔core para
+   que no diverjan). Los **10 modal-driven** (`price-confirm-guard`, `weight-quick-entry`,
+   `receiver-date-override`, `warehouse-location-prefill`, `unit-autoconvert`, `cfdi-attacher`,
+   `invoice-auto-regen`, `report-regen`, `load-calculator`, `proceso-calculator`) se quedan
+   SIN patrón a propósito — mismo criterio que los anclajes bilingües: no se adivina. Cerrarlos
+   con evidencia del operador llevaría Compras de 11 applets a ~4.
 
-**Requiere republicar la extensión** (toca `extension/`, que no va por el canal de gh-pages).
-Añadir `urlPatterns` al config desde ya es inofensivo (el loader viejo lo ignora).
+**Requiere republicar la extensión** (`manifest.json` 1.7.0 + `extensionVersion` 1.7.0). **Orden
+obligatorio:** el `.zip` a gh-pages ANTES o junto con el config que bumpea `extensionVersion`
+(si no, el banner del popup ofrece el zip viejo). Publicar `urlPatterns` antes del zip es
+inofensivo (el loader viejo ignora el campo).
 
-Análisis completo, medición y plan en
+Análisis completo, medición y pendientes en
 [`docs/architecture/applet-load-gating.md`](docs/architecture/applet-load-gating.md).
 
 ## Índice de applets

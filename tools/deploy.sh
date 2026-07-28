@@ -17,6 +17,16 @@
 #   tools/deploy.sh "feat(applet-x): ..."  --minor              # bump minor
 #   tools/deploy.sh "chore: ..."           --set 1.7.0          # versión exacta
 #   tools/deploy.sh "..."  --check proceso-calculator          # check-deploy de ese script
+#   tools/deploy.sh "..."  --zip                                # + republica el .zip de la extensión
+#
+# --zip: empaqueta extension/ y lo publica como steelhead-automator.zip EN EL MISMO
+#   commit de gh-pages que el config. Tiene que ser el mismo commit por dos razones:
+#   el hook pre-push exige que todo push a gh-pages espeje main:remote/ Y suba
+#   config.version, y `config.extensionVersion` es lo que dispara el banner de
+#   actualización del popup — publicar el config antes que el zip haría que el banner
+#   ofreciera el zip viejo. Antes esto se hacía a mano y ya costó un incidente
+#   (zip publicado con manifest 1.6.3 mientras el config decía 1.6.4); por eso el
+#   flag valida que manifest.version == config.extensionVersion antes de empaquetar.
 #
 # Pre-requisito: edita tus archivos bajo remote/ EN EL WORKTREE DE main antes de
 # correr esto. deploy.sh NO mueve tu trabajo entre ramas; solo deploya lo que ya
@@ -30,13 +40,14 @@ if [ -z "$MSG" ]; then
 fi
 shift || true
 
-BUMP="patch"; SETVER=""; CHECK_SCRIPT=""
+BUMP="patch"; SETVER=""; CHECK_SCRIPT=""; PUBLISH_ZIP=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --minor) BUMP="minor" ;;
     --major) BUMP="major" ;;
     --set)   shift; SETVER="${1:-}" ;;
     --check) shift; CHECK_SCRIPT="${1:-}" ;;
+    --zip)   PUBLISH_ZIP=1 ;;
     *) echo "Flag desconocido: $1" >&2; exit 64 ;;
   esac
   shift || true
@@ -127,6 +138,23 @@ G commit -q -m "$MSG
 Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 echo "→ commit main: $(G log --oneline -1)"
 
+# --- empaquetar el .zip de la extensión (con main aún checkeado) ---
+# Se genera ANTES del checkout de gh-pages porque extension/ no existe en esa rama.
+ZIPTMP=""
+if [ "$PUBLISH_ZIP" = "1" ]; then
+  MANV="$(node -e "process.stdout.write(require('$MAINWT/extension/manifest.json').version)")"
+  EXTV="$(node -e "process.stdout.write(require('$MAINWT/remote/config.json').extensionVersion||'')")"
+  if [ "$MANV" != "$EXTV" ]; then
+    echo "ERROR: extension/manifest.json version ($MANV) != config.extensionVersion ($EXTV)." >&2
+    echo "       Chrome lee el manifest, no el config: publicarlos desalineados hace que el" >&2
+    echo "       banner ofrezca una versión que el .zip no trae. Alinéalos y reintenta." >&2
+    exit 1
+  fi
+  ZIPTMP="$(mktemp -d)/steelhead-automator.zip"
+  ( cd "$MAINWT/extension" && zip -qr "$ZIPTMP" . -x '.DS_Store' '*/.DS_Store' '*.map' )
+  echo "→ zip extensión $MANV empaquetado ($(node -e "process.stdout.write(String(require('fs').statSync('$ZIPTMP').size))") bytes)"
+fi
+
 # --- danza gh-pages: espejar main:remote/ ---
 restore_main() { G checkout main >/dev/null 2>&1 || true; }
 trap restore_main EXIT
@@ -152,10 +180,17 @@ fi
 done
 G add scripts config.json
 [ -f "$MAINWT/config.sig" ] && G add config.sig || true
+if [ -n "$ZIPTMP" ]; then
+  cp "$ZIPTMP" "$MAINWT/steelhead-automator.zip"
+  G add steelhead-automator.zip
+  echo "→ zip agregado al commit de gh-pages"
+fi
 if G diff --cached --quiet; then
   echo "→ gh-pages ya estaba en sync (nada que commitear)"
 else
-  G commit -q -m "deploy: $MSG + bump $NEW"
+  ZIPMSG=""
+  [ -n "$ZIPTMP" ] && ZIPMSG=" + zip extensión $MANV"
+  G commit -q -m "deploy: $MSG + bump $NEW$ZIPMSG"
   echo "→ commit gh-pages: $(G log --oneline -1)"
 fi
 G checkout main >/dev/null 2>&1
@@ -219,6 +254,27 @@ if [ -n "$PUB" ]; then
   fi
 else
   echo "→ smoke-check omitido (pública aún placeholder — pre-Fase-2)"
+fi
+
+# --- verificación del .zip publicado ---
+# El gotcha registrado (docs/applets/bulk-upload.md): no basta con que el zip pese distinto,
+# hay que confirmar el manifest DENTRO del zip SERVIDO. Chrome lee ese manifest, no el config.
+if [ "$PUBLISH_ZIP" = "1" ]; then
+  echo "→ verificando el .zip publicado…"
+  ok_zip=0
+  for i in $(seq 1 10); do
+    if curl -fsS "$REMOTE_BASE/steelhead-automator.zip?cb=$RANDOM" -o /tmp/sa-live-ext.zip 2>/dev/null; then
+      livemanv="$(unzip -p /tmp/sa-live-ext.zip manifest.json 2>/dev/null | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{process.stdout.write(JSON.parse(s).version)}catch(e){}})" || true)"
+      if [ "$livemanv" = "$MANV" ]; then ok_zip=1; break; fi
+    fi
+    sleep 12
+  done
+  if [ "$ok_zip" = "1" ]; then
+    echo "✓ zip EN VIVO trae manifest $MANV"
+  else
+    echo "⚠️  el zip EN VIVO aún no reporta manifest $MANV (lag de Pages). Re-verifica con:"
+    echo "    curl -s $REMOTE_BASE/steelhead-automator.zip -o /tmp/z.zip && unzip -p /tmp/z.zip manifest.json | grep version"
+  fi
 fi
 
 # --- guardrail anti-divergencia Safari/iPad (handoff) ---

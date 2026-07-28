@@ -1,100 +1,154 @@
-# Carga de applets: por qué tarda y cómo acotarla
+# Carga de applets: por qué tardaba y cómo se acotó
 
-**Estado:** problema diagnosticado con evidencia, **solución propuesta, NO implementada**.
-Reportado por el operador el 2026-07-27: *"conforme vamos agregando applets, cada vez tardan
-más en cargar… en Purchasing no necesito cargar ni vales de almacén ni paros de línea"*.
+**Estado:** **IMPLEMENTADO en `main` (2026-07-27)** — falta republicar el `.zip` de la
+extensión y validar en piso. Diagnóstico original reportado por el operador el 2026-07-27:
+*"conforme vamos agregando applets, cada vez tardan más en cargar… en Purchasing no necesito
+cargar ni vales de almacén ni paros de línea"*.
 
 ## El diagnóstico
 
-Dos causas independientes, ambas en `extension/background.js:183-207`.
+Todo estaba en `extension/background.js`. Eran **cuatro** causas, no dos: las dos primeras
+se documentaron en la sesión del diagnóstico, las otras dos aparecieron al implementar.
 
-### 1. Se inyectan TODOS los `autoInject` en TODAS las páginas
+### 1. Se inyectaban TODOS los `autoInject` en TODAS las páginas
 
 ```js
 const autoApps = (config.apps || []).filter(a => a.autoInject);
 for (const app of autoApps) { … await injectAppScripts(tabId, app.id); }
 ```
 
-El único filtro es `tab.url?.includes('app.gosteelhead.com')`. **No hay gate por ruta.**
+El único filtro era `tab.url?.includes('app.gosteelhead.com')`. **No había gate por ruta.**
+Cada applet ya tenía el suyo, pero corría **dentro** del script — o sea, después de pagar
+descarga, verificación de firma y evaluación.
 
-Medido el 2026-07-27 sobre `remote/config.json` 1.7.213:
+### 2. La inyección era SECUENCIAL
 
-| | |
+`for` con `await` dentro: 28 rondas en serie. Efecto secundario: el applet agregado más
+recientemente queda **último** en `config.apps[]` y es el último en aparecer — por eso se
+notaba justo en la pantalla donde se acababa de trabajar.
+
+### 3. El mismo archivo se descargaba una vez POR APPLET
+
+No había dedup. De las 79 descargas por carga de página, solo **53 eran de archivos
+distintos**: `steelhead-api.js` se bajaba **24 veces**, `host-cleanup-shared.js` 3 veces.
+
+### 4. `config.json` se bajaba y verificaba una vez POR SCRIPT ← el costo dominante
+
+`fetchScriptCode()` llamaba a `loadConfig()` en cada archivo, y `loadConfig()` **siempre**
+hacía fetch de `config.json` + `config.sig` y verificaba la firma ECDSA. El comentario
+explicaba por qué (que la `version` del cache-bust fuera fresca), pero el costo real era:
+
+| Por CADA carga de página | |
 |---|---|
-| Applets con `autoInject` | **28** de 44 |
-| Archivos `.js` descargados, verificados y evaluados **en cada carga de página** | **79** |
+| Requests de red | **~237** (79 scripts + 79 config.json + 79 config.sig) |
+| Verificaciones de firma ECDSA | **79** |
+| Llamadas `chrome.scripting.executeScript` | **79** (una por archivo) |
+| Lecturas de `chrome.storage.local` | **28** (una por applet, para el on/off) |
 
-En `/Purchasing/PurchaseOrders` se cargan `vale-almacen`, `paros-linea`,
-`sensor-graph-hide-all`, `invoice-autofill`, `wo-listing-columns`, `load-calculator`… ninguno
-aplica ahí.
+## Lo que se implementó
 
-Cada applet **ya tiene su gate por URL**, pero corre **dentro del script**, es decir **después**
-de descargarlo, verificar su firma y evaluarlo. El trabajo caro ya se pagó.
+Toda la lógica de decisión vive en **`extension/applet-gate.js`** (módulo puro, sin APIs de
+Chrome) y está probada en `tools/test/applet-gate.test.js` — **29 tests**.
 
-### 2. La inyección es SECUENCIAL
-
-Es un `for` con `await` dentro: cada applet espera a que termine el anterior. Con 28 applets
-son 28 rondas en serie de (fetch + verificación de firma + `new Function`).
-
-**Consecuencia directa:** el applet que se agregó al final de `config.apps[]` es el último en
-aparecer. `po-listing-filters` es el más reciente → es el número 28 de 28. Por eso el operador
-lo percibe justo en la pantalla donde acaba de trabajar.
-
-## La solución propuesta
-
-### A. Gate por URL en el config (lo que resuelve el problema de fondo)
-
-Añadir un campo declarativo a la entrada de cada app:
+### A. Gate por ruta (`urlPatterns` en el config)
 
 ```jsonc
 {
   "id": "po-listing-filters",
   "autoInject": true,
-  "urlPatterns": ["^/Domains/\\d+/Purchasing/PurchaseOrders"],   // ← nuevo
+  "urlPatterns": ["^/Domains/\\d+/Purchasing/PurchaseOrders/?(?:[?#]|$)"],
   "scripts": [...]
 }
 ```
 
-y filtrar en `background.js` **antes** de inyectar:
+- **FAIL-OPEN por diseño.** Un app sin `urlPatterns`, con lista vacía, o con un patrón que
+  no compila, se inyecta en todas partes — igual que antes. Un patrón mal escrito nunca deja
+  al operador sin su applet; a lo sumo lo carga de más.
+- **La fuente del patrón es el gate que el applet YA tenía** (`PO_URL_RE`, `SHIPPING_URL_RE`,
+  `isScheduleBoardUrl`…). No se inventó ninguno.
+- **La divergencia config↔applet está atada por tests**: para cada core que exporta su gate,
+  el test exige la implicación *"si el applet dice que aplica en esa ruta, el config lo deja
+  pasar"*. Si alguien aprieta un patrón de más, la suite se pone roja.
+- El gate del applet **se queda**: es un filtro de CARGA, no de EJECUCIÓN.
 
-```js
-const path = new URL(tab.url).pathname;
-const autoApps = (config.apps || [])
-  .filter(a => a.autoInject)
-  .filter(a => !a.urlPatterns || a.urlPatterns.some(p => new RegExp(p).test(path)));
-```
+### B. Navegación SPA (lo que faltaba en el plan original)
 
-- **Retrocompatible:** una app sin `urlPatterns` se sigue inyectando en todas partes, igual que
-  hoy. Se puede migrar applet por applet sin big-bang.
-- **La fuente del patrón ya existe:** casi todos los applets tienen su regex de gate en el core
-  (`PO_URL_RE`, `SHIPPING_URL_RE`, `isScheduleBoardUrl`…). Es copiar esa expresión al config.
-- **Riesgo a cuidar:** el gate del config y el del applet pueden divergir. El del applet **se
-  queda** (es el que protege ante SPA navigation, donde no hay recarga y el listener
-  `onUpdated` no vuelve a correr). El del config es solo un filtro de carga, no de ejecución.
+Steelhead cambia de pantalla con `history.pushState`, y ahí `chrome.tabs.onUpdated` **no**
+vuelve a emitir `status:'complete'`. Con solo el gate de (A), un applet habría desaparecido
+para el operador que llega a esa pantalla navegando dentro de la SPA (que es lo normal).
 
-### B. Paralelizar la inyección
+Se atiende también `changeInfo.url` sin `status` — que es exactamente el pushState — y la
+propia página lleva la cuenta de qué apps ya tiene (`window.__saLoadedApps`). Vive en la
+página y no en el service worker porque el SW de MV3 se suspende, y porque ese latch debe
+morir con el `window` (recarga dura = todo de nuevo).
 
-`for … await` → `Promise.allSettled` con una concurrencia acotada (4-6). `allSettled` y no
-`all`: un applet que falle no debe impedir que carguen los demás — hoy tampoco lo hace, porque
-el `try` envuelve todo el bucle, pero conviene que sea explícito por applet.
+**Resultado neto: se re-inyecta MENOS que antes**, no más. Antes cada carga dura re-evaluaba
+los 28; ahora, al navegar, solo entra lo que falta.
 
-### C. Orden por relevancia (opcional)
+### C. Caché de código verificado
 
-Inyectar primero los que matchean la ruta actual de forma específica y dejar al final los
-genéricos. Con (A) aplicado esto pierde casi toda su importancia.
+`chrome.storage.local`, con clave `sac_<version>_<path>`. La `version` del config forma parte
+de la clave, así que un deploy invalida solo. El hash del script **se verifica siempre**,
+venga de red o de caché, y solo se persiste lo que ya pasó verificación: el caché no relaja
+la integridad. Se excluyen libs >300KB (pdf.min.js) para no llenar la cuota.
 
-## Impacto estimado
+### D. Dedup, lotes, paralelismo y una sola lectura de storage
 
-Con (A) en `/Purchasing/PurchaseOrders`: de 28 applets / 79 archivos a ~3-4 applets / ~10
-archivos. Con (B) encima, esas pocas cargas dejan de ser secuenciales.
+Archivos únicos (no uno por applet), descarga con `runPool` de concurrencia 6, evaluación en
+**lotes** (un `executeScript` por hasta 12 archivos / 800KB) y **una** llamada a
+`chrome.storage.local.get` con todas las claves de on/off. Más `loadConfig()` con TTL de 10s
+y dedup de vuelo, que es lo que mata la causa #4.
 
-## Por qué NO se implementó en esta sesión
+## Impacto medido
 
-Toca `extension/background.js`, y los cambios de `extension/` **no se despliegan por el canal
-normal**: la extensión se distribuye como `.zip` y hay que republicarla (ver
-`CLAUDE.md` §Seguridad, nota 2026-07-15 sobre CWS). Es un cambio de una sola pieza, de bajo
-riesgo y alto impacto, pero necesita su propio ciclo de release y validación.
+Sobre `remote/config.json` 1.7.213 → 1.7.214:
 
-**Lo que sí se puede hacer sin republicar:** nada equivalente. El gate vive necesariamente en
-el loader, que es código de la extensión. Añadir `urlPatterns` al `config.json` desde ya es
-inofensivo (el loader viejo lo ignora) y deja el terreno listo para cuando se republique.
+| En `/Purchasing/PurchaseOrders` | Antes | Después |
+|---|---|---|
+| Applets inyectados | 28 | **11** |
+| Archivos descargados | 79 | **18** |
+| Llamadas `executeScript` | 79 | **2** |
+| Requests de red (1ª carga) | ~237 | **~20** |
+| Requests de red (cargas siguientes) | ~237 | **~2** (config.json + config.sig) |
+| Lecturas de storage para el on/off | 28 | **1** |
+
+Otras pantallas quedan en 11-13 applets / 18-24 archivos / 2 lotes.
+
+## Lo que falta
+
+### 1. Republicar el `.zip` (requisito para que esto exista en piso)
+
+El cambio es de `extension/`, que **no** viaja por el canal de gh-pages. `manifest.json` →
+**1.7.0** y `config.extensionVersion` → **1.7.0** (dispara el banner de actualización del
+popup, que descarga `extensionZipUrl`).
+
+**Orden obligatorio:** subir el zip nuevo a gh-pages **antes o junto con** el config que
+bumpea `extensionVersion` — si el config va primero, el banner ofrece un zip que todavía es
+el viejo. Y bumpear `manifest.json` DENTRO del zip (gotcha registrado en
+`docs/applets/bulk-upload.md`: Chrome lee el manifest, no el config).
+
+Publicar el config con `urlPatterns` **antes** de republicar el zip es inofensivo: el loader
+viejo ignora el campo.
+
+### 2. Los 10 applets que siguen cargando en todas partes
+
+Reciben `urlPatterns` **18 de los 28** `autoInject`: exactamente los que ya tenían un gate por
+URL escrito y probado en su código. Los otros 10 se activan por **modal** (MutationObserver
+sobre un diálogo de Steelhead) o por **intercepción de fetch**, y su código no dice en qué
+pantalla vive ese modal:
+
+`load-calculator` · `proceso-calculator` · `report-regen` · `cfdi-attacher` ·
+`invoice-auto-regen` · `weight-quick-entry` · `unit-autoconvert` · `price-confirm-guard` ·
+`receiver-date-override` · `warehouse-location-prefill`
+
+Se quedan sin patrón **a propósito**: mismo criterio que la regla de anclajes bilingües del
+repo — no se adivina. Ponerles un patrón equivocado apaga un candado de seguridad
+(`price-confirm-guard`) o un autofill sin que nadie se entere. Cerrar estos 10 con evidencia
+del operador (¿desde qué pantalla abres "Receive Parts"? ¿desde dónde mandas el correo de la
+factura?) llevaría Compras de 11 applets a ~4.
+
+### 3. Validación en piso
+
+- Que cada applet siga apareciendo en su pantalla (los 18 gateados).
+- Que al **navegar dentro de la SPA** a una pantalla, su applet aparezca (camino B).
+- Que la segunda carga sea notoriamente más rápida (caché de código).
