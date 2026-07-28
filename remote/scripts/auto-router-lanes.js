@@ -264,14 +264,17 @@ const AutoRouterLanes = (() => {
     cont.appendChild(tb);
 
     // Acciones sobre las piezas — separadas del ruteo a propósito: mueven material.
-    cont.appendChild(el('div', { class: 'sa-arl-sec' }, [
-      el('h3', { text: 'Piezas' }),
-      el('span', {}, [
-        el('button', { class: 'sa-arl-btn ghost sm', text: '✂️ Partir en grupos', onclick: renderSplit }),
-      ]),
-    ]));
+    const acciones = el('span', {}, [
+      el('button', { class: 'sa-arl-btn ghost sm', text: '✂️ Partir en grupos', onclick: renderSplit }),
+    ]);
+    if (state.accounts.partLocations.length > 1) {
+      acciones.appendChild(document.createTextNode(' '));
+      acciones.appendChild(el('button', { class: 'sa-arl-btn ghost sm', text: '🔗 Reagrupar', onclick: renderRegroup }));
+    }
+    cont.appendChild(el('div', { class: 'sa-arl-sec' }, [el('h3', { text: 'Piezas' }), acciones]));
     cont.appendChild(el('div', { class: 'sa-arl-note',
-      text: 'Partir crea grupos nuevos y reparte las piezas entre ellos. Es un movimiento real de material, va aparte del ruteo.' }));
+      text: 'Partir crea grupos nuevos y reparte las piezas; reagrupar junta varias cuentas en un solo grupo. '
+          + 'Las dos mueven material real, por eso van aparte del ruteo.' }));
 
     renderBody(cont);
     refreshFooter();
@@ -474,6 +477,105 @@ const AutoRouterLanes = (() => {
       log(`Error al partir: ${e.message}`);
       errBox.textContent = `No se pudo partir: ${e.message}`;
       refreshFooter();
+    }
+  }
+
+  // ── Reagrupar piezas ────────────────────────────────────────────────────────
+  // Varias cuentas caen en un mismo grupo destino. Las que ya viven ahí se omiten
+  // solas (el núcleo las filtra), así que marcar todas es una petición válida.
+  function renderRegroup() {
+    const cuentas = state.accounts.partLocations;
+    const marcadas = new Set();
+    const errBox = el('div', { class: 'sa-arl-err' });
+
+    // Destino: cualquiera de los grupos que ya están en la orden.
+    const gruposEnOrden = [];
+    const vistos = new Set();
+    for (const c of cuentas) {
+      if (!c.partGroup || vistos.has(c.partGroup.id)) continue;
+      vistos.add(c.partGroup.id);
+      gruposEnOrden.push(c.partGroup);
+    }
+    if (!gruposEnOrden.length) {
+      renderBody(el('div', { class: 'sa-arl-warn',
+        text: 'Esta orden no tiene grupos a los cuales reagrupar. Parte las piezas primero.' }));
+      renderFooter(el('button', { class: 'sa-arl-btn ghost', text: 'Volver', onclick: renderLanes }));
+      return;
+    }
+    let destino = gruposEnOrden[0].id;
+
+    const destSel = el('select', { onchange: (e) => { destino = Number(e.target.value); resumen(); } },
+      gruposEnOrden.map((g) => el('option', { value: String(g.id), text: `Grupo ${g.name}` })));
+
+    const tbody = el('tbody');
+    for (const c of cuentas) {
+      const tr = el('tr');
+      const cb = el('input', { type: 'checkbox' });
+      cb.addEventListener('change', (e) => {
+        if (e.target.checked) marcadas.add(c.partsTransferAccountId);
+        else marcadas.delete(c.partsTransferAccountId);
+        resumen();
+      });
+      tr.appendChild(el('td', {}, [cb]));
+      tr.appendChild(el('td', { text: c.partGroup ? `Grupo ${c.partGroup.name}` : 'Sin grupo' }));
+      tr.appendChild(el('td', { text: `${c.partCount} pzas` }));
+      tbody.appendChild(tr);
+    }
+
+    const tb = el('table', { class: 'sa-arl-tb' });
+    tb.appendChild(el('thead', {}, [el('tr', {}, [
+      el('th', { text: '' }), el('th', { text: 'Cuenta' }), el('th', { text: 'Piezas' }),
+    ])]));
+    tb.appendChild(tbody);
+
+    function resumen() {
+      const mueven = cuentas.filter((c) => marcadas.has(c.partsTransferAccountId)
+        && (c.partGroup?.id ?? null) !== destino);
+      const total = mueven.reduce((s, c) => s + c.partCount, 0);
+      errBox.textContent = mueven.length
+        ? `Se moverán ${total} piezas de ${mueven.length} cuenta(s).`
+        : 'Marca las cuentas que quieres juntar en el grupo destino.';
+    }
+
+    const cont = el('div', {}, [
+      el('div', { class: 'sa-arl-note',
+        text: 'Las cuentas marcadas se juntan en el grupo destino. Las que ya están ahí se omiten solas.' }),
+      el('div', { class: 'sa-arl-sec' }, [el('h3', { text: 'Grupo destino' }), destSel]),
+      tb, errBox,
+    ]);
+    resumen();
+
+    renderBody(cont);
+    renderFooter(
+      el('button', { class: 'sa-arl-btn ghost', text: 'Volver', onclick: renderLanes }),
+      el('button', { class: 'sa-arl-btn primary', text: '🔗 Reagrupar',
+        onclick: () => confirmarRegroup(cuentas, marcadas, () => destino, errBox) }),
+    );
+  }
+
+  async function confirmarRegroup(cuentas, marcadas, getDestino, errBox) {
+    if (state.busy) return;
+    const p = Groups().planRegroup({
+      targetGroupId: getDestino(),
+      accounts: cuentas
+        .filter((c) => marcadas.has(c.partsTransferAccountId))
+        .map((c) => ({ accountId: c.partsTransferAccountId, partCount: c.partCount, partGroupId: c.partGroup?.id ?? null })),
+    });
+    if (!p.valid) { errBox.textContent = p.errors.join(' '); return; }
+
+    state.busy = true;
+    errBox.textContent = 'Reagrupando…';
+    try {
+      await ARAPI().regroupParts(p.payload);
+      log(`Reagrupación aplicada hacia el grupo ${getDestino()}.`);
+      state.busy = false;
+      renderBody(el('div', { class: 'sa-arl-note', text: 'Piezas reagrupadas. Recargando pistas…' }));
+      await load();
+      renderLanes();
+    } catch (e) {
+      state.busy = false;
+      log(`Error al reagrupar: ${e.message}`);
+      errBox.textContent = `No se pudo reagrupar: ${e.message}`;
     }
   }
 
