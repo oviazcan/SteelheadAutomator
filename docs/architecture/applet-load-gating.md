@@ -149,6 +149,33 @@ Archivos únicos (no uno por applet), descarga con `runPool` de concurrencia 6, 
 `chrome.storage.local.get` con todas las claves de on/off. Más `loadConfig()` con TTL de 10s
 y dedup de vuelo, que es lo que mata la causa #4.
 
+## Efecto secundario: acelerar el loader destapa bugs latentes de timing
+
+Con el loader viejo, un applet `autoInject` tardaba mucho en correr: iba detrás de hasta 79
+descargas y 79 verificaciones de firma **en serie**. Ese retraso accidental hacía que, cuando
+el applet finalmente ejecutaba su `init()`, **React ya había pintado la pantalla**. Varios
+applets se apoyaban en eso sin saberlo.
+
+Al acelerar el loader, esos applets pasaron a correr **antes** de que la tabla exista. Los que
+tenían un reintento sano siguieron bien; los que no, dejaron de aparecer (2026-07-27):
+
+- **`wo-listing-columns`** — sus 4 toggles no salían al cargar, pero sí al pulsar cualquier
+  cosa que forzara un re-render (el botón de márgenes). Causa: `ensureToggles()` necesita la
+  tabla para anclarse, falla en el `init`, y el único reintento —el `MutationObserver`— estaba
+  **detrás de `if (!anyOn()) return`**. Con todos los toggles apagados (el estado por defecto)
+  nunca se reintentaba.
+- **`pn-specs-column`** — idéntico (`if (!isEnabled()) return` antes de `ensureToggle()`); es
+  el molde del que salió el anterior.
+
+**Regla que sale de aquí:** *la UI de entrada de un applet (el toggle, la barra, el botón que
+lo enciende) se monta SIEMPRE que la ruta aplique; sólo el trabajo pesado va detrás del gate de
+estado.* Si el montaje está detrás de "¿está encendido?", el operador no tiene cómo encenderlo.
+
+`schedule-batch-highlighter` ya tenía el patrón correcto (llama `ensureInlineMounted()` antes
+de mirar su estado) — precisamente porque ya había pagado el suyo con el bug de "los dos
+buscadores". `batch-name-filter`, `po-listing-filters` e `invoice-listing-marker` gatean por
+URL, no por estado: sanos.
+
 ## Impacto medido
 
 Sobre `remote/config.json` 1.7.213 → 1.7.214:
