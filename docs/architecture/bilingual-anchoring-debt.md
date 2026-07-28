@@ -5,8 +5,17 @@ cortó por límite de gasto). Regla del repo: **todo anclaje a texto visible de 
 Steelhead debe matchear ES+EN** (SH cambia de idioma por usuario/config, a veces mixto). Un
 anclaje mono-idioma se rompe **silenciosamente** al cambiar el locale.
 
-**Estado:** 25 anclajes mono-idioma en 12 applets. El resto del repo (la mayoría de autofills
-de recepción, y ~50 scripts API-driven) está **limpio** o ya bilingüe.
+**Estado (actualizado 2026-07-28):** 23 anclajes mono-idioma en 12 applets — bajaron 2 al cerrarse
+el **gate** y el **alert** de `price-confirm` con strings REALES capturados en producción (ver
+§"Cierre 2026-07-27/28"). El resto del repo (la mayoría de autofills de recepción, y ~50 scripts
+API-driven) está **limpio** o ya bilingüe.
+
+> **Jerarquía (regla reescrita en `CLAUDE.md` el 2026-07-28):** este documento se llama "deuda
+> bilingüe" por historia, pero la salida correcta de casi toda fila de abajo **no es traducir el
+> string, es anclar por ESTRUCTURA del HTML** (`data-steelhead-component-id`, ids de schema RJSF,
+> `data-testid`, posición en la tabla) y dejar el texto ES+EN como red de seguridad que solo
+> AMPLÍA el match. El bilingüe puro queda para donde no hay estructura que anclar: `window.alert`,
+> toasts, texto suelto.
 
 ## ✅ CERRADOS 2026-07-16 — anclaje ESTRUCTURAL (idioma-independiente, deploy 1.7.129/1.7.132)
 
@@ -25,8 +34,57 @@ no amarraba la opción (AR + income). Resuelto con resaltar→verificar→`Enter
 ### 🔴 Deuda restante que SÍ requiere el string del otro idioma (NO adivinar)
 
 Para cerrar estos hace falta **observar el string traducido** (poner el navegador en el otro locale y capturar):
-- **unit-autoconvert**: `/ Part:` → ¿`/ Parte:`?  ·  `Parts /` (core `:55`, recíproco) → ¿`Partes /`?  ·  `Per Part Count Unit Definitions` → ¿string ES?
+- **unit-autoconvert**: `/ Part:` · `Parts /` (core `:55`, recíproco) · `Per Part Count Unit Definitions`
+  → **ya hay evidencia (2026-07-27): SH NO traduce ese panel** — con la UI en español se ve literal
+  «Per Part Count Unit Definitions:» y «KGM Kilogramo / Part:». No están rotos hoy; ver
+  §"Evidencia colateral" abajo. Sigue siendo deuda (depender de que un vendor no traduzca es frágil),
+  pero baja de prioridad.
 - Resto de la tabla P2/P3 de abajo (create-order `Enviar a:`, bill-autofill `Create Bill`, proceso-calculator `Default Process:`, invoice-default-tab `Packing Slips`, load-calculator-modal `Rack Type`, etc.).
+
+## ✅ Cierre 2026-07-27/28 — `price-confirm` (gate + alert) con strings REALES
+
+Sesión con la UI de SH en español (dominio 344, NP 3235631). Se **midió** el gate en vivo en vez de
+razonarlo, y salieron tres cosas que este documento tenía mal o como hipótesis:
+
+| Ancla | Hipótesis que decía este doc | String REAL observado | ¿La hipótesis habría funcionado? |
+|---|---|---|---|
+| Título del modal de precio (`guard:15`) | «Precio de Número de Parte» | **«Precio del número de parte»** | **NO** — falta `del` y el casing difiere |
+| Alert nativo tras bloquear (`core:78`) | «Error al guardar precio» | **«Error al guardar el precio»** | **NO** — un regex `/guardar\s+precio/i` no matchea el real |
+
+**Las dos hipótesis eran incorrectas.** No "casi": un regex derivado de cualquiera de ellas habría
+fallado en silencio. Es la mejor evidencia que tenemos de por qué la regla de no adivinar es dura.
+
+**Medición del gate** (con el sub-modal de precio abierto, UI en español):
+```
+gatePorTitulo: false     ← /Part Number Price/i nunca matcheó
+gatePorSchema: true      ← lo ÚNICO que sostenía el candado
+```
+O sea: el "cierre" del 2026-07-16 (fila de arriba) descansaba **entero** en el ancla estructural.
+Funcionaba, pero sin saberlo — y antes de esa fecha el candado **no se disparaba** en el sub-modal
+del asistente Editar NP. Corregido en **v0.1.5** (deploy config **1.7.228**, commits `1f6b6f9`
++ `a092c05`; bundle Safari **v0.6.2**): decisión pura `PriceConfirmCore.isPriceModal`, estructura
+primero y título ES+EN como red de seguridad.
+
+**El alert NO era cosmético.** Se creía que no suprimirlo solo era ruido; en la práctica
+`window.alert` es **bloqueante**: congeló la pestaña a media investigación y hubo que cerrarlo a
+mano. En iPad pesa más todavía. Ahí el bilingüe sí es la herramienta correcta — un `alert` no tiene
+estructura que anclar.
+
+### 🔎 Evidencia colateral: hay paneles que SH NO traduce
+
+En la misma sesión, con la UI en español, el panel de unidades del modal Editar NP se veía así:
+
+```
+Per Part Count Unit Definitions:          ← encabezado EN, en una sesión en español
+KGM Kilogramo / Part:                     ← label EN
+LBR Libra / Part:
+```
+
+Eso **baja la prioridad** (no cierra) de tres filas de abajo: `unit-autoconvert :110`
+(`/per part count unit definitions/i`), `unit-autoconvert :144/:157` (`"/ Part:"`) y
+`price-confirm-core :94` (`isPerPartLabel`). **Hoy no están rotas**: SH no traduce ese panel.
+Sigue siendo deuda porque depender de que un vendor NO traduzca es frágil — pero ya no son
+sospechosas de estar fallando en piso, y el orden de ataque cambia.
 
 ## ⚠️ Regla dura: NO adivinar traducciones
 
@@ -55,10 +113,10 @@ tarjeta (requiere el HTML de una tarjeta con "Tareas Programadas") o agregar el 
 | Applet | archivo:línea | Ancla actual | Idioma | Hipótesis a confirmar |
 |---|---|---|---|---|
 | invoice-autofill | `:857`, `:233` | `/creating\|editing\|create\|edit\|new invoice for/i` | solo EN | ¿"Creando/Nueva Factura para"? |
-| price-confirm-guard | `price-confirm-guard.js:15` | `/Part\s*Number\s*Price/i` (título modal) | solo EN | ¿"Precio de Número de Parte"? |
+| ~~price-confirm-guard~~ **CERRADO v0.1.5 (2026-07-28)** | `price-confirm-guard.js` | estructura (`root_DatosPrecio*`) **decide**; título ES+EN como red | ambos | string real: **«Precio del número de parte»** |
 | cfdi-attacher | `:125`, `:133`, `:148` | `/send invoice email/i`, `/send invoice/i` | solo EN | ¿"Enviar Correo de Factura"? |
-| unit-autoconvert | `:110` | `/per part count unit definitions/i` | solo EN | ¿string ES del encabezado? |
-| unit-autoconvert | `:144`, `:157` | `"/ Part:"` | solo EN | ¿"/ Parte:"? |
+| unit-autoconvert | `:110` | `/per part count unit definitions/i` | solo EN | **encabezado NO traducido** (visto literal en sesión ES, 2026-07-27) → no roto hoy |
+| unit-autoconvert | `:144`, `:157` | `"/ Part:"` | solo EN | **labels NO traducidos** («KGM Kilogramo / Part:» en sesión ES) → no roto hoy |
 | unit-autoconvert-core | `:55` | `/^\s*parts\s*\//i` ("Parts /") | solo EN | ¿"Partes /"? |
 | create-order-autofill | `create-order-autofill.js:231` | `/enviar a:/i` | solo ES | ¿"Ship to:"? (hay evidencia interna: `invoice-autofill.js:1822` ya ancla `ship to`↔`enviar a` — **confirmable rápido**) |
 | invoice-auto-regen | `:415` | `=== 'CREAR FACTURA'` (botón) | solo ES | ¿"CREATE INVOICE"? (evidencia: `HEADING_RE` create/crear) |
@@ -71,8 +129,8 @@ tarjeta (requiere el HTML de una tarjeta con "Tareas Programadas") o agregar el 
 |---|---|---|---|---|
 | proceso-calculator | `:241` | `/^default process:?$/i` | solo EN | ¿"Proceso Predeterminado:"? |
 | bill-autofill | `:162` | `/create bill\|edit bill/i` | solo EN | ¿"Crear/Editar Factura de Proveedor"? |
-| price-confirm-core | `:78` | `/saving price/i` (alert) | solo EN | ¿"Error al guardar precio"? |
-| price-confirm-core | `:94` | `"/ part:"` | solo EN | ¿"/ Parte:"? |
+| ~~price-confirm-core~~ **CERRADO v0.1.5 (2026-07-28)** | `:78` | `/saving\s+price\|guardar\s+el\s+precio/i` | ambos | string real: **«Error al guardar el precio»** (el alert es BLOQUEANTE) |
+| price-confirm-core | `:94` | `"/ part:"` | solo EN | **SH no traduce ese panel** (visto en sesión ES, 2026-07-27) → no está roto hoy; deuda de menor urgencia |
 | invoice-autofill | `:1020`, `:1092`, `:1712` | `"Line #N"`, `"Line #N - PN"` | solo EN | ¿"Línea #N"? |
 | invoice-autofill | `:1036`, `:1102` | `/income account/i`, `/^income$/i` | solo EN | ¿"Cuenta de Ingresos"/"Ingresos"? |
 | invoice-autofill | `:2005` | `/accounts?_?receivable/i` | solo EN | constante — confirmar si SH la traduce |
