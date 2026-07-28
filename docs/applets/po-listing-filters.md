@@ -1,7 +1,8 @@
 # `po-listing-filters` — Buscador global de OC + Toggle de empresa
 
 **Versión:** 0.4.0 · **Pantalla:** `/Domains/<d>/Purchasing/PurchaseOrders` · **`autoInject: true`**
-**Estado:** VIVO. Core 80/80 golden, suite 962/962.
+**Estado:** VIVO en **config 1.7.213** (tags `v1.7.203`…`v1.7.213`). Core 80/80, suite 962/962.
+**Validado end-to-end por el operador el 2026-07-27** («ya quedó»).
 
 Diseño completo en [`docs/superpowers/specs/2026-07-27-po-listing-filters-design.md`](../superpowers/specs/2026-07-27-po-listing-filters-design.md).
 
@@ -267,13 +268,18 @@ Rollback: `tools/rollback.sh v1.7.208`.
 
 ### Pendientes
 
-- [ ] Recorrido end-to-end del clic y del teclado hecho por el operador (la automatización
-      del navegador no logra enfocar el input de forma confiable, y el rate-limit cortó
-      varios intentos; la lógica sí quedó verificada contra el código vivo)
+- [x] **Recorrido end-to-end validado por el operador** (2026-07-27, «ya quedó»): buscador,
+      salto por proveedor, flechitas y toggle funcionando en producción
 - [ ] Confirmar si hay **>10 direcciones** de facturación (el descubrimiento en runtime lo
       resuelve, pero conviene saberlo; `S.capped` lo advierte en el `title` del toggle)
-- [ ] Confirmar el shape exacto de los nodos de `SearchBills` (el glue lo localiza de forma
-      defensiva; la primera corrida en vivo lo confirma)
+- [x] **Shape de `SearchBills` confirmado** (v0.4.0): `idInDomain`, `invoiceNumber` (folio del
+      proveedor), `vendorByVendorId{name,idInDomain}` y el PO# en
+      `billLinesByBillId.nodes[].purchaseOrderName`. **No** existe
+      `purchaseOrderByPurchaseOrderId`, que era lo que el código asumía.
 - [ ] **Reponer el lado Ecoplating** cuando Steelhead corrija el filtro (ticket abierto por
       el operador 2026-07-27) — es agregar un modo en `planProquipaFilter`
 - [ ] Integrar al bundle Safari/iPad si el operador lo usa desde ahí
+- [ ] **Declarar `urlPatterns` para este applet** cuando se implemente el gate de carga —
+      hoy se inyecta en TODAS las pantallas de SH aunque solo aplique a
+      `/Purchasing/PurchaseOrders`. Ver
+      [`docs/architecture/applet-load-gating.md`](../architecture/applet-load-gating.md)
