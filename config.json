@@ -1,7 +1,7 @@
 {
-  "version": "1.7.214",
-  "lastUpdated": "2026-07-27T21:06",
-  "extensionVersion": "1.6.6",
+  "version": "1.7.215",
+  "lastUpdated": "2026-07-27T21:21",
+  "extensionVersion": "1.7.0",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
   "steelhead": {
@@ -663,6 +663,9 @@
       "icon": "📅",
       "category": "Órdenes de Trabajo",
       "autoInject": true,
+      "urlPatterns": [
+        "/Domains/\\d+/WorkOrders/\\d+(?:[/?#]|$)"
+      ],
       "scripts": [
         "scripts/steelhead-api.js",
         "scripts/wo-schedule-core.js",
@@ -732,6 +735,9 @@
       "icon": "🏷️",
       "category": "Herramientas",
       "autoInject": true,
+      "urlPatterns": [
+        "^/Domains/\\d+/Shipping/?(?:[?#]|$)"
+      ],
       "scripts": [
         "scripts/steelhead-api.js",
         "scripts/batch-name-filter-core.js",
@@ -746,6 +752,9 @@
       "icon": "🏷️",
       "category": "Herramientas",
       "autoInject": true,
+      "urlPatterns": [
+        "^/Schedules/\\d+/ScheduleBoard/\\d+/?(?:[?#]|$)"
+      ],
       "scripts": [
         "scripts/schedule-batch-highlighter-core.js",
         "scripts/schedule-batch-highlighter.js"
@@ -1137,6 +1146,9 @@
         "READ_RECEIVED_ORDERS"
       ],
       "autoInject": true,
+      "urlPatterns": [
+        "/Domains/\\d+/ReceivedOrders(?:/|$|\\?)"
+      ],
       "actions": [
         {
           "id": "run-po-reconciler",
@@ -1192,6 +1204,9 @@
         "READ_WORK_ORDER"
       ],
       "autoInject": true,
+      "urlPatterns": [
+        "/Domains/\\d+/ReceivedOrders/\\d+"
+      ],
       "actions": [
         {
           "id": "run-wo-mover",
@@ -1294,6 +1309,9 @@
         "scripts/invoice-default-tab.js"
       ],
       "autoInject": true,
+      "urlPatterns": [
+        "/Domains/\\d+/Invoices/?$"
+      ],
       "actions": [
         {
           "id": "toggle-invoice-default-tab",
@@ -1316,6 +1334,9 @@
         "scripts/invoice-listing-marker.js"
       ],
       "autoInject": true,
+      "urlPatterns": [
+        "/Domains/\\d+/Invoices(?:/|$)"
+      ],
       "actions": [
         {
           "id": "toggle-invoice-listing-marker",
@@ -1369,6 +1390,9 @@
         "scripts/paros-linea.js"
       ],
       "autoInject": true,
+      "urlPatterns": [
+        "^/Domains/\\d+/(?:Workboards(?:/|$)|WorkOrders/\\d+)"
+      ],
       "requiredPermissions": [
         "READ_MAINTENANCE"
       ],
@@ -1405,6 +1429,9 @@
         "scripts/vale-almacen.js"
       ],
       "autoInject": true,
+      "urlPatterns": [
+        "^/Domains/\\d+/(?:(?:Workboards|Maintenance\\w*|SensorDashboards?|Sensors|Inventory\\w*)(?:/|$)|WorkOrders/\\d+)"
+      ],
       "requiredPermissions": [
         "READ_MAINTENANCE"
       ],
@@ -1550,6 +1577,10 @@
         "scripts/create-order-autofill.js"
       ],
       "autoInject": true,
+      "urlPatterns": [
+        "/Receiving/CustomerParts(?:/|$)",
+        "/Domains/\\d+/SalesOrders/?$"
+      ],
       "requiredPermissions": [
         "READ_RECEIVING"
       ],
@@ -1576,6 +1607,9 @@
         "scripts/bill-autofill.js"
       ],
       "autoInject": true,
+      "urlPatterns": [
+        "/Domains/\\d+/Bills(?:/|$)"
+      ],
       "requiredPermissions": [
         "READ_ACCOUNTS_PAYABLE"
       ],
@@ -1602,6 +1636,9 @@
         "scripts/invoice-autofill.js"
       ],
       "autoInject": true,
+      "urlPatterns": [
+        "/Domains/\\d+/(?:Invoices|Shipping/PackingSlips)(?:/|$)"
+      ],
       "requiredPermissions": [
         "READ_INVOICING"
       ],
@@ -1714,6 +1751,9 @@
       "icon": "👁",
       "category": "Producción",
       "autoInject": true,
+      "urlPatterns": [
+        "/sensor-?dashboards/\\d+(?:[/?#]|$)"
+      ],
       "scripts": [
         "scripts/steelhead-api.js",
         "scripts/sensor-graph-hide-all-core.js",
@@ -1740,6 +1780,9 @@
       "icon": "🧪",
       "category": "Números de Parte",
       "autoInject": true,
+      "urlPatterns": [
+        "(?:^|/)PartNumbers/?(?:[?#]|$)"
+      ],
       "scripts": [
         "scripts/steelhead-api.js",
         "scripts/host-cleanup-shared.js",
@@ -1769,6 +1812,9 @@
       "icon": "🔩",
       "category": "Órdenes de Trabajo",
       "autoInject": true,
+      "urlPatterns": [
+        "/Domains/\\d+/WorkOrders/?(?:[?#]|$)"
+      ],
       "scripts": [
         "scripts/steelhead-api.js",
         "scripts/host-cleanup-shared.js",
@@ -1808,6 +1854,9 @@
       "icon": "🔀",
       "category": "Producción",
       "autoInject": true,
+      "urlPatterns": [
+        "/Schedules/\\d+/ScheduleBoard/\\d+"
+      ],
       "scripts": [
         "scripts/steelhead-api.js",
         "scripts/auto-router-engine.js",
@@ -1846,6 +1895,9 @@
       "icon": "🔒",
       "category": "Producción",
       "autoInject": true,
+      "urlPatterns": [
+        "^/Domains/\\d+/Workboards/\\d+"
+      ],
       "scripts": [
         "scripts/steelhead-api.js",
         "scripts/surtido-guard-core.js",
@@ -1901,6 +1953,9 @@
       "icon": "🔎",
       "category": "Compras",
       "autoInject": true,
+      "urlPatterns": [
+        "^/Domains/\\d+/Purchasing/PurchaseOrders/?(?:[?#]|$)"
+      ],
       "scripts": [
         "scripts/steelhead-api.js",
         "scripts/po-listing-filters-core.js",
