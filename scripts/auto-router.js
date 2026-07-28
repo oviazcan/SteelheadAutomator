@@ -226,12 +226,29 @@ const AutoRouter = (() => {
     window.AutoRouterBatch.open();
   }
 
+  // Ruteo POR PISTAS (la orden completa y/o cada grupo de piezas a su propia línea).
+  // La orden sale de la URL de su ficha; si no estamos ahí, se pide el número. No usa
+  // el contexto capturado del modal: ese trae UN grupo y aquí se necesitan todos.
+  function openLanes() {
+    if (!window.AutoRouterLanes) { alert('Auto-Ruteador: módulo de grupos no cargado.'); return; }
+    const m = location.pathname.match(/\/WorkOrders\/(\d+)/);
+    let idInDomain = m ? Number(m[1]) : null;
+    if (!idInDomain) {
+      const v = prompt('Número de orden (el que ves en Steelhead):');
+      if (!v) return;
+      idInDomain = Number(String(v).trim());
+      if (!Number.isFinite(idInDomain)) { alert('Ese no es un número de orden válido.'); return; }
+    }
+    window.AutoRouterLanes.open({ idInDomain });
+  }
+
   function listenManualTrigger() {
     try {
       chrome.runtime?.onMessage?.addListener?.((msg) => {
         if (!msg) return;
         if (msg.action === 'open-auto-router') openPanel();
         else if (msg.action === 'open-auto-router-batch') openBatch();
+        else if (msg.action === 'open-auto-router-lanes') openLanes();
       });
     } catch (_) { /* no chrome.runtime en algunos contextos */ }
   }

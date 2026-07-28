@@ -1,6 +1,6 @@
 {
-  "version": "1.7.222",
-  "lastUpdated": "2026-07-27T22:53",
+  "version": "1.7.223",
+  "lastUpdated": "2026-07-27T23:03",
   "extensionVersion": "1.7.1",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -78,7 +78,8 @@
         "CreateManyPartsTransfersChecked": "fc7438932552bb02202dfcecc4e0bf826fd5097db6e6559c3c7b99186ceff9ed",
         "DeleteProcessNodePartNumberOptInOut": "4a0773339315f1a52a9c08c249c5b3540c13def2b0d320e0e16ad9cb75b4d823",
         "UpdateProcessNodePartNumberOptInOut": "4556e5710f068e129fadc74cbce1f9a5e7cc42113f4e8e1808976b4e4f4cd2a6",
-        "CreateProcessNodePartNumberOptInout": "f6fe26e4494c8c91d076975a8d7e89ed2f90a487d05f8bc021c2e296f3d6124f"
+        "CreateProcessNodePartNumberOptInout": "f6fe26e4494c8c91d076975a8d7e89ed2f90a487d05f8bc021c2e296f3d6124f",
+        "CreateNewPartGroup": "7ee30dd45af56f280ac45423349bb03b23ba6be7fb70aba6fe8ecfae819d54e4"
       },
       "queries": {
         "AllStations": "834516258e392dcd9c666c2349992e3f6744aaf536cb127cb8c9eb4347f883f7",
@@ -198,7 +199,8 @@
         "WorkOrderSchedule": "7b1b11275a49fde330dfbfecc8d403d6f16646ac48e9b12f19284abaf6ddbae8",
         "GetWorkOrderPartsTransfers": "da4e8740973139bb23f3f0d37a0ea83a05b6d67cdab2c1bea1e154dff37aa284",
         "PurchaseOrders": "32f823d324b6b91e78fe43c93ab82042b931797f5592d088c4f1563051210d84",
-        "SearchBills": "e50ba3ee7d2e694476d5180abdd978fa21f5147251c02d4cef051973b408bd8a"
+        "SearchBills": "e50ba3ee7d2e694476d5180abdd978fa21f5147251c02d4cef051973b408bd8a",
+        "FindPartGroupQuery": "85121b64ebe7c614a0c3de7a730c45488b0ca45ea6731ff8c88efafb0667774c"
       }
     },
     "domain": {
@@ -1891,14 +1893,17 @@
       "category": "Producción",
       "autoInject": true,
       "urlPatterns": [
-        "/Schedules/\\d+/ScheduleBoard/\\d+"
+        "/Schedules/\\d+/ScheduleBoard/\\d+",
+        "/Domains/\\d+/WorkOrders/\\d+"
       ],
       "scripts": [
         "scripts/steelhead-api.js",
         "scripts/auto-router-engine.js",
+        "scripts/auto-router-groups.js",
         "scripts/auto-router-api.js",
         "scripts/auto-router-panel.js",
         "scripts/auto-router-batch.js",
+        "scripts/auto-router-lanes.js",
         "scripts/board-metal-tooltip.js",
         "scripts/auto-router.js"
       ],
@@ -1921,6 +1926,15 @@
           "type": "primary",
           "handler": "message",
           "message": "open-auto-router-batch"
+        },
+        {
+          "id": "open-auto-router-lanes",
+          "label": "Auto-Ruteador — Por grupos",
+          "sublabel": "Rutear la orden completa y/o cada grupo de piezas a su línea",
+          "icon": "📦",
+          "type": "primary",
+          "handler": "message",
+          "message": "open-auto-router-lanes"
         }
       ]
     },
@@ -2731,11 +2745,13 @@
     "scripts/api-knowledge.js": "ae05a48d18b2e989e9a8a51be1693183f9e191b47a80cf05457c99325930b13d",
     "scripts/archiver.js": "f90382b4786080edc370bae87729af9b45efc38152190a2f9691bb3a4115403b",
     "scripts/auditor.js": "c0bb4771b29d1046f819b98885a089f5af330219227a24a9e9c67ebf634e2f22",
-    "scripts/auto-router-api.js": "c40507b25bc923f0b0e5bece16bcc93ba9db8740f63d6d2be0b0612d59f89099",
+    "scripts/auto-router-api.js": "8ff6ace1f3d629442491cba5bab687ccc2b63a532415051b6c852b899a94d7e8",
     "scripts/auto-router-batch.js": "985feb74c421a7661c2366435412686b1495405094181bbbf72b832c391938ac",
-    "scripts/auto-router-engine.js": "d48864428966346efb122e9f30d10be6416c645e78176bbc8b9d100d2e119b3c",
+    "scripts/auto-router-engine.js": "c7d9d9694c8e9d6e9d889abd7061780db4196e3ac5effb13e828e1491c239f96",
+    "scripts/auto-router-groups.js": "b5f65a11d3369f12575863026a1937da89f6451510051f5c45aa5a87408ebe49",
+    "scripts/auto-router-lanes.js": "b73c74d5c744fc689ce454c44b6338ba4a0f5700a5f6e0e720ff2c829dbe01d9",
     "scripts/auto-router-panel.js": "07020fbd82ced16bc38e22a2a406d1e8ffc177a51f3993c4a7d03faf106e0f49",
-    "scripts/auto-router.js": "6a2eed28ed8beb5b63fbb9022e56f5f5bf49ea788fad545bb76a6a830caae74c",
+    "scripts/auto-router.js": "6ada6a57a0c52f681ea3047ba8e83d4276bd8a13f5c3958bbb11919e3aa978a1",
     "scripts/batch-name-filter-core.js": "918ef9faf5b76c94467b43d36ee23df7addecee03aeeeb34d9cf328885d4a914",
     "scripts/batch-name-filter.js": "b77dcb52fa6f9facf31f9f3153aed6b116ad81024ed2090f811fc7bf90441cc2",
     "scripts/bill-autofill.js": "58750f899a5c1b40ce262297ccc81a7cfaf8feda6f8284bf6b096c74f136c6b9",
