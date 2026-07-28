@@ -108,7 +108,7 @@ code.src{font-size:.82em;color:var(--faint);background:transparent;white-space:n
 
   <!-- KPIs -->
   <div class="kpis">
-    <div class="kpi"><div class="n">102</div><div class="l">reportes oficiales (placa <code>RPT-…</code>)</div></div>
+    <div class="kpi"><div class="n">104</div><div class="l">reportes oficiales (placa <code>RPT-…</code>)</div></div>
     <div class="kpi"><div class="n">14</div><div class="l">departamentos dueños</div></div>
     <div class="kpi"><div class="n">3</div><div class="l">tipos: analítica 51 · catálogo 37 · control 10</div></div>
     <div class="kpi"><div class="n">2</div><div class="l">plantas gemelas: TLC · MTY</div></div>
@@ -120,7 +120,7 @@ code.src{font-size:.82em;color:var(--faint);background:transparent;white-space:n
 
   <div class="callout info measure" style="max-width:none">
     <p class="ct">Un matiz sobre el conteo</p>
-    La tabla de abajo lista las <strong>102 placas vigentes</strong> con título depurado (<strong>53</strong> analíticas · <strong>38</strong> catálogos · <strong>11</strong> control). Verás saltos en los consecutivos (por ejemplo <code>RPT-PRD-ANL-16</code> o <code>RPT-VTA-ANL-01</code>): son números retirados o reasignados en refactores, que no se reciclan — cuentan como vacantes, no como reportes. El número exacto se mueve con cada alta; para la verdad del día, cuenta las placas <code>RPT-</code> del repositorio.
+    La tabla de abajo lista las <strong>104 placas vigentes</strong> con título depurado (<strong>55</strong> analíticas · <strong>38</strong> catálogos · <strong>11</strong> control). Verás saltos en los consecutivos (por ejemplo <code>RPT-PRD-ANL-16</code> o <code>RPT-VTA-ANL-01</code>): son números retirados o reasignados en refactores, que no se reciclan — cuentan como vacantes, no como reportes. El número exacto se mueve con cada alta; para la verdad del día, cuenta las placas <code>RPT-</code> del repositorio.
   </div>
 
   <!-- Cómo leer una placa -->
@@ -156,7 +156,7 @@ code.src{font-size:.82em;color:var(--faint);background:transparent;white-space:n
 
   <div class="search noprint">
     <input id="q" type="search" placeholder="Buscar: escribe una placa (PRD, cxc), un nombre (facturación, OEE) o un tipo (control)…" aria-label="Buscar reportes" autocomplete="off">
-    <div class="hint" id="hint">Mostrando los 102 reportes.</div>
+    <div class="hint" id="hint">Mostrando los 104 reportes.</div>
   </div>
 
   <div class="tablewrap">
@@ -165,7 +165,7 @@ code.src{font-size:.82em;color:var(--faint);background:transparent;white-space:n
         <tr><th style="width:150px">Placa</th><th style="width:96px">Tipo</th><th>Reporte</th><th>Archivo fuente</th></tr>
       </thead>
       <tbody>
-      <tr class="deph" data-dep="PRD"><td colspan="4"><strong>PRD · Producción</strong> <span style="color:var(--faint);font-weight:400">— 22 reportes</span></td></tr>
+      <tr class="deph" data-dep="PRD"><td colspan="4"><strong>PRD · Producción</strong> <span style="color:var(--faint);font-weight:400">— 23 reportes</span></td></tr>
       <tr data-dep="PRD"><td><code>RPT-PRD-ANL-01</code></td><td><span class="tt anl">Analítica</span></td><td>Órdenes de Trabajo</td><td><code class="src">query_ordenes_trabajo.sql</code></td></tr>
       <tr data-dep="PRD"><td><code>RPT-PRD-ANL-02</code></td><td><span class="tt anl">Analítica</span></td><td>Programa de Producción</td><td><code class="src">query_programa_produccion.sql</code></td></tr>
       <tr data-dep="PRD"><td><code>RPT-PRD-ANL-03</code></td><td><span class="tt anl">Analítica</span></td><td>Capacity Planning (Plan de Capacidad Ocupada)</td><td><code class="src">query_capacity_planning.sql</code></td></tr>
@@ -184,6 +184,7 @@ code.src{font-size:.82em;color:var(--faint);background:transparent;white-space:n
       <tr data-dep="PRD"><td><code>RPT-PRD-ANL-17</code></td><td><span class="tt anl">Analítica</span></td><td>Seguimiento de Operaciones (“Seguimiento de Material”)</td><td><code class="src">query_seguimiento_operaciones.sql</code></td></tr>
       <tr data-dep="PRD"><td><code>RPT-PRD-ANL-18</code></td><td><span class="tt anl">Analítica</span></td><td>Trazabilidad de Lotes (Recibo → OT → Embarque)</td><td><code class="src">query_trazabilidad_lotes.sql</code></td></tr>
       <tr data-dep="PRD"><td><code>RPT-PRD-ANL-19</code></td><td><span class="tt anl">Analítica</span></td><td>Bitácora de Fin de Turno</td><td><code class="src">query_bitacora_fin_turno.sql</code></td></tr>
+      <tr data-dep="PRD"><td><code>RPT-PRD-ANL-20</code></td><td><span class="tt anl">Analítica</span></td><td>Pareto de Paros de Línea por Causa</td><td><code class="src">query_pareto_paros.sql</code></td></tr>
       <tr data-dep="PRD"><td><code>RPT-PRD-CAT-01</code></td><td><span class="tt cat">Catálogo</span></td><td>Catálogo de Workboards (Tableros de Trabajo)</td><td><code class="src">query_catalogo_workboards.sql</code></td></tr>
       <tr data-dep="PRD"><td><code>RPT-PRD-CTL-01</code></td><td><span class="tt ctl">Control</span></td><td>Cumplimiento al Programa de Producción</td><td><code class="src">query_cumplimiento.sql</code></td></tr>
       <tr data-dep="PRD"><td><code>RPT-PRD-CTL-02</code></td><td><span class="tt ctl">Control</span></td><td>Auditoría de Transferencias de Partes</td><td><code class="src">query_auditoria_transferencias.sql</code></td></tr>
@@ -207,7 +208,7 @@ code.src{font-size:.82em;color:var(--faint);background:transparent;white-space:n
       <tr data-dep="ING"><td><code>RPT-ING-CAT-15</code></td><td><span class="tt cat">Catálogo</span></td><td>Secuencia de Procesos (Árbol de Nodos)</td><td><code class="src">query_secuencia_procesos.sql</code></td></tr>
       <tr data-dep="ING"><td><code>RPT-ING-CAT-16</code></td><td><span class="tt cat">Catálogo</span></td><td>Catálogo de Racks</td><td><code class="src">query_catalogo_racks.sql</code></td></tr>
       <tr data-dep="ING"><td><code>RPT-ING-CAT-17</code></td><td><span class="tt cat">Catálogo</span></td><td>Validación de Carga Masiva de Números de Parte</td><td><code class="src">query_validacion_carga_masiva_np.sql</code></td></tr>
-      <tr class="deph" data-dep="VTA"><td colspan="4"><strong>VTA · Ventas</strong> <span style="color:var(--faint);font-weight:400">— 12 reportes</span></td></tr>
+      <tr class="deph" data-dep="VTA"><td colspan="4"><strong>VTA · Ventas</strong> <span style="color:var(--faint);font-weight:400">— 13 reportes</span></td></tr>
       <tr data-dep="VTA"><td><code>RPT-VTA-ANL-02</code></td><td><span class="tt anl">Analítica</span></td><td>Cotizaciones</td><td><code class="src">query_cotizaciones.sql</code></td></tr>
       <tr data-dep="VTA"><td><code>RPT-VTA-ANL-03</code></td><td><span class="tt anl">Analítica</span></td><td>Órdenes de Venta — Detalle por Línea / Artículo</td><td><code class="src">query_ordenes_venta.sql</code></td></tr>
       <tr data-dep="VTA"><td><code>RPT-VTA-ANL-04</code></td><td><span class="tt anl">Analítica</span></td><td>Cubo de Facturación</td><td><code class="src">query_facturacion.sql</code></td></tr>
@@ -215,6 +216,7 @@ code.src{font-size:.82em;color:var(--faint);background:transparent;white-space:n
       <tr data-dep="VTA"><td><code>RPT-VTA-ANL-06</code></td><td><span class="tt anl">Analítica</span></td><td>Producido Pendiente de Embarque / Cierre</td><td><code class="src">query_pendiente_embarque.sql</code></td></tr>
       <tr data-dep="VTA"><td><code>RPT-VTA-ANL-07</code></td><td><span class="tt anl">Analítica</span></td><td>Entradas por Cliente</td><td><code class="src">query_entradas.sql</code></td></tr>
       <tr data-dep="VTA"><td><code>RPT-VTA-ANL-08</code></td><td><span class="tt anl">Analítica</span></td><td>Envíos por Cliente</td><td><code class="src">query_envios.sql</code></td></tr>
+      <tr data-dep="VTA"><td><code>RPT-VTA-ANL-09</code></td><td><span class="tt anl">Analítica</span></td><td>Pareto de Facturación por Cliente</td><td><code class="src">query_pareto_facturacion.sql</code></td></tr>
       <tr data-dep="VTA"><td><code>RPT-VTA-CAT-01</code></td><td><span class="tt cat">Catálogo</span></td><td>Catálogo de Clientes (cliente × dirección)</td><td><code class="src">query_catalogo_clientes.sql</code></td></tr>
       <tr data-dep="VTA"><td><code>RPT-VTA-CTL-01</code></td><td><span class="tt ctl">Control</span></td><td>Calidad de Nombre de OC de Cliente</td><td><code class="src">query_calidad_oc_cliente.sql</code></td></tr>
       <tr data-dep="VTA"><td><code>RPT-VTA-CTL-02</code></td><td><span class="tt ctl">Control</span></td><td>OCs de Cliente con Nombre Inválido (Detalle Accionable)</td><td><code class="src">query_calidad_oc_cliente_detalle.sql</code></td></tr>
@@ -316,7 +318,7 @@ code.src{font-size:.82em;color:var(--faint);background:transparent;white-space:n
       h.style.display=any?'':'none';
     });
     nr.style.display=shown?'none':'';
-    hint.textContent= term ? ('Mostrando '+shown+' de 102 reportes.') : 'Mostrando los 102 reportes.';
+    hint.textContent= term ? ('Mostrando '+shown+' de 104 reportes.') : 'Mostrando los 104 reportes.';
   });
 })();
 </script>

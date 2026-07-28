@@ -1,0 +1,306 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guión de la presentación «Reportes SH 101»</title>
+<style>
+:root{
+  --ground:#f7f9fb;--paper:#ffffff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;
+  --hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;
+  --ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;
+  --warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7;
+  --shadow:0 1px 2px rgba(24,34,49,.05),0 6px 20px -8px rgba(24,34,49,.12);
+  --measure:68ch;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){:root{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512;--shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -10px rgba(0,0,0,.5)}}
+:root[data-theme="light"]{--ground:#f7f9fb;--paper:#fff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;--hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;--ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;--warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7}
+:root[data-theme="dark"]{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.62;-webkit-font-smoothing:antialiased}
+.wrap{max-width:920px;margin:0 auto;padding:0 24px 96px}
+.measure{max-width:var(--measure)}
+.masthead{border-bottom:2px solid var(--ti);padding:40px 0 22px}
+.brandbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.brandmark{width:28px;height:28px;border-radius:6px;background:var(--steel);display:grid;place-items:center;flex:0 0 auto}
+.brandmark span{color:#fff;font-weight:800;font-size:.72rem;font-family:var(--mono)}
+.brandname{font-weight:700;letter-spacing:.02em;font-size:.95rem}
+.brandname em{color:var(--accent-ink);font-style:normal}
+.eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.14em;color:var(--ti);font-weight:800;margin:0 0 10px}
+.masthead h1{font-size:clamp(2rem,4.6vw,2.7rem);line-height:1.06;letter-spacing:-.02em;margin:0 0 10px;font-weight:800;text-wrap:balance}
+.masthead .sub{font-size:1.12rem;color:var(--muted);margin:0;max-width:60ch}
+.audchips{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.audchip{font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.05em}
+.audchip.ti{background:var(--ti-wash);color:var(--ti)} .audchip.p{background:var(--ti-wash);color:var(--ti)}
+.tldr{background:var(--paper);border:1px solid var(--hair);border-left:4px solid var(--ti);border-radius:12px;padding:20px 22px;margin:26px 0;box-shadow:var(--shadow)}
+.tldr .ct{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--ti);margin:0 0 8px}
+.tldr p{margin:0;font-size:1.05rem;max-width:none}
+h2.sec{font-size:1.5rem;letter-spacing:-.01em;margin:54px 0 4px;font-weight:800;text-wrap:balance}
+h2.sec .num{font-family:var(--mono);font-size:.85rem;color:var(--ti);font-weight:700;border:1px solid var(--hair-2);border-radius:6px;padding:1px 7px;margin-right:10px;vertical-align:.15em}
+h3.sub{font-size:1.16rem;margin:32px 0 6px;letter-spacing:-.01em;font-weight:700}
+.sec-lead{color:var(--muted);margin:.4rem 0 1.2rem;max-width:var(--measure)}
+p{margin:0 0 1rem;max-width:var(--measure)}
+a{color:var(--accent-ink);text-underline-offset:2px}
+code{font-family:var(--mono);font-size:.85em;background:var(--hair);padding:1px 5px;border-radius:5px;word-break:break-word}
+pre{background:var(--paper);border:1px solid var(--hair);border-left:4px solid var(--steel);border-radius:10px;padding:14px 16px;overflow-x:auto;box-shadow:var(--shadow);font-family:var(--mono);font-size:.82rem;line-height:1.5;margin:18px 0}
+pre code{background:none;padding:0;font-size:1em}
+.tok-c{color:var(--faint)} .tok-k{color:var(--ti);font-weight:600} .tok-f{color:var(--accent-ink);font-weight:600} .tok-s{color:var(--ku)}
+ul,ol{max-width:var(--measure);padding-left:1.25em} li{margin:.35rem 0}
+strong{font-weight:700}
+figure.diagram{margin:26px 0;background:var(--paper);border:1px solid var(--hair);border-radius:14px;padding:20px 18px 8px;box-shadow:var(--shadow);overflow-x:auto}
+figure.diagram svg{display:block;width:100%;height:auto;min-width:600px;max-width:840px;margin:0 auto}
+figure.diagram figcaption{font-size:.85rem;color:var(--faint);text-align:center;margin-top:10px;padding:0 8px 6px}
+.svg-t{font-family:var(--sans);fill:var(--ink)} .svg-m{font-family:var(--mono)} .svg-mut{fill:var(--muted)}
+.callout{border-radius:10px;padding:15px 17px 15px 48px;position:relative;margin:22px 0;font-size:.95rem;border:1px solid var(--hair);background:var(--paper)}
+.callout .ct{font-weight:800;margin:0 0 4px;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em}
+.callout p{max-width:none;margin:.3rem 0 0}
+.callout::before{position:absolute;left:15px;top:14px;font-size:1.15rem;line-height:1}
+.callout.meta{border-left:4px solid var(--steel);background:color-mix(in srgb,var(--steel) 6%,var(--paper))} .callout.meta .ct{color:var(--steel)} .callout.meta::before{content:"💡"}
+.callout.info{border-left:4px solid var(--ti);background:var(--ti-wash)} .callout.info .ct{color:var(--ti)} .callout.info::before{content:"ℹ";color:var(--ti);font-weight:800}
+.callout.warn{border-left:4px solid var(--warn);background:var(--warn-wash)} .callout.warn .ct{color:var(--warn)} .callout.warn::before{content:"⚠"}
+.callout.danger{border-left:4px solid var(--danger);background:var(--danger-wash)} .callout.danger .ct{color:var(--danger)} .callout.danger::before{content:"⛔"}
+.callout.tip{border-left:4px solid var(--accent);background:var(--accent-wash)} .callout.tip .ct{color:var(--accent-ink)} .callout.tip::before{content:"✓";color:var(--accent-ink);font-weight:800}
+.stages{list-style:none;padding:0;margin:24px 0;display:flex;flex-direction:column;gap:2px}
+.stages li{display:grid;grid-template-columns:44px 1fr;gap:16px;padding:16px 0;border-bottom:1px solid var(--hair);align-items:start}
+.stages li:last-child{border-bottom:none}
+.stages .k{width:38px;height:38px;border-radius:9px;background:var(--ti);color:#fff;display:grid;place-items:center;font-weight:800;font-family:var(--mono);font-size:1rem}
+.stages h4{margin:0 0 3px;font-size:1.08rem}
+.stages p{margin:0;font-size:.94rem;color:var(--muted);max-width:none}
+.tablewrap{overflow-x:auto;border:1px solid var(--hair);border-radius:12px;box-shadow:var(--shadow);margin:20px 0}
+table{border-collapse:collapse;width:100%;font-size:.9rem;background:var(--paper);min-width:520px}
+thead th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:700;padding:11px 14px;border-bottom:2px solid var(--hair-2);background:var(--ground)}
+tbody td{padding:11px 14px;border-bottom:1px solid var(--hair);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+.roles{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:26px 0}
+@media (max-width:760px){.roles{grid-template-columns:1fr}}
+.role{border-radius:12px;padding:20px;border:1px solid var(--hair);background:var(--paper);box-shadow:var(--shadow)}
+.role.ti{border-top:4px solid var(--ti)} .role.ku{border-top:4px solid var(--ku)}
+.role .who{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;margin-bottom:6px}
+.role.ti .who{color:var(--ti)} .role.ku .who{color:var(--ku)}
+.role p{margin:0;font-size:.93rem;max-width:none}
+.foot{margin-top:64px;padding-top:22px;border-top:1px solid var(--hair-2);color:var(--faint);font-size:.85rem;display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:999px}
+.badge.perenne{background:var(--ti-wash);color:var(--ti)} .badge.perenne::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+@media print{:root{--ground:#fff;--paper:#fff;--shadow:none}body{font-size:11.5pt}.wrap{max-width:none;padding:0}figure.diagram,.callout,.tablewrap,.role,.stages li,pre{break-inside:avoid}figure.diagram svg{min-width:0}h2.sec,h3.sub{break-after:avoid}a{color:var(--ink);text-decoration:none}}
+</style>
+
+<style>
+.slide{border-top:1px solid var(--hair);padding-top:6px;margin-top:44px}
+.slide:first-of-type{border-top:none}
+.msg{background:var(--accent-wash);border:1px solid var(--hair);border-left:4px solid var(--accent);border-radius:10px;padding:13px 16px;margin:14px 0 20px}
+.msg .ct{font-size:.68rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--accent-ink);margin:0 0 3px}
+.msg p{margin:0;max-width:none;font-size:1.02rem}
+.field{margin:20px 0}
+.field > .fh{font-size:.68rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--faint);margin:0 0 7px}
+.starred{color:var(--warn);font-size:1rem;vertical-align:.1em}
+.deckref{display:flex;flex-wrap:wrap;gap:8px 18px;font-size:.85rem;color:var(--muted);margin:18px 0 0}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brandbar">
+      <span class="brandmark"><span>RSH</span></span>
+      <span class="brandname">Reportes<em>SH</em> · Guión de presentación</span>
+      <a href="00-mapa-empieza-aqui.html" style="margin-left:auto;font-size:.82rem;color:var(--faint);text-decoration:none;white-space:nowrap">← Índice del paquete</a>
+    </div>
+    <p class="eyebrow">Guión · Quien imparte la sesión</p>
+    <h1>Guión de la presentación «Reportes SH 101»</h1>
+    <p class="sub">El 101 slide por slide: el mensaje único de cada uno, el texto exacto, el visual a dibujar, la metáfora y las notas del orador.</p>
+    <div class="audchips">
+      <span class="audchip ti">Quien imparte</span>
+      <span class="audchip p">Documento perenne</span>
+    </div>
+    <p class="deckref"><span>Deck ya construido: <a href="101-deck.html">101-deck.html</a></span><span>Conteos exactos: <a href="inventario-reportes.html">Inventario vivo</a></span></p>
+  </header>
+
+  <div class="tldr measure" style="max-width:none">
+    <p class="ct">Para qué sirve este documento</p>
+    <p>Es el <strong>guión de diseño</strong> de la presentación, pensado para que quien la imparta —o quien arme el deck final— tenga en un solo lugar qué decir y qué dibujar en cada slide. El deck de primer borrador ya construido vive en <a href="101-deck.html">101-deck.html</a>; úsalo como referencia visual viva.</p>
+  </div>
+
+  <div class="callout meta">
+    <p class="ct">Documento perenne</p>
+    <p>Enseña conceptos estables. Las cifras van siempre en <strong>relativo</strong> («~100 reportes»); el conteo exacto vive en el <a href="inventario-reportes.html">Inventario</a>, que es el documento vivo.</p>
+  </div>
+
+  <h2 class="sec"><span class="num">00</span>Dirección de diseño</h2>
+  <p class="sec-lead measure">Lo que debe respetar quien arme el deck final.</p>
+  <ul class="measure">
+    <li><strong>Tono:</strong> manual técnico de campo / plano de ingeniería. Serio, claro, con un toque industrial (el cliente es de acabado de metales: Steelhead = acero, Ecoplating = electroplateado).</li>
+    <li><strong>Paleta:</strong> neutros acero (fondo casi blanco <code>#f7f9fb</code>, tinta <code>#182231</code>, acero estructural <code>#2b3f52</code>) y <strong>acento verde del producto <code>#0f8f61</code></strong>. Codificación por audiencia: Consumidor de reportes = clay <code>#c0632e</code>; Jefe de TI = azul acero <code>#2f6f9f</code>.</li>
+    <li><strong>Tipografía:</strong> sans humanista para títulos y cuerpo; <strong>monoespaciada</strong> para códigos e identificadores (placas <code>RPT-…</code>, nombres de tabla) — son parte del contenido, no decoración.</li>
+    <li><strong>Regla de oro:</strong> un mensaje por slide, mucho diagrama, poco texto. Prioriza lo visual sobre la longitud.</li>
+  </ul>
+
+  <h3 class="sub">Audiencia y duración</h3>
+  <p class="measure">Mixta (Consumidor de reportes y Jefe de TI) en una sola sesión de <strong>30–40 minutos</strong>. Arranca a todos con el mismo modelo mental; al final cada quien sigue por su ruta (ver slide 13 y el Mapa «Empieza aquí»).</p>
+
+  <h3 class="sub">Arco narrativo (por qué este orden)</h3>
+  <p class="measure">Problema → solución de una frase → <strong>la gran idea</strong> (la foto que se renueva sola) → sus consecuencias (el ciclo, las placas, las plantas gemelas) → de qué está hecho (reporte → vista → dashboard) → los temas delicados como <em>teaser</em> → panorama → cómo seguir. Se sube de lo concreto (el dolor de cruzar datos a mano) a lo abstracto (la arquitectura) y se aterriza.</p>
+
+  <section class="slide">
+    <h2 class="sec"><span class="num">01</span>Portada</h2>
+    <div class="msg"><p class="ct">Mensaje único</p><p>Este es el mapa mental de cómo funciona Reportes SH.</p></div>
+    <div class="field"><p class="fh">Texto del slide</p><ul><li><strong>Título:</strong> Reportes SH 101</li><li><strong>Subtítulo:</strong> <em>Cómo nacen, corren y se publican los reportes de Steelhead.</em></li><li><strong>Pie:</strong> marca Capaz Consultoría · fecha de la sesión.</li></ul></div>
+    <div class="field"><p class="fh">Visual</p><p class="measure">Portada limpia: marca «RSH» en un cuadro acero, wordmark de Capaz arriba a la derecha, mucho aire.</p></div>
+    <div class="callout info"><p class="ct">Notas del orador</p><p>«En los próximos 30 minutos van a entender de dónde salen los reportes que usan, cómo se mantienen y por qué están hechos así. Vamos con analogías de planta.»</p></div>
+  </section>
+
+  <section class="slide">
+    <h2 class="sec"><span class="num">02</span>El problema</h2>
+    <div class="msg"><p class="ct">Mensaje único</p><p>Los datos del ERP están ahí, pero cruzarlos a mano para decidir es lento y frágil.</p></div>
+    <div class="field"><p class="fh">Texto del slide</p><ul><li><strong>Título:</strong> El dolor: los datos están, pero encerrados</li><li>«Producción, ventas, calidad, inventario… todo vive dentro de Steelhead»</li><li>«Cruzar dos áreas para una sola pregunta obliga a exportar, pegar en Excel y cuadrar a mano»</li><li>«Cada quien arma su propio número, y no siempre coinciden»</li></ul></div>
+    <div class="field"><p class="fh">Visual</p><p class="measure">Islas de datos separadas (Producción, Ventas, Calidad…) con puentes de Excel improvisados entre ellas.</p></div>
+    <div class="callout meta"><p class="ct">Metáfora</p><p>Cada área guarda su información en su propia bodega, con candado distinto.</p></div>
+    <div class="callout info"><p class="ct">Notas del orador</p><p>Aterriza con un caso real: «¿cuánto facturamos de lo que produjo la línea 3 el mes pasado?» cruza tres áreas.</p></div>
+  </section>
+
+  <section class="slide">
+    <h2 class="sec"><span class="num">03</span>Qué es</h2>
+    <div class="msg"><p class="ct">Mensaje único</p><p>Reportes SH es la capa de reportería a la medida de Steelhead.</p></div>
+    <div class="field"><p class="fh">Texto del slide</p><ul><li><strong>Título:</strong> Qué es Reportes SH</li><li>«~100 reportes escritos a la medida sobre los datos del ERP»</li><li>«Cada uno responde una pregunta de negocio concreta y se abre dentro de Steelhead»</li><li>«Con filtros propios: fechas, cliente, línea, turno…»</li></ul></div>
+    <div class="field"><p class="fh">Visual</p><p class="measure">El mismo mapa de islas de la slide 2, ahora conectadas por un solo puente rotulado «Reportes SH».</p></div>
+    <div class="callout info"><p class="ct">Notas del orador</p><p>«No es otro sistema que abrir: los reportes viven dentro de Steelhead, donde ya trabajan.»</p></div>
+  </section>
+
+  <section class="slide">
+    <h2 class="sec"><span class="num">04</span>LA GRAN IDEA: la foto que se renueva sola <span class="starred" title="slide clave">★</span></h2>
+    <div class="msg"><p class="ct">Mensaje único</p><p>Los reportes no corren sobre el ERP vivo; corren sobre una copia que Steelhead mantiene aparte y refresca sola cada madrugada (y bajo demanda, con permiso).</p></div>
+    <div class="field"><p class="fh">Texto del slide</p><ul><li><strong>Título:</strong> La idea clave: la foto que se renueva sola</li><li>«Los reportes corren sobre la <strong>base de reportería</strong> de Steelhead —una copia de los datos—, no sobre el ERP en vivo»</li><li>«Steelhead la <strong>regenera sola cada madrugada</strong> (≈2–6 am)»</li><li>«Quien tenga el permiso <strong>MANAGE Reports</strong> puede regenerarla <strong>al momento</strong> (con ~20 min entre una y otra), y esa copia fresca la ven <strong>todos</strong>»</li></ul></div>
+    <div class="field"><p class="fh">Visual</p><pre><code>[ERP Steelhead en vivo] --(1) regenera: madrugada + a demanda--&gt; [Base de reportería (copia compartida, solo lectura)]
+[Base de reportería] --(2) corren--&gt; [Los ~100 reportes]</code></pre></div>
+    <div class="callout meta"><p class="ct">Metáfora</p><p>No miras las tinas en tiempo real: revisas la <strong>foto más reciente</strong> del estado de la planta, que se renueva sola cada madrugada. ¿Necesitas una foto al momento? Quien tenga permiso toma una nueva —y esa foto la ven todos.</p></div>
+    <div class="callout info"><p class="ct">Notas del orador</p><p>Este es el concepto más importante del deck. <strong>Detente aquí.</strong> La consecuencia clave: un dato capturado hoy aparece <strong>tras la próxima regeneración</strong> — mañana de madrugada, o de inmediato si alguien con permiso la fuerza. Es un intercambio a propósito: consultar sin cargar el ERP en vivo. <strong>Ojo, no confundir con el snapshot semanal del repo:</strong> ése es el banco de pruebas de <em>desarrollo</em> (ver Manual del Administrador), NO lo que determina la frescura que ve el usuario. En el 101 el snapshot semanal no se menciona, a propósito, para no confundir.</p></div>
+  </section>
+
+  <section class="slide">
+    <h2 class="sec"><span class="num">05</span>Por qué se construyó así</h2>
+    <div class="msg"><p class="ct">Mensaje único</p><p>Trabajar sobre la copia permite consultas pesadas, seguras y repetibles.</p></div>
+    <div class="field"><p class="fh">Texto del slide</p><ul><li><strong>Título:</strong> Por qué sobre una copia y no en vivo</li><li>«Consultas pesadas sin frenar la operación»</li><li>«La copia es de <strong>solo lectura</strong>: imposible alterar un dato del ERP por accidente»</li><li>«Todos ven exactamente la misma foto: los números coinciden entre áreas»</li></ul></div>
+    <div class="field"><p class="fh">Visual</p><p class="measure">Un candado sobre la foto (solo lectura) y varias personas mirando la misma foto.</p></div>
+    <div class="callout info"><p class="ct">Notas del orador</p><p>Contrasta con exportar a Excel cada quien por su lado: cada copia envejece distinto.</p></div>
+  </section>
+
+  <section class="slide">
+    <h2 class="sec"><span class="num">06</span>El ciclo: bajar la foto, escribir, publicar</h2>
+    <div class="msg"><p class="ct">Mensaje único</p><p>El reporte nace en tres pasos: se baja la foto, se escribe la consulta, se publica de vuelta.</p></div>
+    <div class="field"><p class="fh">Texto del slide</p><ul><li><strong>Título:</strong> De la foto al reporte publicado</li><li>«<strong>Bajar</strong> la fotografía del ERP (<em>pull</em>)»</li><li>«<strong>Escribir y afinar</strong> la consulta contra la foto, verificando que dé lo correcto»</li><li>«<strong>Publicar</strong> el reporte de vuelta dentro de Steelhead (<em>push</em>), para que cualquiera lo abra»</li></ul></div>
+    <div class="field"><p class="fh">Visual</p><pre><code>Bajar la foto (pull) --&gt; Escribir/afinar la consulta --&gt; Publicar en Steelhead (push)</code></pre></div>
+    <div class="callout meta"><p class="ct">Metáfora</p><p><em>Pull</em> = recoger las fotos reveladas del laboratorio; <em>push</em> = colgar el reporte terminado en el tablero de la línea, para que todos lo consulten.</p></div>
+    <div class="callout info"><p class="ct">Notas del orador</p><p>El reporte final corre <strong>dentro de Steelhead</strong> sobre la foto; el usuario no ve nada de esto, solo abre y filtra.</p></div>
+  </section>
+
+  <section class="slide">
+    <h2 class="sec"><span class="num">07</span>La placa del reporte</h2>
+    <div class="msg"><p class="ct">Mensaje único</p><p>Cada reporte tiene una placa que dice de quién es, de qué tipo y su número.</p></div>
+    <div class="field"><p class="fh">Texto del slide</p><ul><li><strong>Título:</strong> Cómo se nombra cada reporte</li><li>«Placa de 4 segmentos: <code>RPT-PRD-ANL-17</code>»</li><li>«<code>PRD</code> = departamento dueño · <code>ANL</code> = tipo · <code>17</code> = consecutivo»</li><li>«Tres tipos: <strong>Catálogo</strong> (una lista), <strong>Analítica</strong> (un cubo por fechas), <strong>Control</strong> (cumple/no cumple)»</li></ul></div>
+    <div class="field"><p class="fh">Visual</p><p class="measure">La placa <code>RPT-PRD-ANL-17</code> descompuesta en sus 4 segmentos, con color por segmento.</p></div>
+    <div class="callout meta"><p class="ct">Metáfora</p><p>La <strong>placa o matrícula</strong> del reporte: igual que una tina o un rack lleva la suya (<code>T203-TI00-011</code>), cada reporte lleva la propia y se ubica sin abrirlo.</p></div>
+    <div class="callout info"><p class="ct">Notas del orador</p><p>Remitir al Inventario para la lista completa de placas. Desde julio de 2026 esa misma placa aparece <strong>dentro del reporte</strong>: el ícono ⓘ junto al título abre su ficha, con el nombre oficial, la placa, la versión, qué hace y a qué grano.</p></div>
+  </section>
+
+  <section class="slide">
+    <h2 class="sec"><span class="num">08</span>De qué está hecho: reporte, vista, dashboard</h2>
+    <div class="msg"><p class="ct">Mensaje único</p><p>Un reporte es el dato; encima se le ponen vistas (tablas y gráficas) y varias vistas arman un dashboard.</p></div>
+    <div class="field"><p class="fh">Texto del slide</p><ul><li><strong>Título:</strong> Las capas de lo que ves</li><li>«El <strong>reporte</strong> es el cubo de datos (la consulta)»</li><li>«Una <strong>vista</strong> es una forma de mirarlo: una tabla, una gráfica de barras, un mapa de calor»</li><li>«Un <strong>dashboard</strong> junta varias vistas en un tablero»</li><li><em>Nota al pie:</em> «Un <strong>filtro</strong> (dropdown: cliente, línea, turno…) acota lo que muestra el reporte.»</li></ul></div>
+    <div class="field"><p class="fh">Visual</p><pre><code>Reporte (cubo) --&gt; Vista (tabla / gráfica) --&gt; Dashboard (varias vistas en un tablero)</code></pre></div>
+    <div class="callout meta"><p class="ct">Metáfora</p><p>El <strong>cubo de datos</strong> es la materia prima; la <strong>vista</strong> es cómo la presentas; el <strong>tablero</strong> reúne varias presentaciones en una sola pantalla directiva.</p></div>
+    <div class="callout info"><p class="ct">Notas del orador</p><p>Hoy hay ~75 vistas y 3 dashboards; el conteo exacto vive en el Inventario.</p></div>
+  </section>
+
+  <section class="slide">
+    <h2 class="sec"><span class="num">09</span>Plantas gemelas: TLC y MTY</h2>
+    <div class="msg"><p class="ct">Mensaje único</p><p>Hay dos plantas en el sistema y todo reporte debe existir igual en ambas.</p></div>
+    <div class="field"><p class="fh">Texto del slide</p><ul><li><strong>Título:</strong> Dos plantas, los mismos reportes</li><li>«<strong>TLC</strong> (Tlalnepantla): la planta veterana, con años de historial»</li><li>«<strong>MTY</strong> (Monterrey): la planta nueva, apenas en arranque»</li><li>«Cada reporte se mantiene <strong>espejado</strong> en las dos»</li></ul></div>
+    <div class="field"><p class="fh">Visual</p><p class="measure">Dos plantas gemelas lado a lado; el mismo reporte reflejado en ambas.</p></div>
+    <div class="callout meta"><p class="ct">Metáfora</p><p><strong>Plantas gemelas</strong> de diseño idéntico: una con años de operación, otra recién instalada. Un reporte «vacío» en MTY casi siempre no es un error: es que la planta apenas arranca.</p></div>
+    <div class="callout info"><p class="ct">Notas del orador</p><p>Clave para TI: un cambio en una planta se aplica también en la otra, siempre.</p></div>
+  </section>
+
+  <section class="slide">
+    <h2 class="sec"><span class="num">10</span>La conexión con el ERP: la llave y la cerradura</h2>
+    <div class="msg"><p class="ct">Mensaje único</p><p>Para bajar la foto y publicar reportes, el sistema le habla al ERP con llaves; a veces Steelhead cambia la cerradura.</p></div>
+    <div class="field"><p class="fh">Texto del slide</p><ul><li><strong>Título:</strong> Cómo le hablamos al ERP: llaves y cerraduras</li><li>«Cada operación contra Steelhead se abre con una <strong>llave</strong> (un código; en lo técnico, un <em>hash</em>)»</li><li>«Cuando Steelhead se actualiza, <strong>cambia la cerradura</strong>: la llave vieja deja de abrir»</li><li>«Se recupera la nueva llave y se sigue trabajando»</li></ul></div>
+    <div class="field"><p class="fh">Visual</p><p class="measure">El sistema usando una llave sobre una cerradura del ERP; al lado, una cerradura cambiada con la llave vieja rechazada.</p></div>
+    <div class="callout meta"><p class="ct">Metáfora</p><p>La <strong>llave y la cerradura</strong> (metáfora compartida con los otros sistemas de la familia Steelhead). Rotación = «Steelhead cambia la cerradura; esta llave ya no abre».</p></div>
+    <div class="callout info"><p class="ct">Notas del orador</p><p>Es mantenimiento de rutina, invisible para el consumidor de reportes; el detalle lo cubre el Manual del Administrador.</p></div>
+  </section>
+
+  <section class="slide">
+    <h2 class="sec"><span class="num">11</span>Los temas delicados: banco de pruebas vs. línea real</h2>
+    <div class="msg"><p class="ct">Mensaje único</p><p>Un reporte puede salir perfecto en el banco de pruebas y fallar en la línea real; por eso se verifica en vivo.</p></div>
+    <div class="field"><p class="fh">Texto del slide</p><ul><li><strong>Título:</strong> Cuando el banco de pruebas engaña</li><li>«Un reporte corre perfecto en la copia local (<strong>banco de pruebas</strong>)… y sale vacío en Steelhead (<strong>línea real</strong>)»</li><li>«Dos causas típicas: la <strong>ventana de fechas</strong> corría un día de más; ciertos números “demasiado grandes” no viajaban al reporte en vivo»</li><li>«Se cazan verificando <strong>en la línea real</strong>, no solo en el banco»</li></ul></div>
+    <div class="field"><p class="fh">Visual</p><p class="measure">Dos tableros: «banco de pruebas ✓» y «línea real ✗», con una lupa sobre el segundo.</p></div>
+    <div class="callout meta"><p class="ct">Metáfora</p><p><strong>Banco de pruebas vs. línea real</strong>: el banco no reproduce todas las condiciones de planta; algunas fallas solo aparecen al calibrar en producción.</p></div>
+    <div class="callout info"><p class="ct">Notas del orador</p><p>«Hay una <strong>ficha profunda</strong> dedicada a la ventana de fechas, el error que tocó 53 reportes.» No profundizar aquí: es un <em>teaser</em>.</p></div>
+  </section>
+
+  <section class="slide">
+    <h2 class="sec"><span class="num">12</span>Panorama de lo que hace</h2>
+    <div class="msg"><p class="ct">Mensaje único</p><p>Son ~100 reportes en 14 departamentos, legibles en dos cortes: por departamento y por tipo.</p></div>
+    <div class="field"><p class="fh">Texto del slide</p><ul><li><strong>Título:</strong> Todo lo que cubre, de un vistazo</li><li><strong>Por departamento</strong> (los de más peso): Producción · Ingeniería · Ventas · Almacén · Calidad · Compras · Mantenimiento · Contabilidad · y más (RRHH, Sistemas, CxC/CxP, Laboratorio, Procesos).</li><li><strong>Por tipo</strong> (el <code>TIPO</code> de la placa, slide 7): <strong>Analíticas</strong> (~55, KPIs y cruces) · <strong>Catálogos</strong> (~38, listas maestras) · <strong>Control</strong> (~11, seguimiento diario). Suman el mismo universo.</li></ul></div>
+    <div class="field"><p class="fh">Visual</p><p class="measure">Mosaico de tarjetas por departamento con su conteo; debajo, separado por una línea, una tira de 3 tarjetas por tipo (Analíticas / Catálogos / Control). Nota: «~100 reportes — lista completa en el Inventario vivo».</p></div>
+    <div class="callout info"><p class="ct">Notas del orador</p><p>NO leer los 100: solo mostrar la amplitud y las dos formas de cortarlo. Remitir al Inventario para el detalle.</p></div>
+  </section>
+
+  <section class="slide">
+    <h2 class="sec"><span class="num">13</span>Cómo se lee este paquete</h2>
+    <div class="msg"><p class="ct">Mensaje único</p><p>Cada rol tiene una ruta de lectura y un color.</p></div>
+    <div class="field"><p class="fh">Texto del slide</p><ul><li><strong>Título:</strong> Tu ruta según tu rol</li><li><strong>Consumidor de reportes</strong> → Manual del Operador + ficha «Cliente combinado» + el 101.</li><li><strong>Jefe de TI</strong> → el 101 + Manual del Administrador + ficha «La ventana de fechas».</li><li>De consulta para ambos: Inventario y Glosario.</li></ul></div>
+    <div class="field"><p class="fh">Visual</p><p class="measure">Dos tarjetas con el color de cada audiencia, como en el Mapa.</p></div>
+    <div class="callout info"><p class="ct">Notas del orador</p><p>«Todo esto está en el documento “Empieza aquí”, que es su índice.»</p></div>
+  </section>
+
+  <section class="slide">
+    <h2 class="sec"><span class="num">14</span>Cierre: 4 ideas para llevarse</h2>
+    <div class="msg"><p class="ct">Mensaje único</p><p>Los cuatro conceptos que resumen todo.</p></div>
+    <div class="field"><p class="fh">Texto del slide</p><ul><li><strong>Título:</strong> Cuatro ideas para llevarse</li><li><strong>1. La foto que se renueva sola:</strong> los reportes corren sobre una copia de solo lectura que Steelhead refresca cada madrugada (o al momento, con permiso).</li><li><strong>2. Bajar → escribir → publicar:</strong> el ciclo con que nace cada reporte.</li><li><strong>3. Plantas gemelas:</strong> todo reporte existe igual en TLC y MTY.</li><li><strong>4. Banco vs. línea real:</strong> se verifica en vivo, porque el banco de pruebas a veces engaña.</li></ul></div>
+    <div class="field"><p class="fh">Visual</p><p class="measure">Los 4 íconos/metáforas juntos: foto · ciclo · plantas gemelas · banco/línea.</p></div>
+    <div class="callout info"><p class="ct">Notas del orador</p><p>Cerrar invitando a las fichas profundas y los manuales; abrir preguntas.</p></div>
+  </section>
+
+  <h2 class="sec"><span class="num">15</span>Apéndice: metáforas maestras</h2>
+  <p class="sec-lead measure">Vocabulario compartido de todo el paquete.</p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Concepto técnico</th><th>Metáfora del deck</th></tr></thead>
+      <tbody>
+      <tr><td>Base de reportería de Steelhead (producción)</td><td>La foto que se renueva sola de la planta (madrugada + a demanda)</td></tr>
+      <tr><td>Snapshot DuckDB local del repo (desarrollo)</td><td>La copia de trabajo del laboratorio — NO se muestra en el 101</td></tr>
+      <tr><td>Copia de solo lectura</td><td>La foto con candado: se mira, no se altera</td></tr>
+      <tr><td>Bajar definiciones y foto (<em>pull</em>)</td><td>Recoger las fotos reveladas del laboratorio</td></tr>
+      <tr><td>Publicar el reporte (<em>push</em>)</td><td>Colgar el reporte en el tablero de la línea</td></tr>
+      <tr><td>Placa <code>RPT-DEP-TIPO-NN</code></td><td>La placa/matrícula del reporte</td></tr>
+      <tr><td>Copia local (banco) vs. Steelhead (vivo)</td><td>Banco de pruebas vs. línea real</td></tr>
+      <tr><td>Trampas server-side (fechas, números grandes)</td><td>Fallas que solo aparecen en la línea real</td></tr>
+      <tr><td>Dos dominios TLC / MTY</td><td>Plantas gemelas: la veterana y la de arranque</td></tr>
+      <tr><td>Cascada de precio / tipo de cambio</td><td>Cadena de repuestos de respaldo del almacén</td></tr>
+      <tr><td>Persisted query / hash</td><td>La llave que abre una operación del ERP</td></tr>
+      <tr><td>Rotación de hash</td><td>Steelhead cambia la cerradura; «esta llave ya no abre»</td></tr>
+      <tr><td>Reporte → Vista → Dashboard</td><td>Cubo de datos → forma de mirarlo → tablero directivo</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout warn">
+    <p class="ct">Consistencia de vocabulario</p>
+    <p>Mantén estas metáforas idénticas entre el deck, los manuales y las fichas: la repetición del mismo vocabulario es lo que hace que el modelo mental «pegue». <strong>No</strong> uses metáforas de «menú / plato de restaurante». La metáfora <strong>llave / cerradura</strong> se reserva para la conexión con el ERP (slide 10).</p>
+  </div>
+
+  <footer class="foot">
+    <div><span class="badge perenne">Perenne</span> &nbsp; Guión de la presentación «Reportes SH 101»</div>
+    <div>Acompaña a <a href="101-deck.html" style="color:var(--faint)">101-deck.html</a></div>
+    <div class="doc-credit" style="flex-basis:100%;margin-top:10px;padding-top:12px;border-top:1px solid var(--hair);display:flex;align-items:center;gap:12px;font-size:.78rem;color:var(--faint)">
+      <a href="https://capazconsultoria.com" target="_blank" rel="noopener" aria-label="Capaz Consultoría" style="flex:0 0 auto;display:inline-flex"><img src="assets/capaz-c.png" alt="Capaz Consultoría" style="height:30px;width:auto;display:block"></a>
+      <span>Documento elaborado por <a href="mailto:oviazcan@capazconsultoria.com" style="color:var(--accent-ink);font-weight:600;text-decoration:none">Omar Viazcán</a> · <a href="https://capazconsultoria.com" target="_blank" rel="noopener" style="color:var(--accent-ink);text-decoration:none">Capaz Consultoría</a></span>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>
