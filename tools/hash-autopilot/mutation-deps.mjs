@@ -492,6 +492,54 @@ async function createRoutesAborted(page, sink, { url }) {
   if (dbg) console.log(`       [dbg] Guardar rutas → ${sink?.hashes?.CreateUpdateDeleteRoutes ? 'CAPTURADO' : 'sin hash aún'}`);
 }
 
+// UpdateManyScheduleTasks — FIJAR la hora de una tarea de programación (wo-schedule-button
+// Fase 2a). Se dispara desde la ficha de la OT: botón 📅 del header
+// (`svg[data-steelhead…]` no aplica aquí; el ancla real es `svg[data-testid="CalendarMonthIcon"]`
+// dentro de un `button[aria-label="View Schedule"]` — VERIFICADO EN VIVO 2026-07-28) → abre un
+// modal con un FullCalendar (`.fc-*`) de las tareas de esa OT → clic en el evento → formulario
+// con el botón `Update`, que es el que dispara la mutación (breadcrumb `button:Update` del scan
+// 2026-07-23 sobre la OT 14983).
+//
+// ⚠️ REQUISITO DE DATOS: la OT Centinela 11677 **NO tiene ninguna tarea programada** (verificado
+// en vivo: el FullCalendar del modal sale vacío), así que HOY este ciclo no puede disparar nada.
+// El `load` lo detecta y devuelve name:'' → el ciclo NO corre (fail-closed limpio, sin clicar a
+// ciegas) en vez de fingir cobertura. Para habilitarlo basta programar la OT Centinela en el
+// tablero (una tarea, estación cualquiera, fecha lejana). Mientras tanto, el DOM del formulario
+// del evento es lo ÚNICO no verificado de esta ruta: el botón se ancla por texto EN+ES.
+async function fixScheduleTaskAborted(page, sink, { url }) {
+  const dbg = process.env.SA_DBG;
+  if (sink && sink.abortOps) sink.abortOps.add('UpdateManyScheduleTasks');
+  await page.goto(url, { waitUntil: 'domcontentloaded' }).catch(() => {});
+  const deadline = Date.now() + 30000;
+  while (Date.now() < deadline) {
+    if (await page.evaluate(() => /Centinela/i.test(document.body ? document.body.innerText : '')).catch(() => false)) break;
+    await page.waitForTimeout(1500);
+  }
+  // 📅 del header (ancla estructural, idioma-independiente).
+  const cal = page.locator('button:has(svg[data-testid="CalendarMonthIcon"])').first();
+  await cal.waitFor({ state: 'visible', timeout: 20000 });
+  await cal.click({ timeout: 10000 });
+  const dialog = page.locator('[role="dialog"]').first();
+  await dialog.waitFor({ state: 'visible', timeout: 20000 });
+  // El calendario es FullCalendar: cada tarea es un `.fc-event`. Sin eventos no hay nada
+  // que fijar → se sale sin clicar (la OT centinela debe estar programada, ver nota).
+  const evento = dialog.locator('.fc-event, .fc-daygrid-event, .fc-timegrid-event').first();
+  const hayEvento = await evento.count().catch(() => 0);
+  if (!hayEvento) {
+    if (dbg) console.log('       [dbg] calendario de la OT centinela SIN tareas → nada que disparar');
+    return;
+  }
+  await evento.click({ timeout: 10000 }).catch(() => {});
+  await page.waitForTimeout(1200);
+  // El formulario del evento trae el botón Update (única parte NO verificada de la ruta).
+  const btn = page.locator('[role="dialog"] button')
+    .filter({ hasText: /^(Update|Actualizar)$/i }).first();
+  await btn.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
+  await btn.click({ timeout: 10000 }).catch(() => {});
+  await page.waitForTimeout(3000);
+  if (dbg) console.log(`       [dbg] Update tarea → ${sink?.hashes?.UpdateManyScheduleTasks ? 'CAPTURADO' : 'sin hash aún'}`);
+}
+
 // ── Mutations de REPORTES (captura-y-aborta) ────────────────────────────────
 // Las 4 mutations del módulo Reporting rotaron el 2026-07-20 (report-liberator usa las 3 de
 // /Reporting/Edit; report-regen usa GenerateDuckDb). Se recapturan por CAPTURA-Y-ABORTA: se
@@ -786,6 +834,28 @@ const HANDLERS = {
     async mutate(page, ctx) { await createRoutesAborted(page, ctx.sink, ctx); },
     async restore(page, { sink }) {
       if (sink && sink.abortOps) sink.abortOps.delete('CreateUpdateDeleteRoutes');
+    },
+  },
+  workOrderScheduleFix: {
+    // load reforzado: además del marcador Centinela, exige que la OT TENGA una tarea en el
+    // calendario. Sin tarea no hay `Update` que clicar, y un ciclo que clica a ciegas en una
+    // pantalla de programación es peor que uno que no corre.
+    async load(page, ctx) {
+      const base = await loadWorkOrderSentinel(page, ctx);
+      if (!base.name) return base;
+      const cal = page.locator('button:has(svg[data-testid="CalendarMonthIcon"])').first();
+      const ok = await cal.waitFor({ state: 'visible', timeout: 15000 }).then(() => 1).catch(() => 0);
+      if (!ok) return { name: '' };
+      await cal.click({ timeout: 10000 }).catch(() => {});
+      const dialog = page.locator('[role="dialog"]').first();
+      await dialog.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
+      const n = await dialog.locator('.fc-event, .fc-daygrid-event, .fc-timegrid-event').count().catch(() => 0);
+      if (process.env.SA_DBG) console.log(`       [dbg] tareas en el calendario de la OT centinela: ${n}`);
+      return { name: n > 0 ? 'Centinela' : '' };
+    },
+    async mutate(page, ctx) { await fixScheduleTaskAborted(page, ctx.sink, ctx); },
+    async restore(page, { sink }) {
+      if (sink && sink.abortOps) sink.abortOps.delete('UpdateManyScheduleTasks');
     },
   },
   maintenanceNode: {

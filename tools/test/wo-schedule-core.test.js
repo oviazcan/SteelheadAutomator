@@ -474,3 +474,109 @@ test('isPrintDialogHeading / isPrintPreviewHeading: ES confirmado', () => {
   assert.equal(Core.isPrintDialogHeading('Otra cosa'), false);
   assert.equal(Core.isPrintPreviewHeading(null), false);
 });
+
+// ══════════════════════════════════════════════════════════════════════════
+// Fase 2a — programación intencional desde la ficha
+// ══════════════════════════════════════════════════════════════════════════
+// La conversión ISO↔input local es el punto donde un error NO se ve: no truena,
+// solo programa la OT a otra hora. Offset explícito en minutos, convención de
+// Date.getTimezoneOffset() (positivo al oeste: UTC-6 ⇒ 360).
+
+test('isoToLocalInput: UTC → hora local del input (CDMX, UTC-6)', () => {
+  // el payload real capturado: 22:00Z = 16:00 en CDMX
+  assert.equal(Core.isoToLocalInput('2026-07-22T22:00:00.000Z', 360), '2026-07-22T16:00');
+});
+
+test('isoToLocalInput: cruzar la medianoche cambia el DÍA, no solo la hora', () => {
+  assert.equal(Core.isoToLocalInput('2026-07-23T04:00:00.000Z', 360), '2026-07-22T22:00');
+  assert.equal(Core.isoToLocalInput('2026-07-22T20:00:00.000Z', -360), '2026-07-23T02:00');
+});
+
+test('isoToLocalInput: UTC (offset 0) se queda igual, y basura da ""', () => {
+  assert.equal(Core.isoToLocalInput('2026-01-05T07:05:00.000Z', 0), '2026-01-05T07:05');
+  assert.equal(Core.isoToLocalInput('no-es-fecha', 360), '');
+  assert.equal(Core.isoToLocalInput(null, 360), '');
+});
+
+test('localInputToIso: input local → ISO UTC', () => {
+  assert.equal(Core.localInputToIso('2026-07-22T16:00', 360), '2026-07-22T22:00:00.000Z');
+  assert.equal(Core.localInputToIso('2026-07-22T22:00', 360), '2026-07-23T04:00:00.000Z');
+});
+
+test('localInputToIso: rechaza lo que no parsea (no inventa una hora)', () => {
+  assert.equal(Core.localInputToIso('', 360), null);
+  assert.equal(Core.localInputToIso('22/07/2026 16:00', 360), null);
+  assert.equal(Core.localInputToIso(null, 360), null);
+});
+
+test('ISO → local → ISO es identidad (el round-trip no corre la hora)', () => {
+  for (const iso of ['2026-07-22T22:00:00.000Z', '2026-01-01T00:00:00.000Z', '2026-12-31T23:59:00.000Z']) {
+    for (const off of [360, 0, -330, 240]) {
+      assert.equal(Core.localInputToIso(Core.isoToLocalInput(iso, off), off), iso,
+        `round-trip roto para ${iso} @ offset ${off}`);
+    }
+  }
+});
+
+test('buildScheduleTaskUpdateInput reproduce el payload real capturado', () => {
+  // scan_results_2026-07-23_185855, ScheduleBoard 454 — echo de todos los campos.
+  const task = {
+    taskId: 86745, scheduleId: 454, stationId: 12101,
+    expectedStartTime: '2026-07-20T10:00:00.000Z',
+    totalTimeMinutes: 5,
+    cycleTimeMinutes: 0.0009090909090909091,
+    treatmentTimeMinutes: 0.0009090909090909705,
+  };
+  const out = Core.buildScheduleTaskUpdateInput(task, {
+    expectedStartTime: '2026-07-22T22:00:00.000Z', isIntentional: true,
+  });
+  assert.deepEqual(out, {
+    scheduledTasks: [{
+      id: 86745, scheduleId: 454, stationId: 12101,
+      expectedStartTime: '2026-07-22T22:00:00.000Z',
+      totalTimeMinutes: 5,
+      cycleTimeMinutes: 0.0009090909090909091,
+      treatmentTimeMinutes: 0.0009090909090909705,
+      isIntentional: true,
+    }],
+  });
+});
+
+test('buildScheduleTaskUpdateInput: sin taskId no arma nada (la mutación es por id)', () => {
+  assert.equal(Core.buildScheduleTaskUpdateInput({ scheduleId: 1 }, {}), null);
+  assert.equal(Core.buildScheduleTaskUpdateInput(null, {}), null);
+});
+
+// La respuesta de UpdateManyScheduleTasks no confirma NADA de lo pedido
+// (`{mnUpdateScheduleTaskById:{clientMutationId:null}}`), así que la única prueba
+// de que se aplicó es releer la tarea. Mismo modo de fallo que el load-before-save
+// del auto-ruteador: el servidor acepta y no aplica, y la UI canta victoria.
+test('verifyScheduleTaskApplied: la tarea releída coincide → ok', () => {
+  const r = Core.verifyScheduleTaskApplied(
+    { expectedStartTime: '2026-07-22T22:00:00.000Z', isIntentional: true },
+    { expectedStartTime: '2026-07-22T22:00:00.000Z', isIntentional: true });
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.reasons, []);
+});
+
+test('verifyScheduleTaskApplied: compara el INSTANTE, no la cadena', () => {
+  // el servidor normaliza el formato ISO; sin milisegundos sigue siendo la misma hora
+  const r = Core.verifyScheduleTaskApplied(
+    { expectedStartTime: '2026-07-22T22:00:00Z', isIntentional: true },
+    { expectedStartTime: '2026-07-22T22:00:00.000Z', isIntentional: true });
+  assert.equal(r.ok, true);
+});
+
+test('verifyScheduleTaskApplied: si NO se aplicó, lo dice', () => {
+  const r = Core.verifyScheduleTaskApplied(
+    { expectedStartTime: '2026-07-20T10:00:00.000Z', isIntentional: false },
+    { expectedStartTime: '2026-07-22T22:00:00.000Z', isIntentional: true });
+  assert.equal(r.ok, false);
+  assert.equal(r.reasons.length, 2);
+});
+
+test('verifyScheduleTaskApplied: tarea que desapareció no es un éxito', () => {
+  const r = Core.verifyScheduleTaskApplied(null, { expectedStartTime: '2026-07-22T22:00:00.000Z' });
+  assert.equal(r.ok, false);
+  assert.match(r.reasons[0], /ya no aparece/i);
+});

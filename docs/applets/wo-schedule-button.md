@@ -1,6 +1,6 @@
 # wo-schedule-button — Programación INLINE en la ficha de Orden de Trabajo
 
-**Versión:** 0.6.0 — **+ auto-impresión INVISIBLE de JobTag (fallback del iframe del listado)** (VIVO 1.7.200, 2026-07-24). En la ficha, si la URL trae `?sa_print=jobtag&sa_dl=1` (la abre el botón 🏷️ del listado SOLO cuando el iframe falla/está bloqueado), `maybeAutoPrintFromParam` **auto-maneja** el modal nativo de etiquetas: `findPrintTrigger` (ancla `data-steelhead-component-id="WORK_ORDER_PAGE_HEADER_PRINT_JOB_TAGS_BUTTON"`, bilingüe/responsive-safe) → click → "Imprimir Regular" (espera dropdown poblado + `sleep(1000)` anti-blanco + `clickButtonRobust`) → **intercepta la respuesta de `GetPdfTemplateOutputV2`** para la share-URL (`patchFetch`, con fallback al `<object>` del preview) → **descarga** `WO<num>.pdf` + `window.close()` best-effort. `autoPrint(type,'download'|'self'|'newtab')`. **NO pone botones en la ficha** (decisión del usuario: el botón vive solo en Acciones del listado). El grueso del flujo vive **duplicado en `wo-listing-columns.driveLabel`** para el iframe (el padre maneja el iframe same-origin; la extensión no inyecta en iframes). Ver [`wo-label-pdf-buttons.md`](wo-label-pdf-buttons.md). Core `wo-schedule-core` **37/37**.
+**Versión:** 0.7.0 — **+ Fase 2a: programación INTENCIONAL desde la ficha** (cada 📅 de una tarea existente abre un modal que fija su hora y la marca intencional, con la escritura VERIFICADA releyendo el programa). Ver §"Fase 2a cableada". **Previo 0.6.0** — **+ auto-impresión INVISIBLE de JobTag (fallback del iframe del listado)** (VIVO 1.7.200, 2026-07-24). En la ficha, si la URL trae `?sa_print=jobtag&sa_dl=1` (la abre el botón 🏷️ del listado SOLO cuando el iframe falla/está bloqueado), `maybeAutoPrintFromParam` **auto-maneja** el modal nativo de etiquetas: `findPrintTrigger` (ancla `data-steelhead-component-id="WORK_ORDER_PAGE_HEADER_PRINT_JOB_TAGS_BUTTON"`, bilingüe/responsive-safe) → click → "Imprimir Regular" (espera dropdown poblado + `sleep(1000)` anti-blanco + `clickButtonRobust`) → **intercepta la respuesta de `GetPdfTemplateOutputV2`** para la share-URL (`patchFetch`, con fallback al `<object>` del preview) → **descarga** `WO<num>.pdf` + `window.close()` best-effort. `autoPrint(type,'download'|'self'|'newtab')`. **NO pone botones en la ficha** (decisión del usuario: el botón vive solo en Acciones del listado). El grueso del flujo vive **duplicado en `wo-listing-columns.driveLabel`** para el iframe (el padre maneja el iframe same-origin; la extensión no inyecta en iframes). Ver [`wo-label-pdf-buttons.md`](wo-label-pdf-buttons.md). Core `wo-schedule-core` **37/37**.
 **Previo 0.5.0:** **prioridad de carga #1** del readout de programación (prefetch en init + `wo-schedule-button` al FRENTE de `apps[]`). Readout como **texto que envuelve** + **un 📅 por tarea/estación**. F1 con `WorkOrderSchedule`.
 
 ## Prioridad de carga (v0.5.0)
@@ -81,12 +81,65 @@ Requiere ENSAMBLAR por WO: `treatmentId`, `recipeNodeId`, `partNumberId`, `partS
 **`UpdateManyStationTasks`** (hash `de13ff5f…`) = ventanas de disponibilidad de ESTACIÓN (con `rrule`), parte del reschedule; NO es tarea de WO. **Reschedule** = combinación (más datos) de Create/Update/Delete + UpdateStation; no hay mutación nueva.
 
 ### Fasado propuesto
-- **Fase 2a (LISTA para cablear, bajo riesgo):** 📅 clicable → modal dark-mode (fecha/hora) → **UpdateManyScheduleTasks** (`isIntentional:true`) sobre una tarea EXISTENTE. Cubre el caso común (OT ya auto-agendada). Core `buildScheduleTaskUpdateInput` ✔ + tests. Falta: hash a config + regen route + UI + confirmación + refresh.
+- **Fase 2a — ✅ CABLEADA (2026-07-28, v0.7.0).** Ver §"Fase 2a cableada" abajo.
 - **Fase 2b (compleja, riesgo):** CREATE en OT sin tarea → mapear origen de `treatmentId`/`times`/`partSetUuid`, ensamblar elementos desde `SchedulablePartLocations`+`WorkOrder`, validar en vivo. Core `buildScheduleTaskCreateInput` pendiente (hasta mapear fuentes).
 - **Fase 2c (destructiva):** reschedule (reacomoda todo) → modal de advertencia. Última.
 
 ### Rutas de regeneración (deuda)
-Los hashes de mutación (`UpdateManyScheduleTasks`, luego Create/Delete/UpdateStation) van a `config.mutations` **con** ruta en `hash-autopilot` (centinela captura-y-aborta; requiere DOM del calendario/modal nativo). Deuda hasta cablear.
+Los hashes de mutación (`UpdateManyScheduleTasks`, luego Create/Delete/UpdateStation) van a `config.mutations` **con** ruta en `hash-autopilot` (centinela captura-y-aborta; requiere DOM del calendario/modal nativo). `UpdateManyScheduleTasks` ya está — ver §"Fase 2a cableada".
+
+## Fase 2a cableada — programación intencional desde la ficha (v0.7.0, 2026-07-28)
+
+Cada **📅 de una tarea existente** es clicable → modal dark-mode con la fecha/hora → **fija** esa
+tarea y la marca `isIntentional` (STATIC-SCHEDULED: el planificador deja de moverla al reacomodar).
+Sin abrir el calendario nativo, que era el paso que se quería ahorrar. Si la tarea ya está fijada,
+el modal ofrece además **Quitar fijado**.
+
+**El 📅 de "Sin programar" NO es clicable.** La mutación es update-**por-id**: sin tarea no hay
+qué actualizar. Ofrecer un click que no puede escribir es peor que no ofrecerlo — el tooltip
+manda al tablero, que es donde se crea la tarea (crear desde aquí es la Fase 2b).
+
+### La escritura se VERIFICA, porque el servidor no confirma nada
+`UpdateManyScheduleTasks` responde `{mnUpdateScheduleTaskById:{clientMutationId:null}}`: ni la
+fecha, ni el `isIntentional`, ni la tarea. Un `await` sin excepción **no prueba que se aplicó** —
+es el mismo modo de fallo que costó el fix *load-before-save* del auto-ruteador (el servidor
+acepta la mutación y no hace nada, y la UI canta victoria). Así que al aplicar:
+1. se manda la mutación;
+2. se **releen** `WorkOrder` + `WorkOrderSchedule` **saltando todos los caches** (el índice que
+   capturó el interceptor es la foto anterior: verificar contra él diría "✅" sobre datos viejos);
+3. `WoScheduleCore.verifyScheduleTaskApplied` compara la tarea releída con lo pedido — el
+   **instante**, no la cadena, porque el servidor normaliza el formato ISO;
+4. si no coincide, el modal lo dice con todas sus letras y manda a revisar el tablero.
+
+### La conversión de hora va en el núcleo puro
+El servidor habla ISO en UTC y el `<input type="datetime-local">` habla hora local sin zona. Ahí
+un error **no truena: solo programa la OT a otra hora**. Por eso `isoToLocalInput` /
+`localInputToIso` son puras, con el **offset explícito** (convención `getTimezoneOffset`), y el
+glue calcula ese offset **para la fecha en cuestión** (no para "ahora") con una segunda pasada si
+el valor cae del otro lado de un cambio de horario — así el DST lo resuelve el navegador y no una
+constante nuestra. Tests: round-trip ISO→local→ISO en 4 husos, cruce de medianoche y basura.
+
+### Ruta de regeneración — declarada, BLOQUEADA POR DATOS
+Entidad `workOrderScheduleFix` (OT Centinela 11677, captura-y-aborta). El disparador se
+**verificó en vivo** (2026-07-28): 📅 del header = `button` con
+`svg[data-testid="CalendarMonthIcon"]` (`aria-label="View Schedule"`) → modal con un
+**FullCalendar** (`.fc-*`) de las tareas de esa OT → clic en el evento → botón `Update`.
+
+**Pero la OT Centinela no tiene ninguna tarea programada** (calendario vacío, verificado), así que
+hoy el ciclo no puede disparar nada. El `load` lo detecta y devuelve `name:''` → el ciclo **no
+corre**, en vez de clicar a ciegas en una pantalla de programación. Para habilitarlo basta
+**programar la OT Centinela** en el tablero (una tarea, estación cualquiera, fecha lejana). Lo
+único no verificado de la ruta es el DOM del formulario del evento; su botón se ancla por texto
+EN+ES.
+
+### Hallazgo lateral: la OT Centinela se llama «Sentinela»
+El objeto real en Steelhead es **"Work Order Sentinela - 11677"** — errata (S inglesa +
+terminación española); en español correcto es **«Centinela»**. El gate del autopilot
+(`loadWorkOrderSentinel` → `/Centinela/i` sobre todo el `body`) **pasa por accidente**: lo salvan
+otros tres links de la ficha que sí dicen "Centinela" con C (el PN y el cliente centinela), no el
+nombre de la OT. Si esos links cambiaran, las **tres** rutas que cuelgan de esa OT
+(`workOrderRoutes`, `partGroupCreate`, `partsSplitTransfer`) se apagarían fail-closed en silencio.
+Renombrar la OT a «Centinela» cierra las dos cosas de un golpe.
 
 ## Arquitectura
 
