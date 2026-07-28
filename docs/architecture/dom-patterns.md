@@ -37,11 +37,64 @@ solo tapar el locale de hoy.
   definitions) renderizan sus **etiquetas en inglés** aun con la instancia en español (solo los
   datos salen en ES). No urge traducir esos anclajes, pero **sí** conviene migrarlos a
   estructura cuando el handle existe (ej. bill-gate → `#root_DatosContables_Divisa`).
+- **Matiz 2026-07-27 (importante): "los modales de SH están en inglés" NO es regla confiable.**
+  En UNA MISMA pantalla conviven ambos idiomas. Medido con la instancia en español, modal Editar NP:
+  el panel de unidades sale **en inglés** (`Per Part Count Unit Definitions:`, `KGM Kilogramo / Part:`
+  — confirma el hallazgo de arriba), pero el sub-modal de precio que se abre DESDE ese mismo modal
+  sale **en español** (`Precio del número de parte`), y su `window.alert` también
+  (`Error al guardar el precio`). Conclusión: **no extrapoles el idioma de un modal a su vecino**;
+  cada anclaje necesita su propia evidencia — o mejor, no depender del idioma.
 
 Patrón bueno de referencia: `proceso-calculator.findProcessControl()` (component-id primario +
 texto fallback), `report-regen`/`sensor-graph-hide-all` (por `data-testid`), `bill-autofill`
 gate (fallback `[role=dialog] #root_DatosContables_Divisa`). Inventario y estado de migración
 en [`bilingual-anchoring-debt.md`](bilingual-anchoring-debt.md).
+
+### Por qué la jerarquía existe: el caso medido de `price-confirm-guard` (2026-07-27)
+
+El gate del candado de precio era `MODAL_TITLE_RE || hasPriceSchema`. Medido EN VIVO con la UI en
+español, con el modal abierto:
+
+```
+gatePorTitulo: false     ← /Part Number Price/i nunca matcheó (el modal se llama
+                            «Precio del número de parte»)
+gatePorSchema: true      ← lo ÚNICO que sostenía el candado
+```
+
+Dos lecciones que valen para cualquier applet:
+
+1. **Un anclaje de texto que falla no truena: se apaga en silencio.** El candado llevaba semanas
+   dependiendo por completo del ancla estructural sin que nadie lo supiera, y antes de que ésta
+   existiera (`dc0717b`, 2026-07-16) simplemente **no se disparaba** en ese flujo. En un guard eso
+   significa que la operación protegida pasaba sin protección. Por eso el nivel 3 (texto) **nunca**
+   debe ser la única señal de un gate.
+2. **Adivinar la traducción falla aunque "suene bien".** `bilingual-anchoring-debt.md` traía dos
+   hipótesis y **las dos eran incorrectas**: «Precio de Número de Parte» (real: «Precio d**el**
+   número de parte») y «Error al guardar precio» (real: «Error al guardar **el** precio»). Un regex
+   derivado de cualquiera habría fallado en silencio.
+
+Forma final (v0.1.5): decisión pura `PriceConfirmCore.isPriceModal({hasPriceSchema, title})` —
+estructura decide, texto ES+EN solo **amplía**— y el glue cae a la señal estructural si el core no
+cargó. **El texto como red de seguridad nunca debe poder REDUCIR el match.**
+
+## Inspección en vivo por automatización de Chrome (MCP)
+
+Cuando inspecciones la SPA con las herramientas de navegador en vez de pedir el wrapper HTML:
+
+- **La ventana de Chrome NO puede quedar tapada por completo.** Si otra app (terminal/IDE en
+  pantalla completa) la cubre al 100%, Chrome la marca `hidden` por **detección de oclusión** y
+  **congela la página**: `setTimeout` estrangulado, respuestas de `fetch` que **nunca resuelven**,
+  screenshots que expiran y `Runtime.evaluate` reventando a los 45s. Se ve idéntico a "el ERP está
+  caído" — perdí varios intentos creyendo eso.
+- **Abrir ventana nueva en vez de pestaña NO basta** (medido): nace detrás y se congela igual.
+- **No necesita el foco.** Medido con la ventana apenas destapada (1710 → 1576 px, o sea 134 px
+  asomando): `visibilityState:"visible"`, `hasFocus():false`, `setTimeout(300)` → 302 ms, rAF 1 ms,
+  fetch 120 ms. Basta con que asome una franja; el teclado se queda en el editor.
+- **Los `window.alert` nativos bloquean TODO** (JS, screenshots, inyección) y **solo el usuario
+  puede cerrarlos**. Si un applet devuelve un error sintético que hace a SH lanzar un `alert`, lo
+  vas a sufrir aquí — razón extra para suprimirlos bien.
+- Mientras la página esté congelada, las esperas por **`MutationObserver`** siguen funcionando
+  (sus callbacks no se estrangulan); los `setTimeout` no. Sirve como paliativo, no como solución.
 
 ## Patrones de label en Steelhead vistos hasta ahora
 

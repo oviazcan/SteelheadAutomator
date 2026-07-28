@@ -156,7 +156,7 @@ es el último recurso, no el primero):
 
 **PENDIENTE (audit repo-wide de anclajes bilingües):** revisar TODOS los applets de `remote/scripts/*.js` que anclen por texto de UI y confirmar que cada anclaje matchee ES+EN. Priorizar los que corren sobre modales/formularios de SH (autofills, guards, create-order, unit-autoconvert, invoice-*, receiver-date, warehouse, weight-quick-entry, surtido-guard, price-confirm, vale-almacen). Registrar hallazgos por applet y hardenizar con evidencia de ambos locales. Ver task en el tracker.
 
-Patrones específicos (label-driven extractors, react-select, MUI X DatePicker, modal injection, auto-fill con cancellation tokens, etc.) en [`docs/architecture/dom-patterns.md`](docs/architecture/dom-patterns.md).
+Patrones específicos (label-driven extractors, react-select, MUI X DatePicker, modal injection, auto-fill con cancellation tokens, etc.) en [`docs/architecture/dom-patterns.md`](docs/architecture/dom-patterns.md) — ahí también vive la **jerarquía de anclaje** (estándar 2026-07-17, con el caso medido de `price-confirm-guard`) y cómo **inspeccionar en vivo por automatización de Chrome** sin que la página se congele (la ventana no puede quedar tapada del todo; no necesita el foco).
 
 ## Reglas de memoria en applets de larga duración
 **ANTES de tocar cualquier applet que procese >200 items, mantenga panel abierto, corra `runPool`, o se ejecute por minutos — invoca el skill `memory-hardening-applets`** (`~/.claude/skills/memory-hardening-applets/SKILL.md`). Cubre los dos ejes: memoria propia del applet (slim responses, parse once, clear Maps, closePanel cleanup, seed pattern) y memoria del SPA host (Datadog RUM stop, Apollo cache drain, mem monitor con guardrail a 88%).
