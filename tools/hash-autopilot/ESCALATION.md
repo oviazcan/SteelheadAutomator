@@ -73,3 +73,33 @@ diagnósticos y **dos reparaciones distintas** — *"desarchiva/renombra el cent
 
 Ahora la razón real del ciclo viaja en `observedByOp` (op → `"ciclo centinela abortó: <razón>"`).
 Sin entrada declarada se conserva el genérico de siempre (retrocompatible, con test).
+
+## Actualización 2026-07-28 — la captura de rebote: por qué `recipeTried` puede mandar a la pantalla equivocada
+
+Escalaron 3 ops (`AllSensorDashboards`, `Customer`, `SensorDashboardQuery`). **Dos eran falsa
+alarma** (blip de sesión/red en la corrida de las 07:36: probe 5/5 auth-unknown, ProductUpdates
+con `bodyLen=60`, los dos `clickFirst` en cero, y el refresh ROCP tronando a las 07:53 y 09:00);
+sus recetas capturaron sin tocar nada al primer intento. **La tercera sí estaba rota, desde hacía
+6 días, y nadie lo vio.**
+
+`AllSensorDashboards` estaba declarada en **tres** rutas (`home-list` = goto `/`,
+`sensor-dashboards` = `/Dashboards`+clic, `sensordashboards-list` = goto a la lista). `selectRoutes`
+es set-cover greedy: `home-list` cubría 2 pendientes (`AllSensorDashboards` + `CurrentUser`) y
+ganaba **siempre** → las otras dos nunca corrían. El home **dejó de dispararla el 2026-07-22**
+(0/41 ese día y 0 en las ~126 corridas siguientes; el 07-21 iba 26/35) y aun así la op salía
+**✓ vigente todos los días**: el paso 0 de `maintenance-sensordashboards-detail` visita la misma
+lista y **el sink es COMPARTIDO entre rutas**, así que la capturaba **de rebote**. El día que esa
+ruta falló por el blip, las dos cayeron juntas.
+
+**Dos lecciones para el Nivel B:**
+1. **Una captura declarada en una ruta que NO la dispara no falla ruidosamente** — la absorbe otra
+   ruta y el catálogo miente en silencio. Es el modo de falla que ya documentaba
+   `route-catalog-coherence.test.js`; la defensa es atar la op a UNA sola ruta verificada
+   (`_manualRouteOps` + EXPECTED en el test).
+2. **`recipeTried` del `needs-attention` es la receta que ELIGIÓ el planificador, no la que de
+   hecho dispara la op.** Aquí mandaba a re-descubrir el home cuando la pantalla real era
+   `/Domains/{d}/SensorDashboards`. Antes de dar por rota una receta, **prueba también las otras
+   rutas que declaran la misma op**.
+
+Mejora de motor pendiente (no se hizo aquí, es cambio de motor y no de receta): avisar cuando una
+ruta seleccionada **no captura una op que declara**, aunque otra la capture de rebote.

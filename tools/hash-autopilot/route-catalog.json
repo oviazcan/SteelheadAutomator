@@ -4,9 +4,10 @@
   "_interactionOps": ["CreateEditReceivedOrderDialogQuery", "GetAddPartsReceivedOrder", "GetReceivedOrdersWithReceivedOrderLineItems", "GetAvailableUnits", "SpecFieldsAndOptions", "AllInventoryBatchStatuses", "OperatorMaintenanceNodeDialogQuery", "SearchSpecsForSelect", "FilterSearch", "SearchPartNumbers"],
   "_docMaintCompleteStep": "SEGURIDAD (ruta maintenance-event-complete-step): clic 'Complete Step' abre el diálogo del operador que dispara OperatorMaintenanceNodeDialogQuery (LECTURA — carga motivos/sensores). La receta NO confirma la completación del step (no hay paso de submit dentro del diálogo) → NO completa ni muta el evento; solo abre el diálogo y el navegador cierra. Validado headless 2026-07-16.",
   "_docInteraction": "Ops que NO se disparan navegando: requieren clic en un BOTÓN que abre un modal. Viven en rutas MANUALES (ids -ro-*) con paso `clickButton` bilingüe. El generador (build-catalog) las EXCLUYE del agrupamiento por pathname para que selectRoutes elija estas rutas y no la de pathname (que las lista pero no las captura).",
-  "_manualRouteOps": ["SensorDashboardQuery", "GetPurchaseOrderDetail", "GetInventoryInputSchema", "GetPartNumberInventoryBatch", "GetInsightsReportDetails", "GetInsightsReportColumnConfigs"],
+  "_manualRouteOps": ["SensorDashboardQuery", "GetPurchaseOrderDetail", "GetInventoryInputSchema", "GetPartNumberInventoryBatch", "GetInsightsReportDetails", "GetInsightsReportColumnConfigs", "AllSensorDashboards"],
   "_docInsightsRoute": "Ruta reporting-insights-detail (re-descubierta por el Nivel B, 2026-07-22): los INSIGHTS de /Reporting/View son reportes prefabricados de Steelhead, agrupados por categoría (Sales & Finance, Production, Supply Chain, Quality Management, Shipping & Receiving, Other) dentro del acordeón INSIGHTS del sidebar. Abrir uno navega a /Reporting/View?id=<INSIGHT_ID>&type=insight y dispara GetInsightsReportDetails + GetInsightsReportColumnConfigs. El deep-link CON query params SÍ hidrata headless (validado: ambas ops con responseOk), así que la receta es UN solo goto. Las ops van en _manualRouteOps porque la ruta auto-generada por pathname sería /Reporting/View SIN params y no las dispara. NOTA: sus hashes NO viven en remote/config.json sino en Reportes SH (steelhead_client.py) → planDeploy las marca 'external' y NO las auto-deploya (evita bump+push sin cambio real en cada corrida).",
   "_docManualRoute": "Ops de DETALLE cuya ruta auto-generada apuntaba MAL (hrefMatches por module, no por sub-entidad: /Purchasing/PurchaseOrders/<id> NO matchea /Purchasing/\\d+; y colision de routeId Maintenance/Nodes vs Maintenance/SensorDashboards). Rutas manuales validadas headless 2026-07-14. El generador las excluye del auto-agrupamiento (union con _interactionOps).",
+  "_docAllSensorDashboards": "AllSensorDashboards (Nivel B 2026-07-28): la op vivia en TRES rutas — home-list (goto /), sensor-dashboards (goto /Dashboards + clic) y sensordashboards-list (goto /Domains/{domain}/SensorDashboards). El set-cover greedy elegia home-list (cubria 2 ops pendientes: AllSensorDashboards + CurrentUser) y las otras dos NUNCA corrian. Medido en el log del launchd: el home DEJO de dispararla el 2026-07-22 (0/41 ese dia y 0 en las ~126 corridas siguientes; antes iba 26/35). Desde entonces solo se capturaba de REBOTE, porque el paso 0 de maintenance-sensordashboards-detail visita la misma lista y el sink es COMPARTIDO entre rutas — asi que salia 'vigente' cada dia por una ruta que no era la suya. El 2026-07-28 esa ruta fallo por un blip de red y AllSensorDashboards cayo con ella, destapando el acoplamiento. Ahora la op vive SOLO en sensordashboards-list (goto directo, verificado headless 2/2 el 2026-07-28) y esta en _manualRouteOps para que build-catalog.mjs no la reagrupe en Home desde un scan viejo. Leccion: una captura declarada en una ruta que NO la dispara no falla — la absorbe otra ruta y el catalogo miente en silencio.",
   "_docInvoiceSafety": "SEGURIDAD (ruta invoices-packingslips-addinvoice): clica 'Add Invoice' (aria-label, icono NoteAddIcon) de un packing slip → abre el modal de facturación que dispara GetReceivedOrdersWithReceivedOrderLineItems (query de LECTURA). Usa clickFirst por SELECTOR aria-label, no clickButton por texto. NUNCA extender a clicar 'Crear Factura' (DescriptionOutlinedIcon) ni ningún submit — CREARÍA una factura real. La receta solo abre el modal; el navegador se cierra sin guardar. Validada headless 2026-07-15, cero escrituras confirmado.",
   "routes": {
     "reporting-insights-detail": {
@@ -267,7 +268,6 @@
       "captures": [
         "AllCurrentMetalExchangeOptIns",
         "AllCustomerPortalAccessRequestsMinPayload",
-        "AllSensorDashboards",
         "ChatUnreadCounts",
         "CurrentDevice",
         "CurrentUser",
@@ -995,22 +995,6 @@
         "ScheduleDomain",
         "ScheduleInformationById",
         "SearchAll"
-      ]
-    },
-    "sensor-dashboards": {
-      "type": "query",
-      "module": "Sensors",
-      "steps": [
-        {
-          "goto": "/Dashboards"
-        },
-        {
-          "clickFirst": "a[href*='ashboard']",
-          "hrefMatches": "\\d"
-        }
-      ],
-      "captures": [
-        "AllSensorDashboards"
       ]
     },
     "sensordashboards-list": {

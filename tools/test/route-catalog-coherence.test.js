@@ -31,6 +31,11 @@ const EXPECTED = {
   // al TECLEAR en el modal 'Agregar Filtro' de /UploadedFiles (categoría 'Número de Parte').
   FilterSearch: 'workorders-filter-open',
   SearchPartNumbers: 'uploadedfiles-pn-filter',
+  // Nivel B 2026-07-28: estaba en home-list (goto /) Y en sensor-dashboards (/Dashboards)
+  // Y aquí. El set-cover elegía home-list (cubría 2 pendientes) y esta ruta nunca corría;
+  // el home dejó de dispararla el 2026-07-22 y solo se capturaba de REBOTE por el paso 0 de
+  // maintenance-sensordashboards-detail (misma lista, sink compartido). Ahora vive SOLO aquí.
+  AllSensorDashboards: 'sensordashboards-list',
 };
 
 test('cada op manual está SOLO en su ruta dedicada (no en rutas de pathname)', () => {
@@ -40,7 +45,7 @@ test('cada op manual está SOLO en su ruta dedicada (no en rutas de pathname)', 
   }
 });
 
-test('_interactionOps + _manualRouteOps cubren exactamente las 16 ops manuales', () => {
+test('_interactionOps + _manualRouteOps cubren exactamente las 17 ops manuales', () => {
   const manual = new Set([...(cat._interactionOps || []), ...(cat._manualRouteOps || [])]);
   assert.deepEqual([...manual].sort(), Object.keys(EXPECTED).sort());
 });
@@ -53,6 +58,15 @@ test('rutas manuales de detalle: goto a la sub-entidad correcta + hrefMatches po
   assert.equal(po.steps[0].goto, '/Domains/{domain}/Purchasing/PurchaseOrders');
   // el id va tras la SUB-ENTIDAD PurchaseOrders, no tras el module Purchasing
   assert.equal(po.steps[1].hrefMatches, '/Purchasing/PurchaseOrders/\\d+');
+});
+
+test('ruta sensordashboards-list: goto DIRECTO a la lista y sin ruta gemela que gane el desempate', () => {
+  const r = cat.routes['sensordashboards-list'];
+  assert.deepEqual(r.steps, [{ goto: '/Domains/{domain}/SensorDashboards' }]);
+  assert.deepEqual(r.captures, ['AllSensorDashboards']);
+  // La ruta 'sensor-dashboards' (/Dashboards + clic) capturaba lo mismo y ganaba el
+  // desempate alfabético del set-cover ('sensor-' < 'sensord') → se eliminó.
+  assert.equal(cat.routes['sensor-dashboards'], undefined);
 });
 
 test('rutas manuales de clic-botón: paso clickButton bilingüe', () => {
