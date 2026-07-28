@@ -1,6 +1,6 @@
 {
-  "version": "1.7.227",
-  "lastUpdated": "2026-07-28T00:43",
+  "version": "1.7.228",
+  "lastUpdated": "2026-07-28T00:45",
   "extensionVersion": "1.7.1",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -2797,7 +2797,7 @@
     "scripts/po-reconciler.js": "6a9c20833558a3805f721c09a63511d05057b3606d3d9e12a520d5e9738839c6",
     "scripts/portal-importer.js": "c14d8ad3441f8fe087988d7a3b542cc51f075358ad3935b4f1df2af8ea57652a",
     "scripts/price-confirm-core.js": "af61b1024e4229ed015c35d56d6e7d5943b0fa2da83f85abb08018fdcc48e998",
-    "scripts/price-confirm-guard.js": "2e5a685b6802b75535181a45e8d2e7dc8365f6b92920e8ec3672097d2c3124a4",
+    "scripts/price-confirm-guard.js": "59d25c7840b36c5b1016dd0a122146de50dd5fbd2c001b40091cc43cd18098ad",
     "scripts/proceso-calculator.js": "09425a2473f8bfcf681c86378168f0a0f5cfd39e247b3e3510debdd91bc17739",
     "scripts/process-canon.js": "9d82354d4e914ccdf1f96c9eb89fd5789c522c880dd544963b648db2abf5b16a",
     "scripts/process-deep-audit.js": "4345457ec845f95b46975f86cb4405de404a59f63d2322b8a74fb6ee97114dc5",
