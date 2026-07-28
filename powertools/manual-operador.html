@@ -255,9 +255,15 @@ tbody tr:last-child td{border-bottom:none}
         </tr>
         <tr>
           <td><span class="sev r">Rojo</span></td>
-          <td><span class="msg">3 línea(s) con cantidad o precio en cero — revisar antes de guardar</span></td>
-          <td>Hay renglones con cantidad 0 o precio 0. Casi siempre significa que esas piezas ya se facturaron antes.</td>
-          <td><strong>No guardes.</strong> Revisa cada renglón en cero: si las piezas ya se facturaron, quítalas de esta factura. Ver el aviso de la sección 6.</td>
+          <td><span class="msg">Falta precio en 2 líneas: #1 (PN-4471); #5 (PN-9082) — revisar antes de guardar</span></td>
+          <td>Esos renglones no traen precio (o traen precio 0). Suele ser que el producto no tiene precio dado de alta.</td>
+          <td><strong>No guardes.</strong> El aviso te dice el número de renglón (<span class="msg">#1</span>, <span class="msg">#5</span>) y el número de parte de cada uno: ve directo a esos y revisa el precio.</td>
+        </tr>
+        <tr>
+          <td><span class="sev r">Rojo</span></td>
+          <td><span class="msg">Cantidad en cero en 1 línea: #5 (PN-9082) — revisar antes de guardar</span></td>
+          <td>Ese renglón quedó en cantidad 0. Casi siempre significa que esas piezas ya se facturaron antes.</td>
+          <td><strong>No guardes.</strong> Revisa el renglón que te indica: si las piezas ya se facturaron, quítalas de esta factura. Ver el aviso de la sección 6.</td>
         </tr>
         <tr>
           <td><span class="sev a">Amarillo</span></td>
@@ -285,6 +291,11 @@ tbody tr:last-child td{border-bottom:none}
         </tr>
       </tbody>
     </table>
+  </div>
+
+  <div class="callout meta">
+    <p class="ct">Falta de precio y cantidad en cero son avisos distintos</p>
+    <p>Hasta julio de 2026 los dos problemas salían juntos en un solo aviso que nada más contaba renglones. Ahora van <strong>por separado</strong> y cada uno te dice <strong>en qué renglón</strong> (<span class="msg">#3</span>) y <strong>de qué número de parte</strong>. Si un mismo renglón trae los dos defectos, aparece en los dos avisos — no es un error, son dos cosas que arreglar. Cuando son muchos renglones, el aviso enumera los primeros y remata con <em>“y N más”</em>, pero el <strong>total siempre va completo</strong> al principio.</p>
   </div>
 
   <!-- 04 -->
