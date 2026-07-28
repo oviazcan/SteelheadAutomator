@@ -64,7 +64,16 @@ Objetivo: cada **📅** clicable → modal dark-mode → programar/fijar **sin a
 ```
 Resp `{mnUpdateScheduleTaskById}`. Es update-por-id (echo de todos los campos + cambia fecha + `isIntentional`).
 
-**CREATE `CreateManyScheduleTasks`** (hash `9039afe7…`) — PESADO, para crear en OT sin tarea. Forma DISTINTA (anidado en `mnScheduleTask`, con ELEMENTOS):
+**CREATE `CreateManyScheduleTasks`** (hash `9039afe7…`) — PESADO, para crear en OT sin tarea.
+
+> ⚠️ **Esta forma NO viene de un scan.** Barrido de los 122 `scan_results_*.json` (2026-07-28):
+> la op aparece en **9**, y en los 9 con `variablesSamples` **vacías**. El shape de abajo se
+> documentó de otra fuente (deducción / dictado), así que sirve como mapa pero **no es
+> evidencia**: ni los nombres exactos ni los valores están confirmados contra tráfico real.
+> Es la razón por la que "programar donde no hay" sigue sin poderse cablear — a diferencia del
+> UPDATE, cuyo payload sí está capturado con variables y respuesta reales.
+
+Forma DISTINTA (anidado en `mnScheduleTask`, con ELEMENTOS):
 ```
 { scheduledTasks: { mnScheduleTask: [{
     scheduleId, treatmentId, stationId, expectedStartTime,
@@ -76,7 +85,36 @@ Resp `{mnUpdateScheduleTaskById}`. Es update-por-id (echo de todos los campos + 
     }] } }] },
   scheduleIdFilter: { equalTo: <scheduleId> } }
 ```
-Requiere ENSAMBLAR por WO: `treatmentId`, `recipeNodeId`, `partNumberId`, `partSetUuid`, `partCount`, `partsPerBatch`, `relatedPartTransferAccounts.id` (el account del paso). Fuentes: `SchedulablePartLocations` (recipeNodeId/partNumberId/stationId), `WorkOrder.currentPartsTransferAccounts` (account). **Sin mapear aún:** origen de `treatmentId`, los `times`, y `partSetUuid` (¿generado en cliente?). **Riesgo** de crear tareas malformadas.
+### Mapeo de fuentes del CREATE (revisado 2026-07-28 contra las respuestas reales)
+
+`SchedulablePartLocations` resuelve **más de lo que decía esta bitácora**: una llamada por
+estación del board devuelve 1107 `partLocations`, cada uno con
+`{accountId, partCount, partNumberId, partGroupId, stationId, workOrderId, recipeNodeId,
+rackByRackId, recipeNodeByRecipeNodeId, partNumberByPartNumberId.partNumberRackTypesByPartNumberId
+[{partsPerRack, rackTypeId}]}`.
+
+| Campo del CREATE | Estado | Fuente |
+|---|---|---|
+| `recipeNodeId` | ✅ resuelto | `SchedulablePartLocations` (lo trae directo — la bitácora lo daba por no mapeado) |
+| `partNumberId`, `partCount`, `stationId` | ✅ resuelto | idem |
+| `relatedPartTransferAccounts[].id` | ✅ resuelto | `accountId` de idem (o `WorkOrder.currentPartsTransferAccounts`) |
+| `rackIdLineage` / `rackTypeIdLineage` | 🟡 probable | `rackByRackId` + `partNumberRackTypes[].rackTypeId` de idem — falta confirmar la forma de "lineage" |
+| `treatmentId` | 🟡 resoluble | árbol `StationTreatmentByWorkOrder`, que ya se parsea por `recipeNode` (lo usa el auto-router) |
+| `scheduleId` | ✅ resuelto | `WorkOrderSchedule` / URL del board |
+| `expectedStartTime` | ✅ | lo elige el operador |
+| `isIntentional:false`, `status:"UNSCHEDULED"` | ✅ | literales |
+| **`partSetUuid`** | ❌ **sin resolver** | hipótesis: UUID generado en cliente. **Sin verificar** |
+| **`totalTimeMinutes` / `cycleTimeMinutes` / `treatmentTimeMinutes`** | ❌ **sin resolver** | los valores del UPDATE capturado (`5`, `0.000909…` = 1/1100) son claramente **derivados**, no constantes: falta la fórmula |
+| **`partsPerBatch`** | ❌ **sin resolver** | relación con `partsPerRack` del rack type, sin confirmar |
+
+**Los tres pendientes de verdad son `partSetUuid`, los tiempos y `partsPerBatch`** — y ninguno se
+puede deducir sin riesgo: una tarea con tiempos mal calculados entra al planificador y desacomoda
+el piso. **Riesgo** de crear tareas malformadas.
+
+**Camino corto:** capturar el payload REAL programando UNA orden desde el tablero con el
+hash-scanner encendido. Eso entrega de golpe los tres campos con valores reales, y permite
+derivar la fórmula de los tiempos comparándolos contra los datos de esa orden. Es el mismo camino
+que hizo trivial la Fase 2a.
 
 **`UpdateManyStationTasks`** (hash `de13ff5f…`) = ventanas de disponibilidad de ESTACIÓN (con `rrule`), parte del reschedule; NO es tarea de WO. **Reschedule** = combinación (más datos) de Create/Update/Delete + UpdateStation; no hay mutación nueva.
 
