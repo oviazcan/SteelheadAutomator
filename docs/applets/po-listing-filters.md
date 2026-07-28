@@ -1,7 +1,7 @@
 # `po-listing-filters` — Buscador global de OC + Toggle de empresa
 
 **Versión:** 0.3.0 · **Pantalla:** `/Domains/<d>/Purchasing/PurchaseOrders` · **`autoInject: true`**
-**Estado:** VIVO. Core 73/73 golden, suite 955/955.
+**Estado:** VIVO en **config 1.7.212**. Core 73/73 golden, suite 955/955.
 
 Diseño completo en [`docs/superpowers/specs/2026-07-27-po-listing-filters-design.md`](../superpowers/specs/2026-07-27-po-listing-filters-design.md).
 
@@ -35,7 +35,11 @@ varias direcciones de la misma empresa de un jalón.
 ## Widget A — Buscador global
 
 Se inyecta en el **header, junto al toggle**, dentro de un contenedor común
-(`#sa-pof-bar`) anclado tras "New Purchase Order". **Antes vivía en la barra de filtros de la
+(`#sa-pof-bar`) anclado tras "New Purchase Order". **Cuidado al mover esto:** el botón está
+envuelto en varios spans y `css-165nl96` es su *wrapper responsive de ancho fijo* — insertar
+ahí mete la barra DENTRO del botón y se dibuja encima del header (bug de 1.7.210).
+`headerRowChild()` sube hasta el hijo directo del `MuiPaper` de la fila. Esa fila va apretada
+(el título sale truncado de fábrica), así que los controles son compactos a propósito. **Antes vivía en la barra de filtros de la
 tabla, pegado al buscador nativo, y el operador lo confundía con el universal** — dos cajas de
 búsqueda contiguas y casi idénticas. Agrupado con el toggle y en **dark-mode pleno** (fondo
 `#141a23`, texto `#e6e9ee`, acento `#13a36f`) se lee de un vistazo como UI de la extensión.
@@ -61,6 +65,10 @@ Además: la **vista actual se consulta primero** (`planSearchQueries(term, curre
 es donde el operador tiene más probabilidad de encontrar lo que busca; **caché de un slot** por
 término (borrar y reescribir no vuelve a consultar); y el encabezado muestra el conteo parcial
 («Buscando… 3 hasta ahora») para poder clicar el primer resultado sin esperar el resto.
+
+**Medido en vivo (2026-07-27, config 1.7.212):** primer resultado visible en **122 ms**,
+búsqueda completa en **356 ms**, con 9 repintados incrementales. Antes eran fácilmente
+1.5–2.5 s (debounce 350 ms + proveedores en serie + 4 rondas de pool).
 
 > **No subir el pool de 4.** El rate-limit de SH castiga el **volumen acumulado** (~40
 > requests), no la concurrencia puntual — pero con 7 tareas, un pool de 4 ya deja el pool
@@ -103,7 +111,8 @@ proveedor. `parseVendorDisplay` extrae el `6` del display `"#6 - ATOTECH DE MEXI
 
 ## Widget B — Toggle "Sólo Proquipa"
 
-Se inyecta **después del botón "New Purchase Order"** (anclaje **bilingüe** ES+EN).
+Vive en el mismo contenedor que el buscador, a su izquierda: `[Sólo Proquipa] [buscador]`.
+Anclaje **bilingüe** ES+EN sobre "New Purchase Order".
 Binario on/off, apagado por defecto, no persistente.
 
 **Nació como toggle triple** (Ecoplating | Ambos | Proquipa) y se redujo a binario: el lado
