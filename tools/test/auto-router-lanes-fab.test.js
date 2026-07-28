@@ -1,15 +1,17 @@
 // tools/test/auto-router-lanes-fab.test.js
-// El FAB 📦 del ruteo por grupos: su gate de ruta tiene que cubrir exactamente las
-// fichas de OT que el applet declara en config, ni más ni menos.
+// Los FABs de la ficha de OT: 🔀 rutea (orden completa o grupos) y ✂️ parte/reagrupa
+// las piezas. Su gate de ruta tiene que cubrir exactamente las fichas de OT que el
+// applet declara en config, ni más ni menos.
 // Run: node --test tools/test/auto-router-lanes-fab.test.js
 //
 // ── Por qué (2026-07-27) ────────────────────────────────────────────────────
 // Con el popup ya cableado (v0.3.1) el operador seguía abriendo el panel
-// single-order creyendo que era el de grupos: los dos botones se llaman casi
-// igual y el FAB 🔀 de la ficha abre el single-order. El FAB 📦 le da al ruteo
-// por grupos una entrada propia y visible EN LA PÁGINA, que no depende de
-// acertarle al botón del popup. Si su gate se desalinea del config, el botón
-// desaparece de la pantalla donde debe estar — en silencio.
+// single-order creyendo que era el de grupos, y con un FAB 📦 extra (v0.3.2) la
+// queja fue la correcta: los dos FABs llevaban a lo mismo. v0.3.3 reparte por
+// TRABAJO, no por panel — 🔀 decide rutas (no mueve nada hasta aplicar) y ✂️
+// parte/reagrupa piezas, que mueve material real y es lo que va ANTES, porque un
+// grupo no se puede rutear hasta que existe. Si su gate se desalinea del config,
+// el botón desaparece de la pantalla donde debe estar — en silencio.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -29,7 +31,7 @@ const FICHA = '/Domains/344/WorkOrders/15990';
 const LISTADO = '/Domains/344/WorkOrders';
 const BOARD = '/Schedules/12/ScheduleBoard/34';
 
-test('el FAB por grupos se monta en la ficha de una OT', () => {
+test('los FABs de la ficha se montan en la ficha de una OT', () => {
   assert.equal(gateOf('isWorkOrderDetail').test(FICHA), true);
 });
 

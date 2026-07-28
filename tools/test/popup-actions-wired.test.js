@@ -91,14 +91,14 @@ test('cada fn apunta a un método que su applet exporta', () => {
   assert.deepEqual(rotas, [], `fn que no resuelven en runtime:\n  ${rotas.join('\n  ')}`);
 });
 
-test('las tres puertas del auto-ruteador siguen cableadas', () => {
+test('las cuatro puertas del auto-ruteador siguen cableadas', () => {
   const app = (config.apps || []).find(a => a.id === 'auto-router');
   assert.ok(app, 'no está el app auto-router en config');
   const byMsg = Object.fromEntries((app.actions || []).map(a => [a.message, a.fn]));
   assert.equal(byMsg['open-auto-router'], 'AutoRouter.openPanelFromPopup');
   assert.equal(byMsg['open-auto-router-batch'], 'AutoRouter.openBatchFromPopup');
   assert.equal(byMsg['open-auto-router-lanes'], 'AutoRouter.openLanesFromPopup');
-  // El panel de pistas es el único sin FAB: si su script se cae del app, el
-  // ruteo por grupos vuelve a ser inalcanzable.
+  assert.equal(byMsg['open-auto-router-split'], 'AutoRouter.openSplitFromPopup');
+  // Ruteo y partición comparten script: si se cae del app, se van las dos.
   assert.ok((app.scripts || []).includes('scripts/auto-router-lanes.js'));
 });
