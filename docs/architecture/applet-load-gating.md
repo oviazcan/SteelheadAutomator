@@ -107,16 +107,18 @@ y dedup de vuelo, que es lo que mata la causa #4.
 
 Sobre `remote/config.json` 1.7.213 → 1.7.214:
 
-| En `/Purchasing/PurchaseOrders` | Antes | Después |
-|---|---|---|
-| Applets inyectados | 28 | **11** |
-| Archivos descargados | 79 | **18** |
-| Llamadas `executeScript` | 79 | **2** |
-| Requests de red (1ª carga) | ~237 | **~20** |
-| Requests de red (cargas siguientes) | ~237 | **~2** (config.json + config.sig) |
-| Lecturas de storage para el on/off | 28 | **1** |
+| En `/Purchasing/PurchaseOrders` | Antes | 1ª tanda (18 gateados) | Final (26 gateados) |
+|---|---|---|---|
+| Applets inyectados | 28 | 11 | **3** |
+| Archivos descargados | 79 | 18 | **6** |
+| Llamadas `executeScript` | 79 | 2 | **1** |
+| Requests de red (1ª carga) | ~237 | ~20 | **~8** |
+| Requests de red (cargas siguientes) | ~237 | ~2 | **~2** (config.json + config.sig) |
+| Lecturas de storage para el on/off | 28 | 1 | **1** |
 
-Otras pantallas quedan en 11-13 applets / 18-24 archivos / 2 lotes.
+Por pantalla (config 1.7.216): Compras 3 applets/6 archivos · WorkOrders 3/7 · Shipping 3/6 ·
+ScheduleBoard 4/12 · Workboards 5/9 · PartNumbers 6/14 · Invoices 7/9 ·
+SalesOrders 8/14 · Receiving/CustomerParts 9/16.
 
 ## Lo que falta
 
@@ -136,22 +138,30 @@ empaquetar, y al final verifica el manifest DENTRO del zip SERVIDO — el gotcha
 **Rollback:** `tools/rollback.sh v1.7.214` revierte config y scripts, pero **no el zip** — para
 volver al loader anterior hay que republicar el zip con `manifest.json` en 1.6.6.
 
-### 2. Los 10 applets que siguen cargando en todas partes
+### 2. Los 2 applets que siguen cargando en todas partes (a propósito)
 
-Reciben `urlPatterns` **18 de los 28** `autoInject`: exactamente los que ya tenían un gate por
-URL escrito y probado en su código. Los otros 10 se activan por **modal** (MutationObserver
-sobre un diálogo de Steelhead) o por **intercepción de fetch**, y su código no dice en qué
-pantalla vive ese modal:
+La 1ª tanda gateó **18 de 28**: los que ya tenían un gate por URL escrito y probado en su
+código (el patrón se copia de ahí). La 2ª tanda gateó **8 más**, los modal-driven, con las
+pantallas que dio el operador el 2026-07-27 — fijadas en tests, porque no hay un core del cual
+derivarlas:
 
-`load-calculator` · `proceso-calculator` · `report-regen` · `cfdi-attacher` ·
-`invoice-auto-regen` · `weight-quick-entry` · `unit-autoconvert` · `price-confirm-guard` ·
-`receiver-date-override` · `warehouse-location-prefill`
+| Grupo | Pantallas | Applets |
+|---|---|---|
+| Modal "Receive Parts" | `/Receiving/CustomerParts`, `/Domains/<d>/SalesOrders/<n>` | `weight-quick-entry`, `receiver-date-override`, `warehouse-location-prefill` |
+| Edición de un NP | `PartNumbers`, `/Receiving/CustomerParts`, `Quotes`, `SalesOrders` | `unit-autoconvert`, `proceso-calculator`, `load-calculator` |
+| Facturas | `/Domains/<d>/Invoices` | `cfdi-attacher`, `invoice-auto-regen` |
 
-Se quedan sin patrón **a propósito**: mismo criterio que la regla de anclajes bilingües del
-repo — no se adivina. Ponerles un patrón equivocado apaga un candado de seguridad
-(`price-confirm-guard`) o un autofill sin que nadie se entere. Cerrar estos 10 con evidencia
-del operador (¿desde qué pantalla abres "Receive Parts"? ¿desde dónde mandas el correo de la
-factura?) llevaría Compras de 11 applets a ~4.
+**Quedan dos sin patrón, y así deben quedarse:**
+
+- **`price-confirm-guard`** — es un **candado de seguridad**, y la lista de pantallas donde se
+  edita un precio **no es exhaustiva** (el operador: *"también en otros urls donde exista la
+  edición de un NP"*). Un patrón incompleto lo apaga **en silencio** y deja pasar una captura
+  de precio sin reconfirmar. El ahorro serían 2 archivos; no compensa. Los otros tres de la
+  misma familia sí se gatearon porque su falla es **visible** (no autocompleta), no silenciosa.
+- **`report-regen`** — el operador lo quiere en todas las pantallas.
+
+Hay un test (`price-confirm-guard y report-regen se quedan SIN urlPatterns a propósito`) que se
+pone rojo si alguien los gatea, con el porqué en el mensaje del assert.
 
 ### 3. Validación en piso
 

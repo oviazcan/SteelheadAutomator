@@ -694,6 +694,12 @@
       "icon": "⚙️",
       "category": "Números de Parte",
       "autoInject": true,
+      "urlPatterns": [
+        "(?:^|/)PartNumbers(?:/|$)",
+        "/Receiving/CustomerParts(?:/|$)",
+        "/Domains/\\d+/Quotes(?:/|$)",
+        "/Domains/\\d+/SalesOrders(?:/|$)"
+      ],
       "scripts": [
         "scripts/steelhead-api.js",
         "scripts/load-calculator-engine.js",
@@ -722,6 +728,12 @@
       "icon": "🧮",
       "category": "Números de Parte",
       "autoInject": true,
+      "urlPatterns": [
+        "(?:^|/)PartNumbers(?:/|$)",
+        "/Receiving/CustomerParts(?:/|$)",
+        "/Domains/\\d+/Quotes(?:/|$)",
+        "/Domains/\\d+/SalesOrders(?:/|$)"
+      ],
       "scripts": [
         "scripts/steelhead-api.js",
         "scripts/proceso-calculator.js"
@@ -1258,6 +1270,9 @@
         "scripts/cfdi-attacher.js"
       ],
       "autoInject": true,
+      "urlPatterns": [
+        "/Domains/\\d+/Invoices(?:/|$)"
+      ],
       "requiredPermissions": [
         "READ_INVOICING"
       ],
@@ -1284,6 +1299,9 @@
         "scripts/invoice-auto-regen.js"
       ],
       "autoInject": true,
+      "urlPatterns": [
+        "/Domains/\\d+/Invoices(?:/|$)"
+      ],
       "requiredPermissions": [
         "READ_INVOICING"
       ],
@@ -1459,6 +1477,10 @@
         "scripts/weight-quick-entry.js"
       ],
       "autoInject": true,
+      "urlPatterns": [
+        "/Receiving/CustomerParts(?:/|$)",
+        "/Domains/\\d+/SalesOrders(?:/|$)"
+      ],
       "requiredPermissions": [
         "READ_RECEIVING"
       ],
@@ -1486,6 +1508,12 @@
         "scripts/unit-autoconvert.js"
       ],
       "autoInject": true,
+      "urlPatterns": [
+        "(?:^|/)PartNumbers(?:/|$)",
+        "/Receiving/CustomerParts(?:/|$)",
+        "/Domains/\\d+/Quotes(?:/|$)",
+        "/Domains/\\d+/SalesOrders(?:/|$)"
+      ],
       "requiredPermissions": []
     },
     {
@@ -1524,6 +1552,10 @@
         "scripts/receiver-date-override.js"
       ],
       "autoInject": true,
+      "urlPatterns": [
+        "/Receiving/CustomerParts(?:/|$)",
+        "/Domains/\\d+/SalesOrders(?:/|$)"
+      ],
       "requiredPermissions": [
         "READ_RECEIVING"
       ],
@@ -1550,6 +1582,10 @@
         "scripts/warehouse-location-prefill.js"
       ],
       "autoInject": true,
+      "urlPatterns": [
+        "/Receiving/CustomerParts(?:/|$)",
+        "/Domains/\\d+/SalesOrders(?:/|$)"
+      ],
       "requiredPermissions": [
         "READ_RECEIVING"
       ],

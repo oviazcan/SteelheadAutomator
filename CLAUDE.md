@@ -147,7 +147,7 @@ Toda la documentación del modelo de procesos en Steelhead vive en [`docs/proces
 
 Antes de tocar `process-canon.js` o cualquier mutación de árbol, leerlo. Lecciones nuevas se agregan ahí.
 
-## Carga de applets: gate por URL (VIVO — config 1.7.215 · ext 1.7.0 · tag `v1.7.215`)
+## Carga de applets: gate por URL (VIVO — config 1.7.216 · ext 1.7.0 · tags `v1.7.215`/`v1.7.216`)
 
 **Problema medido el 2026-07-27** (reporte del operador: *"cada vez tardan más en cargar"*):
 `extension/background.js` inyectaba **los 28 applets `autoInject`** en CADA carga de página, sin
@@ -161,20 +161,21 @@ Total real: **~237 requests de red, 79 verificaciones de firma y 79 `executeScri
 sin patrón, patrón vacío o regex inválida ⇒ se inyecta como siempre), dedup de archivos, lotes
 de evaluación, `runPool` de concurrencia 6, caché de código verificado en `storage.local`
 (clave por `version`, hash re-verificado SIEMPRE), `loadConfig()` con TTL, y una sola lectura de
-storage para el on/off. En Compras: **28→11 applets, 79→18 archivos, 79→2 `executeScript`**.
+storage para el on/off. En Compras: **28→3 applets, 79→6 archivos, 79→1 `executeScript`**.
 
 **Dos reglas que salieron de aquí:**
 1. **El gate por ruta obliga a atender la navegación SPA.** Con `pushState`, `tabs.onUpdated`
    NO emite `status:'complete'` — sin atender `changeInfo.url`, un applet desaparecería para
    quien llega a esa pantalla navegando. El latch de "ya cargado" vive en la PÁGINA
    (`window.__saLoadedApps`), no en el service worker (MV3 lo suspende).
-2. **`urlPatterns` solo se pone con evidencia.** Se puso a **18 de 28**: los que ya tenían un
-   gate por URL escrito y probado (el patrón se copia de ahí, y un test ata config↔core para
-   que no diverjan). Los **10 modal-driven** (`price-confirm-guard`, `weight-quick-entry`,
-   `receiver-date-override`, `warehouse-location-prefill`, `unit-autoconvert`, `cfdi-attacher`,
-   `invoice-auto-regen`, `report-regen`, `load-calculator`, `proceso-calculator`) se quedan
-   SIN patrón a propósito — mismo criterio que los anclajes bilingües: no se adivina. Cerrarlos
-   con evidencia del operador llevaría Compras de 11 applets a ~4.
+2. **`urlPatterns` solo se pone con evidencia.** **26 de 28**: 18 los que ya tenían gate por URL
+   escrito y probado (el patrón se copia de ahí, y un test ata config↔core para que no
+   diverjan) + 8 modal-driven con las pantallas que dio el operador (fijadas en tests, porque
+   no hay core del cual derivarlas). **Dos se quedan SIN patrón a propósito**, con un test que
+   se pone rojo si alguien los gatea: **`price-confirm-guard`** (es un CANDADO DE SEGURIDAD y
+   la lista de pantallas de edición de precio NO es exhaustiva — *"también en otros urls"*; un
+   patrón incompleto lo apaga EN SILENCIO. Los otros 3 de esa familia sí se gatearon porque su
+   falla es VISIBLE, no silenciosa) y **`report-regen`** (el operador lo quiere en todas).
 
 **Publicación:** requiere republicar la extensión, y el `.zip` debe ir en el **mismo commit de
 gh-pages** que el config (el hook `pre-push` exige espejo + bump, y si el config va primero el

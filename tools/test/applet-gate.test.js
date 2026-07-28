@@ -243,6 +243,49 @@ test('en Compras solo entra po-listing-filters de los applets ya gateados', () =
   assert.deepEqual(gateadosQueCargan, ['po-listing-filters']);
 });
 
+// Los applets modal-driven no exportan un gate propio (se montan observando un diálogo),
+// así que su contrato son las pantallas que dio el operador el 2026-07-27. Fijarlas en un
+// test es lo que evita que se aprieten "de memoria" en un refactor.
+test('modal-driven: "Receive Parts" carga donde el operador lo abre', () => {
+  for (const id of ['weight-quick-entry', 'receiver-date-override', 'warehouse-location-prefill']) {
+    const app = appById(id);
+    for (const ruta of ['/Receiving/CustomerParts', '/Domains/344/SalesOrders/4102']) {
+      assert.equal(Gate.matchesUrlPatterns(app.urlPatterns, ruta), true, `${id} debe cargar en ${ruta}`);
+    }
+    assert.equal(Gate.matchesUrlPatterns(app.urlPatterns, '/Domains/344/Purchasing/PurchaseOrders'), false,
+      `${id} no tiene nada que hacer en Compras`);
+  }
+});
+
+test('modal-driven: edición de NP cubre PartNumbers, recibo y cotizaciones', () => {
+  for (const id of ['unit-autoconvert', 'proceso-calculator', 'load-calculator']) {
+    const app = appById(id);
+    for (const ruta of ['/PartNumbers/8812', '/Domains/344/PartNumbers', '/Receiving/CustomerParts',
+                        '/Domains/344/Quotes/12', '/Domains/344/SalesOrders/77']) {
+      assert.equal(Gate.matchesUrlPatterns(app.urlPatterns, ruta), true, `${id} debe cargar en ${ruta}`);
+    }
+  }
+});
+
+test('modal-driven: los de facturas cargan en Invoices', () => {
+  for (const id of ['cfdi-attacher', 'invoice-auto-regen']) {
+    const app = appById(id);
+    assert.equal(Gate.matchesUrlPatterns(app.urlPatterns, '/Domains/344/Invoices/551'), true);
+    assert.equal(Gate.matchesUrlPatterns(app.urlPatterns, '/Domains/344/Bills'), false);
+  }
+});
+
+// CANDADO DE DECISIÓN — si este test se pone rojo, léelo antes de "arreglarlo".
+test('price-confirm-guard y report-regen se quedan SIN urlPatterns a propósito', () => {
+  const sinGate = (config.apps || []).filter(a => a.autoInject && !a.urlPatterns).map(a => a.id).sort();
+  assert.deepEqual(sinGate, ['price-confirm-guard', 'report-regen'],
+    'price-confirm-guard es un CANDADO DE SEGURIDAD y la lista de pantallas donde se edita un ' +
+    'precio NO es exhaustiva ("también en otros urls" — operador 2026-07-27): un patrón incompleto ' +
+    'lo apaga EN SILENCIO y deja pasar una captura de precio sin reconfirmar. report-regen debe ' +
+    'aparecer en TODAS las pantallas por pedido del operador. Si vas a gatear alguno, necesitas ' +
+    'evidencia de las pantallas, no memoria.');
+});
+
 test('cada applet gateado sigue cargando en SU pantalla', () => {
   const CANONICAS = {
     'wo-schedule-button': '/Domains/344/WorkOrders/9001',
@@ -262,7 +305,15 @@ test('cada applet gateado sigue cargando en SU pantalla', () => {
     'wo-listing-columns': '/Domains/344/WorkOrders',
     'auto-router': '/Schedules/454/ScheduleBoard/453',
     'surtido-guard': '/Domains/344/Workboards/71',
-    'po-listing-filters': '/Domains/344/Purchasing/PurchaseOrders'
+    'po-listing-filters': '/Domains/344/Purchasing/PurchaseOrders',
+    'weight-quick-entry': '/Receiving/CustomerParts',
+    'receiver-date-override': '/Receiving/CustomerParts',
+    'warehouse-location-prefill': '/Domains/344/SalesOrders/4102',
+    'unit-autoconvert': '/PartNumbers/8812',
+    'proceso-calculator': '/Domains/344/Quotes/12',
+    'load-calculator': '/Domains/344/PartNumbers',
+    'cfdi-attacher': '/Domains/344/Invoices/551',
+    'invoice-auto-regen': '/Domains/344/Invoices'
   };
   for (const [id, ruta] of Object.entries(CANONICAS)) {
     const cargados = Gate.selectAutoInjectApps(config.apps, ruta, {}).map(a => a.id);
