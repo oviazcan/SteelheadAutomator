@@ -149,23 +149,90 @@
 
   // Resuelve una orden por su número visible (idInDomain) a sus IDs internos.
   // PartNumbersByWorkOrderIdInDomain trae en una sola llamada el workOrderId interno
-  // + el/los partNumber(s) + partGroup. Devuelve el part primario (el primero).
+  // + el/los partNumber(s) + partGroup.
+  //
+  // `partGroupIds` son TODOS los grupos de la orden. `partGroupId` (el primero) se
+  // conserva por compatibilidad con los llamadores de una sola pista, pero una orden
+  // con varios grupos NO se describe con un escalar: usar `partGroupIds`.
   async function resolveWorkOrder(idInDomain) {
     const data = await api().query('PartNumbersByWorkOrderIdInDomain', { idInDomain: Number(idInDomain) });
     const wo = data?.workOrderByIdInDomain;
     if (!wo || wo.id == null) throw new Error(`Orden ${idInDomain} no encontrada`);
     const locs = wo.partLocationsByWorkOrderId?.nodes || [];
     const pn = locs[0]?.partNumberByPartNumberId || null;
-    const pg = locs[0]?.partGroupByPartGroupId || null;
+    const groups = [];
+    const vistos = new Set();
+    for (const l of locs) {
+      const g = l?.partGroupByPartGroupId;
+      if (!g || g.id == null || vistos.has(g.id)) continue;
+      vistos.add(g.id);
+      groups.push({ id: g.id, name: (g.name || '').trim() });
+    }
     return {
       idInDomain: wo.idInDomain,
       workOrderId: wo.id,
       name: (wo.name || '').trim(),
       partNumberId: pn?.id ?? null,
       partNumberName: (pn?.name || '').trim() || null,
-      partGroupId: pg?.id ?? null,
+      partGroups: groups,
+      partGroupIds: groups.map((g) => g.id),
+      partGroupId: groups[0]?.id ?? null,
       partCount: locs.length,
     };
+  }
+
+  // ── Piezas: leer, partir, reagrupar ──────────────────────────────────────────
+
+  // Estado de piezas de la orden: cuentas vivas con su conteo y su grupo, más el
+  // cliente (que CreateNewPartGroup exige). El parseo vive en el núcleo puro.
+  async function fetchWorkOrderAccounts(idInDomain) {
+    const data = await api().query('WorkOrder', { idInDomain: Number(idInDomain) });
+    const parsed = window.AutoRouterGroups.parseWorkOrderAccounts(data);
+    if (parsed.workOrderId == null) throw new Error(`Orden ${idInDomain} no encontrada`);
+    return parsed;
+  }
+
+  // Grupos ya existentes del cliente. Se consultan ANTES de crear: CreateNewPartGroup
+  // no es idempotente y repetir el nombre deja grupos duplicados.
+  async function searchPartGroups(customerId, searchQuery = '') {
+    const data = await api().query('FindPartGroupQuery', {
+      groupActive: false,
+      searchQuery: String(searchQuery || ''),
+      groupType: 'GROUPING',
+      customerId: Number(customerId),
+      first: 50,
+      includeArchived: 'NO',
+      orderBy: ['NAME_ASC'],
+    });
+    return (data?.searchPartGroups?.nodes || [])
+      .filter((n) => n && n.id != null)
+      .map((n) => ({ id: n.id, name: (n.name || '').trim() }));
+  }
+
+  async function createPartGroup(name, customerId) {
+    const data = await api().query('CreateNewPartGroup', {
+      name: String(name),
+      customerId: Number(customerId),
+      type: 'GROUPING',
+    });
+    const g = data?.createPartGroup?.partGroup;
+    if (!g || g.id == null) throw new Error(`No se pudo crear el grupo "${name}"`);
+    return { id: g.id, name: (g.name || '').trim() };
+  }
+
+  // PARTIR: reparte las piezas de una cuenta entre varios grupos. El payload lo arma
+  // AutoRouterGroups.planSplit — aquí solo se manda (mueve material: nada de armar
+  // el cuerpo al vuelo).
+  async function splitParts(payload) {
+    const data = await api().query('CreateManyPartsTransfersChecked', payload);
+    return data?.createManyPartsTransfersChecked || data || null;
+  }
+
+  // REAGRUPAR: junta varias cuentas en un grupo. Ojo, el shape del destino NO es el
+  // mismo que en splitParts (ver auto-router-groups.js).
+  async function regroupParts(payload) {
+    const data = await api().query('AddPartsToWorkOrders', payload);
+    return data?.addPartsToWorkOrders || data || null;
   }
 
   // Todas las órdenes de una línea del Scheduling board (para "rutear todas" sin
@@ -217,6 +284,12 @@
     resolveWorkOrder,
     fetchBoardWorkOrders,
     applyRoutes,
+    // piezas: pistas, partir y reagrupar
+    fetchWorkOrderAccounts,
+    searchPartGroups,
+    createPartGroup,
+    splitParts,
+    regroupParts,
     parseRouteData,    // exportado para tests/depuración
     parseAllRouteData, // multi-WO (captura del board)
   };

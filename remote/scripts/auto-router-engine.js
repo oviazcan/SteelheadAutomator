@@ -309,13 +309,26 @@
   }
 
   // Station EFECTIVA de cada recipeNode = la activeRoute si existe, si no la default.
-  function effectiveStationByNode(recipeNodes, activeRoutes) {
-    const active = new Map();
-    for (const a of activeRoutes || []) if (a && a.recipeNodeId != null) active.set(a.recipeNodeId, a.stationId);
+  // Estado efectivo de la PISTA `partGroupId` con la HERENCIA real de Steelhead:
+  // override del grupo → ruta global → default de la receta. Con partGroupId null se
+  // mira solo la global (las override de otros grupos no son asunto de esa pista).
+  // Antes se indexaba por recipeNodeId a secas, así que en una orden con override la
+  // ruta del grupo pisaba a la global y el conteo de tinas / la línea de origen salían
+  // mezclados.
+  function effectiveStationByNode(recipeNodes, activeRoutes, partGroupId = null) {
+    const own = new Map();
+    const global = new Map();
+    for (const a of activeRoutes || []) {
+      if (!a || a.recipeNodeId == null) continue;
+      const pg = a.partGroupId ?? null;
+      if (pg === null) global.set(a.recipeNodeId, a.stationId);
+      else if (partGroupId != null && pg === partGroupId) own.set(a.recipeNodeId, a.stationId);
+    }
     const eff = new Map();
     for (const n of recipeNodes || []) {
       if (!n) continue;
-      if (active.has(n.id)) eff.set(n.id, active.get(n.id));
+      if (own.has(n.id)) eff.set(n.id, own.get(n.id));
+      else if (global.has(n.id)) eff.set(n.id, global.get(n.id));
       else if (n.defaultStation && n.defaultStation.id != null) eff.set(n.id, n.defaultStation.id);
     }
     return eff;
@@ -325,8 +338,8 @@
   // (activeRoute ?? default). Un nodo cuenta si su tina deseada difiere de la efectiva.
   // Esto es la verdad para el conteo "tinas a re-rutear" y el filtro "aplicable":
   // independiente de comparar líneas (que falla con órdenes movidas).
-  function effectiveChangeCount(recipeNodes, desiredRoutes, activeRoutes) {
-    const eff = effectiveStationByNode(recipeNodes, activeRoutes);
+  function effectiveChangeCount(recipeNodes, desiredRoutes, activeRoutes, partGroupId = null) {
+    const eff = effectiveStationByNode(recipeNodes, activeRoutes, partGroupId);
     let n = 0;
     for (const r of desiredRoutes || []) if (r.stationId !== eff.get(r.recipeNodeId)) n++;
     return n;
@@ -335,11 +348,11 @@
   // Línea EFECTIVA actual (best-effort, para mostrar el "Origen"): la línea de la tina
   // física (con posición) más frecuente entre las stations efectivas. Las "-LI" y nodos
   // sin posición no cuentan (no son tinas de proceso). Fallback: null.
-  function currentLineCode(recipeNodes, activeRoutes, candidatesByTreatment) {
+  function currentLineCode(recipeNodes, activeRoutes, candidatesByTreatment, partGroupId = null) {
     const nameById = new Map();
     for (const n of recipeNodes || []) if (n && n.defaultStation && n.defaultStation.id != null) nameById.set(n.defaultStation.id, n.defaultStation.name);
     for (const tId of Object.keys(candidatesByTreatment || {})) for (const s of (candidatesByTreatment[tId] || [])) if (s && s.id != null) nameById.set(s.id, s.name);
-    const eff = effectiveStationByNode(recipeNodes, activeRoutes);
+    const eff = effectiveStationByNode(recipeNodes, activeRoutes, partGroupId);
     const freq = new Map();
     for (const [, sid] of eff) {
       const name = nameById.get(sid);

@@ -78,7 +78,9 @@
         "CreateManyPartsTransfersChecked": "fc7438932552bb02202dfcecc4e0bf826fd5097db6e6559c3c7b99186ceff9ed",
         "DeleteProcessNodePartNumberOptInOut": "4a0773339315f1a52a9c08c249c5b3540c13def2b0d320e0e16ad9cb75b4d823",
         "UpdateProcessNodePartNumberOptInOut": "4556e5710f068e129fadc74cbce1f9a5e7cc42113f4e8e1808976b4e4f4cd2a6",
-        "CreateProcessNodePartNumberOptInout": "f6fe26e4494c8c91d076975a8d7e89ed2f90a487d05f8bc021c2e296f3d6124f"
+        "CreateProcessNodePartNumberOptInout": "f6fe26e4494c8c91d076975a8d7e89ed2f90a487d05f8bc021c2e296f3d6124f",
+        "CreateNewPartGroup": "7ee30dd45af56f280ac45423349bb03b23ba6be7fb70aba6fe8ecfae819d54e4",
+        "CreateManyPartGroups": "f4c9d3690f9fa2df5e9274060d6b1b338aa3f4de90bf5f6d6b38718cf8693f4e"
       },
       "queries": {
         "AllStations": "834516258e392dcd9c666c2349992e3f6744aaf536cb127cb8c9eb4347f883f7",
@@ -194,7 +196,11 @@
         "GetRecomputableAt": "c2483e87e8a5a0a2fe62e401bfd18506f05c0ee73c9905522e5e11053b7c3d05",
         "JobQuery": "86432972dfe6ea75c523515801993374044dc99e909778024904a02e9ef1b4e3",
         "WorkOrder": "fc41042ebaacfbfcc09a57d171a1c0f87580921bbdbb0cec86fa34a24a39255e",
-        "GetWorkOrderPartsTransfers": "da4e8740973139bb23f3f0d37a0ea83a05b6d67cdab2c1bea1e154dff37aa284"
+        "GetWorkOrderPartsTransfers": "da4e8740973139bb23f3f0d37a0ea83a05b6d67cdab2c1bea1e154dff37aa284",
+        "GroupPartsDialogQuery": "f9538d725bd3ddd2f15c08265204bbf27be8cf4bfa57c694a28a2aafa06456f7",
+        "GroupPartsDialogPartLocation": "63fd5f9349b1d98aa476a5e6f4401254e42bb9ef22a8c4c381e4505faaeb79f9",
+        "GroupMultiplePartsDialogQuery": "951b9ffc6efcb17da69490dee934ba3e3a7670120e8526a69c6e5dda6cc1239b",
+        "FindPartGroupQuery": "85121b64ebe7c614a0c3de7a730c45488b0ca45ea6731ff8c88efafb0667774c"
       }
     },
     "domain": {
@@ -1740,6 +1746,7 @@
       "scripts": [
         "scripts/steelhead-api.js",
         "scripts/auto-router-engine.js",
+        "scripts/auto-router-groups.js",
         "scripts/auto-router-api.js",
         "scripts/auto-router-panel.js",
         "scripts/auto-router-batch.js",

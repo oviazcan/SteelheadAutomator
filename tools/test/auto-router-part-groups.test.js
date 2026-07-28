@@ -96,3 +96,49 @@ test('dos pistas en una sola llamada: cada quien con lo suyo', () => {
   // El recipeNode 2 sale de AMBAS pistas → mueren sus dos rutas.
   assert.deepEqual(d.routesToDelete.sort(), [9003, 9004]);
 });
+
+// ── Estado efectivo por pista: la HERENCIA ──────────────────────────────────
+// Un grupo usa su override si la tiene; si no, la global; si no, el default de la
+// receta. Es lo que muestra Steelhead: en la WO 15075 el grupo "100" (sin rutas
+// propias) aparecía en T204 heredando, mientras el "200" ya estaba en T205.
+const NODOS = [
+  { id: 1, defaultStation: { id: 900001, name: 'T204-TI00-001 Enjuague' } },
+  { id: 2, defaultStation: { id: 900002, name: 'T204-TI00-002 Enjuague' } },
+  { id: 3, defaultStation: { id: 900003, name: 'T204-TI00-003 Enjuague' } },
+];
+
+test('herencia: el grupo sin override usa la ruta GLOBAL', () => {
+  const activas = [{ id: 9001, recipeNodeId: 1, stationId: 204111, partGroupId: null }];
+  const eff = Engine.effectiveStationByNode(NODOS, activas, 7);
+  assert.equal(eff.get(1), 204111, 'hereda la global');
+  assert.equal(eff.get(2), 900002, 'sin global ni override → default de la receta');
+});
+
+test('herencia: el override del grupo GANA sobre la global', () => {
+  const eff = Engine.effectiveStationByNode(NODOS, ACTIVAS_MIXTAS, 2);
+  assert.equal(eff.get(1), 205001, 'la override del grupo 2, no la global');
+  assert.equal(eff.get(2), 205002);
+  assert.equal(eff.get(3), 900003, 'nodo sin rutas → default');
+});
+
+test('herencia: la pista global IGNORA las override de los grupos', () => {
+  const eff = Engine.effectiveStationByNode(NODOS, ACTIVAS_MIXTAS, null);
+  assert.equal(eff.get(1), 204001);
+  assert.equal(eff.get(2), 204002);
+});
+
+test('effectiveChangeCount cuenta por pista, no mezclado', () => {
+  // Mandar el grupo 2 a donde YA está = 0 cambios, aunque la global esté en otra tina.
+  const desired = [ruta(1, 205001, 2), ruta(2, 205002, 2)];
+  assert.equal(Engine.effectiveChangeCount(NODOS, desired, ACTIVAS_MIXTAS, 2), 0);
+  // Las mismas tinas para la pista global sí son cambio (la global está en T204).
+  const desiredGlobal = [ruta(1, 205001, null), ruta(2, 205002, null)];
+  assert.equal(Engine.effectiveChangeCount(NODOS, desiredGlobal, ACTIVAS_MIXTAS, null), 2);
+});
+
+test('sin grupos, el estado efectivo no cambia (retrocompatible)', () => {
+  const activas = [{ id: 9001, recipeNodeId: 1, stationId: 204111 }]; // sin partGroupId
+  const eff = Engine.effectiveStationByNode(NODOS, activas);
+  assert.equal(eff.get(1), 204111);
+  assert.equal(eff.get(2), 900002);
+});
