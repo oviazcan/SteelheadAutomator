@@ -993,7 +993,7 @@
         "scripts/report-liberator.js"
       ],
       "requiredPermissions": [
-        "MANAGE_REPORTING"
+        "MANAGE_REPORTING_SETTINGS"
       ],
       "actions": [
         {
@@ -1019,7 +1019,7 @@
         "scripts/report-regen.js"
       ],
       "requiredPermissions": [
-        "MANAGE_REPORTING"
+        "MANAGE_REPORTING_SETTINGS"
       ],
       "actions": [
         {
@@ -1649,7 +1649,7 @@
         "/Domains/\\d+/Bills(?:/|$)"
       ],
       "requiredPermissions": [
-        "READ_ACCOUNTS_PAYABLE"
+        "READ_BILLS"
       ],
       "actions": [
         {
