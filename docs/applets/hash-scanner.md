@@ -14,6 +14,43 @@ Refactor en 9 fixes para que un solo `scan_results_*.json` sirva para construir 
 
 **Meta-lección del ciclo:** el scanner era "good enough" hasta que vi 4-5 sesiones consecutivas donde le pedía al usuario re-capturar algo que en teoría el scanner ya debía tener. Cada gap silencioso (truncado, depth cap, denylist, "no, eso no lo capturo") cuesta una iteración futura. Un TDD pass disciplinado con tests que afirman explícitamente "el hash completo está aquí", "el responseSamples[0].id existe", "errorSamples está poblado cuando status=400" surfacea esos gaps de golpe. La inversión en cobertura del scanner reduce iteraciones en TODOS los applets futuros, no solo en uno. Política a futuro: cuando un applet necesite un dato que el scanner no tiene, agregar el campo al scanner antes de hardcodear el dato — capitaliza el trabajo en la herramienta, no en el caso de uso.
 
+## 0.6.24 — el backup de recarga tiraba justo los payloads que importan (2026-07-27)
+
+**Síntoma.** El scan `scan_results_2026-07-27_180440.json` capturó 8 operaciones nuevas del
+flujo "Agrupar/Serializar Piezas" (`CreateManyPartGroups`, `CreateNewPartGroup`,
+`GroupPartsDialogQuery`, `GroupPartsDialogPartLocation`, `GroupMultiplePartsDialogQuery`,
+`CombinePartAccountsDialogQuery`, `FindPartGroupQuery`, `WorkPartsInfoWrapperQuery`) con
+`count` de 1 a 10 en cada una… y **`variablesSamples: []` + `responseSamples: []` en todas**.
+Hash sí, payload no: suficiente para saber que la operación existe, inútil para llamarla.
+
+**Causa raíz.** `slimForBackup()` guardaba a `localStorage` solo `hash + count + status +
+configKey + screens` con los arrays de muestras **vacíos** (para no reventar la cuota de ~5 MB).
+Al recargar, `start()` restauraba ese backup con `mergeResults`. Como el flujo de agrupación
+recarga la página al Guardar y esas ops no se volvieron a disparar después, quedaron
+permanentemente huecas. **Prueba dura:** esas entradas tienen exactamente las 9 claves del slim
+y les faltan `lastSeen`, `url`, `lastHttpStatus`, `responseSchema` y `responseFields` — campos que
+solo agrega `recordOperation` en vivo. El scanner no falló: descartó lo correcto para el criterio
+equivocado (tamaño), cuando el criterio útil es **qué se puede recuperar después**.
+
+**Fix.** El backup ahora distingue por `status`:
+- **`known`** → sigue sin muestras. Ya están documentadas en `config.json` y son la mayoría del
+  volumen; gastar cuota ahí no compra nada.
+- **`new` / `changed`** → conserva hasta 2 `variablesSamples`, 1 `responseSample` y 1 `errorSample`.
+
+Con tres salvaguardas: `truncateForBackup` recorta arrays a 8 elementos preservando la **forma**
+(un `nodes` de 20k y uno de 8 documentan lo mismo); tope de 120 KB por op y presupuesto global de
+1.5 MB; y **dos vueltas** — todas las variables primero, las respuestas después, para que una
+respuesta gigante de la primera op no deje al resto sin nada. `persistBackup()` reemplaza el
+`setItem` crudo: si la cuota revienta, reintenta con el backup mínimo — perder las muestras es
+malo, perder los hashes es peor.
+
+**Tests:** `tools/test/hash-scanner-backup-samples.test.js` (12), incluido el round-trip
+`slimForBackup → JSON → mergeResults` que reproduce la recarga.
+
+**Lección.** Un backup que se dimensiona por tamaño y no por **recuperabilidad** sacrifica
+exactamente lo irreemplazable. Las ops `known` se re-capturan en cualquier sesión; una op nueva
+vista una sola vez, no.
+
 **Verificación rápida del JSON (jq):**
 ```bash
 JSON=~/Downloads/scan_results_*.json
