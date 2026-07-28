@@ -147,7 +147,7 @@ Toda la documentación del modelo de procesos en Steelhead vive en [`docs/proces
 
 Antes de tocar `process-canon.js` o cualquier mutación de árbol, leerlo. Lecciones nuevas se agregan ahí.
 
-## Carga de applets: gate por URL (IMPLEMENTADO en `main`, falta republicar el .zip)
+## Carga de applets: gate por URL (VIVO — config 1.7.215 · ext 1.7.0 · tag `v1.7.215`)
 
 **Problema medido el 2026-07-27** (reporte del operador: *"cada vez tardan más en cargar"*):
 `extension/background.js` inyectaba **los 28 applets `autoInject`** en CADA carga de página, sin
@@ -176,10 +176,13 @@ storage para el on/off. En Compras: **28→11 applets, 79→18 archivos, 79→2 
    SIN patrón a propósito — mismo criterio que los anclajes bilingües: no se adivina. Cerrarlos
    con evidencia del operador llevaría Compras de 11 applets a ~4.
 
-**Requiere republicar la extensión** (`manifest.json` 1.7.0 + `extensionVersion` 1.7.0). **Orden
-obligatorio:** el `.zip` a gh-pages ANTES o junto con el config que bumpea `extensionVersion`
-(si no, el banner del popup ofrece el zip viejo). Publicar `urlPatterns` antes del zip es
-inofensivo (el loader viejo ignora el campo).
+**Publicación:** requiere republicar la extensión, y el `.zip` debe ir en el **mismo commit de
+gh-pages** que el config (el hook `pre-push` exige espejo + bump, y si el config va primero el
+banner ofrece el zip viejo). Para eso `tools/deploy.sh` tiene ahora **`--zip`**: valida
+`manifest.version == config.extensionVersion`, empaqueta `extension/`, lo mete en ese commit y
+al final verifica el manifest DENTRO del zip SERVIDO. **Cada máquina activa el loader nuevo al
+aceptar el banner**; hasta entonces usa el viejo, que ignora `urlPatterns` (retrocompatible).
+Rollback: `rollback.sh` NO revierte el zip — hay que republicarlo con el manifest anterior.
 
 Análisis completo, medición y pendientes en
 [`docs/architecture/applet-load-gating.md`](docs/architecture/applet-load-gating.md).

@@ -1,7 +1,11 @@
 # Carga de applets: por qué tardaba y cómo se acotó
 
-**Estado:** **IMPLEMENTADO en `main` (2026-07-27)** — falta republicar el `.zip` de la
-extensión y validar en piso. Diagnóstico original reportado por el operador el 2026-07-27:
+**Estado:** **VIVO en producción (2026-07-27)** — config **1.7.215**, tag `v1.7.215`, zip de la
+extensión **1.7.0** publicado y verificado en vivo (firma del config OK, `unzip -p … manifest.json`
+del zip SERVIDO reporta 1.7.0). **Falta validar en piso** y que cada máquina actualice la
+extensión desde el banner del popup — hasta que lo haga, sigue con el loader viejo, que ignora
+`urlPatterns` y se comporta exactamente como antes. Diagnóstico original reportado por el
+operador el 2026-07-27:
 *"conforme vamos agregando applets, cada vez tardan más en cargar… en Purchasing no necesito
 cargar ni vales de almacén ni paros de línea"*.
 
@@ -116,19 +120,21 @@ Otras pantallas quedan en 11-13 applets / 18-24 archivos / 2 lotes.
 
 ## Lo que falta
 
-### 1. Republicar el `.zip` (requisito para que esto exista en piso)
+### 1. Que cada máquina actualice la extensión
 
-El cambio es de `extension/`, que **no** viaja por el canal de gh-pages. `manifest.json` →
-**1.7.0** y `config.extensionVersion` → **1.7.0** (dispara el banner de actualización del
-popup, que descarga `extensionZipUrl`).
+Ya publicado (zip 1.7.0 + `extensionVersion` 1.7.0 → el popup muestra el banner). Falta que el
+operador acepte la actualización en cada máquina; hasta entonces esa máquina sigue con el
+loader viejo y todo se comporta como antes (el campo `urlPatterns` le es invisible).
 
-**Orden obligatorio:** subir el zip nuevo a gh-pages **antes o junto con** el config que
-bumpea `extensionVersion` — si el config va primero, el banner ofrece un zip que todavía es
-el viejo. Y bumpear `manifest.json` DENTRO del zip (gotcha registrado en
-`docs/applets/bulk-upload.md`: Chrome lee el manifest, no el config).
+**`tools/deploy.sh --zip`** (nuevo) publica el zip **en el mismo commit de gh-pages** que el
+config, que es lo que exige el hook `pre-push` (espejo + bump) y lo que evita que el banner
+ofrezca un zip viejo. Valida además que `manifest.version == config.extensionVersion` antes de
+empaquetar, y al final verifica el manifest DENTRO del zip SERVIDO — el gotcha registrado en
+`docs/applets/bulk-upload.md` (Chrome lee el manifest, no el config; ya costó publicar un zip
+1.6.3 mientras el config decía 1.6.4). Antes esto se hacía a mano.
 
-Publicar el config con `urlPatterns` **antes** de republicar el zip es inofensivo: el loader
-viejo ignora el campo.
+**Rollback:** `tools/rollback.sh v1.7.214` revierte config y scripts, pero **no el zip** — para
+volver al loader anterior hay que republicar el zip con `manifest.json` en 1.6.6.
 
 ### 2. Los 10 applets que siguen cargando en todas partes
 
