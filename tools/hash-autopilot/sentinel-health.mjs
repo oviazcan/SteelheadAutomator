@@ -13,17 +13,28 @@
 // Ver mutation-runner.runMutationCycle: 'objeto cargado NO es centinela (identidad)'.
 const IDENTITY_FAIL = /no es centinela|identidad/i;
 
-// classifyCycleOutcomes(results) → { broken, captured, other }.
+// classifyCycleOutcomes(results, opts) → { broken, captured, other }.
 // results = [{ op, entityType, captured, escalated, reason }] (uno por ciclo intentado).
 //  - broken: abortó por identidad → centinela probablemente ARCHIVADO/renombrado.
 //  - captured: capturó el hash (sano).
 //  - other: no capturó por otra razón (sin hash, dry-run, gate) → NO es alerta de salud.
-export function classifyCycleOutcomes(results) {
+//
+// opts.suppressPending: ops cuya captura headless es FLAKY por diseño (masked-ops.json
+// `suppressPendingReport`). Sus "centinelas" son PSEUDO-centinelas — invoicePdf no apunta a
+// ningún objeto Centinela (su marker literal es "primer invoice de la lista, sin objeto
+// Centinela"): el load solo comprueba que el icono de la lista rindió y devuelve un nombre
+// SINTÉTICO para pasar isSentinel. Si la lista tarda más que su timeout, el ciclo reporta
+// "identidad" y esta función lo clasificaba como centinela ROTO → el correo pedía
+// "DESARCHIVA el centinela", consejo imposible de seguir (no hay objeto que desarchivar) y
+// repetido cada corrida completa. Van a `other`: el fallo queda en el log, como manda
+// `_docSuppressPendingReport` (bug 2026-07-25, reproducido en vivo).
+export function classifyCycleOutcomes(results, { suppressPending = [] } = {}) {
+  const supp = new Set(suppressPending || []);
   const broken = [], captured = [], other = [];
   for (const r of results || []) {
     if (!r) continue;
     if (r.captured) captured.push(r);
-    else if (r.escalated && IDENTITY_FAIL.test(r.reason || '')) broken.push(r);
+    else if (r.escalated && IDENTITY_FAIL.test(r.reason || '') && !supp.has(r.op)) broken.push(r);
     else other.push(r);
   }
   return { broken, captured, other };

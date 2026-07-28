@@ -1,6 +1,6 @@
 # Applet: `report-regen` (Regenerar Reportes)
 
-**Versión actual:** 0.3.2
+**Versión actual:** 0.3.4
 **Archivo:** `remote/scripts/report-regen.js`
 **Tipo:** `autoInject` + acción de popup. Inyecta un botón en el header secundario de Steelhead.
 **Permiso requerido:** `MANAGE_REPORTING` (gating en runtime, no sólo popup).
@@ -11,6 +11,50 @@ Steelhead refresca su base de reportes (DuckDB) cada noche, pero también se pue
 manualmente — sólo que el botón nativo está enterrado 3-5 clicks. Este applet expone un
 botón **♻️** en la barra de breadcrumb (junto a los iconos play ▶ y correo ✉) que dispara la
 regeneración con un click, muestra el progreso, y arranca un timer de enfriamiento.
+
+## v0.3.4 (2026-07-27) — LA CAUSA RAÍZ: Steelhead fragmentó el permiso ✅ VALIDADO EN VIVO
+
+> **El operador confirmó que el botón ♻️ volvió a aparecer** tras el deploy de config 1.7.225.
+> Cierra el reporte "de pronto dejó de aparecer".
+
+Con el `debug()` de la v0.3.3 el operador reportó:
+
+```
+allowed: false · permsConocidos: true · capturedPerms.perms: Array(245)
+isAdmin: false · isSuperUser: false · anclaEncontrada: true · gateTimedOut: true
+```
+
+O sea: la lista **real** de permisos llegó completa (245) y `MANAGE_REPORTING` **no estaba**.
+El veredicto `false` era **correcto**. El gate llevaba días diciendo la verdad; lo que estaba
+mal era **el permiso que exigía**.
+
+Verificado contra el catálogo vivo (`/Users/Access/PermissionsReference`, 262 permisos):
+
+| | |
+|---|---|
+| `MANAGE_REPORTING` | **ya no existe** |
+| `MANAGE_REPORTING_SETTINGS` | *"Admin-level reporting actions: **regenerate the reporting database**, view and change reporting settings."* ← el correcto, y el operador SÍ lo tiene |
+
+Steelhead **fragmentó** `MANAGE_REPORTING` en cinco permisos granulares
+(`_CONFIGURATIONS`, `_CUSTOM`, `_DASHBOARDS`, `_FILTER_SETS`, `_SETTINGS`) y retiró el viejo.
+**Esa es la causa real del "de pronto dejó de aparecer"**: no fue una carrera ni el DOM ni el
+Apollo cache — fue un permiso fantasma. Un permiso que no existe nunca se cumple, así que el
+botón quedó invisible para todos, **en silencio e indistinguible de "no tienes permiso"**.
+
+El mismo barrido encontró otros dos: `report-liberator` (mismo permiso) y `bill-autofill`
+(`READ_ACCOUNTS_PAYABLE`, hoy `READ_BILLS`).
+
+**Prevención:** el catálogo quedó versionado en
+[`docs/api/permissions-catalog.json`](../api/permissions-catalog.json) y
+`tools/test/permissions-catalog.test.js` pone rojo cualquier `requiredPermissions` que no
+exista en él. La próxima vez que Steelhead renombre algo, se re-captura el catálogo y el test
+señala exactamente qué applet quedó pidiendo un fantasma.
+
+**Lección.** Las v0.3.1–0.3.3 arreglaron cosas reales (el `false` espurio desde `Profile`, el
+fail-closed sin veredicto, el observer tardío) pero **ninguna era la causa**. Lo que cerró el
+caso no fue otra hipótesis: fue **exponer el estado interno** (`debug()`) y mirarlo. Cuando
+tres arreglos plausibles seguidos no mueven el síntoma, deja de proponer arreglos y haz
+observable el estado.
 
 ## v0.3.2 (2026-07-27) — la causa REAL: "no sé qué permisos tiene" se leía como "no tiene"
 

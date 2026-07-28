@@ -241,18 +241,35 @@ async function editSalesOrderPoAndSave(page, value) {
 // mutEntityType lo saltaba por id falsy). Ver sentinels-config.json entidad quotePrice.
 
 // Navegación CLIENT-SIDE a la lista de Quotes. HALLAZGO 2026-07-17: el dashboard de quotes
-// NO hidrata por deep-link (searchQuery sale vacío, tanto headless como en navegador real);
-// SÍ hidrata navegando dentro del SPA ya cargado (home → clic al link /Quotes → la lista
-// rinde filas). El quote centinela #288 (nombre 'Centinela', reciente) aparece en la 1ª
+// NO hidrata por deep-link CON searchQuery (sale vacío, tanto headless como en navegador
+// real); SÍ hidrata navegando dentro del SPA ya cargado (home → clic al link /Quotes → la
+// lista rinde filas). El quote centinela #288 (nombre 'Centinela', reciente) aparece en la 1ª
 // página de la lista ACTIVA. Devuelve true si el <a> del quote {id} (con rev) aparece.
-async function openQuotesListAndFind(page, id, domain) {
-  await page.goto(`${BASE}/Domains/${domain}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
-  await page.waitForTimeout(3000);
-  await page.locator('a[href$="/Quotes"]').first().click({ timeout: 12000 }).catch(async () => {
-    await page.goto(`${BASE}/Domains/${domain}/Quotes`, { waitUntil: 'domcontentloaded' }).catch(() => {});
-  });
-  return page.locator(`a[href*="/Quotes/${id}/"]`).first()
-    .waitFor({ state: 'visible', timeout: 25000 }).then(() => true).catch(() => false);
+//
+// HARDENING 2026-07-25 (Nivel B, tras el fallo transitorio del 2026-07-24 21:32 "objeto
+// cargado NO es centinela (identidad)"): el centinela #288 estaba ACTIVO y visible —
+// verificado en vivo, la ruta capturó ✓ vigente en 2/2 reintentos, incluso corriendo justo
+// después del ciclo fallido de CreateInvoicePdf (se descartó contaminación de estado). Lo
+// que sí se observó frágil: el clic a `a[href$="/Quotes"]` FALLA a veces (la SPA redirige a
+// `/` y el link del sidebar no está clicable) y ANTES se comía 12 s de timeout antes de caer
+// al goto, dejando poco margen al waitFor. Dos cambios: (1) timeout del clic 12→6 s, y
+// (2) REINTENTO del ciclo completo (home → lista) — un blip de hidratación ya no tumba el
+// ciclo entero ni escala en falso. El goto directo a /Quotes SIN searchQuery sí hidrata
+// (verificado 2026-07-25: 41 links, #288 presente), así que el fallback es sólido.
+async function openQuotesListAndFind(page, id, domain, intentos = 2) {
+  const sel = `a[href*="/Quotes/${id}/"]`;
+  for (let i = 0; i < intentos; i++) {
+    await page.goto(`${BASE}/Domains/${domain}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    await page.waitForTimeout(3000);
+    await page.locator('a[href$="/Quotes"]').first().click({ timeout: 6000 }).catch(async () => {
+      await page.goto(`${BASE}/Domains/${domain}/Quotes`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    });
+    const found = await page.locator(sel).first()
+      .waitFor({ state: 'visible', timeout: 25000 }).then(() => true).catch(() => false);
+    if (found) return true;
+    if (process.env.SA_DBG) console.log(`       [dbg] quote #${id} no apareció (intento ${i + 1}/${intentos})`);
+  }
+  return false;
 }
 
 // quotePrice: SaveManyPartNumberPrices — hash unificado VIVO 72946d4d (Steelhead fusionó las

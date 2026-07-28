@@ -120,6 +120,8 @@ test('canal de lanzadores consistente: popup LAUNCHERS → dispatcher LAUNCH_FN 
     WODeadlineChanger: 'scripts/wo-deadline-changer.js',
     PriceConfirmGuard: 'scripts/price-confirm-guard.js',
     PNLifecycle: 'scripts/pn-lifecycle.js',
+    WoScheduleButton: 'scripts/wo-schedule-button.js',
+    WoListingColumns: 'scripts/wo-listing-columns.js',
   };
 
   for (const msg of popupMsgs) {

@@ -90,3 +90,45 @@ Producción pidió (2026-07-24) un botón en la columna **Acciones** del listado
 
 - `PartNumbersByWorkOrderIdInDomain`, `AllStations`, `WorkOrder`, `WorkOrderSchedule`: **ya en config**, sin hash nuevo introducido por las columnas. La columna Lote usa `WorkOrder({idInDomain})` (mismo hash que `wo-schedule-button`). Ruta de captura de `PartNumbersByWorkOrderIdInDomain`/`WorkOrder`: navegar a la ficha `/Domains/<d>/WorkOrders/<id>` — verificar/registrar en `route-catalog.json`.
 - **`AllWorkOrders` NO rotó (corrección 2026-07-24):** el hash de config `aaeb9dc0…` **sigue válido server-side** (el validador no lo reporta). El front sencillamente usa un bundle más nuevo (`4a1ce04a…`); la persisted query vieja sigue registrada. `wo-listing-columns` **no** llama `AllWorkOrders` (lo menciona solo en comentario). Sin acción.
+
+
+## Safari / iPad (bundle v0.6.0, 2026-07-27)
+
+Integrado al bundle del iPad. El scanner (`tools/safari-bundle-scan.py`) lo clasificaba
+**NO-APLICA** por detectar `a.download`, pero esa descarga es la **generación del PDF**: una
+función **lateral y opt-in**, no el flujo core del applet. La regla correcta es *NO-APLICA solo
+cuando el FLUJO CORE es la descarga* (auditor, carga-masiva, file-uploader…); si es una función
+más, el applet sí va al bundle y en iOS simplemente esa función no opera.
+
+Recordatorio: el bundle es **estático** (Apple 2.5.2 prohíbe código remoto) — editar
+`remote/scripts` NO llega al iPad hasta correr `tools/build-safari.sh` y **recompilar en Xcode**.
+
+## v0.8.1 (2026-07-27) — los toggles dejaron de aparecer al cargar
+
+Reporte del operador: los 4 toggles no salían al entrar al listado, **pero sí al pulsar el
+botón de márgenes** (que fuerza un re-render), y al recargar volvían a esconderse.
+
+**Causa.** `ensureToggles()` necesita la tabla para anclarse; en el `init` todavía no está
+pintada, y el único reintento —el `MutationObserver`— vivía detrás de:
+
+```js
+function syncColumns() {
+  if (!anyOn() || !onIndex()) return;   // ← con todos los toggles apagados, sale aquí
+  ensureToggles();                       // ← y nunca monta la barra
+```
+
+Como los toggles arrancan **apagados**, ese reintento nunca corría: la UI que sirve para
+encenderlos estaba condicionada a que ya estuvieran encendidos.
+
+**Por qué apareció justo ahora.** El bug llevaba meses ahí, tapado por el timing: con el loader
+viejo el applet iba detrás de 79 descargas **en serie**, y llegaba tan tarde que React ya había
+pintado la tabla → `ensureToggles()` montaba a la primera. Al acelerar el loader ese mismo día
+(ver [`../architecture/applet-load-gating.md`](../architecture/applet-load-gating.md)) el applet
+pasó a correr **antes** que React y el bug salió a la luz.
+
+**Fix.** `ensureToggles()` se llama SIEMPRE que la ruta aplique; sólo el trabajo pesado queda
+detrás de `anyOn()`. De aquí sale una regla de repo (en `CLAUDE.md`): *la UI de ENTRADA de un
+applet se monta siempre; sólo el trabajo pesado va detrás del gate de estado.* Y su corolario:
+**no asumas que el DOM ya está pintado cuando corre tu `init()`**.
+
+Mismo bug y mismo fix en `pn-specs-column` (el molde del que salió este applet).

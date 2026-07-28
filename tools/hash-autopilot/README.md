@@ -354,6 +354,20 @@ autopilot: `d2e1c52` SearchPartNumbers, `1bda4f9` FilterSearch).
   "CORREGIDA Y DEPLOYADA") **sin el cry-wolf diario** por el modal flaky. Fallback confiable si el
   best-effort no cacha la rotación: el applet `invoice-auto-regen` falla en prod, o el hash-scanner
   manual (que SÍ abre el modal). Para agregar otra op así: métela a `suppressPendingReport`.
+  - **ACTUALIZACIÓN 2026-07-27 (commit `5497cd2`): el silenciamiento estaba INCOMPLETO — se cerraron
+    las dos fugas que quedaban.** `suppressPendingReport` sólo actuaba sobre `pendingMuts`, así que
+    `CreateInvoicePdf` seguía (a) saliendo en el correo como "❓ probe no concluyente" y (b) escribiendo
+    `needs-attention.json` → **el cron del Nivel B gastaba un `claude -p` DIARIO re-descubriendo el
+    callejón sin salida ya documentado arriba** (reproducido en vivo). Ahora la exclusión vive en
+    `escalableNotCaptured()` (core, testeada), que es la base de la señal de atención. Y en
+    `classifyCycleOutcomes()`: `invoicePdf` usa un **PSEUDO-centinela** (no apunta a ningún objeto
+    Centinela — su `load` sólo comprueba que el icono de la lista rindió y devuelve un nombre
+    SINTÉTICO para pasar `isSentinel`), así que cuando la lista tardaba, el ciclo reportaba "identidad"
+    y se clasificaba como **centinela ROTO** → el correo pedía *"DESARCHIVA el centinela"*, consejo
+    imposible de seguir (no hay objeto que desarchivar) y repetido en cada corrida completa. Van a
+    `other`: el fallo queda sólo en el log, como manda `_docSuppressPendingReport`. **La detección se
+    conserva intacta**: el best-effort se sigue intentando y, si captura una rotación real, sale por
+    `toDeploy` ("CORREGIDA Y DEPLOYADA").
   - **ACTUALIZACIÓN 2026-07-24 (commit `8980994`): `validate-hashes.py` ahora TAMBIÉN whitelistea
     `suppressPendingReport`.** Razón: `CreateInvoicePdf` daba falso-stale PERMANENTE al probe idp-token
     (session-sensitive) y como NO es recapturable headless (callejón sin salida arriba), el gate del

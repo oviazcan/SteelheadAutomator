@@ -27,7 +27,7 @@
 (function () {
   'use strict';
 
-  const APPLET_VERSION = '0.3.2';
+  const APPLET_VERSION = '0.3.4';
 
   // ── Singleton guard + teardown de versión previa (re-inyección en SPA / bump) ──
   if (window.ReportRegen && window.ReportRegen.__version === APPLET_VERSION) return;
@@ -39,7 +39,12 @@
   const BTN_ID = 'sa-report-regen-btn';
   const SEP_ID = 'sa-report-regen-sep';
   const STYLE_ID = 'sa-report-regen-style';
-  const REQUIRED_PERMISSION = 'MANAGE_REPORTING';
+  // Steelhead FRAGMENTÓ `MANAGE_REPORTING` en cinco permisos granulares y el viejo dejó de
+  // existir (verificado el 2026-07-27 contra /Users/Access/PermissionsReference). El que
+  // corresponde aquí es, textual en su catálogo: "Admin-level reporting actions: regenerate
+  // the reporting database, view and change reporting settings." Exigir el fantasma dejaba
+  // el botón invisible para TODOS, en silencio. El de config.json manda sobre esta constante.
+  const REQUIRED_PERMISSION = 'MANAGE_REPORTING_SETTINGS';
   const OBSERVER_DEBOUNCE_MS = 300;
   // Memoria del último veredicto REAL de permisos en este navegador ('1'/'0').
   // `_v2` porque la v0.3.1 pudo grabar un "no" ESPURIO (ver evalAllowed): al versionar la
@@ -589,9 +594,18 @@
     bootPromise = (async () => {
       const ok = await waitForDeps(20000);
       booted = true;
-      if (!ok) return; // deps no llegaron; queda inerte
+      if (!ok) {
+        // Queda inerte, pero que se sepa: en silencio esto es indistinguible de "no tengo permiso".
+        console.warn('[report-regen] SteelheadAPI/REMOTE_CONFIG no llegaron en 20s — applet inerte');
+        return;
+      }
       // Tira la memoria envenenada de v0.3.1 (pudo grabar un "no" espurio desde Profile).
       try { localStorage.removeItem(REMEMBER_KEY_LEGACY); } catch (_) {}
+      // El observer se instala SIEMPRE, no sólo cuando ya hay permiso: el applet puede
+      // arrancar antes de que React pinte el header (el loader nuevo inyecta muy temprano),
+      // y sin observer el botón se perdería la única oportunidad de montarse. `ensureButton`
+      // ya se protege solo con `allowed !== true`.
+      installObserver();
       installPermSniffer(); // captura permisos de CurrentUser/Profile que pida el front
       tryApolloCache();     // cache del front (en producción NO está expuesto — ver decideGate)
       // Con la memoria de un veredicto anterior esto monta de inmediato; si no hay nada,
@@ -629,6 +643,20 @@
     __version: APPLET_VERSION,
     triggerFromPopup,
     destroy,
+    // Estado interno para diagnosticar en vivo por qué el botón no aparece.
+    debug: () => ({
+      version: APPLET_VERSION,
+      allowed,                       // true=monta · false=sin permiso · null=aún sin veredicto
+      capturedPerms,                 // lo que se pudo leer del front (null = nada)
+      permsConocidos: Array.isArray(capturedPerms && capturedPerms.perms),
+      gateTimedOut,
+      recordado: readRemembered(),
+      booted,
+      deps: { api: !!window.SteelheadAPI, config: !!window.REMOTE_CONFIG },
+      anclaEncontrada: !!findAnchor(),
+      botonEnDOM: !!document.getElementById(BTN_ID),
+      observer: !!observer
+    }),
     _internals: { computeState, computeSkewMs, formatCountdown, pickPollIntervalMs, findAnchor, evalAllowed, decideGate, formatLastGenerated, formatRelativeAge, extractLatestGeneratedAt }
   };
   // Para los golden tests (node --test) y depuración manual.

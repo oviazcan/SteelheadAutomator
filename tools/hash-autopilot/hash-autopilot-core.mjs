@@ -64,7 +64,12 @@ export function planDeploy(results, opts = {}) {
 // Construye el payload de needs-attention.json (Nivel B). Enriquece cada op con
 // la receta vieja COMPLETA (module + steps + captures) para dar al re-descubridor
 // un punto de partida. op sin receta → recipeTried/steps null (crear desde cero).
-export function buildNeedsAttention(notCaptured, recipes, date) {
+// `observedByOp` (op → razón real) permite que las MUTATIONS reporten por qué abortó su
+// ciclo centinela en vez del genérico de queries: el 2026-07-24 SaveManyPartNumberPrices
+// escaló con "la receta no disparó la op" cuando el ciclo había abortado por IDENTIDAD
+// (el load no vio el quote centinela) — dos diagnósticos y dos reparaciones distintas, y
+// el Nivel B arrancó buscando la equivocada. Sin entrada → el genérico de siempre.
+export function buildNeedsAttention(notCaptured, recipes, date, observedByOp = {}) {
   const find = (op) => Object.entries(recipes || {}).find(([, r]) => (r.captures || []).includes(op));
   const ops = (notCaptured || []).map((r) => {
     const rec = find(r.op);
@@ -74,7 +79,7 @@ export function buildNeedsAttention(notCaptured, recipes, date) {
       module: rec ? (rec[1].module || null) : null,
       steps: rec ? (rec[1].steps || null) : null,
       captures: rec ? (rec[1].captures || null) : null,
-      observed: 'la receta no disparó la op (0 capturas)',
+      observed: (observedByOp && observedByOp[r.op]) || 'la receta no disparó la op (0 capturas)',
     };
   });
   return { date, ops };
@@ -92,6 +97,22 @@ export function pruneNeedsAttention(payload, resolvedOps) {
   const remaining = payload.ops.filter((o) => o && !resolved.has(o.op));
   if (remaining.length === 0) return null;
   return { ...payload, ops: remaining };
+}
+
+// Base de la señal de atención: de las ops NO capturadas, cuáles de verdad ameritan
+// alertar/escalar. Excluye dos clases que NO son "la UI cambió y hay que re-descubrir":
+//  (a) knownNoRoute    — hueco conocido sin ruta en el catálogo (estático, Fase B).
+//  (b) suppressPending — mutations VIGENTES cuya captura headless es FLAKY y cuya ruta ya
+//      se investigó y se descartó como no-automatizable (CreateInvoicePdf: el modal del PDF
+//      no abre confiable headless; ver masked-ops.json `_docSuppressPendingReport`).
+// Antes (b) solo se silenciaba en pendingMuts, pero la op seguía saliendo en el correo como
+// "❓ probe no concluyente" Y escribiendo needs-attention.json → el cron del Nivel B gastaba
+// un `claude -p` DIARIO re-descubriendo un callejón sin salida ya documentado (bug
+// 2026-07-25, reproducido). No pierde detección: si el intento best-effort SÍ captura un
+// hash rotado, la op no pasa por aquí — sale en toDeploy ("CORREGIDA Y DEPLOYADA").
+export function escalableNotCaptured(notCaptured, { knownNoRoute = [], suppressPending = [] } = {}) {
+  const skip = new Set([...(knownNoRoute || []), ...(suppressPending || [])]);
+  return (notCaptured || []).filter((r) => r && !skip.has(r.op));
 }
 
 // Ops target que ninguna receta captura (huecos del mapa click-recipes.json).

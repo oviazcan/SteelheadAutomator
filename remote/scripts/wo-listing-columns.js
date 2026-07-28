@@ -789,8 +789,19 @@ const WoListingColumns = (() => {
   function removeLabelButtons() { document.querySelectorAll('.sa-wolabel-btn').forEach(function (b) { b.remove(); }); }
 
   function syncColumns() {
-    if (!anyOn() || !onIndex()) return;
+    if (!onIndex()) return;
+    // La barra de toggles se monta SIEMPRE, aunque no haya ninguno encendido: es la UI de
+    // entrada del applet, y si no está el operador no tiene cómo encender nada.
+    //
+    // Antes esto vivía detrás de `!anyOn() → return` y el bug quedaba oculto por pura
+    // suerte de timing: `ensureToggles()` necesita que la tabla exista para anclarse, en el
+    // init todavía no está, y el único reintento es este observer. Con el loader viejo (79
+    // archivos en serie) el applet llegaba tan tarde que la tabla ya estaba pintada y
+    // montaba a la primera. Al acelerar el loader (2026-07-27) el applet pasó a correr
+    // ANTES de que React pintara la tabla y los toggles dejaron de aparecer: sólo volvían
+    // al forzar un re-render (el botón de márgenes). Ver docs/architecture/applet-load-gating.md.
     ensureToggles();
+    if (!anyOn()) return;   // el trabajo pesado sí depende de que haya algo encendido
     const table = getTable(); if (!table) return;
     injectStyles();
     ensureHeaderCells(table);

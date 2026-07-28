@@ -360,8 +360,16 @@ const PnSpecsColumn = (() => {
   }
 
   function syncColumn() {
-    if (!isEnabled() || !onIndex()) return;
+    if (!onIndex()) return;
+    // El toggle se monta SIEMPRE, aunque esté apagado: es la UI de entrada del applet, y sin
+    // él el operador no tiene cómo encenderlo. Estaba detrás del `!isEnabled() → return` y el
+    // bug quedaba oculto por timing: `ensureToggle()` ancla al botón "NUEVO NÚMERO DE PARTE",
+    // que en el init puede no estar renderizado todavía, y este observer es el único reintento.
+    // Con el loader viejo (79 archivos en serie) el applet llegaba tan tarde que el header ya
+    // existía; al acelerarlo (2026-07-27) pasó a correr antes que React. Mismo bug que
+    // wo-listing-columns — este applet es el molde del que salió aquél.
     ensureToggle();
+    if (!isEnabled()) return;
     const table = getTable();
     if (!table) return;
     injectStyles();

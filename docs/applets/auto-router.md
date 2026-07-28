@@ -335,6 +335,39 @@ Cada pista elige su línea destino por separado o se deja **pendiente** y no se 
 - Acción de popup **`open-auto-router-lanes`** ("Auto-Ruteador — Por grupos"). Toma el número de
   orden de la URL de la ficha; fuera de ella lo pregunta.
 
+### El botón del popup nunca estuvo cableado (0.3.1, 2026-07-27)
+Reporte del operador: *"no me sale y ya tengo actualizada la extensión"*. La extensión estaba bien
+— **las tres acciones del auto-ruteador nunca tuvieron cómo llegar al applet.**
+
+El popup **no habla con la página**: manda `action.message` al background, que lo resuelve por un
+`case` explícito de su switch o, si no, por su **handler genérico**, que busca en config una acción
+con el mismo `message` **y un campo `fn`**, inyecta los scripts del app y ejecuta esa función con
+`executeScript({world:'MAIN'})`. Las tres acciones se declararon con `handler:"message"` **sin `fn`
+y sin case** → el background contestaba `Acción desconocida: open-auto-router-lanes`.
+
+La entrada que el applet sí tenía era `chrome.runtime.onMessage`, y **ese API no existe en el mundo
+MAIN** — envuelto en un `try/catch` que se tragaba el error, así que el código se veía correcto.
+`open-auto-router` y `open-auto-router-batch` sobrevivieron porque el **FAB 🔀** los abre; el ruteo
+por grupos **no tiene FAB** (necesita todos los grupos, no el que captura el modal nativo), así que
+el popup era su única puerta y nació inalcanzable.
+
+Fix: `openPanelFromPopup` / `openBatchFromPopup` / `openLanesFromPopup` expuestas en
+`window.AutoRouter` + `fn` en las tres acciones de config. Devuelven **de inmediato** y difieren la
+apertura con `setTimeout(…, 0)`: `openLanes()` puede pedir el número de orden con `prompt()`, que
+bloquearía el `executeScript` y dejaría al popup colgado en "Procesando…". `listenManualTrigger()`
+se eliminó (código muerto). El bundle Safari/iPad tenía el mismo hueco — su `LAUNCH_FN` mapeaba a
+`openPanel`/`openBatch` y **no listaba lanes**; ya va en el bundle.
+
+**Trinquete: [`tools/test/popup-actions-wired.test.js`](../../tools/test/popup-actions-wired.test.js)** —
+toda acción `handler:"message"` debe tener case o `fn`, y cada `fn` debe resolver a un método que su
+applet exporte. Destapó **4 huérfanas más** (`run-wo-mover` y los toggles de `invoice-listing-marker`,
+`create-order-autofill`, `invoice-autofill`), que van como línea base: los tres toggles guardan estado
+en `chrome.storage.local`, inalcanzable desde MAIN → necesitan republicar la extensión.
+
+**Lección:** un botón del popup es un contrato entre TRES archivos (config, background, applet) y
+**ninguno de los tres falla solo**: el botón se pinta, el config valida, el script deploya. La única
+señal es el clic en producción. Todo canal así necesita un test que lo recorra de punta a punta.
+
 ### Fuente de datos de las piezas
 `WorkOrder { idInDomain }` → `workOrderByIdInDomain.currentPartsTransferAccounts.nodes[]` da en UNA
 llamada `{id, partCount, partGroupId, partGroupByPartGroupId{id,name}, partNumberId}` más

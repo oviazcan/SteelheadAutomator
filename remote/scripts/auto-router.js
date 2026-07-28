@@ -5,7 +5,8 @@
 //   workOrderId, partNumberId y el árbol completo de recipeNodes. El modal nativo
 //   funciona como "selector de orden" — el applet no necesita pedir IDs internos.
 // · Muestra un FAB 🔀 cuando hay contexto capturado y abre el panel de preview.
-// · Atiende el mensaje 'open-auto-router' del popup.
+// · Expone las entradas del popup (`AutoRouter.open*FromPopup`), que el background
+//   ejecuta con executeScript en el mundo MAIN — ver §"Entradas desde el popup".
 //
 // Depende de: SteelheadAPI, AutoRouterAPI, AutoRouterEngine, AutoRouterPanel,
 //             ProcessShared (opcional).
@@ -17,7 +18,7 @@
 const AutoRouter = (() => {
   'use strict';
 
-  const VERSION = '0.1.0';
+  const VERSION = '0.3.1';
   const LOG = '[AR]';
   const api = () => window.SteelheadAPI;
   const log = (m) => api()?.log?.(m) ?? console.log(LOG, m);
@@ -242,15 +243,45 @@ const AutoRouter = (() => {
     window.AutoRouterLanes.open({ idInDomain });
   }
 
-  function listenManualTrigger() {
-    try {
-      chrome.runtime?.onMessage?.addListener?.((msg) => {
-        if (!msg) return;
-        if (msg.action === 'open-auto-router') openPanel();
-        else if (msg.action === 'open-auto-router-batch') openBatch();
-        else if (msg.action === 'open-auto-router-lanes') openLanes();
-      });
-    } catch (_) { /* no chrome.runtime en algunos contextos */ }
+  // ── Entradas desde el popup ────────────────────────────────────────────────
+  // El popup NO habla con la página: manda el mensaje al background, que resuelve
+  // la acción en config, inyecta los scripts del app y ejecuta `action.fn` con
+  // `executeScript({world:'MAIN'})`. Por eso `chrome.runtime.onMessage` NO es una
+  // entrada válida — en el mundo MAIN ese API no existe, y el background ni
+  // siquiera reenvía el mensaje a la pestaña (cae en su handler genérico, que
+  // exige `fn`). Las tres acciones del auto-ruteador vivieron sin `fn` desde su
+  // fase 1: el botón del popup contestaba "Acción desconocida" y el applet solo
+  // se podía abrir por el FAB 🔀 — que necesita contexto capturado del modal
+  // nativo y NUNCA ofreció el ruteo por grupos. De ahí el "no me sale".
+  //
+  // Las tres devuelven de INMEDIATO y difieren la apertura: `openLanes()` puede
+  // pedir el número de orden con `prompt()`, que bloquearía el `executeScript`
+  // (el popup se quedaría colgado en "Procesando…" hasta que el operador
+  // contestara). `{started:true}` hace que el popup muestre el mensaje y ya.
+  function openPanelFromPopup() {
+    if (!captured || !captured.wos || !captured.wos.length) {
+      return { error: 'Abre primero el modal de ruteo de una orden (o selecciona varias en el board) para capturar el contexto, y vuelve a intentar.' };
+    }
+    setTimeout(openPanel, 0);
+    return { started: true, message: `Abriendo el Auto-Ruteador (${captured.wos.length} orden(es))…` };
+  }
+
+  function openBatchFromPopup() {
+    if (!window.AutoRouterBatch) return { error: 'Módulo batch no cargado.' };
+    setTimeout(openBatch, 0);
+    return { started: true, message: 'Abriendo el ruteo por lotes…' };
+  }
+
+  function openLanesFromPopup() {
+    if (!window.AutoRouterLanes) return { error: 'Módulo de grupos no cargado.' };
+    setTimeout(openLanes, 0);
+    const m = location.pathname.match(/\/WorkOrders\/(\d+)/);
+    return {
+      started: true,
+      message: m
+        ? `Abriendo el ruteo por grupos de la OT ${m[1]}…`
+        : 'Escribe el número de orden en la ventana que se abrió sobre Steelhead.',
+    };
   }
 
   function installUrlListener() {
@@ -272,7 +303,6 @@ const AutoRouter = (() => {
     if (disabled) { log('Deshabilitado'); return; }
     injectStyles();
     patchFetch();
-    listenManualTrigger();
     installUrlListener();
     window.addEventListener('sa-ar-context', syncFab);
     window.addEventListener('sa-ar-url', () => {
@@ -295,7 +325,11 @@ const AutoRouter = (() => {
   }
 
   if (typeof window !== 'undefined') {
-    window.AutoRouter = { VERSION, init, openPanel, openBatch, getContext };
+    window.AutoRouter = {
+      VERSION, init, getContext,
+      openPanel, openBatch, openLanes,
+      openPanelFromPopup, openBatchFromPopup, openLanesFromPopup,
+    };
     if (document.readyState === 'loading') {
       document.addEventListener('DOMContentLoaded', init);
     } else {
@@ -303,5 +337,5 @@ const AutoRouter = (() => {
     }
   }
 
-  return { VERSION, init, openPanel, getContext };
+  return { VERSION, init, openPanel, openLanes, getContext, openLanesFromPopup };
 })();

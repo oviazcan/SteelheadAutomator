@@ -28,10 +28,14 @@
     { message: 'open-station-config',     icon: '⚙️', label: 'Configurar Estaciones',      sub: 'Dims de tina, capacidad DMK y OEE por línea' },
     { message: 'open-auto-router',        icon: '🔀', label: 'Auto-Ruteador',             sub: 'Re-rutear orden a otra línea (abre el modal de ruteo primero)' },
     { message: 'open-auto-router-batch',  icon: '🔀', label: 'Auto-Ruteador — Batch',     sub: 'Rutear varias órdenes (pega los números)' },
+    { message: 'open-auto-router-lanes',  icon: '📦', label: 'Auto-Ruteador — Por grupos', sub: 'Rutear la orden completa y/o cada grupo de piezas a su línea' },
     { message: 'open-wo-completer',       icon: '✅', label: 'Completar / Descompletar OTs', sub: 'Pega un listado de OTs y ciérralas o revívelas' },
     { message: 'run-wo-deadline',         icon: '⚙️', label: 'Gestionar OTs',              sub: 'Cambiar plazos y etiquetas masivamente' },
     { message: 'run-pn-lifecycle',        icon: '♻️', label: 'Ciclo de vida de PNs',      sub: 'Pega IDs o filtra: validar, desarchivar, archivar (Borrado definitivo)' },
-    { message: 'toggle-price-confirm-guard', icon: '🔒', label: 'Candado de precio (on/off)', sub: 'Activa/desactiva el candado de confirmación de precio' }
+    { message: 'toggle-price-confirm-guard', icon: '🔒', label: 'Candado de precio (on/off)', sub: 'Activa/desactiva el candado de confirmación de precio' },
+    { message: 'open-wo-schedule',        icon: '📅', label: 'Programación de la OT',     sub: 'Refresca el readout de programación (estando en la ficha de una OT)' },
+    { message: 'toggle-wo-pn-column',     icon: '🔩', label: 'Columna Núm. de Parte (on/off)', sub: 'En el listado de Órdenes de Trabajo' },
+    { message: 'toggle-wo-sched-column',  icon: '📅', label: 'Columna Programación (on/off)',  sub: 'En el listado de Órdenes de Trabajo' }
   ];
 
   function getAll(keys) {
