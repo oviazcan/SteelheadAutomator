@@ -5,6 +5,14 @@ Job desatendido que **valida y regenera** los hashes session-sensitive de Steelh
 falso-stale al cliente externo (idp-token). Ver diseño:
 `docs/superpowers/specs/2026-07-03-hash-autopilot-design.md`.
 
+> **Nota de nomenclatura (2026-07-23).** El marcador de los objetos de prueba en el ERP se llama
+> **«Centinela»** (español correcto; antes estaba mal escrito como «Sentinela»). El código acepta
+> **solo** `/centinela/i` (`isSentinel` en `sentinels.mjs`) y los objetos del ERP se renombraron a
+> «Centinela» (verificado en vivo: el ciclo encontró la cotización «Centinela» #288). Los
+> identificadores en **inglés** (`isSentinel`, `formatSentinelAlert`, `SENTINEL_MARKER`) se quedan en
+> inglés por convención. **`cleanup-sentinela-ovs.mjs` conserva su nombre de archivo heredado a
+> propósito** (renombrarlo arriesga romper su invocación) — su contenido y el objeto que toca sí son «Centinela».
+
 ## Cómo funciona
 
 1. Abre Chromium **headless** ya logueado (ver Auth) y corre las recetas de
@@ -17,31 +25,31 @@ falso-stale al cliente externo (idp-token). Ver diseño:
 4. Auto-deploya los `rotadoValidado` (con salvaguardas) y notifica por correo.
    Si una receta no captura, deja señal para el cron de Claude (ver `ESCALATION.md`).
 
-## Fase C: mutations vía ciclos sentinela (2026-07-08 ✅)
+## Fase C: mutations vía ciclos centinela (2026-07-08 ✅)
 
 Las MUTATIONS rotadas no se capturan navegando (no hay "receta" pasiva): hay que
-EJECUTARLAS. El motor corre ciclos **sentinela** headless sobre objetos de prueba
-(nombre "Sentinela", `sentinels-config.json`) — fail-closed (verifica identidad antes
+EJECUTARLAS. El motor corre ciclos **centinela** headless sobre objetos de prueba
+(nombre "Centinela", `sentinels-config.json`) — fail-closed (verifica identidad antes
 de mutar), reversible (restaura/limpia SIEMPRE en `finally`), con journal idempotente.
 Deps DOM en `mutation-deps.mjs`, orquestador en `mutation-runner.mjs`. Tras el loop de
-queries, corre un ciclo por mutation stale con sentinela declarado; las capturadas entran
+queries, corre un ciclo por mutation stale con centinela declarado; las capturadas entran
 al mismo pipeline de deploy + al MISMO correo.
 
-Mutations cubiertas por ciclo sentinela (validadas end-to-end):
+Mutations cubiertas por ciclo centinela (validadas end-to-end):
 
-| Mutation | Sentinela | Acción que la dispara (¡el sink es el juez!) |
+| Mutation | Centinela | Acción que la dispara (¡el sink es el juez!) |
 |---|---|---|
 | `UpdatePartNumber` | PN #3770957 | toggle del checkbox **"Archived"** del PN (NO el Save del modal → ese es `SavePartNumber`) |
 | `UpdateQuote` | quote #288 | editar **External Notes** de la cotización (NO archivar → eso es `ArchiveUnArchiveQuote`, ni está en config) |
-| `CreateReceivedOrder` | OV nueva | **crear** una OV "Sentinela" (modal Nueva OV) + archivarla después (create-capture-cleanup) |
-| `CreateMaintenanceEvent` | nodo #55 | **New Maintenance Event → Node → combobox "Sentinela" → Save & Begin** |
+| `CreateReceivedOrder` | OV nueva | **crear** una OV "Centinela" (modal Nueva OV) + archivarla después (create-capture-cleanup) |
+| `CreateMaintenanceEvent` | nodo #55 | **New Maintenance Event → Node → combobox "Centinela" → Save & Begin** |
 | `CreateMaintenanceEventComment` | nodo #55 | escribir en **"Write a comment…" → Submit** (dentro del evento) |
 | `UpdateMaintenanceEvent` | nodo #55 | toggle del checkbox **"Archived" del EVENTO** (NO completar el evento; el toggle además limpia) |
 | `AddPartsToWorkOrders` | OV #1603 → OT #13678 | **CAPTURA-Y-ABORTA** (escritura): modal **"Ajustar Cantidad de Piezas de OT"** (icono IsoIcon) → cambiar el *Conteo Deseado* → **Guardar**. El Save dispara **SOLO** `AddPartsToWorkOrders`; `MovePartsToRecipeNodeId`/`SearchLocationsOnPath` son queries de **preview** del modal (no del Save, no escriben). Cero persistencia (OT sigue 1/1). |
 
-Los 3 de mantenimiento se capturan en **un solo flujo** (crear evento → comentar → archivar) sobre el nodo sentinela ACTIVO; el sink es compartido, así que si las 3 están stale, el 1er ciclo captura las 3 y los siguientes hacen no-op. El nodo #55 **debe quedar activo (no archivado)** para que el combobox lo encuentre — el deep-link a un nodo archivado NO hidrata.
+Los 3 de mantenimiento se capturan en **un solo flujo** (crear evento → comentar → archivar) sobre el nodo centinela ACTIVO; el sink es compartido, así que si las 3 están stale, el 1er ciclo captura las 3 y los siguientes hacen no-op. El nodo #55 **debe quedar activo (no archivado)** para que el combobox lo encuentre — el deep-link a un nodo archivado NO hidrata.
 
-**Dominio:** `344` es **TLC (Toluca)**, NO MTY — MTY es otro dominio sin datos aún. Todos los sentinelas viven en 344/TLC.
+**Dominio:** `344` es **TLC (Toluca)**, NO MTY — MTY es otro dominio sin datos aún. Todos los centinelas viven en 344/TLC.
 
 Lecciones (todas costaron corridas):
 - **El sink es el juez**: la acción "obvia" casi siempre dispara OTRA mutation. `SA_DBG=1` imprime el sink tras cada ciclo → así se descubre la acción real.
@@ -122,7 +130,7 @@ reportó "0 rotado"). Ahora se **recapturan SIEMPRE**, desacopladas del gate por
   ni de stale. Lo corre `run-hash-autopilot.sh` en CADA tick, ANTES del gate por
   release (el escaneo completo sigue tras el gate). Validado en vivo 2026-07-15:
   capturó las 5 queries, probe 5 vigentes / 0 stale.
-- **Mutation de precios** (`SaveManyPartNumberPrices`): por ciclo **sentinela** sobre la
+- **Mutation de precios** (`SaveManyPartNumberPrices`): por ciclo **centinela** sobre la
   COTIZACIÓN `quotePrice` #288 (handler `savePartsQuoteAborted`), **validado end-to-end
   headless 2026-07-17**. Steelhead **unificó** las dos variantes en un solo hash (`72946d4d…`);
   el andamiaje del modal individual (`partNumberPrice` id:0) se **retiró** (2026-07-17).
@@ -149,13 +157,13 @@ tras la revisión contra el CÓDIGO (varios ya estaban resueltos en el código p
    del *input* exigiría un catálogo frágil de inputs por-applet (se rompe cuando el applet cambia) para
    un beneficio marginal. Se reabre solo si aparece un caso que las 3 salvaguardas no cubran.
 4. **Ops con MÚLTIPLES variantes — ✅ HECHO.** `SaveManyPartNumberPrices` unificó batch+individual en
-   `72946d4d…`; el andamiaje redundante `partNumberPrice` id:0 (+ handler `savePriceSentinelaAborted`)
+   `72946d4d…`; el andamiaje redundante `partNumberPrice` id:0 (+ handler `savePriceCentinelaAborted`)
    se **retiró** de `sentinels-config.json` y `mutation-deps.mjs`. Test `masked-ops-coherence` blinda
    que no reaparezca. El hardening "auto-deploy solo si el cfg está MUERTO" sigue cubriendo variantes.
-5. **Alerta de sentinela declarado archivado — ✅ HECHO.** Módulo puro `sentinel-health.mjs`
+5. **Alerta de centinela declarado archivado — ✅ HECHO.** Módulo puro `sentinel-health.mjs`
    (`classifyCycleOutcomes`/`formatSentinelAlert`, 6 tests): cuando un ciclo aborta por identidad
-   (sentinela ARCHIVADO → read-only → `isSentinel`=false), el motor lo reporta como sección
-   **🚨 SENTINELA ROTO/ARCHIVADO** en el correo (antes: abort silencioso a consola) con la acción
+   (centinela ARCHIVADO → read-only → `isSentinel`=false), el motor lo reporta como sección
+   **🚨 CENTINELA ROTO/ARCHIVADO** en el correo (antes: abort silencioso a consola) con la acción
    de desarchivar. Cuenta como pendiente en el asunto.
 6. **Nivel B — `claude -p` REAL + auth del cron — 🔶 PARCIAL (a/b hechos; c = corrida real).**
    (a) ✅ **BUG encontrado y corregido:** en el entorno del launchd `claude` NO resolvía (PATH sin
@@ -207,22 +215,22 @@ Mac** (en GitHub) por diseño: si viviera en el mismo launchd, moriría con lo q
 
 - Enmascaradas recapturadas siempre (masked-ops.json): `AllCustomers`, `Customer`,
   `CurrentUser`, `AllSensorDashboards`, `SensorDashboardQuery` + mutation
-  `SaveManyPartNumberPrices` (sentinela `quotePrice` #288, validado end-to-end 2026-07-17).
-- Mutations con ciclo sentinela funcionando: `UpdatePartNumber`, `UpdateQuote`,
+  `SaveManyPartNumberPrices` (centinela `quotePrice` #288, validado end-to-end 2026-07-17).
+- Mutations con ciclo centinela funcionando: `UpdatePartNumber`, `UpdateQuote`,
   `CreateReceivedOrder`, `CreateMaintenanceEvent`, `CreateMaintenanceEventComment`,
   `UpdateMaintenanceEvent`, `UpdateReceivedOrder` (7/7 — validadas headless).
 - **Mutations de REPORTES por CAPTURA-Y-ABORTA — VALIDADAS 4/4 headless (2026-07-20):**
   `GenerateDuckDb` (botón "Regenerate Database" en `/Reporting/Databases`), `DeleteFolderById`,
   `CreateUpdateReportWithPermissions`, `ArchiveReport` (los 3 en `/Reporting/Edit`). Entidades
   `reportGenerateDb`/`reportFolderDelete`/`reportSaveAsNew`/`reportArchive` en sentinels-config.
-  **Requisito:** una CARPETA "Sentinela" + un REPORTE "Sentinela" **persistentes** (activos) en
+  **Requisito:** una CARPETA "Centinela" + un REPORTE "Centinela" **persistentes** (activos) en
   `/Reporting/Edit` — el flujo de captura manual del operador los consume, así que deben quedar
   vivos para el ciclo. Anclaje SIN clases jss (son dinámicas): filtro "Filter queries..." +
-  evaluate-mark (svg[aria-label] cuya fila innerText==="Sentinela"). Gate `capture-abort` en
+  evaluate-mark (svg[aria-label] cuya fila innerText==="Centinela"). Gate `capture-abort` en
   `sentinels.mjs` permite correr destructivas (Delete…) y no-auto (Generate…) porque el abort da
   cero efecto. Rotaron 2026-07-20; corregidas por scan (config 1.7.149) + GenerateDuckDb 1.7.151.
 - **Mutation por CAPTURA-Y-ABORTA validada headless END-TO-END: `AddPartsToWorkOrders`**
-  (sentinela `workOrderPartCount` = OV #1603 "Sentinela" → OT #13678; handler
+  (centinela `workOrderPartCount` = OV #1603 "Centinela" → OT #13678; handler
   `saveWoPartCountAborted` en `mutation-deps.mjs`). A diferencia de las de precios
   (`partNumberPrice`/`quotePrice`, andamiadas/bloqueadas por hidratación del quote), la OV
   **SÍ hidrata headless** → el ciclo captura de punta a punta. **AUTO-DEPLOYABLE** (2026-07-17):
@@ -244,8 +252,8 @@ Mac** (en GitHub) por diseño: si viviera en el mismo launchd, moriría con lo q
   (`invoices-packingslips-addinvoice`). Validación headless: **3/3 capturan con `responseOk`,
   hashes == config**. El STOPGAP del hash-scanner ya NO es necesario para estas. `recipe-runner`
   soporta `clickFirst`/`clickButton`/`selectFirstOption` (navegación client-side multi-paso).
-- Utilitario: `cleanup-sentinela-ovs.mjs` archiva OV "Sentinela" activas rezagadas.
-  Salud de sentinelas: `sentinel-health.mjs` alerta si un sentinela declarado quedó archivado.
+- Utilitario: `cleanup-sentinela-ovs.mjs` archiva OV "Centinela" activas rezagadas.
+  Salud de centinelas: `sentinel-health.mjs` alerta si un centinela declarado quedó archivado.
 - Correo real: prueba de humo ✅ hecha (2026-07-17). Launchd de escalación: ✅ cargado.
 - Nivel B: ✅ **corrida real validada end-to-end 2026-07-17** (re-descubrimiento + trace + correo +
   guardrails). Wrapper corre con el login claude.ai (no la API key sin saldo). Auto-limpia el
@@ -254,7 +262,7 @@ Mac** (en GitHub) por diseño: si viviera en el mismo launchd, moriría con lo q
 ### Incidente + hallazgos 2026-07-20 (correo "0 corregida(s), 9 pendiente(s)")
 - **Qué pasó:** rotaron 4 mutations de reportes (`ArchiveReport`, `DeleteFolderById`,
   `CreateUpdateReportWithPermissions`, `GenerateDuckDb`; las 4 dieron "Must provide a query string").
-  El ciclo sentinela recapturó 2 como *sospechosas* y 2 quedaron *no capturadas* → correo de las
+  El ciclo centinela recapturó 2 como *sospechosas* y 2 quedaron *no capturadas* → correo de las
   14:32. **Ya corregidas por scan** (config avanzó a 1.7.155) y la corrida de las **19:25 salió
   LIMPIA** (`authFailed:false`, todo "vigente", `toDeploy:[]`, `massBrake:false`). No era una alarma
   viva al momento de revisar.
@@ -281,3 +289,87 @@ Mac** (en GitHub) por diseño: si viviera en el mismo launchd, moriría con lo q
 
 **No quedan pendientes de código accionables del hash-autopilot** (los 2 hallazgos de arriba son
 mejoras de UX/higiene, no bugs que rompan la autonomía).
+
+## Rutas de interacción type-ahead + CreateInvoicePdf vigente (2026-07-24)
+
+Los 3 hashes que el reporte diario del 2026-07-24 marcó "no autónomos" (2 queries type-ahead +
+`CreateInvoicePdf`). Resultado: los 2 queries quedaron **autónomos y auto-deployados por el propio
+launchd** (corrió las rutas, capturó y desplegó solo); `CreateInvoicePdf` resultó **vigente** (falso
+positivo del probe). Commits: `071076f` → `5b98a7d` → `2f027c2` (config con los hashes lo deployó el
+autopilot: `d2e1c52` SearchPartNumbers, `1bda4f9` FilterSearch).
+
+- **Causa raíz de los 3:** son *interaction ops* — NO se disparan navegando; requieren teclear en un
+  buscador (queries) o ejecutar una acción (mutation). Las rutas auto-generadas por pathname que los
+  "listaban" nunca los disparaban.
+- **`recipe-runner.mjs` — 3 capacidades nuevas** (para el flujo type-ahead multi-paso):
+  - step **`typeInto`** (`{ typeInto: <sel>, text }`): teclea char-por-char en un input →
+    search-as-you-type. Lo usa `SearchPartNumbers`.
+  - flag **`once`** en `clickFirst` (`{ clickFirst: <sel>, once: true }`): clic ÚNICO sin re-clic —
+    para pasos de setup de un modal donde la captura llega en un paso POSTERIOR (re-clicar cerraría el
+    modal/menú).
+  - **`clickFirstMatching` clica el primer elemento VISIBLE** (`matches.find(isVisible)`): los filtros
+    de columna de Work Orders matchean DUPLICADOS ocultos → clicar uno oculto hacía timeout.
+- **`workorders-filter-open` (FilterSearch):** `goto /WorkOrders` → clic en un filtro de columna
+  (`div:has(> svg[data-testid="ArrowDropDownIcon"]:not(.MuiSelect-icon))`). Dispara al ABRIR, sin
+  teclear. **La barra de filtros tarda ~10s en render headless** (a los 5s solo está el MuiSelect
+  "Search All"). VALIDADA EN VIVO: capturó `1cdd9e39…` (== la variante LEGADA `FilterSearchInventoryBatch`
+  del config; SH usa el mismo hash) → auto-deploy `1bda4f9`.
+- **`uploadedfiles-pn-filter` (SearchPartNumbers):** `goto /UploadedFiles` → botón "Filtrar Archivos"
+  (`button:has(svg[data-testid="FilterListIcon"])`, `once`) → combobox categoría (`[role=dialog]
+  div[role=button][aria-haspopup=listbox]`, `once`) → opción `li[role=option][data-value="partNumberId"]`
+  (VALOR estable, idioma-agnóstico; vive en portal MUI a nivel body, sin prefijo dialog, `once`) →
+  `typeInto` en `[role=dialog] input.MuiInputBase-inputAdornedStart`. VALIDADA EN VIVO: capturó
+  `e65235b5…` → auto-deploy `d2e1c52`.
+- Ambas ops en `_interactionOps` (excluidas del auto-agrupamiento por pathname) y REMOVIDAS de
+  `workorders-list`/`uploadedfiles-list`. Test `route-catalog-coherence` extendido (+2 ops al EXPECTED,
+  ahora 16, + tests de las 2 rutas).
+- **`CreateInvoicePdf` — VIGENTE, no rotada (falso positivo del probe).** El sentinel `invoicePdf`
+  (entity + handler `createInvoicePdfAborted`) captura por capture-abort en `/Invoices?mode=PackingSlips`
+  → flecha "Open PDF" (`OpenInNewIcon`) → modal → `RestorePageOutlinedIcon` → CONFIRMAR. Ruta VALIDADA
+  por el operador. **Verificado por hash-scanner 2026-07-24:** la op dispara (status known, count 3,
+  errorCount 0, hash `aafd22aa663f…` = el del config) → **el 'rotada sin capturar' del reporte diario es
+  FALSO POSITIVO** (la mutation da falso-stale al probe/ciclo). **CAVEAT HEADLESS:** el modal del PDF NO
+  abre confiable en Chromium headless (probado exhaustivo: 1/~10 con `click({force})`; el `OpenInNewIcon`
+  no gatilla el onClick de React de forma estable) → captura autónoma de ESTE op **best-effort**. Fallback
+  real cuando rote: **hash-scanner** (correr el scanner HACIENDO el regen del PDF → actualizar
+  `remote/config.json` a mano; probado 2026-07-24). Centinela declarado por la regla de proceso.
+  - **Callejón sin salida DESCARTADO (2026-07-24 — NO re-explorar):** intenté endurecer usando la
+    **página de DETALLE** del invoice (`/Domains/{domain}/Invoices/{id}`) en vez del modal. Esa página
+    **sí** muestra el `RestorePageOutlinedIcon` de forma determinista (3/3) y su popover abre — **pero su
+    botón CONFIRMAR dispara `InvoiceByIdInDomain` + `GetPaymentLink` (refresh de datos), NO
+    `CreateInvoicePdf`** (verificado con logger pasivo de requests, `harden-v4`). El regen de la página de
+    detalle es una **acción distinta**; `CreateInvoicePdf` **solo** lo dispara el regen del **MODAL** (Open
+    PDF desde la lista), y ese modal no abre confiable headless (0/3 con click real/coords/hover).
+    **Conclusión:** la superficie que dispara el op no se automatiza headless y la que se automatiza
+    (detalle) dispara otro op → **captura autónoma NO factible** con esfuerzo razonable (probablemente
+    requiere gesto humano "trusted" o event-system no estándar). Único de ~232 hashes que no es 100%
+    autónomo; los otros 6 session-sensitive **sí** lo son. El scanner es la vía para éste.
+- **Falso positivo del correo SILENCIADO — pero se SIGUE PROBANDO (HECHO, commits `03d80f5` + `<este>`):**
+  nueva lista `masked-ops.json` `suppressPendingReport: ["CreateInvoicePdf"]` (+ `_docSuppressPendingReport`).
+  **Importante (corrección de diseño):** el motor **NO** excluye la op del intento de captura — el
+  sentinel `invoicePdf` **SE SIGUE INTENTANDO en cada corrida COMPLETA** (best-effort; en `--masked-only`
+  no, porque `mutationsToCapture` devuelve [] ahí). Lo que se **silencia es SOLO el REPORTE del intento
+  FALLIDO**: no sale en `pendingMuts` ni suma a `nUrgentes`; el fallo queda solo en el log de consola.
+  Así se **preserva la detección** (si de verdad rota Y el modal abre, se auto-deploya y sale como
+  "CORREGIDA Y DEPLOYADA") **sin el cry-wolf diario** por el modal flaky. Fallback confiable si el
+  best-effort no cacha la rotación: el applet `invoice-auto-regen` falla en prod, o el hash-scanner
+  manual (que SÍ abre el modal). Para agregar otra op así: métela a `suppressPendingReport`.
+  - **ACTUALIZACIÓN 2026-07-24 (commit `8980994`): `validate-hashes.py` ahora TAMBIÉN whitelistea
+    `suppressPendingReport`.** Razón: `CreateInvoicePdf` daba falso-stale PERMANENTE al probe idp-token
+    (session-sensitive) y como NO es recapturable headless (callejón sin salida arriba), el gate del
+    launchd (`VAL_RC=1 → motor completo`) abría el motor completo **CADA hora en vano** (medido: 88 vs 38
+    corridas en el histórico; el 2026-07-24 fueron TODAS). Ahora `CreateInvoicePdf` sale `[SKIP]` en el
+    validador → `VAL_RC=1` **solo en rotaciones REALES** → el motor completo deja de correr en balde
+    (verificado: `235 ok / 0 stale / 1 skipped / exit 0`). **Consecuencia asumida:** una rotación REAL de
+    `CreateInvoicePdf` ya NO la marca el validador (queda invisible a la CAPA 2) — se detecta por el
+    fallback humano (applet truena en prod / hash-scanner). Es aceptable porque el motor tampoco la podía
+    sanar headless: el scanner ERA su única vía de todos modos. Distinto de las 6 masked (queries/mutations)
+    que el motor SÍ recaptura headless → esas siguen cubiertas sin hueco. El best-effort del sentinel
+    `invoicePdf` sigue en `capturableMuts` (se intenta cuando SÍ corre una completa por otra rotación),
+    solo que esas completas ahora son raras. **Nota operativa:** el validador necesita `/usr/bin/python3`
+    (tiene `requests`), NO el `python3` de Homebrew.
+- **Incidente de concurrencia 2026-07-24 (resuelto):** el launchd del autopilot corrió un auto-deploy
+  mientras había WIP sin commitear + OTRA sesión editando el hash-autopilot. La danza `stash -u` +
+  `checkout gh-pages` dejó el índice de main a medias, pero **se recuperó solo** (el stash se restauró).
+  Producción nunca corrió peligro. Lección viva: al deployar desde workbench o con el launchd activo,
+  el stash compartido + el checkout de gh-pages pueden chocar con WIP; el diseño self-healing aguantó.

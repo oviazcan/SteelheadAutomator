@@ -8,10 +8,29 @@ Pasos de build/firma/instalación en **`docs/deploy-safari.html`**.
 - **POC del candado de surtido VALIDADO en vivo (Safari iPad, 2026-06-30):** `world:"MAIN"` intercepta
   `fetch`, el login OAuth funciona y el bloqueo de una pieza no programada quedó confirmado (no se necesitó
   el plan B).
-- **Bundle v0.4.0 — 21 applets:** los 16 "directo" del inventario + `vale-almacen` (FAB) + 4 "con-popup"
-  (`archiver`, `sensor-status-autofill`, `load-calculator`, `auto-router`) lanzables desde el popup
-  (auto-router además con su FAB). Para agregar/quitar, edita `bundle.json` (inventario en
-  `docs/architecture/ipad-applets-inventory.html`). Peso ~870 KB — perfilar en iPads A12 o anteriores.
+- **Bundle v0.5.9 — 29 applets (2026-07-23):** los "directo" del inventario + `vale-almacen` (FAB) + 8
+  "con-popup" (`archiver`, `sensor-status-autofill`, `load-calculator`, `auto-router`, `wo-completer`,
+  `wo-deadline`, `price-confirm-guard` kill-switch, `pn-lifecycle`) lanzables desde el popup. **Agregados en
+  v0.5.9:** `batch-name-filter` (box inline en el Panel de Envío) y `schedule-batch-highlighter` (buscador
+  inline en el Schedule Board) — ambos `autoInject:true`, sin lanzador. Para agregar/quitar, edita
+  `bundle.json` (inventario y criterio de curación en `docs/architecture/ipad-applets-inventory.html`). Peso
+  ~1.24 MB — perfilar en iPads A12 o anteriores.
+
+> ### ⚠️ LECCIÓN OPERATIVA (2026-07-23) — el Modo de Aislamiento («modo hermético») debe quedar APAGADO
+> **Verificado en piso por el operador:** con el **Modo de Aislamiento** de iPadOS (*Lockdown Mode*; el usuario
+> lo llama «modo hermético») **activado, `app.gosteelhead.com` NI SIQUIERA CARGA** — no es la extensión: es el
+> propio sitio, porque ese modo bloquea tecnologías web complejas (JIT de JS, WebAssembly, etc.). Además impide
+> instalar apps de desarrollo y perfiles de configuración, así que **también bloquea la instalación de la app de
+> Xcode**. **Conclusión: en el iPad que use Steelhead, el Modo de Aislamiento se deja APAGADO de forma
+> permanente; NO reactivarlo.**
+> - **Apagarlo:** `Ajustes → Privacidad y seguridad → Modo de Aislamiento → Desactivar el Modo de Aislamiento`
+>   → confirmar **Desactivar y reiniciar**. **Prender/apagar ese modo SIEMPRE exige reinicio** (el cambio no
+>   surte efecto sin reiniciar). Reactivarlo (misma ruta) vuelve a tumbar Steelhead hasta apagarlo de nuevo.
+> - **No confundir** con el **Modo Desarrollador** (`Ajustes → Privacidad y seguridad → Modo Desarrollador`),
+>   que sí hay que **activar** (iPadOS 16+, también pide reiniciar) para correr la app firmada con Apple ID.
+>   Son dos toggles distintos en la misma sección de Ajustes: Aislamiento = OFF, Desarrollador = ON.
+> - Guía humana completa entregada al operador (HTML): «Poner el iPad en Modo Desarrollador e instalar Candado
+>   Surtido», con este hallazgo como Paso 0.
 
 ## Applets con interfaz (lanzadores del popup)
 Algunos applets no se auto-inyectan con botón flotante: se **lanzan desde el popup** (sección "Acciones").
@@ -85,6 +104,13 @@ quítalos si prefieres que abra Xcode automáticamente.
 3. Cambia el Bundle Identifier si Xcode marca conflicto (usa algo único, p. ej. `com.tuusuario.candadosurtido`).
 
 ### 3. Instalar en el iPad
+> **Antes de instalar — dos toggles en `Ajustes → Privacidad y seguridad`:**
+> 1. **Modo de Aislamiento («modo hermético») = OFF.** Con él activo NO se instalan apps de desarrollo/perfiles
+>    y **Steelhead ni carga** (ver LECCIÓN arriba). Desactívalo → **Desactivar y reiniciar** (obligatorio el
+>    reinicio). Déjalo apagado permanentemente; no lo reactives.
+> 2. **Modo Desarrollador = ON** (iPadOS 16+). Solo aparece tras conectar el iPad a Xcode (o `Window → Devices
+>    and Simulators`). Actívalo → el iPad pide reiniciar → tras reiniciar, confirma **Activar**.
+
 1. Conecta el iPad por cable y selecciónalo como destino (arriba en Xcode).
 2. **Product → Run** (▶). Se instala la app contenedora en el iPad.
 3. En el iPad: **Ajustes → Apps → Safari → Extensiones** (o **Ajustes → Safari → Extensiones**) → activa

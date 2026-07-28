@@ -1,7 +1,7 @@
 {
   "_doc": "Mapa de rutas op→pantalla/clicks. selectRoutes() hace set-cover sobre captures. type=query|mutation. sentinel (Fase C) solo para mutations. Fase A: solo las 4 rutas de queries ya validadas; Fase B llena el resto vía discovery instrumentado.",
   "_domainDefault": "344",
-  "_interactionOps": ["CreateEditReceivedOrderDialogQuery", "GetAddPartsReceivedOrder", "GetReceivedOrdersWithReceivedOrderLineItems", "GetAvailableUnits", "SpecFieldsAndOptions", "AllInventoryBatchStatuses", "OperatorMaintenanceNodeDialogQuery", "SearchSpecsForSelect"],
+  "_interactionOps": ["CreateEditReceivedOrderDialogQuery", "GetAddPartsReceivedOrder", "GetReceivedOrdersWithReceivedOrderLineItems", "GetAvailableUnits", "SpecFieldsAndOptions", "AllInventoryBatchStatuses", "OperatorMaintenanceNodeDialogQuery", "SearchSpecsForSelect", "FilterSearch", "SearchPartNumbers"],
   "_docMaintCompleteStep": "SEGURIDAD (ruta maintenance-event-complete-step): clic 'Complete Step' abre el diálogo del operador que dispara OperatorMaintenanceNodeDialogQuery (LECTURA — carga motivos/sensores). La receta NO confirma la completación del step (no hay paso de submit dentro del diálogo) → NO completa ni muta el evento; solo abre el diálogo y el navegador cierra. Validado headless 2026-07-16.",
   "_docInteraction": "Ops que NO se disparan navegando: requieren clic en un BOTÓN que abre un modal. Viven en rutas MANUALES (ids -ro-*) con paso `clickButton` bilingüe. El generador (build-catalog) las EXCLUYE del agrupamiento por pathname para que selectRoutes elija estas rutas y no la de pathname (que las lista pero no las captura).",
   "_manualRouteOps": ["SensorDashboardQuery", "GetPurchaseOrderDetail", "GetInventoryInputSchema", "GetPartNumberInventoryBatch", "GetInsightsReportDetails", "GetInsightsReportColumnConfigs"],
@@ -17,6 +17,31 @@
       ],
       "captures": ["GetInsightsReportColumnConfigs", "GetInsightsReportDetails"],
       "curated": true
+    },
+    "workorders-filter-open": {
+      "type": "query",
+      "module": "WorkOrders",
+      "steps": [
+        { "goto": "/Domains/{domain}/WorkOrders" },
+        { "clickFirst": "div:has(> svg[data-testid=\"ArrowDropDownIcon\"]:not(.MuiSelect-icon))" }
+      ],
+      "captures": ["FilterSearch"],
+      "curated": true,
+      "_nota": "FilterSearch (usedBy spec-migrator, batch-name-filter) dispara al ABRIR un filtro de columna de la lista de Work Orders — el frontend hace tableFilterSearch con searchQuery vacío para poblar opciones (confirmado por el operador 2026-07-24: clic en el filtro 'Cliente' la dispara SIN teclear). Los filtros son <div> inline-block con texto + svg[data-testid=ArrowDropDownIcon] hijo directo; ':not(.MuiSelect-icon)' excluye los MuiSelect del resto de la UI (headless en INGLÉS → anclaje ESTRUCTURAL, no por texto/idioma). clickFirst clica el primero (='Cliente') → captura en el clic. Va en _interactionOps para que build-catalog NO la reagrupe bajo workorders-list (goto solo, que NO la dispara)."
+    },
+    "uploadedfiles-pn-filter": {
+      "type": "query",
+      "module": "UploadedFiles",
+      "steps": [
+        { "goto": "/Domains/{domain}/UploadedFiles" },
+        { "clickFirst": "button:has(svg[data-testid=\"FilterListIcon\"])", "once": true },
+        { "clickFirst": "[role=\"dialog\"] div[role=\"button\"][aria-haspopup=\"listbox\"]", "once": true },
+        { "clickFirst": "li[role=\"option\"][data-value=\"partNumberId\"]", "once": true },
+        { "typeInto": "[role=\"dialog\"] input.MuiInputBase-inputAdornedStart", "text": "10" }
+      ],
+      "captures": ["SearchPartNumbers"],
+      "curated": true,
+      "_nota": "SearchPartNumbers (usedBy file-uploader, po-reconciler) dispara al TECLEAR en el modal 'Agregar Filtro' de /UploadedFiles con la categoría 'Número de Parte' (confirmado por el operador 2026-07-24). Flujo: clic botón 'Filtrar Archivos' (svg[data-testid=FilterListIcon] — anclaje ESTRUCTURAL, headless en inglés) → modal → abre el combobox de categoría (div[role=button][aria-haspopup=listbox]) → elige la opción data-value='partNumberId' (VALOR estable, no idioma; la opción vive en un portal MUI a nivel body, por eso su selector NO lleva prefijo [role=dialog]) → teclea en el input adornado con SearchIcon → search-as-you-type dispara SearchPartNumbers. Los 3 clics de setup usan once:true (clic único, sin re-clic — evita cerrar el menú/modal); el typeInto es el paso que captura. LECTURA pura: solo busca, no agrega el filtro (no se clica ningún submit)."
     },
     "maintenance-sensordashboards-detail": {
       "type": "query",
@@ -431,7 +456,7 @@
         "SearchSpecsForSelect",
         "SpecFieldsAndOptions"
       ],
-      "_nota": "NP Sentinela 3770957 (nombre 'Sentinela', domain 344/TLC), modal 'Agregar Especificación'. Dispara DOS ops de LECTURA: SearchSpecsForSelect al ABRIR el combobox 'Especificación' (verificado en vivo 2026-07-21: 2 disparos al abrir, pobló 7 opciones, hash f793b566), y SpecFieldsAndOptions al elegir la 1a opción. selectFirstOption NO clica 'Agregar Especificación' → NO agrega la spec al NP (lectura pura). SearchSpecsForSelect se movió aquí desde processes-detail, que dejó de dispararla (needs-attention 2026-07-20)."
+      "_nota": "NP Centinela 3770957 (nombre 'Centinela', domain 344/TLC), modal 'Agregar Especificación'. Dispara DOS ops de LECTURA: SearchSpecsForSelect al ABRIR el combobox 'Especificación' (verificado en vivo 2026-07-21: 2 disparos al abrir, pobló 7 opciones, hash f793b566), y SpecFieldsAndOptions al elegir la 1a opción. selectFirstOption NO clica 'Agregar Especificación' → NO agrega la spec al NP (lectura pura). SearchSpecsForSelect se movió aquí desde processes-detail, que dejó de dispararla (needs-attention 2026-07-20)."
     },
     "invoices-packingslips-addinvoice": {
       "type": "query",
@@ -1237,7 +1262,6 @@
         "GlobalUsers",
         "MissedManagedAlerts",
         "PartNumberDirectSearch",
-        "SearchPartNumbers",
         "SearchUserFilesQuery",
         "UnreadNotificationCount",
         "UsersToInvite"
@@ -1345,6 +1369,22 @@
         "AllWorkboards"
       ]
     },
+    "partnumbers-detail": {
+      "type": "query",
+      "module": "PartNumbers",
+      "steps": [
+        {
+          "goto": "/PartNumbers"
+        },
+        {
+          "clickFirst": "a[href*='/PartNumbers/']",
+          "hrefMatches": "/PartNumbers/\\d+"
+        }
+      ],
+      "captures": [
+        "GetPartNumberForPartNumberPage"
+      ]
+    },
     "workorders-detail": {
       "type": "query",
       "module": "WorkOrders",
@@ -1390,6 +1430,7 @@
         "WorkOrderCertReportCount",
         "WorkOrderDialogQuery",
         "WorkOrderRelatedLinksCount",
+        "WorkOrderSchedule",
         "WorkPartsInfoWrapperQuery"
       ]
     },
@@ -1404,7 +1445,6 @@
       "captures": [
         "AllWorkOrders",
         "CsvLowCode",
-        "FilterSearch",
         "GetFilterData",
         "WorkOrderInputSchema"
       ]

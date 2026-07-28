@@ -164,3 +164,11 @@ ya existe pero no captura `FilterSearch`; añadir un paso que abra el filtro de 
 - [ ] `atLimit` (nombre con ≥10) → muestra el aviso.
 - [ ] Limpiar filtro. Reemplazar vs agregar según lo decidido.
 - [ ] No interfiere con `/Shipping/PackingSlips` (invoice-autofill).
+
+## Safari/iPad
+En el bundle desde **v0.5.9** (2026-07-23). Clasificación: **directo / autoInject / sin lanzador** — el box inline se
+auto-inyecta en el header del Panel de Envío por su propio gate (`autoInject:true`), así que basta agregar el `id` a
+`safari/bundle.json.applets[]`; no requiere cablear `LAUNCHERS`/`LAUNCH_FN`. Sin bloqueadores iOS: intercepta/consulta
+vía `fetch` nativo (`InventoryBatchViewQuery`) y aplica por **recarga de la SPA** (compatible con Safari), sin
+`a.download`, sin portapapeles, sin `chrome.storage`. Deps en el bundle: `steelhead-api.js`, `batch-name-filter-core.js`,
+`batch-name-filter.js`. **Tras editar el applet → recompilar en Xcode** (el bundle es estático).

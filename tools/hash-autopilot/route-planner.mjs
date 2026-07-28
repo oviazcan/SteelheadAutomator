@@ -28,7 +28,7 @@ export function selectRoutes(rotatedOps, catalog) {
 
 // Ops a capturar esta corrida: queries stale detectadas por el validator
 // UNIÓN las session-sensitive (que el validator no puede ver → siempre por release).
-// Las mutations stale NO se capturan en Fase A (no hay ciclo sentinela); se
+// Las mutations stale NO se capturan en Fase A (no hay ciclo centinela); se
 // reportan aparte con staleMutations().
 export function opsToCapture(validatorResult, sessionSensitive) {
   const stale = (validatorResult && validatorResult.stale) || [];
@@ -52,14 +52,14 @@ export function maskedMutations(maskedOps) {
   return [...new Set((maskedOps && maskedOps.mutations) || [])].sort();
 }
 
-// Mutations a capturar por ciclo sentinela esta corrida. Las mutations se capturan
-// EJECUTÁNDOLAS sobre un sentinela (aunque sea con captura-y-aborta) → tienen costo y
+// Mutations a capturar por ciclo centinela esta corrida. Las mutations se capturan
+// EJECUTÁNDOLAS sobre un centinela (aunque sea con captura-y-aborta) → tienen costo y
 // un riesgo residual > queries. Por eso:
 //  - modo masked-only (cada tick, cada hora): NO captura mutations — solo queries
 //    enmascaradas (baratas, cero efecto). Evita ejecutar el ciclo de escritura 24×/día.
 //  - modo completo (por release, poco frecuente): las enmascaradas (el validador las
-//    skipea, solo el sentinela las cubre) UNIÓN las stale del validador.
-// El caller filtra luego por "sentinela activo" (id real ≠ 0). Determinista.
+//    skipea, solo el centinela las cubre) UNIÓN las stale del validador.
+// El caller filtra luego por "centinela activo" (id real ≠ 0). Determinista.
 export function mutationsToCapture(validatorResult, masked, { maskedOnly = false } = {}) {
   if (maskedOnly) return [];
   const m = masked || [];

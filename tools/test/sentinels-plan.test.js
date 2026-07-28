@@ -29,16 +29,16 @@ test('capture-abort sin id declarado → escalate (fail-closed)', () => {
   assert.match(r.reason, /capture-abort sin id/i);
 });
 
-test('archived-mutate-restore con sentinela declarado → run', () => {
+test('archived-mutate-restore con centinela declarado → run', () => {
   const r = planMutationCapture('SaveReceivedOrderLinesAndItems', cfg, 'ReceivedOrder');
   assert.equal(r.action, 'run');
   assert.equal(r.strategy, 'archived-mutate-restore');
   assert.equal(r.sentinelId, 'RO-1');
 });
-test('sin sentinela declarado para la entidad → escalate', () => {
+test('sin centinela declarado para la entidad → escalate', () => {
   const r = planMutationCapture('SavePart', cfg, 'Part');
   assert.equal(r.action, 'escalate');
-  assert.match(r.reason, /sentinela|no declarad/i);
+  assert.match(r.reason, /centinela|no declarad/i);
 });
 test('mutation no-auto (prefijo desconocido) → escalate', () => {
   const r = planMutationCapture('RecomputeX', cfg, 'ReceivedOrder');

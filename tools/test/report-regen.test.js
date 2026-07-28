@@ -207,6 +207,63 @@ test('evalAllowed: no-admin SIN el permiso no pasa', () => {
 test('evalAllowed: caps null → null (desconocido = fail-closed)', () => {
   assert.strictEqual(RR.evalAllowed(null, ['MANAGE_REPORTING']), null);
 });
-test('evalAllowed: perms ausente se trata como []', () => {
-  assert.strictEqual(RR.evalAllowed({ isAdmin: false }, ['MANAGE_REPORTING']), false);
+// CAMBIÓ EN v0.3.2. Este test fijaba "perms ausente se trata como []" → false, que era
+// justamente EL BUG: `Profile` no trae la lista de permisos, así que cualquier usuario
+// no-admin salía `false` y el botón se desmontaba. Ausente ≠ vacío.
+test('evalAllowed: perms ausente es DESCONOCIDO (null), no "no tiene" (false)', () => {
+  assert.strictEqual(RR.evalAllowed({ isAdmin: false }, ['MANAGE_REPORTING']), null);
+});
+
+// ── decideGate: el gate ya no depende de cazar la petición al vuelo ──────────
+// Bug 2026-07-27: `__APOLLO_CLIENT__` NO está expuesto en producción (verificado en vivo)
+// y el front pide CurrentUser al arrancar la SPA, antes de que la extensión inyecte. El
+// gate fail-closed dejaba `allowed` en null para siempre → el botón nunca se montaba.
+
+test('decideGate: un veredicto REAL siempre manda sobre memoria y timeout', () => {
+  const req = ['MANAGE_REPORTING'];
+  // admin → true aunque la memoria diga que no
+  assert.strictEqual(RR.decideGate({ isAdmin: true, perms: [] }, req, false, false), true);
+  // sin el permiso → false aunque la memoria diga que sí y ya haya expirado el timeout
+  assert.strictEqual(RR.decideGate({ isAdmin: false, isSuperUser: false, perms: ['OTRO'] }, req, true, true), false);
+});
+
+test('decideGate: un "no" recordado se respeta (no se monta por timeout)', () => {
+  assert.strictEqual(RR.decideGate(null, ['MANAGE_REPORTING'], false, true), false);
+});
+
+test('decideGate: un "sí" recordado monta de inmediato, sin esperar el timeout', () => {
+  assert.strictEqual(RR.decideGate(null, ['MANAGE_REPORTING'], true, false), true);
+});
+
+test('decideGate: sin dato alguno espera, y al expirar monta (el server valida al ejecutar)', () => {
+  const req = ['MANAGE_REPORTING'];
+  assert.strictEqual(RR.decideGate(null, req, null, false), null);   // todavía esperando
+  assert.strictEqual(RR.decideGate(null, req, null, true), true);    // se acabó la espera
+});
+
+// ── evalAllowed: "no sé" ≠ "no tiene" (bug 2026-07-27, v0.3.2) ───────────────
+// Profile trae isAdmin/isSuperUser pero NO la lista de permisos. Tratar esa lista ausente
+// como vacía daba un `false` espurio para cualquier no-admin, y desde v0.3.1 ese "no" falso
+// se PERSISTÍA y bloqueaba el botón para siempre.
+
+test('evalAllowed: sólo Profile (sin lista de permisos) y no-admin → null, NO false', () => {
+  assert.strictEqual(RR.evalAllowed({ isAdmin: false, isSuperUser: false }, ['MANAGE_REPORTING']), null);
+});
+
+test('evalAllowed: lista REAL sin el permiso → false (ahí sí se sabe)', () => {
+  assert.strictEqual(RR.evalAllowed({ isAdmin: false, isSuperUser: false, perms: [] }, ['MANAGE_REPORTING']), false);
+  assert.strictEqual(RR.evalAllowed({ isAdmin: false, isSuperUser: false, perms: ['OTRO'] }, ['MANAGE_REPORTING']), false);
+});
+
+test('evalAllowed: lista REAL con el permiso, o admin/superuser → true', () => {
+  assert.strictEqual(RR.evalAllowed({ isAdmin: false, perms: ['MANAGE_REPORTING'] }, ['MANAGE_REPORTING']), true);
+  assert.strictEqual(RR.evalAllowed({ isAdmin: true }, ['MANAGE_REPORTING']), true);
+  assert.strictEqual(RR.evalAllowed({ isSuperUser: true }, ['MANAGE_REPORTING']), true);
+});
+
+test('un Profile de no-admin ya no envenena la memoria: espera y monta por timeout', () => {
+  const req = ['MANAGE_REPORTING'];
+  const soloProfile = { isAdmin: false, isSuperUser: false };
+  assert.strictEqual(RR.decideGate(soloProfile, req, null, false), null);  // espera, no descarta
+  assert.strictEqual(RR.decideGate(soloProfile, req, null, true), true);   // y acaba montando
 });

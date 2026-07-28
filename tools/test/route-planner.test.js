@@ -112,7 +112,7 @@ test('mutationsToCapture modo completo: enmascaradas UNIÓN stale del validador,
 });
 
 test('mutationsToCapture modo masked-only: NO captura mutations (solo queries cada tick)', () => {
-  // Las mutations se ejecutan sobre el sentinela (costo + riesgo residual) → NO en cada
+  // Las mutations se ejecutan sobre el centinela (costo + riesgo residual) → NO en cada
   // tick horario; se recapturan en el escaneo completo (por release).
   const vr = { stale: [{ kind: 'mutation', operation: 'UpdateReceivedOrder' }] };
   assert.deepEqual(mutationsToCapture(vr, maskedMutations(MASKED), { maskedOnly: true }), []);

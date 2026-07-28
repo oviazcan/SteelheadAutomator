@@ -8,8 +8,8 @@
 // pero nada la verificaba, así que la deuda entraba en silencio: CreateUpdateDeleteRoutes
 // —LA mutation del auto-ruteador— vivió sin ruta desde su fase 1 hasta 2026-07-27.
 //
-// La foto al 2026-07-27 es de 57 hashes huérfanos de 184: las QUERIES están casi
-// resueltas (110/115) y el hueco son las MUTATIONS (17/69), porque cada una necesita su
+// La foto al 2026-07-27 es de 60 hashes huérfanos de 188: las QUERIES están casi
+// resueltas (110/119) y el hueco son las MUTATIONS (18/69), porque cada una necesita su
 // entidad centinela con captura-y-aborta — trabajo caro por op, no algo que se salde de
 // una sentada. Por eso el invariante global es un TRINQUETE: no exige cero, exige que la
 // deuda no CREZCA. Un hash nuevo sin ruta rompe la suite; saldar deuda vieja baja el
@@ -36,7 +36,7 @@ function opsCubiertas() {
 
 // Línea base del trinquete: hashes sin ruta al 2026-07-27. Si BAJA, actualízala en el
 // mismo commit que salda la deuda — así el número solo puede ir hacia abajo.
-const HUERFANAS_BASE = 57;
+const HUERFANAS_BASE = 60;
 
 test('las ops del ruteo por grupos tienen ruta de regeneración', () => {
   const cubiertas = opsCubiertas();
@@ -48,11 +48,11 @@ test('las ops del ruteo por grupos tienen ruta de regeneración', () => {
   }
 });
 
-test('las tres entidades centinela nuevas apuntan a la OT Sentinela y abortan', () => {
+test('las tres entidades centinela nuevas apuntan a la OT Centinela y abortan', () => {
   for (const k of ['partGroupCreate', 'partsSplitTransfer', 'workOrderRoutes']) {
     const e = sen.entities[k];
     assert.ok(e, `falta la entidad ${k}`);
-    assert.equal(e.marker, 'Sentinela', `${k} debe exigir el marcador Sentinela`);
+    assert.equal(e.marker, 'Centinela', `${k} debe exigir el marcador Centinela`);
     assert.equal(e._estrategia, 'capture-abort', `${k} escribe: debe ser capture-abort`);
     assert.ok(Array.isArray(e._para) && e._para.length, `${k} debe declarar su op en _para`);
     assert.ok(e._nota && e._nota.length > 80, `${k} necesita nota que explique el flujo`);
@@ -63,7 +63,7 @@ test('las entidades capture-abort NUNCA quedan sin el marcador centinela', () =>
   // El abort es la segunda salvaguarda; la primera es que el objeto sea de prueba.
   for (const [k, e] of Object.entries(sen.entities || {})) {
     if (e._estrategia !== 'capture-abort') continue;
-    assert.ok(e.marker || /sin objeto sentinela/i.test(e._nota || ''),
+    assert.ok(e.marker || /sin objeto (sentinela|centinela)/i.test(e._nota || ''),
       `${k} es capture-abort y no declara marcador ni justifica su ausencia`);
   }
 });

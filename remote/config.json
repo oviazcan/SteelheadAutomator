@@ -1,7 +1,7 @@
 {
-  "version": "1.7.176",
-  "lastUpdated": "2026-07-22T22:58",
-  "extensionVersion": "1.6.6",
+  "version": "1.7.222",
+  "lastUpdated": "2026-07-27T22:53",
+  "extensionVersion": "1.7.1",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
   "steelhead": {
@@ -25,7 +25,7 @@
         "SaveQuoteLines": "0f17faa3ab4f8536e7e108c8654abc179992ac0326c63ff38a6637d8a889b1e0",
         "SaveReceivedOrderLinesAndItems": "89c3342878ac89d561a7d4d5dedcd508bb25dcfa1fcf6573b59a134fd32b9bb6",
         "SaveReceivedOrderPartTransforms": "69ac725c25eedadc19570b9b7e0e335a804e3fc2ca170c8f5f17bcd0b2f2b154",
-        "SaveManyPartNumberPrices": "72946d4d2e8a19b62e699d2593ea946154ba0287dfa9d521a9dcf16f6554a447",
+        "SaveManyPartNumberPrices": "ab7bc2624f7d27b2110be16be8ca078de93a8ab7287b278da9ce0550f767ec61",
         "SavePartNumber": "27adc1143653e87fbd0c8a763eaa4f3e3a2a6541bbddce47010cdbd1b0365f40",
         "SavePartNumberRackTypes": "087af4e8b489edc1c6ade599da96f368fc3a764f2f16093feae9c57ee81cb363",
         "SendEmailChecked": "63afd0cb799d8c9d17106fb1827fa210641d6608e9c1c2483480eb0be17635bc",
@@ -93,7 +93,7 @@
         "GetInventoryItem": "0366571ed9796751dee38a9b156735b1247accebb4b01d434cd6e1e64a24c3f0",
         "GetInventoryInputSchema": "f1fd6a00069f86439299080f601c5a4b0e0c4b359c6f8acf1cadd44362766729",
         "ActiveReceivedOrders": "07d3e1947485825b519c2f7755773d28532c313e23fab116f6b656a9f4a960d0",
-        "GetQuote": "edda064a9286237d5bd33c100794a6d43f99f8dd91d01aaa12b20df6032124a9",
+        "GetQuote": "de2c5da0112ceac87919096e1d821c6ab7025a7a4a78226cd4b66a6890db373d",
         "GetQuoteSecondary": "546aa58c4f63f2b4be2703dc5c8482a07f01e8b96176171bfa9e978ac605458d",
         "GetQuoteRelatedData": "02b8cf87fb717d07b4a29301a21a3cbf579c2b4630819ffc20a007425dfd1a33",
         "CustomerSearchByName": "c06fb4c3b770a89c02d00ac51b92be6e1efe98bf5f6f5caccfe753f0570e6f02",
@@ -108,8 +108,9 @@
         "AllRackTypes": "7d601c396bb27a5534424582bcc9e44262781414cbb3e60c09413922775eaef3",
         "SearchUnits": "0a23ee49dd85ae9bb0285f3f9ed2e45a3b8e73e5f4a76c559cf1bdf9f02bd2b8",
         "SearchProductsComprehensive": "b3e2b9c63285487866fe098c936cd37e60ffff373a9fa9e30296574cffcfbba0",
-        "SearchPartNumbers": "63ba50ed71fbf40476f1844b841351766eefbb147613b51b33919b4f4b2d4d91",
+        "SearchPartNumbers": "e65235b5f0b6b5aeff8691955c6d842343cef568968bc1e8d63516301a78df32",
         "GetPartNumber": "5efd689d8d92151ea510256828f17cbe10b815dd8dce2bd1dd51ef55bb9a0faf",
+        "GetPartNumberForPartNumberPage": "34ed9de74300219ae0af48c77640e080e0ad7c5b3b2a442d63901d6742846ac4",
         "GetPartNumberInventoryBatch": "5a86da1bc53521a1204e32f8778e7b188082f7b93e132becb6af881c8719d109",
         "GetInventoryBatch": "90642f00a18be6ee79b80d2be793605565154428e14209c016a277ce4b2dcd9a",
         "GetSpecFieldParamToEdit": "f4aedfe3fbe7ef82ae55c7bd37b76637d18c9ce6fbfe257ef9618fd8b85aa75b",
@@ -118,7 +119,7 @@
         "GetDimension": "60620534090bf2433b06ebb73513437634ae0dc4d3c76c62b79a499630229ef5",
         "GetEmailDefaultByTypeAndSubType": "345b2a71f09fa03768c275cb55267bc6736fefb4e9050ccb668518f61e7d9ca9",
         "AllPartNumbers": "a63e7a6aa73b978bad844ed1f68ab2cac9e902e78a1c22f8d6339590fa8271d1",
-        "AllWorkOrders": "aaeb9dc00e6a957a4a7320ec69c10874e2369319b37680a4f4f995fd4bdbbc99",
+        "AllWorkOrders": "4a1ce04a1e6e94e73c50449834a1307a5847be18a30fddd1fd6ecaee26104240",
         "AllReceivers": "3839532d3bbc2cbc2326f640f2e2e8915b65aed2fbd057b18388d753278163dc",
         "AllInventoryTypes": "318a31c9be322bc15fb530da13ba49a1459fab6b46676c342c2c5fcee355ffaf",
         "SearchInventoryTypeItems": "721efe8e6c93bf4ea5201ecd416b06fb0993d571987fc0b352c32665f209848c",
@@ -141,7 +142,7 @@
         "GetSpec": "73c179574dd5de837ce721bd0e639ab94aba0796a83f0f09632efd5f1c11b520",
         "SpecFieldsAndOptions": "d6faffaeeb9ccfebf55241ba8e4ee16b3217161517264222de5b71fd7c97f1a0",
         "EmailCustomerContactsByCustomerIds": "6e377769aa06e55915c528c10e2c2f92662a78fdc34ae799610d489abaf983db",
-        "FilterSearch": "52869c2e78906b009589e441c218bcbfc60f2cf5550399b32db74fc266ffa6de",
+        "FilterSearch": "1cdd9e39a0ac44d491910f8c1727154d6859fd2eabe49d619f06d54e926d2bc9",
         "FilterSearchInventoryBatch": "1cdd9e39a0ac44d491910f8c1727154d6859fd2eabe49d619f06d54e926d2bc9",
         "InventoryBatchViewQuery": "e4fc4cdf098f41e10881a512e63ce6fb068bcd8d5bd57b8627c86e5fda025d44",
         "AllReports": "1f83add2747f8e0949a47ea4b6f95a67f8e1948a07fad9a5cf543d1ab4b8c00c",
@@ -154,7 +155,7 @@
         "ReceivingBatchesQuery": "55a06a3013d465596d24cc3893f2c163a08f78c00d20a17d746e4cddce197d4e",
         "RouteReceivedOrders": "fc42311d93a683bec906253aa2cc54ae61931217ff6abf20d2bc335cb55c26d4",
         "InvoiceByIdInDomain": "06a51d0363584477082a9d76c72080b4dea2b2797737c051760c1b33a791dfba",
-        "CurrentUser": "0c1911e444f0c2c35f267eadc010dca0307577812cecb3f19edba28b0529aeee",
+        "CurrentUser": "8b0e23f6a5aa8ce4711a493fb7472d77ace3d74891fbdd83d51cc7c6ebae6d6a",
         "CurrentUserDetails": "f966e56c8de95f667eac0f8c822bc1e12b5fc40a5f436edb7abac9e8029ac48c",
         "CurrentUserActiveSegments": "679822f12194223bd42ac5902f11054688a6440f581b63061531bf7a065751e0",
         "GlobalUsers": "2c727e5d066c9bc3966b60da0d34d6f2b3d5d7b5420b75b9e9ae91c4617e1c1c",
@@ -195,7 +196,10 @@
         "GetRecomputableAt": "c2483e87e8a5a0a2fe62e401bfd18506f05c0ee73c9905522e5e11053b7c3d05",
         "JobQuery": "86432972dfe6ea75c523515801993374044dc99e909778024904a02e9ef1b4e3",
         "WorkOrder": "fc41042ebaacfbfcc09a57d171a1c0f87580921bbdbb0cec86fa34a24a39255e",
+        "WorkOrderSchedule": "7b1b11275a49fde330dfbfecc8d403d6f16646ac48e9b12f19284abaf6ddbae8",
         "GetWorkOrderPartsTransfers": "da4e8740973139bb23f3f0d37a0ea83a05b6d67cdab2c1bea1e154dff37aa284",
+        "PurchaseOrders": "32f823d324b6b91e78fe43c93ab82042b931797f5592d088c4f1563051210d84",
+        "SearchBills": "e50ba3ee7d2e694476d5180abdd978fa21f5147251c02d4cef051973b408bd8a",
         "FindPartGroupQuery": "85121b64ebe7c614a0c3de7a730c45488b0ca45ea6731ff8c88efafb0667774c"
       }
     },
@@ -655,12 +659,49 @@
   },
   "apps": [
     {
+      "id": "wo-schedule-button",
+      "name": "Programación en la ficha de OT",
+      "subtitle": "Muestra inline (en el header, entre Editar Detalles y Abrir PDF) a qué hora y en qué estación está programada la OT",
+      "icon": "📅",
+      "category": "Órdenes de Trabajo",
+      "autoInject": true,
+      "urlPatterns": [
+        "/Domains/\\d+/WorkOrders/\\d+(?:[/?#]|$)"
+      ],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/wo-schedule-core.js",
+        "scripts/wo-schedule-button.js"
+      ],
+      "requiredPermissions": [
+        "READ_WORK_ORDER"
+      ],
+      "actions": [
+        {
+          "id": "open-wo-schedule",
+          "label": "Ver Programación de la OT",
+          "sublabel": "Refresca el readout inline de programación (estando en la ficha de una OT)",
+          "icon": "📅",
+          "type": "primary",
+          "handler": "message",
+          "message": "open-wo-schedule",
+          "fn": "WoScheduleButton.openFromPopup"
+        }
+      ]
+    },
+    {
       "id": "load-calculator",
       "name": "Calculadora de Piezas por Carga",
       "subtitle": "Configura estaciones y calcula piezas/carga en el modal de Rack Types",
       "icon": "⚙️",
       "category": "Números de Parte",
       "autoInject": true,
+      "urlPatterns": [
+        "(?:^|/)PartNumbers(?:/|$)",
+        "/Receiving/CustomerParts(?:/|$)",
+        "/Domains/\\d+/Quotes(?:/|$)",
+        "/Domains/\\d+/SalesOrders(?:/|$)"
+      ],
       "scripts": [
         "scripts/steelhead-api.js",
         "scripts/load-calculator-engine.js",
@@ -689,6 +730,12 @@
       "icon": "🧮",
       "category": "Números de Parte",
       "autoInject": true,
+      "urlPatterns": [
+        "(?:^|/)PartNumbers(?:/|$)",
+        "/Receiving/CustomerParts(?:/|$)",
+        "/Domains/\\d+/Quotes(?:/|$)",
+        "/Domains/\\d+/SalesOrders(?:/|$)"
+      ],
       "scripts": [
         "scripts/steelhead-api.js",
         "scripts/proceso-calculator.js"
@@ -702,6 +749,9 @@
       "icon": "🏷️",
       "category": "Herramientas",
       "autoInject": true,
+      "urlPatterns": [
+        "^/Domains/\\d+/Shipping/?(?:[?#]|$)"
+      ],
       "scripts": [
         "scripts/steelhead-api.js",
         "scripts/batch-name-filter-core.js",
@@ -716,6 +766,9 @@
       "icon": "🏷️",
       "category": "Herramientas",
       "autoInject": true,
+      "urlPatterns": [
+        "^/Schedules/\\d+/ScheduleBoard/\\d+/?(?:[?#]|$)"
+      ],
       "scripts": [
         "scripts/schedule-batch-highlighter-core.js",
         "scripts/schedule-batch-highlighter.js"
@@ -1107,6 +1160,9 @@
         "READ_RECEIVED_ORDERS"
       ],
       "autoInject": true,
+      "urlPatterns": [
+        "/Domains/\\d+/ReceivedOrders(?:/|$|\\?)"
+      ],
       "actions": [
         {
           "id": "run-po-reconciler",
@@ -1162,6 +1218,9 @@
         "READ_WORK_ORDER"
       ],
       "autoInject": true,
+      "urlPatterns": [
+        "/Domains/\\d+/ReceivedOrders/\\d+"
+      ],
       "actions": [
         {
           "id": "run-wo-mover",
@@ -1213,6 +1272,9 @@
         "scripts/cfdi-attacher.js"
       ],
       "autoInject": true,
+      "urlPatterns": [
+        "/Domains/\\d+/Invoices(?:/|$)"
+      ],
       "requiredPermissions": [
         "READ_INVOICING"
       ],
@@ -1239,6 +1301,9 @@
         "scripts/invoice-auto-regen.js"
       ],
       "autoInject": true,
+      "urlPatterns": [
+        "/Domains/\\d+/Invoices(?:/|$)"
+      ],
       "requiredPermissions": [
         "READ_INVOICING"
       ],
@@ -1264,6 +1329,9 @@
         "scripts/invoice-default-tab.js"
       ],
       "autoInject": true,
+      "urlPatterns": [
+        "/Domains/\\d+/Invoices/?$"
+      ],
       "actions": [
         {
           "id": "toggle-invoice-default-tab",
@@ -1286,6 +1354,9 @@
         "scripts/invoice-listing-marker.js"
       ],
       "autoInject": true,
+      "urlPatterns": [
+        "/Domains/\\d+/Invoices(?:/|$)"
+      ],
       "actions": [
         {
           "id": "toggle-invoice-listing-marker",
@@ -1339,6 +1410,9 @@
         "scripts/paros-linea.js"
       ],
       "autoInject": true,
+      "urlPatterns": [
+        "^/Domains/\\d+/(?:Workboards(?:/|$)|WorkOrders/\\d+)"
+      ],
       "requiredPermissions": [
         "READ_MAINTENANCE"
       ],
@@ -1375,6 +1449,9 @@
         "scripts/vale-almacen.js"
       ],
       "autoInject": true,
+      "urlPatterns": [
+        "^/Domains/\\d+/(?:(?:Workboards|Maintenance\\w*|SensorDashboards?|Sensors|Inventory\\w*)(?:/|$)|WorkOrders/\\d+)"
+      ],
       "requiredPermissions": [
         "READ_MAINTENANCE"
       ],
@@ -1402,6 +1479,10 @@
         "scripts/weight-quick-entry.js"
       ],
       "autoInject": true,
+      "urlPatterns": [
+        "/Receiving/CustomerParts(?:/|$)",
+        "/Domains/\\d+/SalesOrders(?:/|$)"
+      ],
       "requiredPermissions": [
         "READ_RECEIVING"
       ],
@@ -1429,6 +1510,12 @@
         "scripts/unit-autoconvert.js"
       ],
       "autoInject": true,
+      "urlPatterns": [
+        "(?:^|/)PartNumbers(?:/|$)",
+        "/Receiving/CustomerParts(?:/|$)",
+        "/Domains/\\d+/Quotes(?:/|$)",
+        "/Domains/\\d+/SalesOrders(?:/|$)"
+      ],
       "requiredPermissions": []
     },
     {
@@ -1467,6 +1554,10 @@
         "scripts/receiver-date-override.js"
       ],
       "autoInject": true,
+      "urlPatterns": [
+        "/Receiving/CustomerParts(?:/|$)",
+        "/Domains/\\d+/SalesOrders(?:/|$)"
+      ],
       "requiredPermissions": [
         "READ_RECEIVING"
       ],
@@ -1493,6 +1584,10 @@
         "scripts/warehouse-location-prefill.js"
       ],
       "autoInject": true,
+      "urlPatterns": [
+        "/Receiving/CustomerParts(?:/|$)",
+        "/Domains/\\d+/SalesOrders(?:/|$)"
+      ],
       "requiredPermissions": [
         "READ_RECEIVING"
       ],
@@ -1520,6 +1615,10 @@
         "scripts/create-order-autofill.js"
       ],
       "autoInject": true,
+      "urlPatterns": [
+        "/Receiving/CustomerParts(?:/|$)",
+        "/Domains/\\d+/SalesOrders/?$"
+      ],
       "requiredPermissions": [
         "READ_RECEIVING"
       ],
@@ -1546,6 +1645,9 @@
         "scripts/bill-autofill.js"
       ],
       "autoInject": true,
+      "urlPatterns": [
+        "/Domains/\\d+/Bills(?:/|$)"
+      ],
       "requiredPermissions": [
         "READ_ACCOUNTS_PAYABLE"
       ],
@@ -1572,6 +1674,9 @@
         "scripts/invoice-autofill.js"
       ],
       "autoInject": true,
+      "urlPatterns": [
+        "/Domains/\\d+/(?:Invoices|Shipping/PackingSlips)(?:/|$)"
+      ],
       "requiredPermissions": [
         "READ_INVOICING"
       ],
@@ -1684,6 +1789,9 @@
       "icon": "👁",
       "category": "Producción",
       "autoInject": true,
+      "urlPatterns": [
+        "/sensor-?dashboards/\\d+(?:[/?#]|$)"
+      ],
       "scripts": [
         "scripts/steelhead-api.js",
         "scripts/sensor-graph-hide-all-core.js",
@@ -1710,6 +1818,9 @@
       "icon": "🧪",
       "category": "Números de Parte",
       "autoInject": true,
+      "urlPatterns": [
+        "(?:^|/)PartNumbers/?(?:[?#]|$)"
+      ],
       "scripts": [
         "scripts/steelhead-api.js",
         "scripts/host-cleanup-shared.js",
@@ -1733,12 +1844,58 @@
       ]
     },
     {
+      "id": "wo-listing-columns",
+      "name": "Columnas en Órdenes de Trabajo",
+      "subtitle": "Columna de Número de Parte (link a su ficha) en el listado /WorkOrders",
+      "icon": "🔩",
+      "category": "Órdenes de Trabajo",
+      "autoInject": true,
+      "urlPatterns": [
+        "/Domains/\\d+/WorkOrders/?(?:[?#]|$)"
+      ],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/host-cleanup-shared.js",
+        "scripts/wo-schedule-core.js",
+        "scripts/wo-listing-columns.js"
+      ],
+      "requiredPermissions": [
+        "READ_WORK_ORDER"
+      ],
+      "actions": [
+        {
+          "id": "toggle-wo-listing-columns",
+          "label": "Columna de Núm. de Parte en OTs",
+          "sublabel": "Muestra el Número de Parte de cada OT en /WorkOrders (1 consulta por OT; el toggle también vive sobre la tabla)",
+          "icon": "🔩",
+          "type": "toggle",
+          "handler": "message",
+          "message": "toggle-wo-listing-columns",
+          "fn": "WoListingColumns.toggleFromPopup"
+        },
+        {
+          "id": "toggle-wo-listing-schedule",
+          "label": "Columna de Programación en OTs",
+          "sublabel": "Muestra estación · fecha · estado de cada OT en /WorkOrders (1 consulta del tablero por página; el toggle también vive sobre la tabla)",
+          "icon": "📅",
+          "type": "toggle",
+          "handler": "message",
+          "message": "toggle-wo-listing-schedule",
+          "fn": "WoListingColumns.toggleSchedFromPopup"
+        }
+      ]
+    },
+    {
       "id": "auto-router",
       "name": "Auto-Ruteador",
       "subtitle": "Re-rutea órdenes de trabajo entre líneas de producción",
       "icon": "🔀",
       "category": "Producción",
       "autoInject": true,
+      "urlPatterns": [
+        "/Schedules/\\d+/ScheduleBoard/\\d+",
+        "/Domains/\\d+/WorkOrders/\\d+"
+      ],
       "scripts": [
         "scripts/steelhead-api.js",
         "scripts/auto-router-engine.js",
@@ -1788,6 +1945,9 @@
       "icon": "🔒",
       "category": "Producción",
       "autoInject": true,
+      "urlPatterns": [
+        "^/Domains/\\d+/Workboards/\\d+"
+      ],
       "scripts": [
         "scripts/steelhead-api.js",
         "scripts/surtido-guard-core.js",
@@ -1835,6 +1995,23 @@
           "message": "run-pn-lifecycle"
         }
       ]
+    },
+    {
+      "id": "po-listing-filters",
+      "name": "Buscador global de OC + Empresa",
+      "subtitle": "Busca OC, proveedor o factura en las 5 vistas a la vez y filtra por Ecoplating/Proquipa",
+      "icon": "🔎",
+      "category": "Compras",
+      "autoInject": true,
+      "urlPatterns": [
+        "^/Domains/\\d+/Purchasing/PurchaseOrders/?(?:[?#]|$)"
+      ],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/po-listing-filters-core.js",
+        "scripts/po-listing-filters.js"
+      ],
+      "requiredPermissions": []
     }
   ],
   "knownOperations": {
@@ -2570,7 +2747,7 @@
     "scripts/auditor.js": "c0bb4771b29d1046f819b98885a089f5af330219227a24a9e9c67ebf634e2f22",
     "scripts/auto-router-api.js": "c40507b25bc923f0b0e5bece16bcc93ba9db8740f63d6d2be0b0612d59f89099",
     "scripts/auto-router-batch.js": "985feb74c421a7661c2366435412686b1495405094181bbbf72b832c391938ac",
-    "scripts/auto-router-engine.js": "72dce77ad562d657b8793d0a0bd27b110d4d0791c11886aaf8ff33cf0ab57700",
+    "scripts/auto-router-engine.js": "d48864428966346efb122e9f30d10be6416c645e78176bbc8b9d100d2e119b3c",
     "scripts/auto-router-panel.js": "07020fbd82ced16bc38e22a2a406d1e8ffc177a51f3993c4a7d03faf106e0f49",
     "scripts/auto-router.js": "6a2eed28ed8beb5b63fbb9022e56f5f5bf49ea788fad545bb76a6a830caae74c",
     "scripts/batch-name-filter-core.js": "918ef9faf5b76c94467b43d36ee23df7addecee03aeeeb34d9cf328885d4a914",
@@ -2590,7 +2767,7 @@
     "scripts/duplicate-tiers.js": "93f93691b833cd00254c26a752e1266587d1e7f31e3dafc5c31bb325b8136077",
     "scripts/file-uploader-core.js": "c59cc259fffacbef361ce3331fd384a0d6acd0a0f7c5e771ec04b215476c6fd5",
     "scripts/file-uploader.js": "fb3565a9dd4a49afc71cd569b0472a919312108cb85e47b05e3e79927d0966de",
-    "scripts/hash-scanner.js": "0231fe5649b9eca4f56853eac94e950c30a38c518889bf622c444c8eb3a8f6a5",
+    "scripts/hash-scanner.js": "9d12aa69456325b2504a0c05487d4d52f78de991e2b6dce5780c476696f74211",
     "scripts/host-cleanup-shared.js": "08a289903b13c93408163a11882ff6fc4f58021401846ba360c7501ba9ebb34e",
     "scripts/inventory-reset.js": "3440af034dd81af0ff0ad9ee140c3b44130d704c648c1a5639dd73acc6ff5e60",
     "scripts/invoice-auto-regen.js": "1b9270137b711a54e9aa2864bea18ac5718d20a4f61544ab2ccb61546d9a9955",
@@ -2604,12 +2781,14 @@
     "scripts/load-calculator-stations.js": "417ebe274fd3a649fcc70c02bc122afb3d57db5e2c53a9cb9bb24e0ecf43ef06",
     "scripts/load-calculator.js": "bf06e3cd6ed5063b62b5b62c9ef13ecf9546b2093d40320f450058576658b111",
     "scripts/ov-operations.js": "58f2fed723ba81a1f73c0bb58da934293aec5cda6cde81494682be4d9910989c",
-    "scripts/paros-linea.js": "b10074bbcb58bb1ce41d80b5333e4f75d01fbfd272d9fc37cb0134f6a0419e35",
+    "scripts/paros-linea.js": "ccf14c09e6886c1eb480014de75c86c2a54fb1f10787aeb92409c4f12ed6c126",
     "scripts/pn-lifecycle-core.js": "81a8e694132873e3176eab07167324abfa77c616adac0690e6cbbfc8b39ff0c9",
     "scripts/pn-lifecycle.js": "2b4693608fa23ecda32bd5dd6a31b988914b6c784cb6fce9100f75a457f54c52",
     "scripts/pn-specs-column-core.js": "05b8aa288daff29b82ed1dc7a23a246b5794c8912f4dfe8eaf22e816eed478a4",
     "scripts/pn-specs-column.js": "1d44e2f95e1eff0c0e2e06d646ec85577f3c14a692d4e17196f6be51948c1137",
     "scripts/po-comparator.js": "4e3d620cc06665c8a6b29626ec113874f150c5f7d4472978095a25d2fc53fb1f",
+    "scripts/po-listing-filters-core.js": "4393baa884364235b99b445f9a9a3273143f37b8d8137b4f35c44bd152957ca1",
+    "scripts/po-listing-filters.js": "307ac1f2b232f54689f8854cceb0cda2ec7191ebf5514ee16dfc821e4e42e5f2",
     "scripts/po-reconciler.js": "6a9c20833558a3805f721c09a63511d05057b3606d3d9e12a520d5e9738839c6",
     "scripts/portal-importer.js": "c14d8ad3441f8fe087988d7a3b542cc51f075358ad3935b4f1df2af8ea57652a",
     "scripts/price-confirm-core.js": "ff1f019a0379a253fb7616e815c625d91a6876da2cc91df6a3e6c2a38c275cda",
@@ -2620,9 +2799,9 @@
     "scripts/process-shared.js": "4b67a9cdc261aeb7cde1498d6399af288b883b6537de0a80b41dd16f1060a1fb",
     "scripts/receiver-date-override.js": "f18f704138be627db5273e1fbff4b8c9d1884caeafa9d0b2dbd273eb9560ad0b",
     "scripts/report-liberator.js": "3f153fe5f34261ca9b579a14fcd8d00cd205413943534c41ce54116975b25409",
-    "scripts/report-regen.js": "2f8bb3bbdea0074525b3b383c102d8ec3a649050596a7a9ae4c2a91cc2f6bad7",
-    "scripts/schedule-batch-highlighter-core.js": "81f4eae4bfba31e9f9c2cc9f2cb14d70a211000e6c185fcad3c8c86ac9b8533d",
-    "scripts/schedule-batch-highlighter.js": "54ee6aadc2b3d6930e2d5ddca1d7ae09fae8166471835c1381d4a477bca1a297",
+    "scripts/report-regen.js": "817c0bda2582c70cbb0eedcb2b9fc81867c44cb7ecc352d52481b81ac10c79a0",
+    "scripts/schedule-batch-highlighter-core.js": "a11a6ca286e594ad9910719d0a4bbab86c461d28e2adbd3edb369a3603832637",
+    "scripts/schedule-batch-highlighter.js": "0cceca941ecddee9f8725443359c678bb53a1b48d0a5cbf14d93195490b450ab",
     "scripts/sensor-graph-hide-all-core.js": "795d1741fc04de7b8a5a111542e36fe53a8b3ee473c3f0b7a457780df3ea213e",
     "scripts/sensor-graph-hide-all.js": "3da2ad449d6792035a8ae952cc829ad7d6b5dd598b7281799b473cea5087ca6f",
     "scripts/sensor-status-autofill.js": "e19d6183c84c1cdd153110bdd31b3eb95b1973b089210182a177937a11f2b6bd",
@@ -2630,18 +2809,21 @@
     "scripts/spec-migrator.js": "0ea0a1ce778ac237c15c3dd7b53a18597a3254289f87d09386415a30ad3d2ac1",
     "scripts/spec-params-bulk.js": "f49affd0af9c7aa11fd8ab586b4a2b70c71e34405796f5d136909db0184a929b",
     "scripts/spec-shared.js": "9a4adf965ffac349fdc69dd05b6bc1c50bb4dcc298333c7ff245acd955d0b255",
-    "scripts/steelhead-api.js": "60030bcd08ec1ca19893cf66e0675fc43f49ebb0fec4a3f3b5eb18da9c3dffda",
+    "scripts/steelhead-api.js": "9377271a0ee2dd11b2a17908717575951b904c0ce6184ef07819d90b93c5de32",
     "scripts/surtido-guard-core.js": "8bca9a296283d83d1ae99b13b33e159455203a199063c04227de2e4d09cce85c",
     "scripts/surtido-guard.js": "bea2066eab13530839e241503e5355e12ee1b206605357e3d9a924124d085780",
     "scripts/unit-autoconvert-core.js": "4c43e041cc6a1c249ab1f20c0a9c089bf1a38929d82a1b5f03c89814a113d633",
     "scripts/unit-autoconvert.js": "886b971f171619e74bb250a0c076b67b7aca12006fed195a4c2c9f50d827ef11",
     "scripts/vale-almacen-engine.js": "36241da082a58d03241068bcec6fcde2131eb69a9871eb9cd2f8bce21ccdd1a0",
-    "scripts/vale-almacen.js": "a16893b2c5491349610c1e62f620b4f804bab9620ea0dcc1715e057109125a99",
+    "scripts/vale-almacen.js": "cbd6bc27c493cb703d4125211bc33ff510a15ed5061d31770cf2b128e8ea3985",
     "scripts/warehouse-location-prefill.js": "e50128e0a0d0c36279cbd85bef87597814bef20e77ea53c1c206ef44dfc2f5a0",
     "scripts/weight-quick-entry.js": "9710caa9ecc4e81f97b6aa2e68565e0de2abf720ccd7cdf7ef8e30ac5f8a2b42",
     "scripts/wo-completer-engine.js": "3101a9c8f718f9469e005a02498a89d6467b8f7c49583d7bb6f96f55a5bdfc83",
     "scripts/wo-completer.js": "d2879a8daf876ff2956dfeadcba673ab082f3b28c9bb7fbabb0c00db92f487e9",
     "scripts/wo-deadline-changer.js": "169d0dc0c60030398a108ea73747848071159b7d4664305ad66833a0fe67265b",
-    "scripts/wo-mover.js": "e924dfd9fb5d82ed65ab75151adcdc32cd4a94e950b8fcc2add9a9a65c78aefd"
+    "scripts/wo-listing-columns.js": "7391ab56959595a320273387e10f79f5d8466be3317982f0f81fce5ee9750410",
+    "scripts/wo-mover.js": "e924dfd9fb5d82ed65ab75151adcdc32cd4a94e950b8fcc2add9a9a65c78aefd",
+    "scripts/wo-schedule-button.js": "71528809baf8d64a1ff6aa899c2a19b049f003f1b344c4e0a5e7d4f6e917d654",
+    "scripts/wo-schedule-core.js": "78ca7f1981bff19ee2fd0a860e22f76a9377a41b83bbf4ed10c25fbe19fa9b20"
   }
 }

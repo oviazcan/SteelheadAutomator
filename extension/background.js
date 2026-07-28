@@ -7,7 +7,28 @@ const CONFIG_URL = `${REMOTE_BASE_URL}/config.json`;
 let cachedConfig = null;
 
 // Integridad de scripts remotos (firma + hash). Ver docs/superpowers/specs/2026-07-09-*.
-importScripts('integrity-verify.js', 'integrity-pubkey.js');
+// applet-gate.js: lógica pura del loader (gate por ruta, dedup, lotes, pool). Testeada en
+// tools/test/applet-gate.test.js.
+importScripts('integrity-verify.js', 'integrity-pubkey.js', 'applet-gate.js');
+
+const Gate = self.SAAppletGate;
+
+// Ventana en la que se reusa el config ya cargado sin volver a pedirlo a la red.
+// Antes NO existía: `fetchScriptCode` llamaba `loadConfig()` por CADA script, y cada
+// llamada bajaba config.json + config.sig y verificaba la firma ECDSA. Con 79 scripts por
+// carga de página eso eran ~237 requests y 79 verificaciones de firma — el grueso del
+// retardo que reportó el operador. 10s cubre un ciclo de inyección completo sin perder
+// el propósito original (que cada ACCIÓN del popup vea la `version` fresca del cache-bust).
+const CONFIG_TTL_MS = 10000;
+let configFetchedAt = 0;
+let configInFlight = null;
+
+// Tope para cachear el código de un script en chrome.storage.local (cuota ~10MB).
+// Deja fuera libs grandes de un solo uso (pdf.min.js 368KB, xlsx) sin sacrificar los applets.
+const MAX_CACHEABLE_CODE = 300000;
+
+// Caché de código en memoria del service worker, por (version, path).
+const codeMem = new Map();
 
 async function integrityBypassed() {
   const { sa_integrity_bypass } = await chrome.storage.local.get('sa_integrity_bypass');
@@ -19,7 +40,24 @@ chrome.runtime.onInstalled.addListener((details) => {
 });
 
 // ── Config ──
-async function loadConfig() {
+// Envoltura con TTL + dedup de vuelo. `loadConfig()` se llama desde muchos puntos (incluido
+// una vez por script antes de este cambio); sin esto, cada llamada era red + firma.
+// `loadConfig({ force: true })` salta el TTL cuando de verdad hace falta lo último.
+async function loadConfig(opts) {
+  const force = !!(opts && opts.force);
+  if (!force && cachedConfig && (Date.now() - configFetchedAt) < CONFIG_TTL_MS) return cachedConfig;
+  if (configInFlight) return configInFlight;
+  configInFlight = fetchConfigFresh();
+  try {
+    const cfg = await configInFlight;
+    if (cfg) configFetchedAt = Date.now();
+    return cfg;
+  } finally {
+    configInFlight = null;
+  }
+}
+
+async function fetchConfigFresh() {
   const pub = self.SA_INTEGRITY_PUBKEY;
   const verifying = !!pub && !(await integrityBypassed());
   try {
@@ -66,75 +104,151 @@ async function loadConfig() {
 }
 
 // ── Script Injection ──
-async function fetchScriptCode(scriptPath) {
-  // Siempre re-cargar config para que `version` cache-buster sea fresco.
-  // Sin esto, el service worker mantiene cachedConfig vieja entre acciones y
-  // sigue pidiendo el script con el ?v=X anterior → CDN/browser sirve cached.
-  const config = await loadConfig();
-  const url = `${REMOTE_BASE_URL}/${scriptPath}?v=${config?.version || Date.now()}`;
-  const response = await fetch(url, { cache: 'no-cache' });
-  if (!response.ok) throw new Error(`HTTP ${response.status} cargando ${scriptPath}`);
-  const code = await response.text();
+
+// Globales que cada script publica en `window`. Sirve para el latch de "ya cargado con
+// esta version" dentro de la página. Vive aquí (no inline en la función inyectada) porque
+// ahora se pasa como argumento a una sola evaluación por lote.
+const SCRIPT_GLOBALS = {
+  'scripts/steelhead-api.js': 'SteelheadAPI', 'scripts/bulk-upload.js': 'BulkUpload',
+  'scripts/catalog-fetcher.js': 'CatalogFetcher', 'scripts/hash-scanner.js': 'HashScanner',
+  'scripts/api-knowledge.js': 'APIKnowledge', 'scripts/inventory-reset.js': 'InventoryReset',
+  'scripts/spec-migrator.js': 'SpecMigrator', 'scripts/report-liberator.js': 'ReportLiberator',
+  'scripts/claude-api.js': 'ClaudeAPI', 'scripts/po-comparator.js': 'POComparator',
+  'scripts/wo-deadline-changer.js': 'WODeadlineChanger',
+  'scripts/cfdi-attacher.js': 'CfdiAttacher',
+  'scripts/paros-linea.js': 'ParosLinea',
+  'scripts/weight-quick-entry.js': 'WeightQuickEntry',
+  'scripts/bill-autofill.js': 'BillAutofill',
+  'scripts/invoice-auto-regen.js': 'InvoiceAutoRegen',
+  'scripts/invoice-default-tab.js': 'InvoiceDefaultTab',
+  'scripts/process-shared.js': 'ProcessShared',
+  'scripts/process-canon.js': 'ProcessCanon',
+  'scripts/process-deep-audit.js': 'ProcessDeepAudit',
+  'scripts/sensor-status-autofill.js': 'SensorStatusAutofill',
+  'scripts/receiver-date-override.js': 'ReceiverDateOverride',
+  'scripts/warehouse-location-prefill.js': 'WarehouseLocationPrefill',
+  'scripts/spec-shared.js': 'SpecShared',
+  'scripts/spec-params-bulk.js': 'SpecParamsBulk',
+  'scripts/duplicate-tiers.js': 'SADuplicateTiers'
+};
+
+// Baja el código de un script (red → storage → memoria) y SIEMPRE verifica su hash contra
+// `config.scriptIntegrity` antes de devolverlo. El caché no relaja la integridad: un código
+// manipulado en storage.local no pasa la verificación y se purga.
+async function fetchScriptCode(scriptPath, cfg) {
+  const config = cfg || await loadConfig();
+  const version = config?.version || String(Date.now());
+  const key = Gate.codeCacheKey(scriptPath, version);
+
+  let code = codeMem.get(key);
+  let fromCache = code !== undefined;
+
+  if (code === undefined) {
+    try {
+      const stored = await chrome.storage.local.get(key);
+      if (typeof stored[key] === 'string') { code = stored[key]; fromCache = true; }
+    } catch (_) { /* storage lleno o no disponible → red */ }
+  }
+
+  if (code === undefined) {
+    const url = `${REMOTE_BASE_URL}/${scriptPath}?v=${version}`;
+    const response = await fetch(url, { cache: 'no-cache' });
+    if (!response.ok) throw new Error(`HTTP ${response.status} cargando ${scriptPath}`);
+    code = await response.text();
+    fromCache = false;
+  }
+
   const pub = self.SA_INTEGRITY_PUBKEY;
   if (pub && !(await integrityBypassed())) {
     const expected = config?.scriptIntegrity?.[scriptPath];
     const ok = await self.SAIntegrity.verifyScriptHash(code, expected);
     if (!ok) {
-      console.error(`[SA] SECURITY: hash de ${scriptPath} no coincide — no se ejecuta`);
+      codeMem.delete(key);
+      try { await chrome.storage.local.remove(key); } catch (_) {}
+      console.error(`[SA] SECURITY: hash de ${scriptPath} no coincide — no se ejecuta${fromCache ? ' (venía de caché; purgado)' : ''}`);
       throw new Error(`integridad: ${scriptPath}`);
     }
+  }
+
+  codeMem.set(key, code);
+  // Persistir SOLO lo que acaba de bajarse y ya pasó verificación: así el caché en disco
+  // nunca contiene código sin verificar.
+  if (!fromCache && code.length <= MAX_CACHEABLE_CODE) {
+    try { await chrome.storage.local.set({ [key]: code }); } catch (_) { /* cuota → seguimos sin caché */ }
   }
   return code;
 }
 
+// Purga el código cacheado de versiones anteriores del config.
+// El barrido lee TODO el storage, así que corre solo cuando la version cambió de verdad
+// (el sello vive en storage, no en memoria: el service worker de MV3 se suspende seguido
+// y con un latch en RAM el barrido se repetiría en cada arranque).
+let gcDoneForVersion = null;
+async function gcCodeCache(version) {
+  if (!version || gcDoneForVersion === version) return;
+  gcDoneForVersion = version;
+  try {
+    const { sa_code_cache_version } = await chrome.storage.local.get('sa_code_cache_version');
+    if (sa_code_cache_version === version) return;
+    const all = await chrome.storage.local.get(null);
+    const stale = Gate.staleCacheKeys(Object.keys(all), version);
+    if (stale.length) await chrome.storage.local.remove(stale);
+    await chrome.storage.local.set({ sa_code_cache_version: version });
+  } catch (_) { /* best-effort */ }
+}
+
+// Evalúa una lista de scripts YA descargados dentro de la página, en orden.
+// Se manda como una sola llamada por lote: antes era un executeScript por archivo (79).
+function evalScriptsInPage(items, version, globals) {
+  for (const it of items) {
+    const globalName = globals[it.path];
+    // Skip si ya está cargado CON la misma version (evita re-evaluar dependencias comunes).
+    if (globalName && window[globalName] && window[globalName].__saVersion === version) continue;
+    try {
+      new Function(it.code)();
+      // Tag con la version actual para detectar staleness en próximas cargas
+      if (globalName && window[globalName]) window[globalName].__saVersion = version;
+    } catch (e) { console.error('[SA]', it.path, e); }
+  }
+}
+
+// Descarga (en paralelo, acotado) e inyecta una lista de scripts en orden de dependencia.
+// Devuelve las rutas que fallaron, para no dar por cargado lo que no lo está.
+async function injectScriptPaths(tabId, scriptPaths, config) {
+  const version = config?.version || '0';
+  const fetched = await Gate.runPool(scriptPaths, p => fetchScriptCode(p, config), 6);
+
+  const items = [];
+  const failed = [];
+  fetched.forEach((r, i) => {
+    if (r && r.ok) items.push({ path: scriptPaths[i], code: r.value });
+    else { failed.push(scriptPaths[i]); console.warn(`[SA] No se pudo cargar ${scriptPaths[i]}:`, r?.error?.message); }
+  });
+
+  for (const chunk of Gate.chunkScripts(items, 800000, 12)) {
+    await chrome.scripting.executeScript({
+      target: { tabId }, world: 'MAIN',
+      func: evalScriptsInPage,
+      args: [chunk, version, SCRIPT_GLOBALS]
+    });
+  }
+  return failed;
+}
+
 async function injectAppScripts(tabId, appId) {
-  const config = cachedConfig || await loadConfig();
+  const config = await loadConfig();
   if (!config) throw new Error('Config no disponible');
 
   // Find app's script list, fallback to root scripts
   const app = config.apps?.find(a => a.id === appId);
   const scripts = app?.scripts || config.scripts || [];
 
-  for (const scriptPath of scripts) {
-    const code = await fetchScriptCode(scriptPath);
-    // Re-inyectar si cambió la version del config (sin esto, los updates nunca
-    // llegan a la pestaña — el window.X viejo se queda pegado para siempre).
-    await chrome.scripting.executeScript({
-      target: { tabId }, world: 'MAIN',
-      func: (c, path, version) => {
-        const globals = { 'scripts/steelhead-api.js': 'SteelheadAPI', 'scripts/bulk-upload.js': 'BulkUpload',
-          'scripts/catalog-fetcher.js': 'CatalogFetcher', 'scripts/hash-scanner.js': 'HashScanner',
-          'scripts/api-knowledge.js': 'APIKnowledge', 'scripts/inventory-reset.js': 'InventoryReset', 'scripts/spec-migrator.js': 'SpecMigrator', 'scripts/report-liberator.js': 'ReportLiberator',
-          'scripts/claude-api.js': 'ClaudeAPI', 'scripts/po-comparator.js': 'POComparator',
-          'scripts/wo-deadline-changer.js': 'WODeadlineChanger',
-          'scripts/cfdi-attacher.js': 'CfdiAttacher',
-          'scripts/paros-linea.js': 'ParosLinea',
-          'scripts/weight-quick-entry.js': 'WeightQuickEntry',
-          'scripts/bill-autofill.js': 'BillAutofill',
-          'scripts/invoice-auto-regen.js': 'InvoiceAutoRegen',
-          'scripts/invoice-default-tab.js': 'InvoiceDefaultTab',
-          'scripts/process-shared.js': 'ProcessShared',
-          'scripts/process-canon.js': 'ProcessCanon',
-          'scripts/process-deep-audit.js': 'ProcessDeepAudit',
-          'scripts/sensor-status-autofill.js': 'SensorStatusAutofill',
-          'scripts/receiver-date-override.js': 'ReceiverDateOverride',
-          'scripts/warehouse-location-prefill.js': 'WarehouseLocationPrefill',
-          'scripts/spec-shared.js': 'SpecShared',
-          'scripts/spec-params-bulk.js': 'SpecParamsBulk',
-          'scripts/duplicate-tiers.js': 'SADuplicateTiers' };
-        const globalName = globals[path];
-        // Skip si ya está cargado CON la misma version
-        if (globalName && window[globalName] && window[globalName].__saVersion === version) return;
-        try {
-          new Function(c)();
-          // Tag con la version actual para detectar staleness en próximas cargas
-          if (globalName && window[globalName]) window[globalName].__saVersion = version;
-        } catch (e) { console.error('[SA]', e); }
-      },
-      args: [code, scriptPath, config?.version || '0']
-    });
-  }
+  await injectScriptPaths(tabId, scripts, config);
+  await applyConfigToTab(tabId, config, scripts);
+}
 
+// Publica el config (con overrides de permisos) en la página e inicializa los módulos.
+async function applyConfigToTab(tabId, config, scripts) {
   // Merge permission overrides into config so MAIN-world scripts see adjusted requiredPermissions
   const { sa_app_permissions_overrides: permOverrides } = await chrome.storage.local.get('sa_app_permissions_overrides');
   const mergedConfig = permOverrides ? JSON.parse(JSON.stringify(config)) : config;
@@ -181,30 +295,111 @@ async function getSteelheadTab() {
 }
 
 // ── Auto-inject apps with autoInject flag ──
-chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-  if (changeInfo.status !== 'complete') return;
-  if (!tab.url?.includes('app.gosteelhead.com')) return;
+//
+// Tres cambios respecto de la versión que inyectaba los 28 applets en todas partes:
+//   1. GATE POR RUTA: solo se inyecta lo que declara `urlPatterns` compatible con el
+//      pathname (o no declara ninguno → se inyecta siempre, como antes).
+//   2. SIN REPETIR TRABAJO: la propia página lleva la cuenta de qué apps ya tiene
+//      cargadas (`window.__saLoadedApps`). Vive en la página —y no en el service
+//      worker— porque el SW de MV3 se suspende, y porque el latch debe morir con el
+//      `window` (recarga dura = todo de nuevo).
+//   3. NAVEGACIÓN SPA: Steelhead cambia de pantalla con history.pushState, donde
+//      `onUpdated` NO vuelve a emitir `status:'complete'`. Sin atender ese evento, el
+//      gate por ruta dejaría al operador sin el applet de la pantalla a la que llegó
+//      navegando. Se atiende `changeInfo.url` sin `status`, que es justo el pushState.
 
+// Lee de la página qué apps ya están cargadas con esta version del config.
+async function readLoadedApps(tabId, version) {
   try {
-    const config = cachedConfig || await loadConfig();
-    if (!config) return;
-
-    const autoApps = (config.apps || []).filter(a => a.autoInject);
-    for (const app of autoApps) {
-      // Check per-app enabled state (default: true)
-      // Storage key convention: camelCase appId + "Enabled" (e.g., cfdiAttacherEnabled)
-      const storageKey = app.id.replace(/-([a-z])/g, (_, c) => c.toUpperCase()) + 'Enabled';
-      const stored = await chrome.storage.local.get(storageKey);
-      if (stored[storageKey] === false) continue;
-
-      await injectAppScripts(tabId, app.id);
-      console.log(`[SA] Auto-inyectado: ${app.id}`);
-    }
-
-  } catch (err) {
-    console.warn('[SA] Error en auto-inject:', err.message);
+    const r = await chrome.scripting.executeScript({
+      target: { tabId }, world: 'MAIN',
+      func: (v) => {
+        const s = window.__saLoadedApps;
+        return (s && s.version === v && Array.isArray(s.ids)) ? s.ids : [];
+      },
+      args: [version]
+    });
+    return new Set(r?.[0]?.result || []);
+  } catch (_) {
+    return new Set();   // página aún no inyectable → tratamos como "nada cargado"
   }
+}
+
+async function markLoadedApps(tabId, version, ids) {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId }, world: 'MAIN',
+      func: (v, newIds) => {
+        const s = (window.__saLoadedApps && window.__saLoadedApps.version === v)
+          ? window.__saLoadedApps
+          : (window.__saLoadedApps = { version: v, ids: [] });
+        for (const id of newIds) if (!s.ids.includes(id)) s.ids.push(id);
+      },
+      args: [version, ids]
+    });
+  } catch (_) { /* la próxima navegación lo reintenta */ }
+}
+
+async function autoInjectForTab(tabId, url) {
+  const config = await loadConfig();
+  if (!config) return;
+
+  let pathname = '/';
+  try { pathname = new URL(url).pathname; } catch (_) {}
+
+  const version = config.version || '0';
+  gcCodeCache(version);   // best-effort, sin await: no debe retrasar la inyección
+
+  const autoApps = (config.apps || []).filter(a => a.autoInject);
+  // Estado on/off de TODOS los applets en una sola lectura (antes: una por applet).
+  let disabled = {};
+  try { disabled = await chrome.storage.local.get(Gate.storageKeysForApps(autoApps)); } catch (_) {}
+
+  const wanted = Gate.selectAutoInjectApps(config.apps, pathname, disabled);
+  if (!wanted.length) return;
+
+  const already = await readLoadedApps(tabId, version);
+  const pending = wanted.filter(a => !already.has(a.id));
+  if (!pending.length) return;
+
+  const paths = Gate.dedupeScriptPaths(pending);
+  const failed = await injectScriptPaths(tabId, paths, config);
+  await applyConfigToTab(tabId, config, paths);
+
+  // Un app solo cuenta como cargado si TODOS sus scripts entraron; si alguno falló,
+  // se reintenta en la próxima navegación en vez de quedar marcado como listo.
+  const failedSet = new Set(failed);
+  const ok = pending.filter(a => !(a.scripts || []).some(s => failedSet.has(s)));
+  if (ok.length) await markLoadedApps(tabId, version, ok.map(a => a.id));
+
+  console.log(`[SA] Auto-inyectado en ${pathname}: ${ok.length} applet(s) · ${paths.length} archivo(s)` +
+    (failed.length ? ` · ${failed.length} fallaron` : ''));
+}
+
+// Último pathname por pestaña, para ignorar los avisos que no cambian de pantalla.
+const lastPathByTab = new Map();
+
+// Una inyección a la vez por pestaña. Dos avisos casi simultáneos (la carga dura y el
+// aviso de navegación del content script) leerían ambos un `__saLoadedApps` todavía vacío
+// e inyectarían el mismo applet dos veces → UI duplicada.
+const injectQueue = Gate.makeSerializer();
+
+function requestInject(tabId, url, reason) {
+  let pathname = '';
+  try { pathname = new URL(url).pathname; } catch (_) {}
+  if (reason !== 'load' && !Gate.pathChanged(lastPathByTab.get(tabId), pathname)) return;
+  lastPathByTab.set(tabId, pathname);
+  return injectQueue(tabId, () => autoInjectForTab(tabId, url))
+    .catch(err => console.warn('[SA] Error en auto-inject:', err.message));
+}
+
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  if (changeInfo.status !== 'complete') return;          // carga dura: window nuevo
+  if (!tab.url?.includes('app.gosteelhead.com')) return;
+  await requestInject(tabId, tab.url, 'load');
 });
+
+chrome.tabs.onRemoved.addListener(tabId => lastPathByTab.delete(tabId));
 
 // ── Auto-restart scanner on page reload (separate listener) ──
 chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
@@ -257,6 +452,17 @@ async function handleMessage(message, sender) {
 
     case 'get-config':
       return cachedConfig || await loadConfig();
+
+    // Aviso de navegación SPA desde content.js (ver el porqué allá). El content script
+    // corre DENTRO de la página, así que ve el cambio de ruta pase lo que pase; el
+    // mensaje además despierta al service worker si MV3 lo había suspendido.
+    case 'spa-nav': {
+      const tabId = sender?.tab?.id;
+      if (!tabId) return { ignored: true };
+      if (!(message.url || sender.tab?.url || '').includes('app.gosteelhead.com')) return { ignored: true };
+      await requestInject(tabId, message.url || sender.tab.url, message.reason || 'spa');
+      return { ok: true };
+    }
 
     case 'get-current-user': {
       try {

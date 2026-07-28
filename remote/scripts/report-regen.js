@@ -27,7 +27,7 @@
 (function () {
   'use strict';
 
-  const APPLET_VERSION = '0.3.0';
+  const APPLET_VERSION = '0.3.2';
 
   // ── Singleton guard + teardown de versión previa (re-inyección en SPA / bump) ──
   if (window.ReportRegen && window.ReportRegen.__version === APPLET_VERSION) return;
@@ -41,6 +41,13 @@
   const STYLE_ID = 'sa-report-regen-style';
   const REQUIRED_PERMISSION = 'MANAGE_REPORTING';
   const OBSERVER_DEBOUNCE_MS = 300;
+  // Memoria del último veredicto REAL de permisos en este navegador ('1'/'0').
+  // `_v2` porque la v0.3.1 pudo grabar un "no" ESPURIO (ver evalAllowed): al versionar la
+  // clave, ese valor envenenado se ignora en vez de bloquear el botón para siempre.
+  const REMEMBER_KEY = 'sa_rr_perm_v2';
+  const REMEMBER_KEY_LEGACY = 'sa_rr_perm';
+  // Cuánto se espera a que el front pida CurrentUser/Profile antes de montar igual.
+  const GATE_TIMEOUT_MS = 5000;
   const POLL_REGEN_MS = 10000;    // job propio activo → poll JobQuery
   const POLL_COOLDOWN_MS = 30000; // en enfriamiento → resync recomputableAt
   const POLL_AVAILABLE_MS = 60000;// idle → detectar que otro usuario disparó
@@ -52,6 +59,8 @@
   let destroyed = false;
   let allowed = null;            // null=desconocido, true/false=veredicto de permiso
   let capturedPerms = null;      // { isAdmin, isSuperUser, perms[] } — leído del front, no de un fetch propio
+  let gateTimedOut = false;      // ya se esperó GATE_TIMEOUT_MS sin veredicto real
+  let gateTimer = null;
   let booted = false;
   let bootPromise = null;
   let lastRecomputableAt = null; // ISO string del servidor
@@ -197,16 +206,63 @@
   // isAdmin/isSuperUser). Fallback: leer del Apollo cache si está expuesto.
 
   // Lógica pura (testeable): dado caps + permisos requeridos → true|false|null.
+  //
+  // "No sé qué permisos tiene" NO es "sé que no los tiene" (bug 2026-07-27, v0.3.2).
+  // `Profile` trae isAdmin/isSuperUser pero NO la lista de permisos; tratando esa lista
+  // ausente como vacía, cualquier usuario no-admin daba un `false` **espurio** y el botón
+  // se desmontaba. Peor aún desde v0.3.1, que empezó a PERSISTIR el veredicto: ese "no"
+  // falso quedaba grabado y bloqueaba el botón para siempre. Sin lista conocida → null.
   function evalAllowed(caps, req) {
-    if (!caps) return null; // aún no se conocen permisos
+    if (!caps) return null;                       // aún no se sabe nada
     if (caps.isAdmin || caps.isSuperUser) return true;
-    const perms = Array.isArray(caps.perms) ? caps.perms : [];
-    return req.every((p) => perms.includes(p));
+    if (!Array.isArray(caps.perms)) return null;  // sólo llegó Profile: permisos desconocidos
+    return req.every((p) => caps.perms.includes(p));
+  }
+
+  // Decisión del gate cuando NO hay veredicto real (el caso normal, no la excepción).
+  //
+  // Bug 2026-07-27 (el operador: "de pronto dejó de aparecer"): el gate dependía al 100%
+  // de cazar una respuesta de CurrentUser/Profile que el front hiciera DESPUÉS de que el
+  // applet ya estaba montado, y el front la pide al arrancar la SPA — o sea antes de que
+  // la extensión inyecte. El fallback por Apollo cache nunca sirvió: `__APOLLO_CLIENT__`
+  // NO está expuesto en producción (verificado en vivo). Resultado: `allowed` se quedaba
+  // en null para siempre y, fail-closed, el botón no se montaba nunca.
+  //
+  // Se resuelve con dos apoyos que no dependen de esa carrera:
+  //   · MEMORIA — el último veredicto REAL conocido en este navegador (localStorage).
+  //   · TIMEOUT — sin ningún dato tras unos segundos, se monta igual. Es coherente con lo
+  //     que el applet YA hacía al ejecutar ("allowed === null tras el timeout: el server
+  //     valida el permiso al ejecutar"): la autoridad es el servidor, no este gate. Un
+  //     usuario sin permiso, en el peor caso, ve un botón que el servidor le rechaza —
+  //     mucho menos malo que nadie vea el botón.
+  // Un `false` real (o recordado) SIEMPRE gana: si se supo que no tiene permiso, no se monta.
+  function decideGate(caps, req, remembered, timedOut) {
+    const real = evalAllowed(caps, req);
+    if (real !== null) return real;          // veredicto real → manda
+    if (remembered === false) return false;  // se supo que NO → respetarlo
+    if (remembered === true) return true;    // se supo que SÍ → montar ya, sin esperar
+    return timedOut ? true : null;           // sin dato: esperar y, si no llega, montar
+  }
+
+  function readRemembered() {
+    try {
+      const v = localStorage.getItem(REMEMBER_KEY);
+      return v === '1' ? true : v === '0' ? false : null;
+    } catch (_) { return null; }
+  }
+
+  function remember(verdict) {
+    try { localStorage.setItem(REMEMBER_KEY, verdict ? '1' : '0'); } catch (_) {}
   }
 
   function reevaluateGate() {
     if (destroyed) return;
-    const verdict = evalAllowed(capturedPerms, requiredPerms());
+    const req = requiredPerms();
+    // Solo se recuerda lo que se supo DE VERDAD (de una respuesta del front),
+    // nunca la decisión provisional del timeout.
+    const real = evalAllowed(capturedPerms, req);
+    if (real !== null) remember(real);
+    const verdict = decideGate(capturedPerms, req, readRemembered(), gateTimedOut);
     if (verdict === allowed) return;
     allowed = verdict;
     if (allowed === true) {
@@ -229,7 +285,9 @@
       if (source === 'CurrentUser' && Array.isArray(u.currentManagedPermissions)) {
         partial.perms = u.currentManagedPermissions;
       }
-      capturedPerms = Object.assign({ isAdmin: false, isSuperUser: false, perms: [] }, capturedPerms || {}, partial);
+      // Sin `perms: []` por default: la lista solo existe si de verdad llegó (CurrentUser).
+      // Inventarla vacía es lo que producía el `false` espurio desde Profile — ver evalAllowed.
+      capturedPerms = Object.assign({ isAdmin: false, isSuperUser: false }, capturedPerms || {}, partial);
       reevaluateGate();
     } catch (_) {}
   }
@@ -532,10 +590,21 @@
       const ok = await waitForDeps(20000);
       booted = true;
       if (!ok) return; // deps no llegaron; queda inerte
+      // Tira la memoria envenenada de v0.3.1 (pudo grabar un "no" espurio desde Profile).
+      try { localStorage.removeItem(REMEMBER_KEY_LEGACY); } catch (_) {}
       installPermSniffer(); // captura permisos de CurrentUser/Profile que pida el front
-      tryApolloCache();     // intento inmediato del cache (si el front lo expone)
-      // El botón se monta vía reevaluateGate cuando se confirmen permisos (fail-closed
-      // mientras tanto). El front pide CurrentUser/Profile seguido → llega en segundos.
+      tryApolloCache();     // cache del front (en producción NO está expuesto — ver decideGate)
+      // Con la memoria de un veredicto anterior esto monta de inmediato; si no hay nada,
+      // se espera a que el front pida CurrentUser/Profile y, si no llega, el timeout monta
+      // igual (el servidor es la autoridad al ejecutar). Ver decideGate.
+      reevaluateGate();
+      gateTimer = setTimeout(() => {
+        gateTimer = null;
+        if (destroyed) return;
+        gateTimedOut = true;
+        log('sin respuesta de CurrentUser/Profile en ' + GATE_TIMEOUT_MS + 'ms — monto el botón (el server valida al ejecutar)');
+        reevaluateGate();
+      }, GATE_TIMEOUT_MS);
     })();
     return bootPromise;
   }
@@ -544,6 +613,7 @@
 
   function destroy() {
     destroyed = true;
+    if (gateTimer) { clearTimeout(gateTimer); gateTimer = null; }
     if (pollTimer) { clearTimeout(pollTimer); pollTimer = null; }
     if (tickTimer) { clearInterval(tickTimer); tickTimer = null; }
     if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
@@ -559,7 +629,7 @@
     __version: APPLET_VERSION,
     triggerFromPopup,
     destroy,
-    _internals: { computeState, computeSkewMs, formatCountdown, pickPollIntervalMs, findAnchor, evalAllowed, formatLastGenerated, formatRelativeAge, extractLatestGeneratedAt }
+    _internals: { computeState, computeSkewMs, formatCountdown, pickPollIntervalMs, findAnchor, evalAllowed, decideGate, formatLastGenerated, formatRelativeAge, extractLatestGeneratedAt }
   };
   // Para los golden tests (node --test) y depuración manual.
   window.__SAReportRegen = window.ReportRegen._internals;

@@ -154,7 +154,11 @@ const SteelheadAPI = (() => {
       throw new Error(`GraphQL errors (${operationName}): ${msgs.substring(0, 2000)}`);
     }
     if (result.errors) {
-      warn(`GraphQL warnings (${operationName}): ${result.errors.map(e => e.message).join('; ')}`);
+      // Filtra warnings BENIGNOS de paginación: persisted queries que no controlamos (p.ej.
+      // WorkOrder, 1156 campos) traen campos con `onFull: ERROR` que topan el límite de paginación;
+      // el server AVISA pero el `data` SÍ llega. Floodean la consola (1 por fila en la columna Lote).
+      const real = result.errors.filter(e => !/pagination limit|onFull/i.test((e && e.message) || ''));
+      if (real.length) warn(`GraphQL warnings (${operationName}): ${real.map(e => e.message).join('; ')}`);
     }
 
     return result.data;

@@ -80,3 +80,18 @@ test('countMatches: entrada no-array → 0', () => {
   assert.equal(Core.countMatches(null, '210726'), 0);
   assert.equal(Core.countMatches([], '210726'), 0);
 });
+
+// ---------- migración: limpieza de nodos de versiones anteriores ----------
+// v0.1.0/0.1.1 montaban un panel FLOTANTE 'sa-sbh-panel'. En la SPA de larga vida el remote loader
+// recarga el script sin recargar la página → ese panel queda HUÉRFANO y coexiste con el inline nuevo.
+// El glue debe removerlo al arrancar; el core publica la lista para que sea testeable.
+
+test('LEGACY_NODE_IDS: incluye el panel flotante viejo (v0.1.0/0.1.1)', () => {
+  assert.ok(Array.isArray(Core.LEGACY_NODE_IDS));
+  assert.ok(Core.LEGACY_NODE_IDS.includes('sa-sbh-panel'));
+});
+
+test('LEGACY_NODE_IDS: invariante de seguridad — nunca incluye el nodo ACTIVO (no removernos a nosotros mismos)', () => {
+  assert.equal(Core.ACTIVE_NODE_ID, 'sa-sbh-inline');
+  assert.equal(Core.LEGACY_NODE_IDS.includes(Core.ACTIVE_NODE_ID), false);
+});

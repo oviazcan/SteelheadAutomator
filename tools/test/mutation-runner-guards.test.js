@@ -1,5 +1,5 @@
 // tools/test/mutation-runner-guards.test.js
-// Guardias del ciclo sentinela, con page/sink/deps mockeados (sin navegador real).
+// Guardias del ciclo centinela, con page/sink/deps mockeados (sin navegador real).
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { runMutationCycle } = require('../hash-autopilot/mutation-runner.mjs');
@@ -17,7 +17,7 @@ test('escala destructiva sin tocar nada', async () => {
   assert.equal(r.escalated, true);
 });
 
-test('aborta y NO muta NI restaura si el objeto cargado no es sentinela (fail-closed)', async () => {
+test('aborta y NO muta NI restaura si el objeto cargado no es centinela (fail-closed)', async () => {
   let mutated = false, restored = false;
   const r = await runMutationCycle(fakePage(), route, cfg, { hashes: {} }, {
     loadObject: async () => ({ name: 'OV Real de Cliente' }), // sin marca
@@ -27,13 +27,13 @@ test('aborta y NO muta NI restaura si el objeto cargado no es sentinela (fail-cl
   });
   assert.equal(mutated, false);
   // un restore que MUTA (p.ej. receivedOrderEdit hace SAVE) NUNCA debe correr sobre un
-  // objeto NO verificado como sentinela — si no, el fail-closed del mutate sería inútil.
-  assert.equal(restored, false, 'no restaurar objetos no verificados como sentinela');
+  // objeto NO verificado como centinela — si no, el fail-closed del mutate sería inútil.
+  assert.equal(restored, false, 'no restaurar objetos no verificados como centinela');
   assert.equal(r.captured, false);
-  assert.match(r.reason, /no.*sentinela|identidad/i);
+  assert.match(r.reason, /no.*centinela|identidad/i);
 });
 
-test('captura el hash cuando el objeto ES sentinela y la mutación se dispara', async () => {
+test('captura el hash cuando el objeto ES centinela y la mutación se dispara', async () => {
   const sink = { hashes: {} };
   const r = await runMutationCycle(fakePage(), route, cfg, sink, {
     loadObject: async () => ({ name: `OV __SA_SENTINEL__ no-tocar` }),
@@ -48,7 +48,7 @@ test('captura el hash cuando el objeto ES sentinela y la mutación se dispara', 
 test('restaura (finally) si verificó identidad, aunque la captura falle', async () => {
   let restored = false;
   await runMutationCycle(fakePage(), route, cfg, { hashes: {} }, {
-    loadObject: async () => ({ name: `OV __SA_SENTINEL__` }), // ES sentinela → verified
+    loadObject: async () => ({ name: `OV __SA_SENTINEL__` }), // ES centinela → verified
     readJournal: () => ({}), writeJournal: () => {},
     doMutate: async () => { throw new Error('mutación falló'); },
     doRestore: async () => { restored = true; },

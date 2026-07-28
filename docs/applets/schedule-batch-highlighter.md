@@ -1,8 +1,18 @@
 # schedule-batch-highlighter — Resaltar Lote en Programación
 
-**Versión actual:** 0.1.3 (config **1.7.173**, tag `v1.7.173`) — **DEPLOYADO** ("a mi riesgo", decisión
-del operador). Core + golden test 12/12, glue firmado (KMS). **Validado en vivo (2026-07-22):** resalta
-y marca correctamente tras el fix de detección de columna. **Iteraciones sobre feedback del operador:**
+**Versión actual:** 0.1.4 (config **1.7.178**, tag `v1.7.178`) — **DEPLOYADO**. Core + golden test 14/14,
+glue firmado (KMS). **Iteraciones sobre feedback del operador:**
+- **v0.1.4** (2026-07-23) — **fix "aparecen los DOS buscadores"** (panel flotante viejo + inline nuevo a
+  la vez, reportado con captura). **Causa raíz:** v0.1.0/0.1.1 montaban un panel FLOTANTE `#sa-sbh-panel`
+  (`position:fixed`); v0.1.2+ cambió a inline con otro id (`#sa-sbh-inline`). En la SPA de larga vida el
+  remote loader **recarga el script sin recargar la página**, y el glue nuevo **nunca removía** el nodo
+  viejo → quedaba **huérfano** coexistiendo con el inline. Fix: `cleanupLegacy()` (init) remueve los ids
+  de versiones previas —lista `Core.LEGACY_NODE_IDS = ['sa-sbh-panel']`, testeable, invariante "nunca
+  incluye `ACTIVE_NODE_ID`"—; y `injectStyles()` **reemplaza** el `<style>` obsoleto (el `STYLE_ID` era
+  compartido → short-circuit dejaba al inline sin sus reglas en una reinyección en caliente). Core 14/14.
+  Lección general: **todo applet que cambie el id de su nodo raíz entre versiones debe limpiar los ids
+  legacy al montar** (mismo espíritu que los latches singleton de surtido-guard/price-confirm-guard).
+  **VALIDADO EN VIVO (operador 2026-07-23):** "ya quedó, ya no salen los dos" tras recargar la pestaña.
 - **v0.1.1** — fix "No encuentro la columna": el header es un **`<strong>` dentro de un `<td>`** (MUI
   CSS-grid, no `<th>`) y el selector solo cubría `th/div/span`. Fix: selector incluye
   `strong/td/b/a/p/label` + matchea el **nodo hoja** + sube al **`<td>` ancestro** para medir el centro
@@ -68,10 +78,10 @@ cambia la URL ni dispara ninguna query** (solo se movieron pollings de precios d
 
 ## Arquitectura
 
-- **`remote/scripts/schedule-batch-highlighter-core.js`** (puro) — **HECHO**, 12/12 tests:
+- **`remote/scripts/schedule-batch-highlighter-core.js`** (puro) — **HECHO**, 14/14 tests:
   `isScheduleBoardUrl` (gate), `extractBatchNames` (celda→nombres, soporta varios por celda),
   `rowMatchesBatchName` (match exacto por nombre, case-insensitive; excluye sub/superstrings),
-  `countMatches`.
+  `countMatches`, y `ACTIVE_NODE_ID`/`LEGACY_NODE_IDS` (limpieza de nodos de versiones previas, v0.1.4).
 - **`remote/scripts/schedule-batch-highlighter.js`** (glue): **buscador INLINE en la barra de filtros
   nativa** (v0.1.2 — el panel flotante `position:fixed` de v0.1.0/0.1.1 era **demasiado intrusivo**
   según el operador). Se ancla **"donde terminan los filtros oficiales"**: `svg[data-testid=
@@ -116,3 +126,11 @@ cambia la URL ni dispara ninguna query** (solo se movieron pollings de precios d
 - [ ] No rompe la SPA a lo largo de una sesión larga (sin congelamientos por el re-montaje del widget) —
       observación continua; sin incidentes reportados hasta ahora.
 - [ ] Nombre inexistente → 0 marcadas, sin efectos (caso borde, no reportado explícitamente).
+
+## Safari/iPad
+En el bundle desde **v0.5.9** (2026-07-23). Clasificación: **directo / autoInject / sin lanzador** — el buscador inline
+se auto-inyecta en la barra de filtros del Schedule Board por su propio gate (`autoInject:true`), así que basta agregar el
+`id` a `safari/bundle.json.applets[]`; no requiere cablear `LAUNCHERS`/`LAUNCH_FN`. Sin bloqueadores iOS: es **100% DOM**
+(resaltado + `cb.click()` + `MutationObserver`), no usa `steelhead-api.js`, ni `a.download`, ni portapapeles, ni
+`chrome.storage`. Deps en el bundle: `schedule-batch-highlighter-core.js`, `schedule-batch-highlighter.js`. **Tras editar
+el applet → recompilar en Xcode** (el bundle es estático).

@@ -1,7 +1,7 @@
 // tools/test/mutation-deps-ro-edit.test.js
-// Bloqueador #3 del self-heal: sentinela edit-restore para UpdateReceivedOrder.
+// Bloqueador #3 del self-heal: centinela edit-restore para UpdateReceivedOrder.
 // Prueba lo PURO (config + gate por id + entityFor/resolveUrl). El ciclo DOM
-// (mutate+restore) se valida en corrida supervisada con una OV Sentinela real.
+// (mutate+restore) se valida en corrida supervisada con una OV Centinela real.
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { readFileSync } = require('fs');
@@ -20,13 +20,13 @@ test('receivedOrderEdit: declara UpdateReceivedOrder con estrategia edit-restore
   assert.ok(e, 'entidad receivedOrderEdit existe');
   assert.deepEqual(e._para, ['UpdateReceivedOrder']);
   assert.equal(e._estrategia, 'edit-restore');
-  assert.equal(e.marker, 'Sentinela');
+  assert.equal(e.marker, 'Centinela');
 });
 
-test('receivedOrderEdit: id ACTIVO (OV Sentinela 1594 validada) → el gate activa el ciclo', () => {
-  // Ciclo validado headless 2026-07-15 sobre la OV Sentinela 1594 (capturó
+test('receivedOrderEdit: id ACTIVO (OV Centinela 1594 validada) → el gate activa el ciclo', () => {
+  // Ciclo validado headless 2026-07-15 sobre la OV Centinela 1594 (capturó
   // UpdateReceivedOrder d9e88576→b3602b2d; restore dejó el PO# vacío). id real, no placeholder.
-  assert.ok(config.entities.receivedOrderEdit.id > 0, 'id real (OV Sentinela), no placeholder 0');
+  assert.ok(config.entities.receivedOrderEdit.id > 0, 'id real (OV Centinela), no placeholder 0');
   assert.equal(gateType(config, 'UpdateReceivedOrder'), 'receivedOrderEdit', 'con id real el gate ACTIVA el ciclo');
 });
 

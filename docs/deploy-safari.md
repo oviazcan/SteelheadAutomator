@@ -84,6 +84,17 @@ En Xcode, panel izquierdo → selecciona el proyecto (ícono azul arriba). Verá
 [captura pendiente: pantalla Signing & Capabilities de cada target]
 
 ## Paso 3 — Instalar en el iPad
+
+> **Requisito previo en el iPad — `Ajustes → Privacidad y seguridad` (dos toggles distintos):**
+> - **Modo de Aislamiento («modo hermético») = OFF.** Con él encendido iPadOS bloquea instalar apps de
+>   desarrollo/perfiles y, **verificado en piso (2026-07-23), `app.gosteelhead.com` ni siquiera carga** (ese modo
+>   inhabilita tecnologías web complejas). Desactívalo en `Modo de Aislamiento → Desactivar el Modo de
+>   Aislamiento → Desactivar y reiniciar` (**el reinicio es obligatorio**). Déjalo apagado permanentemente en el
+>   iPad que use Steelhead; reactivarlo vuelve a tumbar el sitio.
+> - **Modo Desarrollador = ON** (iPadOS 16+). El interruptor solo aparece después de conectar el iPad a Xcode
+>   (o `Window → Devices and Simulators`). Actívalo en `Modo Desarrollador` → el iPad pide **reiniciar** → tras
+>   reiniciar, confirma **Activar**. Sin esto, la app firmada con Apple ID no corre.
+
 1. Conecta el iPad por cable. En el iPad, toca **Confiar** ("Trust This Computer").
 2. En Xcode, barra superior: selecciona el **destino** = tu iPad (no un simulador), y el **esquema** = la app
    `Candado Surtido`.

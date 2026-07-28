@@ -40,9 +40,28 @@
   });
   if (!S.checkedByUs) S.checkedByUs = new Set();
 
+  // ── migración: remueve artefactos de versiones anteriores ──
+  // v0.1.0/0.1.1 montaban un panel FLOTANTE 'sa-sbh-panel' (position:fixed en body). En la SPA de
+  // larga vida el remote loader recarga esta versión (inline) SIN recargar la página → el panel viejo
+  // queda HUÉRFANO y coexiste con el buscador inline (bug reportado por el operador 2026-07-23).
+  // Lo removemos al arrancar; la lista vive en el core (testeable), NUNCA incluye INLINE_ID.
+  function cleanupLegacy() {
+    for (const id of Core.LEGACY_NODE_IDS) {
+      const n = document.getElementById(id);
+      if (n) n.remove();
+    }
+  }
+
   // ── estilos (una vez) ──
   function injectStyles() {
-    if (document.getElementById(STYLE_ID)) return;
+    const existing = document.getElementById(STYLE_ID);
+    if (existing) {
+      // El STYLE_ID lo compartían versiones previas (panel flotante): su <style> trae reglas obsoletas
+      // (#sa-sbh-panel) y NO las del inline. Si el <style> presente no es el nuestro, reemplazarlo para
+      // no quedar sin estilos tras una reinyección en caliente.
+      if (existing.textContent.indexOf('#' + INLINE_ID) !== -1) return;
+      existing.remove();
+    }
     const st = document.createElement('style');
     st.id = STYLE_ID;
     st.textContent = `
@@ -294,6 +313,7 @@
   }
 
   function init() {
+    cleanupLegacy();
     patchHistory();
     onUrlChange();
   }

@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sembrado de sentinelas — Fase C (hash-autopilot)</title>
+<title>Sembrado de centinelas — Fase C (hash-autopilot)</title>
 <style>
   :root{
     --bg:#f6f7f9; --card:#fff; --ink:#1c2430; --muted:#5b6672; --line:#e3e7ec;
@@ -52,12 +52,12 @@
 <body>
 <div class="wrap">
   <header>
-    <h1>Sembrado de sentinelas — Fase C</h1>
+    <h1>Sembrado de centinelas — Fase C</h1>
     <p>Objetos canario que dejan al <b>hash-autopilot</b> regenerar el hash de una mutation rotada sin tocar datos reales.</p>
   </header>
 
   <div class="callout crit">
-    <span class="tag">⚠ POR QUÉ IMPORTA LA PRECISIÓN</span> — El ciclo corre <b>desatendido en producción</b>. Si un sentinela se confunde con un objeto real, el autopilot mutaría datos productivos. Las salvaguardas de código (<code>isSentinel</code> fail-closed, blast-radius, journal) son la última línea; <b>el sembrado correcto es la primera.</b>
+    <span class="tag">⚠ POR QUÉ IMPORTA LA PRECISIÓN</span> — El ciclo corre <b>desatendido en producción</b>. Si un centinela se confunde con un objeto real, el autopilot mutaría datos productivos. Las salvaguardas de código (<code>isSentinel</code> fail-closed, blast-radius, journal) son la última línea; <b>el sembrado correcto es la primera.</b>
   </div>
 
   <div class="card">
@@ -68,16 +68,16 @@
       <li><b>Uno por tipo de entidad.</b> El blast-radius es ≤1.</li>
       <li><b>En reposo = archivado.</b> El ciclo lo desarchiva, muta y re-archiva; entre corridas siempre archivado.</li>
       <li><b>Sin dependencias.</b> Nada ligado a datos reales (OV sin partes, PN sin inventario…).</li>
-      <li><b>Solo mutations reversibles.</b> Las destructivas (<code>Delete/Remove</code>) <b>escalan</b> — no se siembra sentinela para ellas.</li>
+      <li><b>Solo mutations reversibles.</b> Las destructivas (<code>Delete/Remove</code>) <b>escalan</b> — no se siembra centinela para ellas.</li>
     </ol>
   </div>
 
   <div class="card">
     <h2>Qué sembrar primero — priorización (58 reversibles)</h2>
-    <p style="color:var(--muted);margin:0 0 8px">Cada sentinela cubre TODAS las mutations reversibles de su entidad. Los <b>6 primeros</b> cubren 33/58 (57%).</p>
+    <p style="color:var(--muted);margin:0 0 8px">Cada centinela cubre TODAS las mutations reversibles de su entidad. Los <b>6 primeros</b> cubren 33/58 (57%).</p>
     <div style="overflow-x:auto">
     <table>
-      <thead><tr><th>#</th><th>Entidad (sentinela)</th><th>Muts</th><th>Ejemplos clave</th></tr></thead>
+      <thead><tr><th>#</th><th>Entidad (centinela)</th><th>Muts</th><th>Ejemplos clave</th></tr></thead>
       <tbody>
         <tr class="top"><td class="n">1</td><td><b>PartNumber</b></td><td class="n">12</td><td>SavePartNumber, UpdatePartNumber, AddParamsToPartNumber</td></tr>
         <tr class="top"><td class="n">2</td><td><b>ReceivedOrder</b></td><td class="n">6</td><td>CreateReceivedOrder, SaveReceivedOrderLinesAndItems</td></tr>
@@ -106,7 +106,7 @@
         <pre><button class="copy">copiar</button><code>{
   "entities": {
     "ReceivedOrder": {
-      "id": "&lt;idInDomain-o-nano-del-sentinela&gt;",
+      "id": "&lt;idInDomain-o-nano-del-centinela&gt;",
       "marker": "__SA_SENTINEL__",
       "baseState": "archived",
       "module": "ReceivedOrders"
@@ -125,19 +125,19 @@
   <div class="card">
     <h2>Mantenimiento & qué NO hacer</h2>
     <ul>
-      <li>Tras cada corrida real, confirma que el sentinela quedó <b>archivado</b> (la verificación post-ciclo alerta si no).</li>
+      <li>Tras cada corrida real, confirma que el centinela quedó <b>archivado</b> (la verificación post-ciclo alerta si no).</li>
       <li>Journal con entrada <code>dirty</code> persistente → ciclo interrumpido; el siguiente run <b>repara</b> primero.</li>
     </ul>
     <ul class="no">
-      <li>❌ No marques un objeto <b>real</b> como sentinela “temporalmente”.</li>
-      <li>❌ No siembres sentinela para <b>Delete/Remove</b> (escalan por diseño).</li>
-      <li>❌ No dejes el sentinela <b>desarchivado</b> ni con relaciones a datos reales.</li>
-      <li>❌ No reutilices un sentinela entre <b>tipos de entidad</b> distintos.</li>
+      <li>❌ No marques un objeto <b>real</b> como centinela “temporalmente”.</li>
+      <li>❌ No siembres centinela para <b>Delete/Remove</b> (escalan por diseño).</li>
+      <li>❌ No dejes el centinela <b>desarchivado</b> ni con relaciones a datos reales.</li>
+      <li>❌ No reutilices un centinela entre <b>tipos de entidad</b> distintos.</li>
     </ul>
-    <div class="callout"><b>Recuerda:</b> sembrar un sentinela no dispara nada por sí mismo. El ciclo de una entidad solo corre si esa mutation <b>rotó</b> (lo marca el validator) — el sentinela solo habilita la captura segura cuando haga falta.</div>
+    <div class="callout"><b>Recuerda:</b> sembrar un centinela no dispara nada por sí mismo. El ciclo de una entidad solo corre si esa mutation <b>rotó</b> (lo marca el validator) — el centinela solo habilita la captura segura cuando haga falta.</div>
   </div>
 
-  <footer>hash-autopilot v2 · Fase C · ciclo sentinela — 84% de las mutations cubribles, resto escala seguro</footer>
+  <footer>hash-autopilot v2 · Fase C · ciclo centinela — 84% de las mutations cubribles, resto escala seguro</footer>
 </div>
 <script>
   document.querySelectorAll('.copy').forEach(btn=>{

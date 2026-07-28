@@ -86,7 +86,10 @@ export async function runRecipe(page, recipe, domain, sink, stepTimeoutMs = 2500
       // (headless tarda en hidratar + fetchear filas) y hace CLIC REAL → dispara la
       // query de detalle sin re-bootstrapear el SPA (page.goto sí lo re-bootstrapea
       // y por eso NO fetcheaba). Reintenta el clic hasta capturar o vencer.
-      await clickFirstMatching(page, step.clickFirst, step.hrefMatches || null, sink, need, stepTimeoutMs);
+      // step.once=true → clic ÚNICO sin re-clic (pasos de setup de un flujo multi-paso:
+      // abrir un modal/combobox donde la captura llega en un paso POSTERIOR — re-clicar
+      // cerraría el modal/menú). Ver ruta uploadedfiles-pn-filter.
+      await clickFirstMatching(page, step.clickFirst, step.hrefMatches || null, sink, need, stepTimeoutMs, !!step.once);
     } else if (step.clickButton) {
       // Clic en un BOTÓN por TEXTO (abre un modal cuyo schema/query es la op a
       // capturar; p.ej. "Edit Sales Order" → CreateEditReceivedOrderDialogQuery,
@@ -99,6 +102,12 @@ export async function runRecipe(page, recipe, domain, sink, stepTimeoutMs = 2500
       // dropdown dispara SpecFieldsAndOptions). step.selectFirstOption = selector del input
       // combobox (típ. '[role="dialog"] input[role="combobox"]').
       await selectFirstOptionMatching(page, step.selectFirstOption, sink, need, stepTimeoutMs);
+    } else if (step.typeInto) {
+      // Escribe en un buscador type-ahead → dispara la query search-as-you-type (algunas
+      // ops solo se disparan al TECLEAR un término, no al abrir; p.ej. SearchPartNumbers en
+      // el modal 'Agregar Filtro' de /UploadedFiles). step.typeInto = selector del input;
+      // step.text = término a teclear (default 'A'). Es LECTURA (busca, no guarda).
+      await typeIntoMatching(page, step.typeInto, step.text || 'A', sink, need, stepTimeoutMs);
     }
     // espera activa: pollea hasta capturar las ops de la receta o vencer timeout
     const start = Date.now();
@@ -111,7 +120,7 @@ export async function runRecipe(page, recipe, domain, sink, stepTimeoutMs = 2500
 // Espera hasta timeoutMs a que aparezca un <a> que matchee sel (+ hrefMatches) y
 // hace CLIC REAL (client-side). Reintenta si la lista aún no rindió filas. Para en
 // cuanto captura las ops o vence. Devuelve true si logró clicar.
-async function clickFirstMatching(page, sel, hrefMatches, sink, need, timeoutMs) {
+async function clickFirstMatching(page, sel, hrefMatches, sink, need, timeoutMs, once = false) {
   const haveAll = () => need.length > 0 && need.every((op) => sink && sink.hashes[op]);
   const deadline = Date.now() + timeoutMs;
   let clickedOnce = false;
@@ -121,13 +130,21 @@ async function clickFirstMatching(page, sel, hrefMatches, sink, need, timeoutMs)
       handle = await page.evaluateHandle(({ sel, reSrc }) => {
         const re = reSrc ? new RegExp(reSrc) : null;
         const els = [...document.querySelectorAll(sel)];
-        return els.find((a) => !re || re.test(a.getAttribute('href') || '')) || null;
+        const matches = els.filter((a) => !re || re.test(a.getAttribute('href') || ''));
+        // Prefiere el primer elemento VISIBLE: algunos selectores (p.ej. los filtros de columna
+        // de Work Orders) matchean DUPLICADOS ocultos; clicar uno oculto hace timeout. Cae a
+        // matches[0] si ninguno se detecta visible (retrocompat con <a> de detalle).
+        const isVisible = (el) => { const r = el.getBoundingClientRect(); return el.offsetParent !== null && r.width > 0 && r.height > 0; };
+        return matches.find(isVisible) || matches[0] || null;
       }, { sel, reSrc: hrefMatches });
       const el = handle.asElement();
       if (el) {
         await el.scrollIntoViewIfNeeded({ timeout: 2000 }).catch(() => {});
         await el.click({ timeout: 5000 });
         clickedOnce = true;
+        // once: paso de setup de un flujo multi-paso (abrir modal/combobox) → clic ÚNICO
+        // y seguir; la captura llega en un paso posterior. Re-clicar cerraría el menú/modal.
+        if (once) return true;
         // Tras clicar, dale una ventana a que dispare la query antes de reintentar.
         const t = Date.now();
         while (!haveAll() && Date.now() - t < 4000) await page.waitForTimeout(400);
@@ -201,6 +218,30 @@ async function selectFirstOptionMatching(page, comboSel, sink, need, timeoutMs) 
         while (!haveAll() && Date.now() - t < 4000) await page.waitForTimeout(400);
       } else {
         await page.waitForTimeout(600); // el combobox aún no rinde → reintentar
+      }
+    } catch { await page.waitForTimeout(500); }
+  }
+}
+
+// Teclea `text` en el input `sel` → dispara la query search-as-you-type (algunas ops solo
+// se disparan al TECLEAR un término, no al abrir el combobox; p.ej. SearchPartNumbers en el
+// modal 'Agregar Filtro' de /UploadedFiles con la categoría 'Número de Parte'). pressSequentially
+// teclea char-por-char → cada onChange de React dispara la búsqueda. Reintenta hasta capturar
+// `need` o vencer. Es LECTURA (busca, no guarda). Limpia el input antes de teclear (idempotencia).
+async function typeIntoMatching(page, sel, text, sink, need, timeoutMs) {
+  const haveAll = () => need.length > 0 && need.every((op) => sink && sink.hashes[op]);
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline && !haveAll()) {
+    try {
+      const input = page.locator(sel).first();
+      if (await input.count()) {
+        await input.click({ timeout: 5000 }).catch(() => {});
+        await input.fill('').catch(() => {});
+        await input.pressSequentially(text, { delay: 120 });
+        const t = Date.now();
+        while (!haveAll() && Date.now() - t < 5000) await page.waitForTimeout(400);
+      } else {
+        await page.waitForTimeout(600); // el input aún no rinde → reintentar
       }
     } catch { await page.waitForTimeout(500); }
   }

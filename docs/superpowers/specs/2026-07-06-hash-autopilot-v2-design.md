@@ -15,7 +15,7 @@ Universo total en `remote/config.json` → `steelhead.hashes`: **113 queries + 6
 
 **Gaps que este diseño resuelve:**
 1. **Dos jobs, dos correos.** Se fusionan en **un solo job** con **un correo consolidado**.
-2. **Sin autocorrección universal.** Hoy solo se autocorrigen 6 ops; las otras 176 se detectan pero se corrigen a mano. v2 autocorrige **cualquier** rotación (queries por navegación, mutations por ciclo sentinela).
+2. **Sin autocorrección universal.** Hoy solo se autocorrigen 6 ops; las otras 176 se detectan pero se corrigen a mano. v2 autocorrige **cualquier** rotación (queries por navegación, mutations por ciclo centinela).
 3. **No hay mapa pantalla↔op.** El único método de descubrir el hash nuevo es interceptar el `/graphql` que el frontend dispara al usar la op (no hay manifiesto expuesto; `window.__APOLLO_CLIENT__` no está en prod). v2 construye un **catálogo de rutas** exhaustivo op → pantalla/clicks.
 
 ## 2. Objetivos y no-objetivos
@@ -38,7 +38,7 @@ Universo total en `remote/config.json` → `steelhead.hashes`: **113 queries + 6
 | Relación validator ↔ autopilot | **Fusionar en 1 job** (no son sustituibles: validator cubre 176, autopilot las 6 session-sensitive; se complementan) |
 | Cobertura | **Exhaustiva**: queries **y** mutations, todas las 182 |
 | Ejecución | **Selectiva**: solo las rutas de las ops rotadas (+ las 6 session-sensitive siempre, por ser indetectables) |
-| Mutations | **Sí**, vía **ciclo sentinela** (objetos canario archivados) |
+| Mutations | **Sí**, vía **ciclo centinela** (objetos canario archivados) |
 | Autonomía mutations | **Todo desatendido**, con salvaguardas fuertes |
 | Construcción del mapa | Discovery deliberado (un scan casual pesca ~9/113; no hay atajo) |
 
@@ -58,7 +58,7 @@ release nuevo? ──no──▶ exit 0 (solo un curl; casi gratis)
       ▼
 3. EJECUTAR    route-runner corre SOLO esas rutas, headless:
                · query    → navegar la ruta, interceptar /graphql, capturar sha256
-               · mutation → ciclo sentinela (§7)
+               · mutation → ciclo centinela (§7)
       ▼
 4. VALIDAR     hash-autopilot-core.classifyOp/hasShape → 'rotadoValidado'
                (difiere de config + el frontend obtuvo `data` sin `errors`)
@@ -78,8 +78,8 @@ release nuevo? ──no──▶ exit 0 (solo un curl; casi gratis)
 | `validate-hashes.py` | ✅ existe | Detector: set de ops rotadas (queries+mutations por el 400) | auth `steelhead_auth` |
 | `route-catalog.json` | 🆕 nuevo | **Fuente de verdad** del mapa `op → {type, module, steps[], captures[], sentinel?}` | — |
 | `route-planner.mjs` | 🆕 nuevo (núcleo **puro**) | Set-cover: ops rotadas + catálogo → mínimo de rutas | testeable aislado |
-| `route-runner.mjs` | 🔧 extiende `recipe-runner.mjs` | Ejecuta una ruta headless; intercepta `/graphql`; para mutations orquesta el ciclo sentinela | playwright, sentinels |
-| `sentinels.mjs` | 🆕 nuevo | Alta/estado/identidad/rollback de objetos canario | config de sentinelas |
+| `route-runner.mjs` | 🔧 extiende `recipe-runner.mjs` | Ejecuta una ruta headless; intercepta `/graphql`; para mutations orquesta el ciclo centinela | playwright, sentinels |
+| `sentinels.mjs` | 🆕 nuevo | Alta/estado/identidad/rollback de objetos canario | config de centinelas |
 | `hash-autopilot-core.mjs` | ✅ existe | `classifyOp`, `hasShape`, `planDeploy`, `missingCoverage` | puro |
 | `config-io.mjs` | ✅ existe | Leer/escribir hashes en `config.json` | — |
 | `autopilot-deploy.sh` | ✅ existe | Auto-deploy con candado (main + stash + trap) → `deploy.sh` | — |
@@ -129,23 +129,23 @@ Algoritmo: **set-cover greedy** — mientras queden ops rotadas sin cubrir, eleg
 
 Consecuencia: por release se ejecutan las rutas de `{queries/mutations rotadas detectadas}` ∪ `{6 session-sensitive}`, deduplicadas por el planificador.
 
-## 7. Ciclo sentinela para mutations (subsistema crítico)
+## 7. Ciclo centinela para mutations (subsistema crítico)
 
 Disparar una mutation requiere ejecutarla; hacerlo en producción exige contención total. Modelo **desatendido con salvaguardas fuertes**:
 
 ### 7.1 Estrategias por tipo de mutation
-- **`archived-mutate-restore`** (Save/Update/Archive, reversibles): desarchivar el sentinela → aplicar la mutación (dispara el hash) → capturar → re-archivar/restaurar al estado base.
-- **`ephemeral-create-destroy`** (`Delete*`, irreversibles): **no** sobre sentinela archivado → crear un objeto efímero marcado → capturar el `Delete` → confirmar borrado. Si no hay forma segura de crear el efímero → op marcada `no-auto` y **escala** (no se fuerza).
+- **`archived-mutate-restore`** (Save/Update/Archive, reversibles): desarchivar el centinela → aplicar la mutación (dispara el hash) → capturar → re-archivar/restaurar al estado base.
+- **`ephemeral-create-destroy`** (`Delete*`, irreversibles): **no** sobre centinela archivado → crear un objeto efímero marcado → capturar el `Delete` → confirmar borrado. Si no hay forma segura de crear el efímero → op marcada `no-auto` y **escala** (no se fuerza).
 
 ### 7.2 Salvaguardas (invariantes de seguridad)
-1. **Identidad inequívoca:** cada sentinela lleva marca `__SA_SENTINEL__` (en nombre/tag/campo canónico). El runner **rechaza mutar cualquier objeto cuya identidad no verifique como sentinela** (fail-closed). Defensa primaria contra deriva a datos reales.
+1. **Identidad inequívoca:** cada centinela lleva marca `__SA_SENTINEL__` (en nombre/tag/campo canónico). El runner **rechaza mutar cualquier objeto cuya identidad no verifique como centinela** (fail-closed). Defensa primaria contra deriva a datos reales.
 2. **Allowlist de entidades:** solo los `entityType` declarados en el catálogo pueden entrar al ciclo. Nada fuera del set.
-3. **Reversibilidad con journal:** `try/finally` + journal en `tools/.hash-autopilot/sentinel-journal.json`. Si el proceso muere entre *mutar* y *restaurar*, el **siguiente run repara** el sentinela sucio ANTES de cualquier otra acción (idempotente). Un sentinela en estado "dirty" bloquea nuevas mutaciones sobre esa entidad hasta reparar.
-4. **Verificación post-ciclo:** confirmar que el sentinela volvió a su estado base (archivado); si no → alerta y no se deploya el hash de esa op.
+3. **Reversibilidad con journal:** `try/finally` + journal en `tools/.hash-autopilot/sentinel-journal.json`. Si el proceso muere entre *mutar* y *restaurar*, el **siguiente run repara** el centinela sucio ANTES de cualquier otra acción (idempotente). Un centinela en estado "dirty" bloquea nuevas mutaciones sobre esa entidad hasta reparar.
+4. **Verificación post-ciclo:** confirmar que el centinela volvió a su estado base (archivado); si no → alerta y no se deploya el hash de esa op.
 5. **Límite de blast radius:** el ciclo aborta si detecta que tocaría más de 1 objeto, o un objeto con dependencias/relaciones no esperadas.
-6. **Solo lo rotado:** el ciclo sentinela de una mutation corre **únicamente si el detector la marcó rotada** (minimiza ejecuciones de mutación en prod).
+6. **Solo lo rotado:** el ciclo centinela de una mutation corre **únicamente si el detector la marcó rotada** (minimiza ejecuciones de mutación en prod).
 
-### 7.3 Provisión de sentinelas
+### 7.3 Provisión de centinelas
 Un registro `sentinels-config.json`: por `entityType`, el `{id, marca, estado-base}` del objeto canario. Alta manual una vez (o helper de creación), documentada. `sentinels.mjs` valida su existencia y estado base al inicio; si falta o está sucio, esa familia de mutations escala en vez de ejecutarse a ciegas.
 
 ## 8. Discovery del catálogo (Fase B, trabajo pesado)
@@ -162,7 +162,7 @@ Un registro `sentinels-config.json`: por `entityType`, el `{id, marca, estado-ba
 
 Evidencia del tamaño: el scan casual del 2026-07-02 (49 MB) solo capturó 37 ops (9/113 queries, 0/69 mutations) → el discovery debe ser deliberado y por módulo, no oportunista.
 
-**Mutations:** navegar normal NO las dispara (0/69 en el scan casual). Su ruta se mapea **ejecutando la acción** (Guardar/Archivar/Borrar) sobre objetos de prueba, lo que se hace en la pasada de **Fase C** junto con el sembrado de sentinelas — no en la primera pasada de queries. Ahí se identifica también el `entityType` y la acción disparadora → alimenta el campo `sentinel` del catálogo.
+**Mutations:** navegar normal NO las dispara (0/69 en el scan casual). Su ruta se mapea **ejecutando la acción** (Guardar/Archivar/Borrar) sobre objetos de prueba, lo que se hace en la pasada de **Fase C** junto con el sembrado de centinelas — no en la primera pasada de queries. Ahí se identifica también el `entityType` y la acción disparadora → alimenta el campo `sentinel` del catálogo.
 
 ## 9. Fases de implementación
 
@@ -172,7 +172,7 @@ Evidencia del tamaño: el scan casual del 2026-07-02 (49 MB) solo capturó 37 op
 - **Fase B — Discovery exhaustivo.**
   Instrumentar el hash-scanner (pathname + breadcrumb). Sesiones de mapeo por módulo → completar las 113 queries y las rutas/`entityType` de mutations en `route-catalog.json`. Medición de cobertura vía `missingCoverage`.
 
-- **Fase C — Ciclo sentinela (mutations).**
+- **Fase C — Ciclo centinela (mutations).**
   `sentinels.mjs` + `sentinels-config.json`, estrategias `archived-mutate-restore` y `ephemeral-create-destroy`, journal/rollback, verificación de identidad. Runner de mutations. Completar las 69 mutations. *Subsistema riesgoso, al final, sobre A+B ya probados.*
 
 ## 10. Testing
@@ -186,7 +186,7 @@ Evidencia del tamaño: el scan casual del 2026-07-02 (49 MB) solo capturó 37 op
 
 | Riesgo | Mitigación |
 |---|---|
-| Sentinela deriva a dato real | Marca `__SA_SENTINEL__` + fail-closed + allowlist + blast-radius ≤1 |
+| Centinela deriva a dato real | Marca `__SA_SENTINEL__` + fail-closed + allowlist + blast-radius ≤1 |
 | Crash a mitad de ciclo mutación | Journal + reparación idempotente en el siguiente run |
 | `Delete*` irreversible | Estrategia efímero create-destroy; si no es seguro → escala |
 | Auth vencida (0 capturas) | Reutiliza cache `steelhead_auth`; si vence, correo "corre steelhead_auth.py" (ya en v1) |
@@ -196,4 +196,4 @@ Evidencia del tamaño: el scan casual del 2026-07-02 (49 MB) solo capturó 37 op
 
 ## 12. Reutilización (no reinventar)
 
-Se conserva y extiende lo de v1: `hash-autopilot-core.mjs`, `config-io.mjs`, `autopilot-deploy.sh`, `autopilot-notify.sh`, `recipe-runner.mjs`, el gate por release y la inyección de tokens ROCP. Lo nuevo es el **catálogo de rutas**, el **planificador selectivo** y el **ciclo sentinela**.
+Se conserva y extiende lo de v1: `hash-autopilot-core.mjs`, `config-io.mjs`, `autopilot-deploy.sh`, `autopilot-notify.sh`, `recipe-runner.mjs`, el gate por release y la inyección de tokens ROCP. Lo nuevo es el **catálogo de rutas**, el **planificador selectivo** y el **ciclo centinela**.

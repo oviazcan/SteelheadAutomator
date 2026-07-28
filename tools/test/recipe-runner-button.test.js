@@ -35,7 +35,7 @@ test('buttonTextMatches: robusto a espacios colapsables y entradas vacías', () 
   assert.ok(!buttonTextMatches(null, EDIT));
 });
 
-// ── captura-y-aborta (sentinela de precios: capturar el hash de una MUTATION de
+// ── captura-y-aborta (centinela de precios: capturar el hash de una MUTATION de
 //    escritura sin ejecutarla → cero persistencia) ──────────────────────────────
 const priceReq = { operationName: 'SaveManyPartNumberPrices', extensions: { persistedQuery: { version: 1, sha256Hash: 'abc123' } } };
 

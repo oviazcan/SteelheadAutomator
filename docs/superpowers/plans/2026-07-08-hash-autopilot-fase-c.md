@@ -1,19 +1,19 @@
-# Fase C del hash-autopilot — captura headless de mutations por ciclo sentinela
+# Fase C del hash-autopilot — captura headless de mutations por ciclo centinela
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development o superpowers:executing-plans para implementar este plan tarea por tarea. Los pasos usan checkbox (`- [ ]`).
 
-**Goal:** Que el motor del hash-autopilot capture y deploye los hashes de mutations rotadas ejecutando ciclos sentinela headless (abrir objeto de prueba → mutar → capturar hash → restaurar), integrado al reporte de un solo correo, sin tocar datos reales.
+**Goal:** Que el motor del hash-autopilot capture y deploye los hashes de mutations rotadas ejecutando ciclos centinela headless (abrir objeto de prueba → mutar → capturar hash → restaurar), integrado al reporte de un solo correo, sin tocar datos reales.
 
-**Architecture:** El núcleo puro `sentinels.mjs` (máquina de estados, `isSentinel` fail-closed, journal) y el orquestador `mutation-runner.mjs` (`runMutationCycle` con try/finally) ya existen. Falta: (1) un `sentinelsConfig` con los IDs de los sentinelas del usuario; (2) los `deps` headless (`loadObject`/`doMutate`/`doRestore`) por mutación, escritos con el HTML real de cada pantalla; (3) el loop de mutations + reparación en `hash-autopilot.mjs`. Se implementa **una mutación a la vez**, cada una validada en corrida supervisada antes de la siguiente.
+**Architecture:** El núcleo puro `sentinels.mjs` (máquina de estados, `isSentinel` fail-closed, journal) y el orquestador `mutation-runner.mjs` (`runMutationCycle` con try/finally) ya existen. Falta: (1) un `sentinelsConfig` con los IDs de los centinelas del usuario; (2) los `deps` headless (`loadObject`/`doMutate`/`doRestore`) por mutación, escritos con el HTML real de cada pantalla; (3) el loop de mutations + reparación en `hash-autopilot.mjs`. Se implementa **una mutación a la vez**, cada una validada en corrida supervisada antes de la siguiente.
 
 **Tech Stack:** Node ESM (`.mjs`), Playwright (navegador headless, ya usado para queries), `node:test` para los núcleos puros, el mismo `autopilot-deploy.sh`/`autopilot-notify.sh` del motor.
 
 ## Global Constraints
 
 - Fail-closed absoluto: el runner **nunca** muta si `isSentinel(obj)` es false. La verificación es **doble**: el `sentinelId` viene de config Y el objeto cargado debe pasar `isSentinel`.
-- Marcador de sentinela: el nombre del objeto **contiene la palabra "Sentinela"** (decisión del usuario). Se amplía `isSentinel` para reconocerla, además del `__SA_SENTINEL__` existente.
+- Marcador de centinela: el nombre del objeto **contiene la palabra "Centinela"** (decisión del usuario). Se amplía `isSentinel` para reconocerla, además del `__SA_SENTINEL__` existente.
 - `doRestore` corre **siempre** (bloque `finally`), aunque la captura falle.
-- Blast-radius ≤ 1: un ciclo toca **un** objeto sentinela por vez; el journal bloquea ciclos concurrentes de la misma entidad.
+- Blast-radius ≤ 1: un ciclo toca **un** objeto centinela por vez; el journal bloquea ciclos concurrentes de la misma entidad.
 - Sin activar el launchd hasta que cada mutación pase una **corrida supervisada** (el usuario observando) en vivo.
 - Un solo correo: los resultados de mutations se integran al reporte consolidado ya existente (secciones `✅ corregidas` / `🔧 mutations`), no se manda un correo aparte.
 - `apolloClientVersion` y hashes viven en `remote/config.json`; el deploy usa `autopilot-deploy.sh` (bump + gh-pages + push).
@@ -22,12 +22,12 @@
 
 ## File Structure
 
-- `tools/hash-autopilot/sentinels.mjs` (modificar) — ampliar `isSentinel` para "Sentinela"; añadir estrategia `create-capture-cleanup` para mutations `Create*`.
-- `tools/hash-autopilot/sentinels-config.json` (crear) — IDs y entityType de los sentinelas del usuario. Fuera del código (datos).
+- `tools/hash-autopilot/sentinels.mjs` (modificar) — ampliar `isSentinel` para "Centinela"; añadir estrategia `create-capture-cleanup` para mutations `Create*`.
+- `tools/hash-autopilot/sentinels-config.json` (crear) — IDs y entityType de los centinelas del usuario. Fuera del código (datos).
 - `tools/hash-autopilot/mutation-deps.mjs` (crear) — implementación headless de `loadObject`/`doMutate`/`doRestore` por entityType, con Playwright. Un archivo por responsabilidad DOM.
 - `tools/hash-autopilot/mutation-runner.mjs` (modificar mínimamente si hace falta soportar `create-capture-cleanup`).
-- `tools/hash-autopilot/hash-autopilot.mjs` (modificar) — reparación de journal al inicio; loop que corre `runMutationCycle` por cada mutation stale con ruta+sentinela; alimentar `plan.toDeploy` con los hashes de mutation capturados.
-- `tools/test/sentinels-identity.test.js` (modificar) — casos del marcador "Sentinela".
+- `tools/hash-autopilot/hash-autopilot.mjs` (modificar) — reparación de journal al inicio; loop que corre `runMutationCycle` por cada mutation stale con ruta+centinela; alimentar `plan.toDeploy` con los hashes de mutation capturados.
+- `tools/test/sentinels-identity.test.js` (modificar) — casos del marcador "Centinela".
 - `tools/test/sentinels-strategy.test.js` (crear) — `strategyFor`/`planMutationCapture` para `Create*`.
 - `tools/test/mutation-deps.test.js` (crear) — `doMutate`/`doRestore` con una `page` fake (sin ERP real).
 
@@ -35,30 +35,30 @@
 
 ## Fase C.0 — Infraestructura (sin ejecutar mutations reales)
 
-### Task 1: Marcador "Sentinela" en `isSentinel`
+### Task 1: Marcador "Centinela" en `isSentinel`
 
 **Files:**
 - Modify: `tools/hash-autopilot/sentinels.mjs:26-38`
 - Test: `tools/test/sentinels-identity.test.js`
 
 **Interfaces:**
-- Produces: `isSentinel(obj) → bool` — ahora true también si un nombre/tag/customInput contiene `"Sentinela"` (case-insensitive), además de `__SA_SENTINEL__`.
+- Produces: `isSentinel(obj) → bool` — ahora true también si un nombre/tag/customInput contiene `"Centinela"` (case-insensitive), además de `__SA_SENTINEL__`.
 
 - [ ] **Step 1: Test que falla** — añadir a `sentinels-identity.test.js`:
 ```javascript
-test('isSentinel: reconoce la palabra "Sentinela" en el nombre (marcador del usuario)', () => {
-  assert.equal(isSentinel({ name: 'PN Sentinela QA' }), true);
-  assert.equal(isSentinel({ name: 'sentinela' }), true);       // case-insensitive
+test('isSentinel: reconoce la palabra "Centinela" en el nombre (marcador del usuario)', () => {
+  assert.equal(isSentinel({ name: 'PN Centinela QA' }), true);
+  assert.equal(isSentinel({ name: 'centinela' }), true);       // case-insensitive
   assert.equal(isSentinel({ name: 'Cliente Real 123' }), false);
   assert.equal(isSentinel(null), false);                        // fail-closed
 });
 ```
-- [ ] **Step 2: Correr y ver fallar** — `node --test tools/test/sentinels-identity.test.js` → FAIL en el caso "Sentinela".
+- [ ] **Step 2: Correr y ver fallar** — `node --test tools/test/sentinels-identity.test.js` → FAIL en el caso "Centinela".
 - [ ] **Step 3: Implementar** — en `sentinels.mjs`, cambiar el helper `hay`:
 ```javascript
 export function isSentinel(obj) {
   if (!obj || typeof obj !== 'object') return false;
-  const hay = (s) => typeof s === 'string' && (s.includes(SENTINEL_MARKER) || /sentinela/i.test(s));
+  const hay = (s) => typeof s === 'string' && (s.includes(SENTINEL_MARKER) || /centinela/i.test(s));
   if (hay(obj.name) || hay(obj.displayName)) return true;
   if (Array.isArray(obj.tags) && obj.tags.some(hay)) return true;
   if (obj.customInputs && typeof obj.customInputs === 'object') {
@@ -71,9 +71,9 @@ export function isSentinel(obj) {
 }
 ```
 - [ ] **Step 4: Correr y ver pasar** — `node --test tools/test/sentinels-identity.test.js` → PASS.
-- [ ] **Step 5: Commit** — `git add tools/hash-autopilot/sentinels.mjs tools/test/sentinels-identity.test.js && git commit -m "feat(sentinels): isSentinel reconoce el marcador 'Sentinela'"`
+- [ ] **Step 5: Commit** — `git add tools/hash-autopilot/sentinels.mjs tools/test/sentinels-identity.test.js && git commit -m "feat(sentinels): isSentinel reconoce el marcador 'Centinela'"`
 
-### Task 2: `sentinels-config.json` con los sentinelas del usuario
+### Task 2: `sentinels-config.json` con los centinelas del usuario
 
 **Files:**
 - Create: `tools/hash-autopilot/sentinels-config.json`
@@ -81,21 +81,21 @@ export function isSentinel(obj) {
 **Interfaces:**
 - Produces: JSON `{ entities: { <entityType>: { id, screenPath, marker } } }` que `planMutationCapture` lee vía `sentinelsConfig.entities[entityType]`.
 
-- [ ] **Step 1: Crear el archivo** con los sentinelas que el usuario confirme (IDs reales). Estructura de ejemplo (reemplazar IDs por los reales antes de correr):
+- [ ] **Step 1: Crear el archivo** con los centinelas que el usuario confirme (IDs reales). Estructura de ejemplo (reemplazar IDs por los reales antes de correr):
 ```json
 {
-  "_doc": "Objetos de prueba (nombre contiene 'Sentinela') sobre los que el autopilot ejecuta ciclos de captura de mutations. NUNCA apuntar a datos reales.",
+  "_doc": "Objetos de prueba (nombre contiene 'Centinela') sobre los que el autopilot ejecuta ciclos de captura de mutations. NUNCA apuntar a datos reales.",
   "entities": {
-    "partNumber": { "id": 0, "screenPath": "/Domains/{domain}/PartNumbers/{id}", "marker": "Sentinela" },
-    "quote":      { "id": 0, "screenPath": "/Domains/{domain}/Quotes/{id}", "marker": "Sentinela" },
-    "maintenanceNode": { "id": 0, "screenPath": "/Maintenance/Nodes/{id}", "marker": "Sentinela", "archived": true, "opsGroup": ["CreateMaintenanceEvent", "CreateMaintenanceEventComment", "UpdateMaintenanceEvent"], "_pendiente": "crear nodo sentinela dedicado ARCHIVADO (ciclo anidado — ver Fase C.5)" }
+    "partNumber": { "id": 0, "screenPath": "/Domains/{domain}/PartNumbers/{id}", "marker": "Centinela" },
+    "quote":      { "id": 0, "screenPath": "/Domains/{domain}/Quotes/{id}", "marker": "Centinela" },
+    "maintenanceNode": { "id": 0, "screenPath": "/Maintenance/Nodes/{id}", "marker": "Centinela", "archived": true, "opsGroup": ["CreateMaintenanceEvent", "CreateMaintenanceEventComment", "UpdateMaintenanceEvent"], "_pendiente": "crear nodo centinela dedicado ARCHIVADO (ciclo anidado — ver Fase C.5)" }
   }
 }
 ```
 - [ ] **Step 2: Validar JSON** — `node -e "JSON.parse(require('fs').readFileSync('tools/hash-autopilot/sentinels-config.json'))" && echo ok`
-- [ ] **Step 3: Commit** — `git add tools/hash-autopilot/sentinels-config.json && git commit -m "feat(hash-autopilot): sentinels-config con IDs de objetos sentinela"`
+- [ ] **Step 3: Commit** — `git add tools/hash-autopilot/sentinels-config.json && git commit -m "feat(hash-autopilot): sentinels-config con IDs de objetos centinela"`
 
-> **Prerequisito de datos:** el usuario provee los `id` reales de cada sentinela. Para `maintenanceNode`, primero crear un nodo dedicado con "Sentinela" en el nombre (el scan previo usó uno existente).
+> **Prerequisito de datos:** el usuario provee los `id` reales de cada centinela. Para `maintenanceNode`, primero crear un nodo dedicado con "Centinela" en el nombre (el scan previo usó uno existente).
 
 ### Task 3: Reparación de journal al inicio del motor
 
@@ -116,7 +116,7 @@ test('pendingRepairs: lista ciclos sucios pendientes de reparar', () => {
 ```
 - [ ] **Step 2: Correr y ver pasar/fallar** — `node --test tools/test/sentinels-journal.test.js`.
 - [ ] **Step 3: Implementar en el motor** — al inicio de la corrida (tras cargar `page`), leer el journal; para cada `pendingRepairs`, intentar `doRestore` con los deps; si falla, escalar esa entidad (añadir a la sección `🔧` del reporte) y NO abrir ciclos nuevos de esa entidad.
-- [ ] **Step 4: Commit** — `git add tools/hash-autopilot/hash-autopilot.mjs && git commit -m "feat(hash-autopilot): repara ciclos sentinela sucios al inicio"`
+- [ ] **Step 4: Commit** — `git add tools/hash-autopilot/hash-autopilot.mjs && git commit -m "feat(hash-autopilot): repara ciclos centinela sucios al inicio"`
 
 ---
 
@@ -139,10 +139,10 @@ test('pendingRepairs: lista ciclos sucios pendientes de reparar', () => {
 - [ ] **Step 1: Test con `page` fake** (sin ERP) — `mutation-deps.test.js`:
 ```javascript
 test('loadObject: extrae el objeto para verificación de identidad', async () => {
-  const page = { goto: async () => {}, evaluate: async () => ({ name: 'PN Sentinela QA', id: 42 }) };
+  const page = { goto: async () => {}, evaluate: async () => ({ name: 'PN Centinela QA', id: 42 }) };
   const deps = makeDeps({ entities: { partNumber: { id: 42, screenPath: '/x/{id}' } } }, { hashes: {} });
   const obj = await deps.loadObject(page, 42);
-  assert.equal(obj.name, 'PN Sentinela QA');
+  assert.equal(obj.name, 'PN Centinela QA');
 });
 ```
 - [ ] **Step 2: Correr y ver fallar** — `node --test tools/test/mutation-deps.test.js` → FAIL (makeDeps no existe).
@@ -157,17 +157,17 @@ test('loadObject: extrae el objeto para verificación de identidad', async () =>
 
 **Interfaces:**
 - Consumes: `runMutationCycle(page, route, sentinelsConfig, sink, deps)`, `staleMutations(validatorResult)`, `route.sentinel.entityType`.
-- Produces: por cada mutation stale con ruta+sentinela, un `{op, hash, captured}`; los capturados se suman a `plan.toDeploy` (mismo pipeline de deploy que las queries).
+- Produces: por cada mutation stale con ruta+centinela, un `{op, hash, captured}`; los capturados se suman a `plan.toDeploy` (mismo pipeline de deploy que las queries).
 
 - [ ] **Step 1:** Añadir `route.sentinel = { entityType: 'partNumber' }` a la ruta de `UpdatePartNumber` en `route-catalog.json` (o mapa op→entityType en config).
-- [ ] **Step 2: Implementar el loop** — tras las queries: para cada `op` en `staleMuts` que tenga sentinela declarado, correr `runMutationCycle`; acumular resultados. En `--dry-run`, NO deployar ni mutar de verdad (solo loguear el plan).
-- [ ] **Step 3: Correr dry-run** — `node hash-autopilot.mjs --dry-run` → debe listar `UpdatePartNumber` como candidata a ciclo sin ejecutar nada. Expected: log "ciclo planeado (dry): UpdatePartNumber sobre sentinela partNumber #<id>".
+- [ ] **Step 2: Implementar el loop** — tras las queries: para cada `op` en `staleMuts` que tenga centinela declarado, correr `runMutationCycle`; acumular resultados. En `--dry-run`, NO deployar ni mutar de verdad (solo loguear el plan).
+- [ ] **Step 3: Correr dry-run** — `node hash-autopilot.mjs --dry-run` → debe listar `UpdatePartNumber` como candidata a ciclo sin ejecutar nada. Expected: log "ciclo planeado (dry): UpdatePartNumber sobre centinela partNumber #<id>".
 - [ ] **Step 4: Commit** — `git add ... && git commit -m "feat(hash-autopilot): loop de mutations (dry-run) integrado al motor"`
 
 ### Task 6: Corrida SUPERVISADA de `UpdatePartNumber` (no launchd)
 
 - [ ] **Step 1:** Con el usuario observando, correr `node hash-autopilot.mjs` (no dry) **solo** con `UpdatePartNumber` habilitada (las demás mutations aún escalan).
-- [ ] **Step 2:** Verificar en el ERP que el PN sentinela quedó **restaurado** (valor original) y que se capturó el hash. Confirmar el diff de `config.json` = solo `UpdatePartNumber`.
+- [ ] **Step 2:** Verificar en el ERP que el PN centinela quedó **restaurado** (valor original) y que se capturó el hash. Confirmar el diff de `config.json` = solo `UpdatePartNumber`.
 - [ ] **Step 3:** Si el hash capturado ≠ config → deploy vía `autopilot-deploy.sh`. Verificar `tools/deploy-status.sh`.
 - [ ] **Step 4:** Confirmar el correo consolidado incluye `UpdatePartNumber` en `✅ corregidas`.
 
@@ -192,7 +192,7 @@ Repite Fase C.1 para la entidad `quote`:
 - Test: `tools/test/sentinels-strategy.test.js` (crear)
 
 **Interfaces:**
-- Produces: `strategyFor('CreateReceivedOrder') → 'create-capture-cleanup'`; `planMutationCapture` con `action:'run'` para esa estrategia si hay sentinela (aquí el "sentinela" es la config de la OV de prueba a crear + cómo limpiarla).
+- Produces: `strategyFor('CreateReceivedOrder') → 'create-capture-cleanup'`; `planMutationCapture` con `action:'run'` para esa estrategia si hay centinela (aquí el "centinela" es la config de la OV de prueba a crear + cómo limpiarla).
 
 - [ ] **Step 1: Test que falla** — `sentinels-strategy.test.js`:
 ```javascript
@@ -211,15 +211,15 @@ test('planMutationCapture: create-capture-cleanup corre si hay entidad', () => {
 
 ### Task 10: `deps` de `receivedOrder` + limpieza
 
-- [ ] **Task 10:** Con el HTML del flujo de crear OV: `doMutate` crea una OV de prueba (marcada "Sentinela"); `doRestore` la **archiva/borra**. Test con `page` fake. Corrida supervisada: verificar que la OV creada quedó archivada (no en producción activa) + hash capturado + deploy + correo.
+- [ ] **Task 10:** Con el HTML del flujo de crear OV: `doMutate` crea una OV de prueba (marcada "Centinela"); `doRestore` la **archiva/borra**. Test con `page` fake. Corrida supervisada: verificar que la OV creada quedó archivada (no en producción activa) + hash capturado + deploy + correo.
 
 ---
 
 ## Fase C.5 — Nodo de mantenimiento (ciclo anidado "desarchivar-padre")
 
-> **Aclaración del usuario:** el nodo de mantenimiento **"Sentinela" vive ARCHIVADO**, y su ciclo es de **dos niveles**: `desarchivar el nodo → crear el evento → crear comentarios / actualizar el evento → archivar el evento → archivar el nodo`. Es la estrategia más rica: captura **varias mutations en un solo ciclo** (`CreateMaintenanceEvent`, `CreateMaintenanceEventComment`, `UpdateMaintenanceEvent`), y todo lo creado (evento) + el objeto padre (nodo) vuelven a estado archivado.
+> **Aclaración del usuario:** el nodo de mantenimiento **"Centinela" vive ARCHIVADO**, y su ciclo es de **dos niveles**: `desarchivar el nodo → crear el evento → crear comentarios / actualizar el evento → archivar el evento → archivar el nodo`. Es la estrategia más rica: captura **varias mutations en un solo ciclo** (`CreateMaintenanceEvent`, `CreateMaintenanceEventComment`, `UpdateMaintenanceEvent`), y todo lo creado (evento) + el objeto padre (nodo) vuelven a estado archivado.
 
-> **PREREQUISITO:** crear un **nodo de mantenimiento dedicado** con "Sentinela" en el nombre y dejarlo **archivado**. (El scan manual previo usó un nodo existente; para automatizar se necesita uno sentinela propio, desechable.)
+> **PREREQUISITO:** crear un **nodo de mantenimiento dedicado** con "Centinela" en el nombre y dejarlo **archivado**. (El scan manual previo usó un nodo existente; para automatizar se necesita uno centinela propio, desechable.)
 
 ### Task 12: Estrategia `nested-unarchive` en `sentinels.mjs`
 
@@ -252,7 +252,7 @@ test('planMutationCapture: grupo de mantenimiento → nested-unarchive', () => {
 - Test: `tools/test/mutation-deps.test.js`
 
 **Interfaces:**
-- `loadObject(page, parentId) → nodo` — verificar `isSentinel` (nombre "Sentinela").
+- `loadObject(page, parentId) → nodo` — verificar `isSentinel` (nombre "Centinela").
 - `doMutate` (nested): `unarchiveNode(parentId) → createEvent → createComment → updateEvent`, capturando del `sink` los hashes de las 3 ops.
 - `doRestore` (nested, **orden inverso, SIEMPRE en finally**): `archiveEvent → archiveNode`.
 
@@ -260,7 +260,7 @@ test('planMutationCapture: grupo de mantenimiento → nested-unarchive', () => {
 ```javascript
 test('doMutate/doRestore de mantenimiento: desarchiva, opera, y restaura en orden inverso', async () => {
   const calls = [];
-  const page = { goto: async () => {}, evaluate: async () => ({ name: 'Nodo Sentinela' }),
+  const page = { goto: async () => {}, evaluate: async () => ({ name: 'Nodo Centinela' }),
     click: async (sel) => calls.push(sel) };
   // ... makeDeps con la entidad maintenanceNode; correr doMutate luego doRestore
   // assert: calls incluye unarchive antes de create, y archiveEvent antes de archiveNode en restore
@@ -277,15 +277,15 @@ test('doMutate/doRestore de mantenimiento: desarchiva, opera, y restaura en orde
 ### Task 11: Habilitar Fase C en el ciclo automático
 
 - [ ] **Step 1:** Solo tras C.1–C.3 supervisadas exitosas: quitar el gate manual, permitir que el launchd corra el loop de mutations con todas las entidades declaradas.
-- [ ] **Step 2:** Primera corrida automática **monitoreada** (revisar el correo + `deploy-status.sh` + estado de los sentinelas).
-- [ ] **Step 3:** Documentar en `docs/applets/hash-scanner.md` / bitácora del autopilot: estrategias soportadas, sentinelas, cómo añadir una mutation nueva.
+- [ ] **Step 2:** Primera corrida automática **monitoreada** (revisar el correo + `deploy-status.sh` + estado de los centinelas).
+- [ ] **Step 3:** Documentar en `docs/applets/hash-scanner.md` / bitácora del autopilot: estrategias soportadas, centinelas, cómo añadir una mutation nueva.
 - [ ] **Step 4: Commit** de la doc.
 
 ---
 
 ## Notas de seguridad (recordatorio permanente)
 
-- Ninguna mutación corre sin: sentinela declarado en config **y** `isSentinel(obj)` true tras cargar el objeto real.
+- Ninguna mutación corre sin: centinela declarado en config **y** `isSentinel(obj)` true tras cargar el objeto real.
 - `doRestore` en `finally` — el objeto vuelve a su estado aunque falle la captura.
 - El journal bloquea ciclos concurrentes y permite reparar una corrida interrumpida.
 - Destructivas puras (`Delete*`) siguen escalando (no auto) — fuera de alcance de este plan.
