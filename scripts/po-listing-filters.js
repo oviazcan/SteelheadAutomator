@@ -16,8 +16,9 @@
 //   operador 2026-07-27). Aplica `billToLocationIdFilter` (array, semántica OR) por URL.
 //
 // FRUGALIDAD OBLIGATORIA: el /graphql de SH deja de responder tras ~40-45 requests seguidas
-// (las peticiones quedan colgadas, sin 429 ni error, y no se recuperan al recargar). De ahí
-// el pool de 2, el debounce, `first` chico y el AbortController con timeout.
+// (las peticiones quedan colgadas, sin 429 ni error, y no se recuperan al recargar) y eso
+// tumba también la pantalla NATIVA. De ahí el fan-out acotado a 7, el debounce y el timeout.
+// El pool es de 4 porque el límite castiga el VOLUMEN acumulado, no la concurrencia puntual.
 //
 // Estado singleton en window.__saPOF (no en el closure): injectAppScripts re-evalúa el IIFE
 // en cada acción del popup (lección surtido-guard/price-confirm-guard).
@@ -49,23 +50,22 @@
   });
 
   // ── estilos ──
-  // El panel flotante es UI NUESTRA → dark-mode (regla del repo). Los controles inline
-  // heredan el look de la barra nativa y se marcan con el acento verde #13a36f
-  // (precedente schedule-batch-highlighter): el verde es lo que dice "esto es de la
-  // extensión", porque el Steelhead de este dominio corre en tema oscuro.
+  // TODO va en dark-mode (regla del repo), incluidos los controles del header: el operador
+  // confundía el buscador con el universal de SH cuando heredaba el look nativo. Fondo
+  // #141a23, texto #e6e9ee, acento #13a36f — se lee de un vistazo como UI de la extensión.
   function injectStyles() {
     const prev = document.getElementById(STYLE_ID);
     if (prev) prev.remove();
     const st = document.createElement('style');
     st.id = STYLE_ID;
     st.textContent = `
-      #${BAR_ID}{display:inline-flex;align-items:center;gap:8px;margin:0 10px;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;vertical-align:middle;}
+      #${BAR_ID}{display:inline-flex;align-items:center;gap:6px;margin:0 8px;flex:0 0 auto;white-space:nowrap;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;vertical-align:middle;}
       #${SEARCH_ID}{display:inline-flex;align-items:center;gap:6px;}
-      #${SEARCH_ID} .sa-pof-inp{background:#141a23;color:#e6e9ee;border:1px solid #3a4757;border-radius:6px;padding:5px 9px;font-size:12px;width:200px;outline:none;font-family:inherit;}
+      #${SEARCH_ID} .sa-pof-inp{background:#141a23;color:#e6e9ee;border:1px solid #3a4757;border-radius:6px;padding:5px 9px;font-size:12px;width:168px;outline:none;font-family:inherit;}
       #${SEARCH_ID} .sa-pof-inp:focus{border-color:#13a36f;box-shadow:0 0 0 2px rgba(19,163,111,.25);}
       #${SEARCH_ID} .sa-pof-inp::placeholder{color:#7f8b99;}
       #${TOGGLE_ID}{display:inline-flex;align-items:center;gap:0;font-family:inherit;font-size:11px;border:1px solid #3a4757;border-radius:14px;overflow:hidden;background:#141a23;}
-      #${TOGGLE_ID} button{background:transparent;color:#cfd6de;border:0;padding:4px 11px;font-size:11px;cursor:pointer;line-height:1.6;font-family:inherit;}
+      #${TOGGLE_ID} button{background:transparent;color:#cfd6de;border:0;padding:4px 9px;font-size:11px;cursor:pointer;line-height:1.6;font-family:inherit;}
       #${TOGGLE_ID} button[aria-pressed="true"]{background:#13a36f;color:#fff;font-weight:600;}
       #${TOGGLE_ID} button[disabled]{opacity:.45;cursor:not-allowed;}
       #${PANEL_ID}{position:fixed;min-width:340px;max-width:520px;background:#1c2430;color:#e6e9ee;border:1px solid #33404f;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.45);z-index:2147483600;padding:10px;font-size:12px;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;}
@@ -468,14 +468,29 @@
   // antes en la barra de filtros de la tabla, pegado al buscador nativo, y el operador lo
   // confundía con el universal: dos cajas de búsqueda contiguas y casi idénticas. Aquí,
   // agrupado con el toggle y en dark-mode, se lee de un vistazo como UI de la extensión.
+  // El botón vive envuelto en varios spans (`css-165nl96` es su wrapper responsive, de ancho
+  // fijo). Insertar ahí dentro mete la barra DENTRO del botón y se dibuja encima del header
+  // — bug del deploy 1.7.210. Hay que subir hasta el hijo DIRECTO del MuiPaper del header y
+  // ponerse como su hermano.
+  function headerRowChild(node) {
+    let el = node;
+    for (let i = 0; i < 6 && el && el.parentElement; i++) {
+      if (el.parentElement.classList && el.parentElement.classList.contains('MuiPaper-root')) return el;
+      el = el.parentElement;
+    }
+    return null;
+  }
+
   function getBar() {
     let bar = document.getElementById(BAR_ID);
     if (bar) return bar;
     const anchor = findNewPoButton();
-    if (!anchor || !anchor.parentElement) return null;
+    if (!anchor) return null;
+    const sibling = headerRowChild(anchor);
+    if (!sibling || !sibling.parentElement) return null;
     bar = document.createElement('div');
     bar.id = BAR_ID;
-    anchor.parentElement.insertBefore(bar, anchor.nextSibling);
+    sibling.parentElement.insertBefore(bar, sibling.nextSibling);
     return bar;
   }
 
