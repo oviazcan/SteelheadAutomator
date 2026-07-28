@@ -4,8 +4,11 @@
 // NO requiere click: la info sale sola al entrar a la ficha. Motivo: en iPad la tarjeta
 // "Cliente" (con el ícono 📅 nativo) se colapsa; este readout arriba la muestra siempre.
 //
-// FASE 2 (a futuro): cuando se pueda PROGRAMAR desde aquí, el 📅 se vuelve clicable y
-// abrirá un modal de programación intencional (por eso el elemento ya lleva el 📅 al inicio).
+// FASE 2a (VIVA): cada 📅 de una tarea EXISTENTE es clicable → modal dark-mode que fija su
+// fecha/hora y la marca como INTENCIONAL (`UpdateManyScheduleTasks`, update-por-id), sin
+// abrir el calendario nativo. La respuesta del servidor no confirma nada, así que la
+// escritura se VERIFICA releyendo el programa. Crear una tarea donde no hay (2b) y
+// reacomodar el resto (2c) siguen fuera.
 //
 // Datos: WorkOrder({idInDomain}) → workOrderId GLOBAL; WorkOrderSchedule({domainId,
 // workOrderId}) → board COMPLETO → WoScheduleCore.buildBoardScheduleIndex → tareas de la OT.
@@ -59,6 +62,40 @@ const WoScheduleButton = (() => {
       '#' + INLINE_ID + ' .sa-wosched-txt2{white-space:normal;overflow-wrap:anywhere;color:#243244;font-weight:500;}',
       '#' + INLINE_ID + ' .sa-wosched-txt2.muted{color:#6b7280;font-style:italic;font-weight:400;}',
       '#' + INLINE_ID + ' .sa-wosched-txt2.err{color:#b04a3a;font-weight:500;}',
+      // 📅 de una tarea EXISTENTE: abre el modal de programación intencional.
+      '#' + INLINE_ID + ' .sa-wosched-cal.on{cursor:pointer;}',
+      '#' + INLINE_ID + ' .sa-wosched-cal.on:hover{transform:scale(1.15);}',
+      // ── Modal (dark mode: regla del repo — la UI propia nunca se confunde con la de SH) ──
+      '.sa-wosm-ov{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2147483642;',
+      'display:flex;align-items:center;justify-content:center;}',
+      '.sa-wosm{background:#1c2430;width:min(460px,94vw);max-height:90vh;border-radius:10px;',
+      'display:flex;flex-direction:column;box-shadow:0 10px 40px rgba(0,0,0,.55);border:1px solid #33404f;',
+      'font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#e6e9ee;}',
+      '.sa-wosm h2{margin:0;font-size:16px;color:#f0f3f7;font-weight:600;}',
+      '.sa-wosm-hd{padding:14px 18px;border-bottom:1px solid #33404f;display:flex;',
+      'align-items:center;justify-content:space-between;gap:12px;}',
+      '.sa-wosm-x{border:none;background:none;font-size:22px;cursor:pointer;color:#9aa7b5;line-height:1;}',
+      '.sa-wosm-x:hover{color:#e6e9ee;}',
+      '.sa-wosm-bd{padding:16px 18px;overflow:auto;}',
+      '.sa-wosm-ft{padding:12px 18px;border-top:1px solid #33404f;display:flex;',
+      'align-items:center;justify-content:flex-end;gap:8px;flex-wrap:wrap;}',
+      '.sa-wosm-btn{border:none;border-radius:7px;padding:9px 15px;font-size:13.5px;font-weight:600;cursor:pointer;}',
+      '.sa-wosm-btn.primary{background:#13a36f;color:#fff;}',
+      '.sa-wosm-btn.primary:disabled{background:#3a5247;color:#8fa99c;cursor:not-allowed;}',
+      '.sa-wosm-btn.ghost{background:#33404f;color:#dfe5ec;}',
+      '.sa-wosm-btn.ghost:disabled{color:#8b96a3;cursor:not-allowed;}',
+      '.sa-wosm-note{font-size:12.5px;color:#9aa7b5;line-height:1.45;margin-bottom:10px;}',
+      '.sa-wosm-lbl{display:block;font-size:11.5px;color:#9aa7b5;text-transform:uppercase;',
+      'letter-spacing:.04em;font-weight:600;margin:14px 0 5px;}',
+      '.sa-wosm input[type="datetime-local"]{width:100%;font-size:14px;padding:8px 9px;',
+      'border:1px solid #3a4757;border-radius:6px;background:#141a23;color:#e6e9ee;',
+      'font-family:inherit;color-scheme:dark;}',
+      '.sa-wosm-warn{background:#3a2a1c;border:1px solid #6b4a2e;color:#f0a35e;padding:9px 11px;',
+      'border-radius:7px;font-size:12.5px;line-height:1.45;margin-top:12px;}',
+      '.sa-wosm-err{background:#3a1f1c;border:1px solid #6b3230;color:#f08a7a;padding:9px 11px;',
+      'border-radius:7px;font-size:12.5px;line-height:1.45;margin-top:12px;}',
+      '.sa-wosm-ok{background:#163a2c;border:1px solid #2e6b52;color:#5fd0a0;padding:9px 11px;',
+      'border-radius:7px;font-size:12.5px;line-height:1.45;margin-top:12px;}',
     ].join('');
     const s = document.createElement('style');
     s.id = 'sa-wosched-style';
@@ -94,12 +131,25 @@ const WoScheduleButton = (() => {
     opts = opts || {};
     const row = document.createElement('div'); row.className = 'sa-wosched-row2';
     const cal = document.createElement('span'); cal.className = 'sa-wosched-cal'; cal.textContent = '📅';
-    cal.title = opts.calTitle || 'Programación intencional (crear/editar): próximamente (Fase 2).';
+    cal.title = opts.calTitle || 'Programación de esta OT.';
     if (opts.task) {
       const t = opts.task;
       if (t.stationId != null) cal.setAttribute('data-sa-station-id', String(t.stationId));
       if (t.scheduleId != null) cal.setAttribute('data-sa-schedule-id', String(t.scheduleId));
       if (t.taskId != null) cal.setAttribute('data-sa-task-id', String(t.taskId));
+      // Fase 2a: solo se puede FIJAR una tarea que ya existe (la mutación es
+      // update-por-id). Sin taskId el 📅 se queda informativo: prometer un click que
+      // no puede escribir es peor que no ofrecerlo.
+      if (t.taskId != null) {
+        cal.className += ' on';
+        cal.title = 'Programar esta tarea a una hora fija (programación intencional)';
+        cal.setAttribute('role', 'button');
+        cal.setAttribute('tabindex', '0');
+        cal.addEventListener('click', function () { openScheduleModal(t); });
+        cal.addEventListener('keydown', function (e) {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openScheduleModal(t); }
+        });
+      }
     }
     const txt = document.createElement('span');
     txt.className = 'sa-wosched-txt2' + (opts.muted ? ' muted' : '') + (opts.err ? ' err' : '');
@@ -129,12 +179,173 @@ const WoScheduleButton = (() => {
     el.textContent = '';
     if (!tasks || !tasks.length) {
       el.title = 'Esta OT no está programada.';
-      addRow(el, 'Sin programar', { muted: true, calTitle: 'Programar esta OT: próximamente (Fase 2).' });
+      addRow(el, 'Sin programar', { muted: true,
+        calTitle: 'Esta OT todavía no tiene tarea en el programa. Créala en el tablero de '
+                + 'planificación; desde aquí se puede fijar la hora de una tarea existente.' });
       return;
     }
     // Un 📅 por tarea/estación (Fase 2: cada 📅 programa ESE paso de la OT).
     tasks.forEach(function (t) { addRow(el, taskText(t), { task: t }); });
     el.title = tasks.map(function (t, i) { return (i + 1) + ') ' + taskText(t); }).join('\n');
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Fase 2a — programación INTENCIONAL desde la ficha
+  // ══════════════════════════════════════════════════════════════════════════
+  // `UpdateManyScheduleTasks` es update-POR-ID: fija la hora de una tarea que YA existe
+  // y la marca `isIntentional` (= STATIC-SCHEDULED, el planificador deja de moverla).
+  // NO crea tareas — para eso hace falta `CreateManyScheduleTasks`, cuyo payload sigue
+  // sin mapear (Fase 2b). Tampoco reacomoda el resto del programa (Fase 2c, destructiva).
+  const MODAL_ID = 'sa-wosm-ov';
+
+  function closeModal() { const m = document.getElementById(MODAL_ID); if (m) m.remove(); }
+
+  function elm(tag, attrs, kids) {
+    const e = document.createElement(tag);
+    if (attrs) Object.keys(attrs).forEach(function (k) {
+      if (k === 'class') e.className = attrs[k];
+      else if (k === 'text') e.textContent = attrs[k];      // textContent siempre (anti-XSS)
+      else if (k.slice(0, 2) === 'on' && typeof attrs[k] === 'function') e.addEventListener(k.slice(2), attrs[k]);
+      else e.setAttribute(k, attrs[k]);
+    });
+    (kids || []).forEach(function (c) { if (c) e.appendChild(typeof c === 'string' ? document.createTextNode(c) : c); });
+    return e;
+  }
+
+  // El offset se toma de la FECHA en cuestión, no del "ahora": así el horario de verano
+  // lo resuelve el navegador y no una constante nuestra. Segunda pasada por si el valor
+  // elegido cae del otro lado de un cambio de horario.
+  function localToIso(local) {
+    const C = Core();
+    let off = new Date().getTimezoneOffset();
+    let iso = C.localInputToIso(local, off);
+    if (!iso) return null;
+    const off2 = new Date(iso).getTimezoneOffset();
+    if (off2 !== off) iso = C.localInputToIso(local, off2);
+    return iso;
+  }
+  function isoToLocal(iso) {
+    if (!iso) return '';
+    const off = new Date(Date.parse(iso) || Date.now()).getTimezoneOffset();
+    return Core().isoToLocalInput(iso, off);
+  }
+
+  // Relee la programación SIN pasar por caches. Tras escribir, el índice capturado por el
+  // interceptor es la foto anterior: usarlo diría "✅ aplicado" sobre datos viejos.
+  async function refetchTasks(woIdInDomain) {
+    const api = window.SteelheadAPI;
+    const domainId = Core().parseDomainId(location.pathname);
+    resolvedCache().delete(woIdInDomain);
+    inflight().delete(woIdInDomain);
+    boardState().idx = null;
+    const data = await api.query('WorkOrder', { idInDomain: woIdInDomain }, 'WorkOrder');
+    let woGlobalId = Core().extractWorkOrderGlobalId(data);
+    if (woGlobalId == null && data && data.workOrderByIdInDomain) woGlobalId = data.workOrderByIdInDomain.id;
+    if (woGlobalId == null) return [];
+    const raw = await api.query('WorkOrderSchedule', { domainId: domainId, workOrderId: woGlobalId }, 'WorkOrderSchedule');
+    const idx = Core().buildBoardScheduleIndex(raw);
+    setBoard(idx, domainId);
+    const tasks = Core().resolveBoardScheduleForWO(idx, woGlobalId);
+    resolvedCache().set(woIdInDomain, tasks);
+    return tasks;
+  }
+
+  function openScheduleModal(task) {
+    if (!task || task.taskId == null) return;
+    closeModal();
+    injectStyles();
+
+    const woIdInDomain = currentWoIdInDomain();
+    const estacion = task.stationName || ('Estación ' + (task.stationId != null ? task.stationId : '?'));
+    const msg = elm('div');
+    const input = elm('input', { type: 'datetime-local', value: isoToLocal(task.expectedStartTime) });
+
+    const cuerpo = elm('div', {}, [
+      elm('div', { class: 'sa-wosm-note',
+        text: 'OT ' + (woIdInDomain != null ? woIdInDomain : '—') + ' · ' + estacion
+            + ' · ' + (Core().scheduleStatusLabel(task.status) || 'sin estado')
+            + (task.isIntentional ? ' · ya está fijada' : '') }),
+      elm('label', { class: 'sa-wosm-lbl', text: 'Fecha y hora de inicio' }),
+      input,
+      elm('div', { class: 'sa-wosm-warn',
+        text: 'Fijar la marca como INTENCIONAL: el planificador deja de moverla al reacomodar '
+            + 'el programa. No recorre las demás tareas — las que dependan de ésta pueden '
+            + 'quedar encimadas y se ajustan en el tablero.' }),
+      msg,
+    ]);
+
+    const btnFijar = elm('button', { class: 'sa-wosm-btn primary', text: '📌 Fijar a esta hora' });
+    const btnSoltar = task.isIntentional
+      ? elm('button', { class: 'sa-wosm-btn ghost', text: 'Quitar fijado' })
+      : null;
+    const btnCerrar = elm('button', { class: 'sa-wosm-btn ghost', text: 'Cerrar', onclick: closeModal });
+
+    const ov = elm('div', { id: MODAL_ID, class: 'sa-wosm-ov' }, [
+      elm('div', { class: 'sa-wosm' }, [
+        elm('div', { class: 'sa-wosm-hd' }, [
+          elm('h2', { text: '📅 Programar · ' + estacion }),
+          elm('button', { class: 'sa-wosm-x', text: '×', onclick: closeModal }),
+        ]),
+        elm('div', { class: 'sa-wosm-bd' }, [cuerpo]),
+        elm('div', { class: 'sa-wosm-ft' }, [btnCerrar, btnSoltar, btnFijar].filter(Boolean)),
+      ]),
+    ]);
+    ov.addEventListener('mousedown', function (e) { if (e.target === ov) closeModal(); });
+    document.body.appendChild(ov);
+    try { input.focus(); } catch (_) {}
+
+    function setBusy(on, texto) {
+      btnFijar.disabled = on; if (btnSoltar) btnSoltar.disabled = on;
+      btnFijar.textContent = on ? (texto || 'Aplicando…') : '📌 Fijar a esta hora';
+    }
+    function aviso(clase, texto) {
+      msg.textContent = '';
+      msg.appendChild(elm('div', { class: clase, text: texto }));
+    }
+
+    async function aplicar(intencional) {
+      const iso = localToIso(input.value);
+      if (!iso) { aviso('sa-wosm-err', 'Escribe una fecha y hora válidas.'); return; }
+      setBusy(true);
+      aviso('sa-wosm-note', 'Guardando…');
+      try {
+        const vars = Core().buildScheduleTaskUpdateInput(task, {
+          expectedStartTime: iso, isIntentional: intencional,
+        });
+        if (!vars) throw new Error('No se pudo armar la petición para esta tarea.');
+        await window.SteelheadAPI.query('UpdateManyScheduleTasks', vars, 'UpdateManyScheduleTasks');
+
+        // La respuesta NO confirma nada (`{mnUpdateScheduleTaskById:{clientMutationId:null}}`),
+        // así que la única prueba de que se aplicó es releer la tarea y compararla.
+        aviso('sa-wosm-note', 'Verificando contra el programa…');
+        const tasks = await refetchTasks(woIdInDomain);
+        const fresca = (tasks || []).find(function (t) { return t.taskId === task.taskId; });
+        const v = Core().verifyScheduleTaskApplied(fresca, { expectedStartTime: iso, isIntentional: intencional });
+
+        const el = document.getElementById(INLINE_ID);
+        if (el) renderInline(el, tasks);
+
+        if (!v.ok) {
+          setBusy(false);
+          aviso('sa-wosm-err', 'Steelhead aceptó la petición pero el programa no quedó como se pidió: '
+            + v.reasons.join(' ') + ' Revísalo en el tablero antes de dar por hecho el cambio.');
+          return;
+        }
+        setBusy(false);
+        aviso('sa-wosm-ok', intencional
+          ? '✅ Programada y fijada. Verificado contra el programa.'
+          : '✅ Se quitó el fijado. Verificado contra el programa.');
+        if (btnSoltar) btnSoltar.disabled = !intencional;
+      } catch (e) {
+        setBusy(false);
+        aviso('sa-wosm-err', (e && e.persistedQueryRotated)
+          ? 'El hash de UpdateManyScheduleTasks rotó — avísale a Claude.'
+          : 'No se pudo guardar: ' + ((e && e.message) || 'error'));
+      }
+    }
+
+    btnFijar.addEventListener('click', function () { aplicar(true); });
+    if (btnSoltar) btnSoltar.addEventListener('click', function () { aplicar(false); });
   }
 
   // ── Carga de datos ───────────────────────────────────────────────────────────
@@ -628,14 +839,24 @@ const WoScheduleButton = (() => {
     console.log('[SA] WoScheduleButton activo (readout de programación + impresión en la ficha de OT)');
   }
 
-  // Popup: informa el estado (no abre modal en Fase 1).
+  // Popup: refresca el readout y, si la OT tiene UNA sola tarea, abre su modal directo
+  // (con varias no adivina cuál: el operador elige el 📅 de la estación que quiere).
   function openFromPopup() {
     if (!onDetail()) return { ok: false, reason: 'No estás en la ficha de una OT.' };
     scheduleEnsure();
-    return { ok: true, note: 'La programación se muestra inline en el header (📅). El modal de programación intencional llega en la Fase 2.' };
+    const woId = currentWoIdInDomain();
+    const tasks = woId != null ? resolvedCache().get(woId) : null;
+    if (tasks && tasks.length === 1 && tasks[0].taskId != null) {
+      setTimeout(function () { openScheduleModal(tasks[0]); }, 0);
+      return { ok: true, note: 'Abriendo la programación de ' + (tasks[0].stationName || 'la tarea') + '…' };
+    }
+    if (tasks && tasks.length > 1) {
+      return { ok: true, note: 'Esta OT tiene ' + tasks.length + ' tareas programadas: presiona el 📅 de la estación que quieras fijar (arriba, junto a ABRIR PDF).' };
+    }
+    return { ok: true, note: 'La programación se muestra inline en el header. Presiona el 📅 de una tarea para fijar su hora.' };
   }
 
-  return { init, openFromPopup, autoPrint: autoPrint };
+  return { init, openFromPopup, openScheduleModal, autoPrint: autoPrint };
 })();
 
 if (typeof window !== 'undefined') {

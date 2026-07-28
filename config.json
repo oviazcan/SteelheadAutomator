@@ -1,6 +1,6 @@
 {
-  "version": "1.8.0",
-  "lastUpdated": "2026-07-28T14:23",
+  "version": "1.9.0",
+  "lastUpdated": "2026-07-28T14:46",
   "extensionVersion": "1.7.1",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -79,7 +79,8 @@
         "DeleteProcessNodePartNumberOptInOut": "4a0773339315f1a52a9c08c249c5b3540c13def2b0d320e0e16ad9cb75b4d823",
         "UpdateProcessNodePartNumberOptInOut": "4556e5710f068e129fadc74cbce1f9a5e7cc42113f4e8e1808976b4e4f4cd2a6",
         "CreateProcessNodePartNumberOptInout": "f6fe26e4494c8c91d076975a8d7e89ed2f90a487d05f8bc021c2e296f3d6124f",
-        "CreateNewPartGroup": "7ee30dd45af56f280ac45423349bb03b23ba6be7fb70aba6fe8ecfae819d54e4"
+        "CreateNewPartGroup": "7ee30dd45af56f280ac45423349bb03b23ba6be7fb70aba6fe8ecfae819d54e4",
+        "UpdateManyScheduleTasks": "14c097944aca8f0f4d47f3bac5d6c8b2a35d3b2adec3adb72bda66a24b2d6e7b"
       },
       "queries": {
         "AllStations": "834516258e392dcd9c666c2349992e3f6744aaf536cb127cb8c9eb4347f883f7",
@@ -679,8 +680,8 @@
       "actions": [
         {
           "id": "open-wo-schedule",
-          "label": "Ver Programación de la OT",
-          "sublabel": "Refresca el readout inline de programación (estando en la ficha de una OT)",
+          "label": "Programar OT (fijar hora)",
+          "sublabel": "Fija la hora de una tarea y la marca intencional — en la ficha, presiona el 📅 de la estación",
           "icon": "📅",
           "type": "primary",
           "handler": "message",
@@ -2742,6 +2743,11 @@
       "type": "mutation",
       "description": "Crea un receiver desde el modal Receive Parts from Customer. Variables.receiverPayload incluye notes/customInputs/inputSchemaId/receiverBomItems pero NO receivedAt (server lo setea a NOW). Devuelve createReceiverChecked.id (number)",
       "usedBy": "receiver-date-override (intercept response, fire follow-up UpdateReceiver)"
+    },
+    "UpdateManyScheduleTasks": {
+      "type": "mutation",
+      "description": "Fija la hora de tareas de programación YA EXISTENTES y las marca intencionales (STATIC-SCHEDULED: el planificador deja de moverlas al reacomodar). Variables: {scheduledTasks:[{id, scheduleId, stationId, expectedStartTime (ISO UTC), totalTimeMinutes, cycleTimeMinutes, treatmentTimeMinutes, isIntentional}]}. Es UPDATE-POR-ID: NO crea tareas (para eso CreateManyScheduleTasks) y NO recorre las demás (eso es el reschedule del board: Create+Update+Delete+UpdateManyStationTasks). Gotcha: la respuesta es {mnUpdateScheduleTaskById:{clientMutationId:null}} — NO confirma nada de lo pedido, así que hay que RELEER WorkOrderSchedule y comparar.",
+      "usedBy": "wo-schedule-button"
     }
   },
   "scripts": [
@@ -2838,7 +2844,7 @@
     "scripts/wo-deadline-changer.js": "169d0dc0c60030398a108ea73747848071159b7d4664305ad66833a0fe67265b",
     "scripts/wo-listing-columns.js": "7f3e11886246b828ceefb89a974670265ec3507d48465822cb15e1599c63583e",
     "scripts/wo-mover.js": "e924dfd9fb5d82ed65ab75151adcdc32cd4a94e950b8fcc2add9a9a65c78aefd",
-    "scripts/wo-schedule-button.js": "71528809baf8d64a1ff6aa899c2a19b049f003f1b344c4e0a5e7d4f6e917d654",
-    "scripts/wo-schedule-core.js": "78ca7f1981bff19ee2fd0a860e22f76a9377a41b83bbf4ed10c25fbe19fa9b20"
+    "scripts/wo-schedule-button.js": "ae6b35e1c4905a25ae3c7905a17667e35a9ff123886cabdbd2de3846f2f4d6a4",
+    "scripts/wo-schedule-core.js": "47fdb22610cee079feabfee8696993929599494c7d269c082a0bc3ed1e974e32"
   }
 }
