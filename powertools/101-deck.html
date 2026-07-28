@@ -84,6 +84,10 @@ figcaption{font-size:.82rem;color:var(--faint);text-align:center;margin-top:10px
 .chrome button{font:inherit;font-size:.9rem;font-weight:600;border:1px solid var(--hair-2);background:var(--ground);color:var(--ink);border-radius:8px;padding:7px 14px;cursor:pointer}
 .chrome button:hover{border-color:var(--accent);color:var(--accent-ink)}
 .chrome button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.chrome button:disabled{opacity:.4;cursor:default;border-color:var(--hair)}
+.chrome button:disabled:hover{border-color:var(--hair);color:var(--ink)}
+.chrome button.cta{background:var(--accent);border-color:var(--accent);color:#fff}
+.chrome button.cta:hover{filter:brightness(1.08);color:#fff}
 .progress{position:fixed;top:0;left:0;height:3px;background:var(--accent);width:0;z-index:6;transition:width .3s ease}
 .hint{position:fixed;top:10px;right:14px;font-size:.72rem;color:var(--faint);z-index:6}
 @media print{
@@ -192,9 +196,50 @@ figcaption{font-size:.82rem;color:var(--faint);text-align:center;margin-top:10px
     <div class="warn-strip"><span class="ic">⚠</span><span class="tx"><b>El límite importa:</b> el hook manda <em>dentro</em> de la ventanilla y nada más. Cuando algo no se puede hacer, no es falta de esfuerzo: es que esa decisión vive fuera de la ventanilla. Está documentado caso por caso.</span></div>
   </section>
 
-  <!-- 6 EL REPARTO -->
+  <!-- 6 DOS FAMILIAS DE VENTANILLA -->
   <section class="slide">
-    <p class="kicker"><span class="no">06</span> El reparto de responsabilidades</p>
+    <p class="kicker"><span class="no">06</span> Antes de seguir</p>
+    <h2 class="head">No todas las ventanillas desembocan en lo mismo</h2>
+    <figure>
+      <svg viewBox="0 0 900 260" role="img" aria-label="Dos familias de ventanilla: una alimenta el flujo del ERP, otra alimenta un documento impreso">
+        <defs>
+          <marker id="a5" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" fill="currentColor"/>
+          </marker>
+        </defs>
+        <g color="var(--faint)">
+          <rect x="20" y="98" width="180" height="64" rx="11" fill="var(--accent-wash)" stroke="var(--accent)" stroke-width="2"/>
+          <text x="110" y="126" text-anchor="middle" font-size="14" font-weight="700" fill="var(--accent-ink)">La ventanilla</text>
+          <text x="110" y="146" text-anchor="middle" font-size="12" fill="var(--accent-ink)">calcula y responde</text>
+
+          <path d="M202 118 L268 62 L292 62" fill="none" stroke="currentColor" stroke-width="1.6" marker-end="url(#a5)"/>
+          <path d="M202 142 L268 198 L292 198" fill="none" stroke="currentColor" stroke-width="1.6" marker-end="url(#a5)"/>
+
+          <rect x="300" y="22" width="285" height="82" rx="11" fill="none" stroke="var(--hair-2)" stroke-width="1.5"/>
+          <text class="svg-t" x="442" y="50" text-anchor="middle" font-size="13.5" font-weight="700">1 · Sigue dentro del ERP</text>
+          <text class="svg-mut" x="442" y="71" text-anchor="middle" font-size="12">la respuesta la usa Steelhead directo:</text>
+          <text class="svg-mut" x="442" y="89" text-anchor="middle" font-size="12">guarda el precio, avisa al capturista, reordena la cola</text>
+
+          <rect x="300" y="158" width="285" height="82" rx="11" fill="none" stroke="var(--hair-2)" stroke-width="1.5"/>
+          <text class="svg-t" x="442" y="186" text-anchor="middle" font-size="13.5" font-weight="700">2 · Va a un documento impreso</text>
+          <text class="svg-mut" x="442" y="207" text-anchor="middle" font-size="12">la respuesta la recoge el motor de plantillas,</text>
+          <text class="svg-mut" x="442" y="225" text-anchor="middle" font-size="12">que es quien dibuja el PDF</text>
+
+          <path d="M587 199 L640 199" fill="none" stroke="currentColor" stroke-width="1.6" marker-end="url(#a5)"/>
+          <rect x="648" y="158" width="232" height="82" rx="11" fill="var(--ti-wash)" stroke="var(--ti)" stroke-width="2"/>
+          <text x="764" y="186" text-anchor="middle" font-size="13.5" font-weight="700" fill="var(--ti)">Motor de plantillas</text>
+          <text x="764" y="206" text-anchor="middle" font-size="12" fill="var(--ti)">viene incluido con Steelhead;</text>
+          <text x="764" y="224" text-anchor="middle" font-size="12" fill="var(--ti)">ahí se diseñan los documentos</text>
+        </g>
+      </svg>
+      <figcaption>La mitad de arriba no imprime nada. La de abajo no calcula el documento: solo le pasa los datos a quien lo dibuja.</figcaption>
+    </figure>
+    <div class="meta-strip"><span class="ic">💡</span><span class="tx"><b>De dónde salió ese motor de plantillas:</b> no lo pusimos nosotros — <b>viene con el ERP</b>. Steelhead no dibuja los PDF con código: usa un diseñador de documentos donde cada formato (factura, remisión, etiqueta) es una plantilla editable. Nosotros no la tocamos: le entregamos los datos.</span></div>
+  </section>
+
+  <!-- 7 EL REPARTO -->
+  <section class="slide">
+    <p class="kicker"><span class="no">07</span> El reparto de responsabilidades</p>
     <h2 class="head">El hook surte los datos; la plantilla los coloca</h2>
     <figure>
       <svg viewBox="0 0 900 230" role="img" aria-label="Diagrama: el hook prepara datos, la plantilla los coloca en el PDF">
@@ -230,9 +275,9 @@ figcaption{font-size:.82rem;color:var(--faint);text-align:center;margin-top:10px
     </figure>
   </section>
 
-  <!-- 7 VERSIONADO -->
+  <!-- 8 VERSIONADO -->
   <section class="slide">
-    <p class="kicker"><span class="no">07</span> Cómo se guarda el trabajo</p>
+    <p class="kicker"><span class="no">08</span> Cómo se guarda el trabajo</p>
     <h2 class="head">Cada cambio es una capa nueva; la última es la que corre</h2>
     <div class="two">
       <figure>
@@ -268,9 +313,9 @@ figcaption{font-size:.82rem;color:var(--faint);text-align:center;margin-top:10px
     </div>
   </section>
 
-  <!-- 8 DOS PLANTAS -->
+  <!-- 9 DOS PLANTAS -->
   <section class="slide">
-    <p class="kicker ti"><span class="no">08</span> La trampa más cara</p>
+    <p class="kicker ti"><span class="no">09</span> La trampa más cara</p>
     <h2 class="head">Dos plantas, un solo código: letreros contra casilleros</h2>
     <figure>
       <svg viewBox="0 0 900 250" role="img" aria-label="Diagrama: la misma unidad tiene distinto número interno en cada planta">
@@ -297,9 +342,9 @@ figcaption{font-size:.82rem;color:var(--faint);text-align:center;margin-top:10px
     </figure>
   </section>
 
-  <!-- 9 POR QUÉ FALLA CALLADO -->
+  <!-- 10 POR QUÉ FALLA CALLADO -->
   <section class="slide">
-    <p class="kicker ti"><span class="no">09</span> Por qué esa trampa importa tanto</p>
+    <p class="kicker ti"><span class="no">10</span> Por qué esa trampa importa tanto</p>
     <h2 class="head">Ese error no truena: miente</h2>
     <div class="two">
       <ul class="pts ti">
@@ -312,9 +357,9 @@ figcaption{font-size:.82rem;color:var(--faint);text-align:center;margin-top:10px
     </div>
   </section>
 
-  <!-- 10 EL PATRÓN DE METROLOGÍA -->
+  <!-- 11 EL PATRÓN DE METROLOGÍA -->
   <section class="slide">
-    <p class="kicker ti"><span class="no">10</span> Cómo se evita</p>
+    <p class="kicker ti"><span class="no">11</span> Cómo se evita</p>
     <h2 class="head">Un calibrador patrón para cada regla de negocio</h2>
     <div class="two">
       <ul class="pts ti">
@@ -327,9 +372,9 @@ figcaption{font-size:.82rem;color:var(--faint);text-align:center;margin-top:10px
     </div>
   </section>
 
-  <!-- 11 EL EDITOR VIEJO -->
+  <!-- 12 EL EDITOR VIEJO -->
   <section class="slide">
-    <p class="kicker ti"><span class="no">11</span> Una restricción heredada</p>
+    <p class="kicker ti"><span class="no">12</span> Una restricción heredada</p>
     <h2 class="head">El editor del ERP habla un idioma de hace unos años</h2>
     <div class="two">
       <ul class="pts ti">
@@ -342,9 +387,9 @@ figcaption{font-size:.82rem;color:var(--faint);text-align:center;margin-top:10px
     </div>
   </section>
 
-  <!-- 12 CÓMO SE PUBLICA -->
+  <!-- 13 CÓMO SE PUBLICA -->
   <section class="slide">
-    <p class="kicker ti"><span class="no">12</span> El ciclo de trabajo</p>
+    <p class="kicker ti"><span class="no">13</span> El ciclo de trabajo</p>
     <h2 class="head">Cómo se cambia un hook sin sustos</h2>
     <figure>
       <svg viewBox="0 0 900 200" role="img" aria-label="Diagrama del ciclo: bajar, editar, probar, publicar, verificar en las dos plantas">
@@ -390,39 +435,54 @@ figcaption{font-size:.82rem;color:var(--faint);text-align:center;margin-top:10px
     </figure>
   </section>
 
-  <!-- 13 QUÉ VE EL OPERADOR -->
+  <!-- 14 DE DÓNDE SALEN LOS AVISOS -->
   <section class="slide">
-    <p class="kicker ku"><span class="no">13</span> Del lado del operador</p>
-    <h2 class="head">La cara visible: los avisos de colores</h2>
+    <p class="kicker ku"><span class="no">14</span> Del lado del operador</p>
+    <h2 class="head">Los avisos de la pantalla los escribe el hook</h2>
+    <div class="two">
+      <ul class="pts ku">
+        <li>Ese panel de avisos <b>no viene de fábrica</b>: cada mensaje lo redactamos nosotros dentro de la ventanilla</li>
+        <li>El ERP tiene <b>un solo canal</b> para mandar mensajes a esa pantalla, y se llama “agregar mensaje de error”</li>
+        <li>Por eso, por dentro, <b>todo es un “error”</b> — hasta la felicitación de que todo salió bien</li>
+        <li>Lo que los distingue es la <b>severidad</b> que les ponemos: eso, y solo eso, decide el color</li>
+      </ul>
+      <div class="warn-strip"><span class="ic">⚠</span><span class="tx"><b>La consecuencia práctica:</b> que aparezca algo en ese panel <b>no significa que algo esté mal</b>. La mitad de lo que verás ahí es información o confirmación. Mira el color, no el hecho de que haya mensaje.</span></div>
+    </div>
+  </section>
+
+  <!-- 15 LA LEYENDA DE COLORES -->
+  <section class="slide">
+    <p class="kicker ku"><span class="no">15</span> Del lado del operador</p>
+    <h2 class="head">Qué significa cada color</h2>
     <div class="two">
       <ul class="pts ku">
         <li><b>Rojo</b> — algo está mal y hay que corregirlo antes de seguir (parte desconocida, planta que no coincide)</li>
-        <li><b>Amarillo</b> — algo merece tu atención pero puede ser normal (sin precio, cargo de lote mínimo)</li>
+        <li><b>Amarillo</b> — merece tu atención pero puede ser normal (sin precio, cargo de lote mínimo)</li>
         <li><b>Azul</b> — información útil: la especificación aplicada, el tipo de cambio del día</li>
-        <li><b>Verde “Todo en Orden”</b> — el sistema revisó y no encontró nada. Su ausencia también dice algo</li>
+        <li><b>Verde “Todo en Orden”</b> — el sistema revisó y no encontró nada bloqueante</li>
       </ul>
-      <div class="meta-strip"><span class="ic">💡</span><span class="tx"><b>El verde es un latido:</b> confirma que el sistema sí revisó. Si no aparece ni verde ni rojo, algo dejó de correr — repórtalo.</span></div>
+      <div class="meta-strip"><span class="ic">💡</span><span class="tx"><b>El verde es un latido:</b> confirma que el sistema sí revisó. Si no aparece ni verde ni rojo, algo dejó de correr — repórtalo. Y el verde <b>puede convivir</b> con amarillos y azules: esos no bloquean nada.</span></div>
     </div>
   </section>
 
-  <!-- 14 PLANES DE BAÑO -->
+  <!-- 16 PLANES DE BAÑO -->
   <section class="slide">
-    <p class="kicker"><span class="no">14</span> Más allá de las ventanillas</p>
-    <h2 class="head">La química de la planta también es Power Tools</h2>
+    <p class="kicker"><span class="no">16</span> Más allá de las ventanillas</p>
+    <h2 class="head">La química de la planta: un frente pausado a propósito</h2>
     <div class="two">
       <ul class="pts">
-        <li><b>24 planes de baño</b>, uno por tina de las líneas T205 y T107</li>
-        <li>El laboratorio captura la titulación; el plan calcula la <b>concentración</b> y la <b>dosis de corrección</b></li>
-        <li>El operador ve “agrega N kg de tal reactivo”, no una fórmula</li>
-        <li>Los factores químicos están hoy escritos dentro de cada plan; hay un camino trazado para centralizarlos</li>
+        <li>Se alcanzaron a escribir <b>varios planes de baño con código</b>: el laboratorio captura la titulación y el plan devuelve “agrega N kg de tal reactivo”</li>
+        <li><b>El desarrollo está detenido</b> — Steelhead tiene en su hoja de ruta un <b>rediseño completo</b> del módulo de mantenimiento</li>
+        <li>No tiene caso seguir invirtiendo en algo que va a cambiar de raíz</li>
+        <li>Hoy la planta trabaja <b>capturando a mano en los nodos de mantenimiento</b>. Llega al mismo resultado, con más trabajo manual</li>
       </ul>
-      <div class="meta-strip"><span class="ic">💡</span><span class="tx"><b>En una frase:</b> análisis de laboratorio más receta de ajuste del baño, automatizados tina por tina.</span></div>
+      <div class="meta-strip"><span class="ic">💡</span><span class="tx"><b>Decisión, no abandono:</b> lo construido queda documentado y versionado. Cuando salga el rediseño se evalúa qué se rescata — y si conviene, se retoma sobre la base nueva en vez de contra la que está por desaparecer.</span></div>
     </div>
   </section>
 
-  <!-- 15 RUTAS -->
+  <!-- 17 RUTAS -->
   <section class="slide">
-    <p class="kicker"><span class="no">15</span> Cómo sigue</p>
+    <p class="kicker"><span class="no">17</span> Cómo sigue</p>
     <h2 class="head">Después de esta sesión</h2>
     <div class="auds">
       <div class="aud ku">
@@ -446,9 +506,9 @@ figcaption{font-size:.82rem;color:var(--faint);text-align:center;margin-top:10px
     </div>
   </section>
 
-  <!-- 16 TAKEAWAYS -->
+  <!-- 18 TAKEAWAYS -->
   <section class="slide">
-    <p class="kicker"><span class="no">16</span> Para llevarse</p>
+    <p class="kicker"><span class="no">18</span> Para llevarse</p>
     <h2 class="head">Cuatro ideas</h2>
     <div class="takes">
       <div class="take"><span class="n">01</span><div><b>Ventanilla</b><span>El ERP se detiene en una veintena de puntos y ejecuta código de Ecoplating antes de continuar.</span></div></div>
@@ -465,29 +525,39 @@ figcaption{font-size:.82rem;color:var(--faint);text-align:center;margin-top:10px
   <span class="name">Steelhead Power Tools 101 · Capaz Consultoría</span>
   <span class="spacer"></span>
   <button id="prev" type="button">← Anterior</button>
-  <span class="count" id="cnt">1 / 16</span>
+  <span class="count" id="cnt">1 / 18</span>
   <button id="next" type="button">Siguiente →</button>
 </div>
 
 <script>
 (function(){
+  var INDICE = '00-mapa-empieza-aqui.html';
   var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
   var i = 0;
-  var cnt = document.getElementById('cnt');
+  var cnt  = document.getElementById('cnt');
   var prog = document.getElementById('prog');
+  var bNext = document.getElementById('next');
+  var bPrev = document.getElementById('prev');
+  function enUltima(){ return i === slides.length - 1; }
   function show(k){
     i = Math.max(0, Math.min(slides.length - 1, k));
     slides.forEach(function(s, n){ s.classList.toggle('active', n === i); });
     cnt.textContent = (i + 1) + ' / ' + slides.length;
     prog.style.width = ((i + 1) / slides.length * 100) + '%';
     document.getElementById('deck').scrollTop = 0;
+    // En la última slide el botón deja de ser "siguiente" y se convierte en la
+    // salida natural del deck: el índice del paquete. Antes no hacía nada.
+    bNext.textContent = enUltima() ? 'Índice del paquete ↗' : 'Siguiente →';
+    bNext.classList.toggle('cta', enUltima());
+    bPrev.disabled = (i === 0);
   }
-  function next(){ show(i + 1); }
+  function next(){ if (enUltima()) { window.location.href = INDICE; } else { show(i + 1); } }
   function prev(){ show(i - 1); }
-  document.getElementById('next').addEventListener('click', next);
-  document.getElementById('prev').addEventListener('click', prev);
+  bNext.addEventListener('click', next);
+  bPrev.addEventListener('click', prev);
   document.addEventListener('keydown', function(e){
-    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { next(); e.preventDefault(); }
+    // El teclado NO salta fuera del deck: en la última, la flecha derecha no hace nada.
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { if (!enUltima()) show(i + 1); e.preventDefault(); }
     if (e.key === 'ArrowLeft' || e.key === 'PageUp') { prev(); e.preventDefault(); }
     if (e.key === 'Home') { show(0); }
     if (e.key === 'End') { show(slides.length - 1); }

@@ -32,14 +32,16 @@ y notas del orador.
 
 | Concepto técnico | Metáfora canónica | Dónde se usa |
 |---|---|---|
-| Hook / punto de extensión low-code | **Ventanilla**: el ERP se detiene y pregunta “¿quieres decir algo?”. La hoja de instrucciones que dejas ahí es el hook. | Slides 3, 4, 16 |
-| Versionado sin “actualizar” | **Capa de recubrimiento**: cada guardado deposita una capa encima; la de arriba es la que se ve. Revertir = volver a depositar. | Slide 7 |
-| Ids por dominio vs. nombres | **Letrero contra número de casillero**: el letrero («KGM Kilogramo») es igual en las dos plantas; el número interno lo asignó cada planta por su cuenta. | Slides 8, 9 |
-| Reparto hook ↔ plantilla PDF | **Surtir no es colocar**: el hook mide y entrega el material; la plantilla decide dónde va. | Slide 6 |
-| Lógica probada aparte (`lib/`) | **Calibrador patrón y calibrador de piso**: el patrón vive en el laboratorio, con certificado; las copias de piso salen de él. | Slide 10 |
-| Compilador antiguo del editor | **Habla un idioma de hace unos años**: si le hablas con modismos nuevos no protesta, se queda callado. | Slide 11 |
+| Hook / punto de extensión low-code | **Ventanilla**: el ERP se detiene y pregunta “¿quieres decir algo?”. La hoja de instrucciones que dejas ahí es el hook. | Slides 3, 4, 18 |
+| Dos destinos de una ventanilla | **Sigue dentro del ERP** o **va a un documento impreso**. El motor de plantillas **viene incluido con Steelhead**; no lo pusimos nosotros. | Slide 6 |
+| Versionado sin “actualizar” | **Capa de recubrimiento**: cada guardado deposita una capa encima; la de arriba es la que se ve. Revertir = volver a depositar. | Slide 8 |
+| Ids por dominio vs. nombres | **Letrero contra número de casillero**: el letrero («KGM Kilogramo») es igual en las dos plantas; el número interno lo asignó cada planta por su cuenta. | Slides 9, 10 |
+| Reparto hook ↔ plantilla PDF | **Surtir no es colocar**: el hook mide y entrega el material; la plantilla decide dónde va. | Slide 7 |
+| Lógica probada aparte (`lib/`) | **Calibrador patrón y calibrador de piso**: el patrón vive en el laboratorio, con certificado; las copias de piso salen de él. | Slide 11 |
+| Compilador antiguo del editor | **Habla un idioma de hace unos años**: si le hablas con modismos nuevos no protesta, se queda callado. | Slide 12 |
 | Persisted query / hash (en el puente de sincronización) | **Llave y cerradura**: la llave abre una operación del ERP; si el proveedor cambia la cerradura, la llave vieja ya no abre. | Manual del Administrador (no aparece en el deck) |
 | Slot sin código propio | **Formato de fábrica**: la ventanilla existe pero seguimos usando lo que trae el ERP. | Inventario, slide 3 |
+| Canal único de mensajes del ERP | **Por dentro todo es un “error”**, hasta la felicitación; la **severidad** es lo único que decide el color. | Slide 14 |
 
 > **Prohibido:** la metáfora de “menú/plato de restaurante” para el hash. Se descartó explícitamente.
 
@@ -116,9 +118,34 @@ y notas del orador.
   Respuesta corta: se intentó, con dos experimentos y facturas reales; no se puede desde el hook.
   Está documentado en la ficha de facturación.
 
-## Slide 6 — El reparto (diagrama)
+## Slide 6 — Dos familias de ventanilla (diagrama)
 
-- **Kicker:** `06 · El reparto de responsabilidades`
+- **Kicker:** `06 · Antes de seguir`
+- **Título:** `No todas las ventanillas desembocan en lo mismo`
+- **Por qué existe esta slide:** sin ella, la siguiente introduce de golpe una "plantilla" y un
+  "motor de plantillas" que nadie mencionó antes. La pregunta que se hace el novato es literal:
+  *¿de dónde salió ahora un sistema de plantillas?* Aquí se responde antes de que la pregunta
+  estorbe.
+- **Diagrama:** una caja verde a la izquierda (`La ventanilla · calcula y responde`) que se bifurca
+  en dos caminos:
+  1. **Sigue dentro del ERP** — *la respuesta la usa Steelhead directo: guarda el precio, avisa al
+     capturista, reordena la cola.*
+  2. **Va a un documento impreso** — *la respuesta la recoge el motor de plantillas, que es quien
+     dibuja el PDF.* De esta caja sale una flecha a una tercera, azul: **Motor de plantillas** ·
+     *viene incluido con Steelhead; ahí se diseñan los documentos.*
+- **Leyenda:** *La mitad de arriba no imprime nada. La de abajo no calcula el documento: solo le
+  pasa los datos a quien lo dibuja.*
+- **Franja 💡:** *De dónde salió ese motor de plantillas: no lo pusimos nosotros — viene con el ERP.
+  Steelhead no dibuja los PDF con código: usa un diseñador de documentos donde cada formato
+  (factura, remisión, etiqueta) es una plantilla editable. Nosotros no la tocamos: le entregamos
+  los datos.*
+- **Notas del orador:** decirlo en voz alta: "de las ventanillas que vimos, unas terminan en la
+  base de datos y otras terminan en papel". Quien pregunte si podemos cambiar el diseño de una
+  factura ya tiene la respuesta: eso vive del lado de Steelhead.
+
+## Slide 7 — El reparto (diagrama)
+
+- **Kicker:** `07 · El reparto de responsabilidades`
 - **Título:** `El hook surte los datos; la plantilla los coloca`
 - **Diagrama (3 cajas):**
   - `El hook` (verde) — *mide, convierte y deja cada dato listo y con nombre* · `additionalPayload`
@@ -131,9 +158,9 @@ y notas del orador.
 - **Notas:** esta slide ahorra semanas de malentendidos con el proveedor. Cuando la operación pide
   “que salga tal cosa en el PDF”, la primera pregunta es de qué lado falta.
 
-## Slide 7 — Versionado (diagrama de capas)
+## Slide 8 — Versionado (diagrama de capas)
 
-- **Kicker:** `07 · Cómo se guarda el trabajo`
+- **Kicker:** `08 · Cómo se guarda el trabajo`
 - **Título:** `Cada cambio es una capa nueva; la última es la que corre`
 - **Diagrama:** cuatro rectángulos apilados, del más viejo abajo al más nuevo arriba; el de arriba
   resaltado en verde con la palabra “activa” y una flecha que baja desde el texto *lo que el ERP
@@ -148,9 +175,9 @@ y notas del orador.
 - **Notas:** decir explícitamente que **no existe un botón de “activar versión anterior”**: revertir
   siempre crea una capa nueva. Es lo que hace que el historial sea confiable.
 
-## Slide 8 — Dos plantas (diagrama)
+## Slide 9 — Dos plantas (diagrama)
 
-- **Kicker (azul TI):** `08 · La trampa más cara`
+- **Kicker (azul TI):** `09 · La trampa más cara`
 - **Título:** `Dos plantas, un solo código: letreros contra casilleros`
 - **Diagrama:** dos marcos, Toluca y Monterrey. En ambos, la misma etiqueta azul
   «KGM Kilogramo». Debajo, el número interno: `3969` en Toluca, `5990` en Monterrey (este en rojo).
@@ -159,9 +186,9 @@ y notas del orador.
 - **Leyenda:** *Regla de oro: resuelve siempre por el nombre, nunca por el número interno.*
 - **Notas:** los números son reales y verificados. Sirve decirlo: no es un ejemplo inventado.
 
-## Slide 9 — Por qué falla callado
+## Slide 10 — Por qué falla callado
 
-- **Kicker (azul TI):** `09 · Por qué esa trampa importa tanto`
+- **Kicker (azul TI):** `10 · Por qué esa trampa importa tanto`
 - **Título:** `Ese error no truena: miente`
 - **Viñetas:**
   1. Si el número no existe en la otra planta, el dato **no sale** en el documento.
@@ -173,9 +200,9 @@ y notas del orador.
 - **Franja ⚠:** *Un kilogramo confundido con otra unidad en un documento fiscal. Es el tipo de falla
   que no se detecta hasta que la detecta el cliente.*
 
-## Slide 10 — El patrón de metrología
+## Slide 11 — El patrón de metrología
 
-- **Kicker (azul TI):** `10 · Cómo se evita`
+- **Kicker (azul TI):** `11 · Cómo se evita`
 - **Título:** `Un calibrador patrón para cada regla de negocio`
 - **Viñetas:**
   1. Cada regla vive **dos veces**: como pieza patrón probada fuera del ERP y como copia dentro del
@@ -189,9 +216,9 @@ y notas del orador.
   archivo**, no puede importar nada. La copia inline es obligatoria; el patrón existe para poder
   probarla.
 
-## Slide 11 — El editor antiguo
+## Slide 12 — El editor antiguo
 
-- **Kicker (azul TI):** `11 · Una restricción heredada`
+- **Kicker (azul TI):** `12 · Una restricción heredada`
 - **Título:** `El editor del ERP habla un idioma de hace unos años`
 - **Viñetas:**
   1. El compilador que trae Steelhead entiende una versión antigua del lenguaje.
@@ -201,9 +228,9 @@ y notas del orador.
 - **Franja 💡:** *Todo lo que se publica se compila primero con esa misma versión. El puente de
   publicación lo hace solo.*
 
-## Slide 12 — El ciclo de trabajo (diagrama)
+## Slide 13 — El ciclo de trabajo (diagrama)
 
-- **Kicker (azul TI):** `12 · El ciclo de trabajo`
+- **Kicker (azul TI):** `13 · El ciclo de trabajo`
 - **Título:** `Cómo se cambia un hook sin sustos`
 - **Diagrama:** cinco círculos numerados en línea, con flechas entre ellos:
   1. **Bajar** — *lo que corre hoy*
@@ -216,35 +243,63 @@ y notas del orador.
 - **Notas:** el paso 1 no es decorativo. Si alguien editó desde la interfaz del ERP, tu copia local
   está vieja y publicar encima borra su trabajo.
 
-## Slide 13 — Del lado del operador
+## Slide 14 — De dónde salen los avisos
 
-- **Kicker (terracota Key User):** `13 · Del lado del operador`
-- **Título:** `La cara visible: los avisos de colores`
+- **Kicker (terracota Key User):** `14 · Del lado del operador`
+- **Título:** `Los avisos de la pantalla los escribe el hook`
+- **Por qué existe esta slide:** la leyenda de colores sin contexto hace creer que el panel es del
+  ERP y que todo lo que aparece ahí es un problema. Ninguna de las dos cosas es cierta.
 - **Viñetas:**
-  1. **Rojo** — algo está mal y hay que corregirlo antes de seguir.
-  2. **Amarillo** — merece tu atención pero puede ser normal.
+  1. Ese panel de avisos **no viene de fábrica**: cada mensaje lo redactamos nosotros dentro de la
+     ventanilla.
+  2. El ERP tiene **un solo canal** para mandar mensajes a esa pantalla, y se llama "agregar mensaje
+     de error".
+  3. Por eso, por dentro, **todo es un "error"** — hasta la felicitación de que todo salió bien.
+  4. Lo que los distingue es la **severidad** que les ponemos: eso, y solo eso, decide el color.
+- **Franja ⚠:** *La consecuencia práctica: que aparezca algo en ese panel no significa que algo esté
+  mal. La mitad de lo que verás ahí es información o confirmación. Mira el color, no el hecho de que
+  haya mensaje.*
+- **Notas del orador:** es el momento de desactivar la ansiedad del operador que ve "errores" y cree
+  que rompió algo. El nombre del canal es una peculiaridad del ERP, no un juicio sobre el mensaje.
+
+## Slide 15 — La leyenda de colores
+
+- **Kicker (terracota Key User):** `15 · Del lado del operador`
+- **Título:** `Qué significa cada color`
+- **Viñetas:**
+  1. **Rojo** — algo está mal y hay que corregirlo antes de seguir (parte desconocida, planta que no
+     coincide).
+  2. **Amarillo** — merece tu atención pero puede ser normal (sin precio, cargo de lote mínimo).
   3. **Azul** — información útil: la especificación aplicada, el tipo de cambio del día.
-  4. **Verde “Todo en Orden”** — el sistema revisó y no encontró nada.
+  4. **Verde "Todo en Orden"** — el sistema revisó y no encontró nada bloqueante.
 - **Franja 💡:** *El verde es un latido: confirma que el sistema sí revisó. Si no aparece ni verde ni
-  rojo, algo dejó de correr — repórtalo.*
-- **Notas:** esta es la slide más útil para la sala operativa. Vale la pena abrir Steelhead en vivo y
-  mostrar los chips reales de una orden de venta.
+  rojo, algo dejó de correr — repórtalo. Y el verde puede convivir con amarillos y azules: esos no
+  bloquean nada.*
+- **Notas del orador:** vale mucho abrir Steelhead en vivo y mostrar los chips reales de una orden
+  de venta. Es la slide más útil para la sala operativa.
 
-## Slide 14 — Los planes de baño
+## Slide 16 — Los planes de baño
 
-- **Kicker:** `14 · Más allá de las ventanillas`
-- **Título:** `La química de la planta también es Power Tools`
+- **Kicker:** `16 · Más allá de las ventanillas`
+- **Título:** `La química de la planta: un frente pausado a propósito`
 - **Viñetas:**
-  1. **24 planes de baño**, uno por tina de las líneas T205 y T107.
-  2. El laboratorio captura la titulación; el plan calcula la **concentración** y la **dosis**.
-  3. El operador ve “agrega N kg de tal reactivo”, no una fórmula.
-  4. Los factores químicos están escritos dentro de cada plan; hay un camino trazado para
-     centralizarlos.
-- **Franja 💡:** *Análisis de laboratorio más receta de ajuste del baño, automatizados tina por tina.*
+  1. Se alcanzaron a escribir **varios planes de baño con código**: el laboratorio captura la
+     titulación y el plan devuelve "agrega N kg de tal reactivo".
+  2. **El desarrollo está detenido** — Steelhead tiene en su hoja de ruta un **rediseño completo**
+     del módulo de mantenimiento.
+  3. No tiene caso seguir invirtiendo en algo que va a cambiar de raíz.
+  4. Hoy la planta trabaja **capturando a mano en los nodos de mantenimiento**. Llega al mismo
+     resultado, con más trabajo manual.
+- **Franja 💡:** *Decisión, no abandono: lo construido queda documentado y versionado. Cuando salga
+  el rediseño se evalúa qué se rescata — y si conviene, se retoma sobre la base nueva en vez de
+  contra la que está por desaparecer.*
+- **Notas del orador:** si alguien pregunta por qué se paró: porque construir contra un módulo que
+  el proveedor va a rehacer es trabajo que se tira dos veces. Los planes con código y la captura
+  manual en nodos **llegan al mismo resultado**; la diferencia es cuánto trabajo manual cuesta.
 
-## Slide 15 — Rutas por audiencia
+## Slide 17 — Rutas por audiencia
 
-- **Kicker:** `15 · Cómo sigue`
+- **Kicker:** `17 · Cómo sigue`
 - **Título:** `Después de esta sesión`
 - **Dos tarjetas:**
   - **Key User · Operador** (terracota): 1) Manual del Operador · 2) Ficha de Facturación ·
@@ -252,9 +307,9 @@ y notas del orador.
   - **Jefe de TI · Infraestructura** (azul): 1) Manual del Administrador · 2) Ficha “Dos plantas,
     un solo código” · 3) Onboarding de Desarrollo si va a mantener el código.
 
-## Slide 16 — Cierre
+## Slide 18 — Cierre
 
-- **Kicker:** `16 · Para llevarse`
+- **Kicker:** `18 · Para llevarse`
 - **Título:** `Cuatro ideas`
 - **Cuatro tarjetas numeradas:**
   1. **Ventanilla** — el ERP se detiene en una veintena de puntos y ejecuta código de Ecoplating.
@@ -269,13 +324,17 @@ y notas del orador.
 ## Notas de producción
 
 - **Si se rehace en PowerPoint:** conservar el orden y los kickers numerados; son la referencia que
-  usan los manuales (“ver slide 6 del 101”).
+  usan los manuales (“ver slide 7 del 101”).
 - **Diagramas:** se pueden redibujar con las formas nativas de la herramienta. Mantener el código de
   color (verde = lo nuestro, azul = lado del proveedor o audiencia TI, gris = el ERP, ámbar = riesgo).
 - **Qué NO meter:** capturas de pantalla del código. La sesión es de modelo mental; el código vive en
   las fichas y el onboarding.
-- **Ensayo:** las slides 4, 6, 7 y 8 son las que hay que ensayar en voz alta. Las demás se explican
-  solas.
+- **Ensayo:** las slides 4, 6, 7, 8 y 9 son las que hay que ensayar en voz alta. Las demás se
+  explican solas.
+- **Navegación del deck HTML:** en la **última** slide el botón de avance deja de ser “Siguiente” y
+  se convierte en **“Índice del paquete ↗”**, que lleva al mapa; en la **primera**, “Anterior” queda
+  deshabilitado. El teclado nunca salta fuera del deck. Si rehaces el deck en otra herramienta,
+  conserva esa salida: un botón que no hace nada al final es la queja número uno.
 
 ---
 

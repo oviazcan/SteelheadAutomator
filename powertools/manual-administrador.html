@@ -386,12 +386,13 @@ const lote = conversions.find((c) =&gt; c.unit?.name === "LO Lote");</code></pre
 python3 sync/maintenance_plans_sync.py pull</code></pre>
     </li>
     <li><strong>La publicación de vuelta no está implementada</strong>, y es deliberado: mutar un plan de baño productivo es una operación de alto impacto que hoy se hace en el editor de Steelhead, a mano y con confirmación explícita.</li>
+    <li><strong>El desarrollo de este frente está detenido.</strong> Steelhead tiene en su hoja de ruta un <strong>rediseño completo del módulo de mantenimiento</strong>; construir contra un módulo que va a cambiar de raíz es trabajo que se tira dos veces. Hoy la planta opera <strong>capturando a mano en los nodos de mantenimiento</strong> — mismo resultado, más trabajo manual. Lo construido queda versionado para evaluar qué se rescata cuando salga el rediseño.</li>
     <li>Los factores químicos están escritos dentro de cada plan, sin tabla central. Hay un generador que permite construir un plan consolidado a partir de una tabla de química versionada; ya se aplicó a la familia de plata.</li>
   </ul>
 
   <div class="callout warn">
     <p class="ct">Riesgo documentado</p>
-    <p>Los mismos cinco ayudantes de código están copiados palabra por palabra en 23 de los 24 planes, y hay tres generaciones distintas de estilo conviviendo. Corregir algo hoy significa corregirlo 23 veces. La consolidación propuesta —un núcleo compartido más una tabla de química— es la que cierra ese riesgo. Detalle en la <a href="ficha-maintenance-plans.html">ficha correspondiente</a>.</p>
+    <p>Los mismos cinco ayudantes de código están copiados palabra por palabra en 23 de los 24 planes, y hay tres generaciones distintas de estilo conviviendo. Corregir algo hoy significa corregirlo 23 veces. La consolidación diseñada —un núcleo compartido más una tabla de química— es la que cerraría ese riesgo, pero <strong>el frente está pausado</strong> (ver abajo). Detalle en la <a href="ficha-maintenance-plans.html">ficha correspondiente</a>.</p>
   </div>
 
   <!-- 09 -->

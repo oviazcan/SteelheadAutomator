@@ -118,6 +118,13 @@ figure.diagram figcaption{font-size:.85rem;color:var(--faint);text-align:center;
     <p>Cada tina química de las líneas T205 y T107 tiene su propio programa dentro de Steelhead: toma las titulaciones que captura el laboratorio, calcula la concentración real del baño y devuelve <strong>la dosis de corrección ya convertida a kilos</strong>, escrita como instrucción en el flujo de mantenimiento. Son <strong>24 planes de baño</strong>; el ERP aloja además otros planes con la misma mecánica que no son tinas.</p>
   </div>
 
+  <div class="callout warn">
+    <p class="ct">Lee esto primero: el desarrollo de este frente está pausado</p>
+    <p><strong>Steelhead tiene en su hoja de ruta un rediseño completo del módulo de mantenimiento.</strong> Por eso se detuvo el trabajo sobre los planes con código: invertir contra un módulo que el proveedor va a rehacer es trabajo que se tira dos veces.</p>
+    <p>Hoy la planta opera <strong>capturando a mano en los nodos de mantenimiento</strong> en vez de apoyarse en los planes con código. <strong>Llega al mismo resultado</strong> —plan con código y captura manual en nodos son dos caminos a la misma dosis—; la diferencia es cuánto trabajo manual cuesta y cuánta consistencia se gana.</p>
+    <p>Todo lo que sigue en esta ficha describe <strong>lo que se construyó y lo que se aprendió</strong>, que queda documentado y versionado. Léelo como base para decidir qué se rescata cuando salga el rediseño — no como un plan de trabajo activo.</p>
+  </div>
+
   <!-- 01 -->
   <h2 class="sec"><span class="num">01</span>De la bureta a la instrucción</h2>
 
@@ -265,10 +272,10 @@ Kg de Cianuro de Cobre = 10.64</div>
   </div>
 
   <!-- 06 -->
-  <h2 class="sec"><span class="num">06</span>El camino de salida: química como dato, no como código</h2>
-  <p class="sec-lead">La propuesta no es reescribir 24 programas a mano, sino separar lo que cambia de lo que no.</p>
+  <h2 class="sec"><span class="num">06</span>El camino que quedó trazado: química como dato, no como código</h2>
+  <p class="sec-lead">Esta sección describe la salida que se diseñó <strong>antes</strong> de la pausa. Sigue siendo el planteamiento correcto, pero la decisión de retomarlo depende de qué traiga el rediseño del proveedor.</p>
 
-  <p class="measure">La química de cada baño se declara en una <strong>tabla versionada</strong> —análisis, factor, etiqueta de concentración y reactivo—, y un generador construye el programa a partir de esa tabla más el esqueleto estándar del editor. El plan deja de escribirse: se <em>genera</em>.</p>
+  <p class="measure">La idea no era reescribir 24 programas a mano, sino separar lo que cambia de lo que no: la química de cada baño se declara en una <strong>tabla versionada</strong> —análisis, factor, etiqueta de concentración y reactivo—, y un generador construye el programa a partir de esa tabla más el esqueleto estándar del editor. El plan deja de escribirse: se <em>genera</em>.</p>
 
   <pre><code>{
   "name": "plata",
@@ -283,13 +290,14 @@ Kg de Cianuro de Cobre = 10.64</div>
 }</code></pre>
 
   <div class="callout tip">
-    <p class="ct">Lo que se gana</p>
-    <p><strong>Un solo lugar que arreglar</strong> cuando un ayudante tenga un error. <strong>Una vista consolidada</strong> de los 24 baños —factor, fórmula, objetivo, rango y dosis— que hoy no existe en ningún lado y que laboratorio y proceso podrían revisar de un vistazo. Y <strong>un molde único</strong> que detiene la deriva de estilos. El primer resultado ya está hecho: la consolidación de las tinas de plata de la planta.</p>
+    <p class="ct">Lo que se gana — y lo que ya se ganó</p>
+    <p><strong>Un solo lugar que arreglar</strong> cuando un ayudante tenga un error. <strong>Una vista consolidada</strong> de los 24 baños —factor, fórmula, objetivo, rango y dosis— que hoy no existe en ningún lado y que laboratorio y proceso podrían revisar de un vistazo. Y <strong>un molde único</strong> que detiene la deriva de estilos. El primer resultado ya está en el ERP: la consolidación de las tinas de plata de la planta.</p>
+    <p>Aunque el frente esté pausado, <strong>la tabla de química sobrevive al rediseño</strong>: es un dato, no un programa. Si el módulo nuevo cambia la forma de escribir los planes, los factores y las fórmulas siguen siendo válidos y se vuelven a usar.</p>
   </div>
 
   <div class="callout info">
-    <p class="ct">Lo que hay que decidir con el equipo antes</p>
-    <p>Consolidar tinas en un solo plan cambia cómo se ve el mantenimiento en el ERP, y los factores hay que <strong>validarlos con laboratorio</strong> antes de moverlos de sitio — no es una migración puramente técnica. Es una conversación con proceso y calidad, no una decisión de sistemas.</p>
+    <p class="ct">Lo que habría que decidir con el equipo si se retoma</p>
+    <p>Consolidar tinas en un solo plan cambia cómo se ve el mantenimiento en el ERP, y los factores hay que <strong>validarlos con laboratorio</strong> antes de moverlos de sitio — no es una migración puramente técnica. Es una conversación con proceso y calidad, no una decisión de sistemas. Y ahora hay una condición previa: <strong>saber qué trae el rediseño del proveedor</strong>.</p>
   </div>
 
   <!-- 07 -->
@@ -309,8 +317,23 @@ Kg de Cianuro de Cobre = 10.64</div>
 
   <div class="callout warn">
     <p class="ct">Por qué la publicación automática está deliberadamente cerrada</p>
-    <p>Mutar un plan de baño productivo cambia la dosis que un operador va a agregar a una tina. Esa operación se hace hoy en el editor de Steelhead, a mano y con confirmación explícita de quien responde por el proceso. El mecanismo técnico para automatizarla ya está identificado; lo que falta es la decisión de abrirlo, y esa no es técnica.</p>
+    <p>Mutar un plan de baño productivo cambia la dosis que un operador va a agregar a una tina. Esa operación se hace hoy en el editor de Steelhead, a mano y con confirmación explícita de quien responde por el proceso. El mecanismo técnico para automatizarla ya está identificado; lo que falta es la decisión de abrirlo, y esa no es técnica. <strong>Con el rediseño en puerta, además, ya no tiene sentido abrirla:</strong> se construiría un puente hacia un módulo que va a cambiar.</p>
   </div>
+
+  <h3 class="sub">Cómo se opera hoy, en la práctica</h3>
+  <div class="tablewrap">
+    <table style="min-width:560px">
+      <thead><tr><th></th><th>Plan con código</th><th>Captura manual en nodos <span style="color:var(--accent-ink)">(lo de hoy)</span></th></tr></thead>
+      <tbody>
+        <tr><td><strong>Resultado</strong></td><td>La dosis correcta, en pantalla</td><td><strong>La misma dosis correcta</strong>, en pantalla</td></tr>
+        <tr><td><strong>Quién calcula</strong></td><td>El programa del plan</td><td>La persona, con la fórmula del procedimiento</td></tr>
+        <tr><td><strong>Trabajo por evento</strong></td><td>Ninguno: sale solo</td><td>Capturar los valores cada vez</td></tr>
+        <tr><td><strong>Riesgo</strong></td><td>Un factor mal escrito afecta a todos los eventos</td><td>Una captura equivocada afecta a ese evento</td></tr>
+        <tr><td><strong>Costo de mantener</strong></td><td>Alto mientras el módulo esté por cambiar</td><td>Cero en desarrollo; más tiempo de la gente</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p class="measure">Por eso la pausa no dejó a la planta sin capacidad: <strong>son dos caminos al mismo resultado</strong>. Se eligió el que no genera trabajo que haya que tirar.</p>
 
   <!-- 08 -->
   <h2 class="sec"><span class="num">08</span>Qué revisar si trabajas laboratorio o proceso</h2>
