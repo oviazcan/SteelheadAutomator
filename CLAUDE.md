@@ -147,7 +147,7 @@ Toda la documentación del modelo de procesos en Steelhead vive en [`docs/proces
 
 Antes de tocar `process-canon.js` o cualquier mutación de árbol, leerlo. Lecciones nuevas se agregan ahí.
 
-## Carga de applets: gate por URL (VIVO — config 1.7.216 · ext 1.7.0 · tags `v1.7.215`/`v1.7.216`)
+## Carga de applets: gate por URL (EN CANARIO — ext 1.7.1; 25 de 26 patrones en cuarentena)
 
 **Problema medido el 2026-07-27** (reporte del operador: *"cada vez tardan más en cargar"*):
 `extension/background.js` inyectaba **los 28 applets `autoInject`** en CADA carga de página, sin
@@ -164,10 +164,20 @@ de evaluación, `runPool` de concurrencia 6, caché de código verificado en `st
 storage para el on/off. En Compras: **28→3 applets, 79→6 archivos, 79→1 `executeScript`**.
 
 **Dos reglas que salieron de aquí:**
-1. **El gate por ruta obliga a atender la navegación SPA.** Con `pushState`, `tabs.onUpdated`
-   NO emite `status:'complete'` — sin atender `changeInfo.url`, un applet desaparecería para
-   quien llega a esa pantalla navegando. El latch de "ya cargado" vive en la PÁGINA
-   (`window.__saLoadedApps`), no en el service worker (MV3 lo suspende).
+1. **El gate por ruta obliga a atender la navegación SPA, y `tabs.onUpdated` NO sirve para eso.**
+   Confiar en `changeInfo.url` costó una **regresión en piso (2026-07-27)**: Work Orders sin
+   toggles y **Bills mostrando `invoice-autofill` en vez de `bill-autofill`** — el primero
+   sobrevivía en el `window` de la pantalla anterior y el segundo nunca llegaba. La detección
+   correcta es **`content.js` sondeando `location.pathname`** (cada 400ms) y avisando al
+   background: el content script corre DENTRO de la página pero en mundo **AISLADO**, así que
+   **parchear `history.pushState` ahí NO ve las llamadas del front** — `location` sí. Las
+   inyecciones se **serializan por pestaña** (si no, la carga dura y el aviso de navegación
+   duplican applets — el incidente de "los dos buscadores"). El latch de "ya cargado" vive en
+   la PÁGINA (`window.__saLoadedApps`), no en el service worker (MV3 lo suspende).
+   **El diseño fail-open permitió apagar el gate en minutos con un deploy de config, sin
+   republicar la extensión** (los patrones se mueven a `urlPatternsDisabled`). Se reactiva
+   **por canario** (`po-listing-filters`): la prueba que importa es llegar a la pantalla
+   NAVEGANDO, no recargando.
 2. **`urlPatterns` solo se pone con evidencia.** **26 de 28**: 18 los que ya tenían gate por URL
    escrito y probado (el patrón se copia de ahí, y un test ata config↔core para que no
    diverjan) + 8 modal-driven con las pantallas que dio el operador (fijadas en tests, porque

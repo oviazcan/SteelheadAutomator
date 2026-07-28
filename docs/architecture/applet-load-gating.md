@@ -75,19 +75,62 @@ Chrome) y está probada en `tools/test/applet-gate.test.js` — **29 tests**.
   pasar"*. Si alguien aprieta un patrón de más, la suite se pone roja.
 - El gate del applet **se queda**: es un filtro de CARGA, no de EJECUCIÓN.
 
-### B. Navegación SPA (lo que faltaba en el plan original)
+### B. Navegación SPA — el punto que costó una regresión en piso
 
 Steelhead cambia de pantalla con `history.pushState`, y ahí `chrome.tabs.onUpdated` **no**
-vuelve a emitir `status:'complete'`. Con solo el gate de (A), un applet habría desaparecido
-para el operador que llega a esa pantalla navegando dentro de la SPA (que es lo normal).
+vuelve a emitir `status:'complete'`. Con solo el gate de (A), el applet de la pantalla a la
+que llegas **navegando** (que es lo normal) simplemente no existe.
 
-Se atiende también `changeInfo.url` sin `status` — que es exactamente el pushState — y la
-propia página lleva la cuenta de qué apps ya tiene (`window.__saLoadedApps`). Vive en la
-página y no en el service worker porque el SW de MV3 se suspende, y porque ese latch debe
-morir con el `window` (recarga dura = todo de nuevo).
+**Primer intento (FALLÓ en producción, 2026-07-27).** Se atendió `changeInfo.url` sin
+`status`, asumiendo que ese era el pushState. **No lo es de forma confiable.** Síntomas en
+piso, a los minutos de publicar:
+
+- Work Orders sin sus toggles de columnas (`wo-listing-columns` nunca llegaba).
+- El botón de `report-regen` sin aparecer.
+- **Bills mostrando `invoice-autofill` en vez de `bill-autofill`** ← el que delató la causa:
+  `invoice-autofill` estaba ahí porque **sobrevivía en el `window` de la pantalla anterior**,
+  mientras que `bill-autofill` —el que tocaba— nunca se inyectaba. Eso solo se explica si la
+  inyección al navegar no está ocurriendo.
+
+Se apagó el gate en **minutos y sin republicar la extensión**, moviendo los patrones a
+`urlPatternsDisabled` (el loader ignora ese campo). Eso fue posible **solo** por el diseño
+fail-open. Descartado por medición, no por intuición: el zip publicado estaba íntegro y los
+**83 scripts servidos casaban con su hash firmado** — la otra hipótesis capaz de explicar los
+tres síntomas a la vez, y peor, porque con el loader viejo un fallo de integridad aborta la
+carga de todos los applets siguientes.
+
+**Segundo intento (el que quedó).** La detección se hace desde **`content.js`**, que corre
+DENTRO de la página:
+
+- **Por sondeo de `location.pathname` cada 400ms**, no parcheando `history.pushState`: el
+  content script vive en un **mundo aislado**; comparte el DOM con la página pero **no su
+  objeto `history`**, así que un patch ahí no vería las llamadas del front. `location` sí
+  refleja la URL real. Comparar un string cada 400ms es despreciable y funciona pase lo que
+  pase del lado del front. Más `popstate`.
+- El mensaje al background **despierta al service worker** si MV3 lo suspendió.
+- `document.documentElement.dataset.saSpaNav` cuenta las navegaciones detectadas: testigo
+  observable para validar en piso.
+- Las inyecciones se **serializan por pestaña** (`Gate.makeSerializer`). Sin eso, la carga
+  dura y el aviso de navegación pueden leer ambos un `__saLoadedApps` vacío e inyectar el
+  mismo applet dos veces — así nacen las UIs duplicadas (el incidente de "los dos buscadores"
+  en `schedule-batch-highlighter`).
+
+La página lleva la cuenta de qué apps tiene (`window.__saLoadedApps`): vive ahí y no en el
+service worker porque MV3 lo suspende, y porque ese latch debe morir con el `window`.
 
 **Resultado neto: se re-inyecta MENOS que antes**, no más. Antes cada carga dura re-evaluaba
 los 28; ahora, al navegar, solo entra lo que falta.
+
+### B.1 Reactivación por canario (estado actual)
+
+Los 26 patrones siguen en `urlPatternsDisabled`. **`po-listing-filters` está activo como
+canario**: es visible (el buscador del header de Compras), de bajo riesgo y conocido por el
+operador. La prueba que importa es **llegar a Compras navegando dentro de la SPA** (sin
+recargar) y ver que el buscador aparece. Si el canario pasa, se reactivan los otros 25 con un
+deploy de config (sin tocar el zip). Si falla, se apaga igual de barato.
+
+Un test (`el gate por ruta sigue en cuarentena, salvo el canario`) se pone rojo si alguien
+reactiva un patrón de más.
 
 ### C. Caché de código verificado
 

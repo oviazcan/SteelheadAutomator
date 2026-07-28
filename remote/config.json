@@ -1,7 +1,7 @@
 {
   "version": "1.7.219",
   "lastUpdated": "2026-07-27T22:27",
-  "extensionVersion": "1.7.0",
+  "extensionVersion": "1.7.1",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
   "steelhead": {
@@ -1989,7 +1989,7 @@
       "icon": "🔎",
       "category": "Compras",
       "autoInject": true,
-      "urlPatternsDisabled": [
+      "urlPatterns": [
         "^/Domains/\\d+/Purchasing/PurchaseOrders/?(?:[?#]|$)"
       ],
       "scripts": [

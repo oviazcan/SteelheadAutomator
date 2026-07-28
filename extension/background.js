@@ -376,29 +376,27 @@ async function autoInjectForTab(tabId, url) {
     (failed.length ? ` · ${failed.length} fallaron` : ''));
 }
 
-// Último pathname por pestaña, para ignorar los pushState que solo cambian el query
-// (auto-router mueve `?stationId=`, las listas mueven `?offset=`…). El gate solo depende
-// del pathname, así que esos eventos no pueden cambiar qué applets tocan.
+// Último pathname por pestaña, para ignorar los avisos que no cambian de pantalla.
 const lastPathByTab = new Map();
 
-chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-  if (!tab.url?.includes('app.gosteelhead.com')) return;
+// Una inyección a la vez por pestaña. Dos avisos casi simultáneos (la carga dura y el
+// aviso de navegación del content script) leerían ambos un `__saLoadedApps` todavía vacío
+// e inyectarían el mismo applet dos veces → UI duplicada.
+const injectQueue = Gate.makeSerializer();
 
-  // Carga dura completada, o navegación SPA (pushState: llega `url` sin `status`).
-  const hardLoad = changeInfo.status === 'complete';
-  const spaNav = !!changeInfo.url && !changeInfo.status;
-  if (!hardLoad && !spaNav) return;
-
+function requestInject(tabId, url, reason) {
   let pathname = '';
-  try { pathname = new URL(tab.url).pathname; } catch (_) {}
-  if (!hardLoad && lastPathByTab.get(tabId) === pathname) return;
+  try { pathname = new URL(url).pathname; } catch (_) {}
+  if (reason !== 'load' && !Gate.pathChanged(lastPathByTab.get(tabId), pathname)) return;
   lastPathByTab.set(tabId, pathname);
+  return injectQueue(tabId, () => autoInjectForTab(tabId, url))
+    .catch(err => console.warn('[SA] Error en auto-inject:', err.message));
+}
 
-  try {
-    await autoInjectForTab(tabId, tab.url);
-  } catch (err) {
-    console.warn('[SA] Error en auto-inject:', err.message);
-  }
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  if (changeInfo.status !== 'complete') return;          // carga dura: window nuevo
+  if (!tab.url?.includes('app.gosteelhead.com')) return;
+  await requestInject(tabId, tab.url, 'load');
 });
 
 chrome.tabs.onRemoved.addListener(tabId => lastPathByTab.delete(tabId));
@@ -454,6 +452,17 @@ async function handleMessage(message, sender) {
 
     case 'get-config':
       return cachedConfig || await loadConfig();
+
+    // Aviso de navegación SPA desde content.js (ver el porqué allá). El content script
+    // corre DENTRO de la página, así que ve el cambio de ruta pase lo que pase; el
+    // mensaje además despierta al service worker si MV3 lo había suspendido.
+    case 'spa-nav': {
+      const tabId = sender?.tab?.id;
+      if (!tabId) return { ignored: true };
+      if (!(message.url || sender.tab?.url || '').includes('app.gosteelhead.com')) return { ignored: true };
+      await requestInject(tabId, message.url || sender.tab.url, message.reason || 'spa');
+      return { ok: true };
+    }
 
     case 'get-current-user': {
       try {

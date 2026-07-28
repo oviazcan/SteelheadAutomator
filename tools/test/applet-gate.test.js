@@ -159,6 +159,46 @@ test('runPool: un fallo no tumba a los demás (allSettled explícito)', async ()
 });
 
 // ---------------------------------------------------------------------------
+// Navegación SPA: pathChanged + serializador
+// ---------------------------------------------------------------------------
+
+test('pathChanged: solo cuenta el pathname (el query cambia solo todo el tiempo)', () => {
+  assert.equal(Gate.pathChanged('/Domains/1/WorkOrders', '/Domains/1/PartNumbers'), true);
+  assert.equal(Gate.pathChanged('/Domains/1/WorkOrders', '/Domains/1/WorkOrders'), false);
+  assert.equal(Gate.pathChanged(undefined, '/Domains/1/WorkOrders'), true);  // 1ª vez en la pestaña
+  assert.equal(Gate.pathChanged(undefined, ''), false);
+});
+
+test('makeSerializer: dos avisos de la misma pestaña NO se solapan', async () => {
+  const run = Gate.makeSerializer();
+  let live = 0, peak = 0;
+  const task = async () => {
+    live++; peak = Math.max(peak, live);
+    await new Promise(r => setTimeout(r, 10));
+    live--;
+  };
+  await Promise.all([run(1, task), run(1, task), run(1, task)]);
+  assert.equal(peak, 1, 'se solaparon: eso duplica applets en la página');
+});
+
+test('makeSerializer: pestañas distintas sí corren en paralelo', async () => {
+  const run = Gate.makeSerializer();
+  let live = 0, peak = 0;
+  const task = async () => { live++; peak = Math.max(peak, live); await new Promise(r => setTimeout(r, 10)); live--; };
+  await Promise.all([run(1, task), run(2, task)]);
+  assert.equal(peak, 2);
+});
+
+test('makeSerializer: una tarea que falla no traba la cadena ni deja basura', async () => {
+  const run = Gate.makeSerializer();
+  await run(1, async () => { throw new Error('boom'); }).catch(() => {});
+  const out = await run(1, async () => 'sigue viva');
+  assert.equal(out, 'sigue viva');
+  await new Promise(r => setTimeout(r, 5));
+  assert.equal(run.pending(), 0, 'la cadena debe limpiarse al terminar');
+});
+
+// ---------------------------------------------------------------------------
 // Caché de código
 // ---------------------------------------------------------------------------
 
@@ -352,14 +392,16 @@ test('en el orden dedupeado, ningún applet del config se evalúa antes que sus 
 });
 
 // CANDADO DE CUARENTENA — si este test se pone rojo, léelo antes de "arreglarlo".
-test('el gate por ruta sigue APAGADO en el config (cuarentena del 2026-07-27)', () => {
+test('el gate por ruta sigue en cuarentena, salvo el canario (2026-07-27)', () => {
   const activos = (config.apps || []).filter(a => a.urlPatterns).map(a => a.id);
-  assert.deepEqual(activos, [],
+  assert.deepEqual(activos, ['po-listing-filters'],
     'El gate por ruta está apagado a propósito: al navegar DENTRO de la SPA, ' +
     'chrome.tabs.onUpdated no entrega el pushState de forma confiable y los applets de la ' +
     'pantalla a la que se llega navegando nunca se inyectan (regresión en piso 2026-07-27: ' +
     'sin toggles en Work Orders; Bills se quedaba con el invoice-autofill de la pantalla ' +
     'anterior). Antes de mover un patrón de `urlPatternsDisabled` a `urlPatterns`, la ' +
     'detección de navegación SPA tiene que ser confiable (content.js → background) y ' +
-    'validada en piso. Ver docs/architecture/applet-load-gating.md.');
+    'validada en piso. po-listing-filters está activo como CANARIO: es visible y de bajo ' +
+    'riesgo, y sirve para comprobar en piso que al navegar por la SPA a Compras el applet ' +
+    'sí llega. Ver docs/architecture/applet-load-gating.md.');
 });

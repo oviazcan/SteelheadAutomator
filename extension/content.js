@@ -62,4 +62,36 @@
   document.addEventListener('sa-persist-scan', () => {
     chrome.runtime.sendMessage({ action: 'persist-scan-results' });
   });
+
+  // ── Aviso de navegación SPA al background ─────────────────────────────────
+  //
+  // Steelhead cambia de pantalla con history.pushState, sin recargar. El background
+  // necesita enterarse para inyectar los applets de la pantalla nueva.
+  //
+  // Por qué se detecta AQUÍ y no en background.js: `chrome.tabs.onUpdated` no entrega
+  // el pushState de forma confiable, y confiar en él costó una regresión en piso el
+  // 2026-07-27 (Work Orders sin sus toggles; Bills quedándose con el invoice-autofill
+  // de la pantalla anterior porque bill-autofill nunca llegaba).
+  //
+  // Y por qué por SONDEO y no parcheando history.pushState: el content script vive en
+  // un mundo AISLADO. Comparte el DOM con la página, pero no su objeto `history`, así
+  // que un patch de pushState aquí NO vería las llamadas del front. `location`, en
+  // cambio, sí refleja la URL real. Comparar un string cada 400ms es despreciable y
+  // funciona pase lo que pase del lado del front.
+  let lastPath = location.pathname;
+  let navCount = 0;
+
+  function notifyNav(reason) {
+    if (location.pathname === lastPath) return;   // el query cambia solo; el gate no lo mira
+    lastPath = location.pathname;
+    navCount++;
+    // Testigo observable para validar en piso que la detección vive (sube al navegar).
+    try { document.documentElement.dataset.saSpaNav = String(navCount); } catch (_) {}
+    try {
+      chrome.runtime.sendMessage({ action: 'spa-nav', url: location.href, reason });
+    } catch (_) { /* contexto invalidado (extensión recargada) — la próxima recarga reengancha */ }
+  }
+
+  window.addEventListener('popstate', () => notifyNav('popstate'));
+  setInterval(() => notifyNav('poll'), 400);
 })();

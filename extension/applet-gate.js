@@ -145,6 +145,31 @@
     return results;
   }
 
+  // ¿Un cambio de URL amerita re-evaluar qué applets tocan?
+  // Solo si cambió el PATHNAME: el gate no mira el query, y Steelhead mueve
+  // `?stationId=`/`?offset=`/`?billing=` constantemente sin cambiar de pantalla.
+  function pathChanged(prevPath, nextPath) {
+    return String(prevPath == null ? '' : prevPath) !== String(nextPath == null ? '' : nextPath);
+  }
+
+  // Serializa el trabajo por clave (una pestaña): mientras una inyección corre, la
+  // siguiente espera. Sin esto, dos avisos casi simultáneos (la carga dura y el aviso de
+  // navegación del content script) leerían ambos un `__saLoadedApps` todavía vacío e
+  // inyectarían el mismo applet dos veces — que es como nacen las UIs duplicadas
+  // (el incidente de "los dos buscadores" en schedule-batch-highlighter).
+  function makeSerializer() {
+    const chains = new Map();
+    function run(key, task) {
+      const prev = chains.get(key) || Promise.resolve();
+      const next = prev.catch(() => {}).then(() => task());
+      chains.set(key, next);
+      next.catch(() => {}).then(() => { if (chains.get(key) === next) chains.delete(key); });
+      return next;
+    }
+    run.pending = () => chains.size;
+    return run;
+  }
+
   // Clave de caché del código de un script. El código se re-verifica contra
   // config.scriptIntegrity ANTES de ejecutarse, venga de red o de caché, así que
   // el caché no relaja la integridad; solo evita volver a bajarlo.
@@ -167,6 +192,8 @@
     selectAutoInjectApps,
     dedupeScriptPaths,
     findDependencyViolations,
+    pathChanged,
+    makeSerializer,
     chunkScripts,
     runPool,
     codeCacheKey,
