@@ -20,7 +20,7 @@
 const AutoRouter = (() => {
   'use strict';
 
-  const VERSION = '0.3.3';
+  const VERSION = '0.3.4';
   const LOG = '[AR]';
   const api = () => window.SteelheadAPI;
   const log = (m) => api()?.log?.(m) ?? console.log(LOG, m);
