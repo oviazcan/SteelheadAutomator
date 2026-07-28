@@ -29,7 +29,7 @@
     { message: 'open-auto-router',        icon: '🔀', label: 'Auto-Ruteador',             sub: 'Re-rutear orden a otra línea (abre el modal de ruteo primero)' },
     { message: 'open-auto-router-batch',  icon: '🔀', label: 'Auto-Ruteador — Batch',     sub: 'Rutear varias órdenes (pega los números)' },
     { message: 'open-auto-router-lanes',  icon: '🔀', label: 'Auto-Ruteador — Rutear orden', sub: 'Rutear la orden completa y/o cada grupo de piezas a su línea' },
-    { message: 'open-auto-router-split',  icon: '✂️', label: 'Partir / reagrupar piezas',   sub: 'Crear grupos y repartir las piezas — antes de rutear un grupo (mueve material real)' },
+    { message: 'open-auto-router-split',  icon: '✂️', label: 'Partir / reagrupar piezas',   sub: 'Desde la ficha de la OT o desde el tablero (marca UNA orden) — mueve material real' },
     { message: 'open-wo-completer',       icon: '✅', label: 'Completar / Descompletar OTs', sub: 'Pega un listado de OTs y ciérralas o revívelas' },
     { message: 'run-wo-deadline',         icon: '⚙️', label: 'Gestionar OTs',              sub: 'Cambiar plazos y etiquetas masivamente' },
     { message: 'run-pn-lifecycle',        icon: '♻️', label: 'Ciclo de vida de PNs',      sub: 'Pega IDs o filtra: validar, desarchivar, archivar (Borrado definitivo)' },
