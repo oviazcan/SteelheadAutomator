@@ -12,7 +12,10 @@ const PriceConfirmGuard = (() => {
   const api = () => window.SteelheadAPI;
 
   const SAVE_OP = 'SaveManyPartNumberPrices';
-  const MODAL_TITLE_RE = /Part\s*Number\s*Price/i;
+  // Ancla ESTRUCTURAL del modal de precio: el formulario RJSF de su customInput `DatosPrecio`.
+  // Es la señal primaria del gate porque no depende del idioma de la UI (ver PriceConfirmCore
+  // .isPriceModal). El selector vive aquí —es glue DOM—; la DECISIÓN vive en el core.
+  const PRICE_SCHEMA_SEL = '[id^="root_DatosPrecio"]';
 
   // Estado del candado en `window` (singleton), NO en el closure: background.js re-evalúa
   // este IIFE en cada acción del popup, y el interceptor de fetch queda latcheado a la
@@ -97,18 +100,24 @@ const PriceConfirmGuard = (() => {
     toastTimer = setTimeout(() => { const e = document.getElementById('sa-pcg-toast'); if (e) e.remove(); }, 5000);
   }
 
-  // ── detección del modal nativo "Part Number Price" abierto ──
+  // ── detección del modal nativo de precio abierto ──
+  // ("Part Number Price" en inglés / "Precio del número de parte" en español — se ancla por
+  //  ESTRUCTURA, no por ese texto; ver PriceConfirmCore.isPriceModal.)
   // Devuelve el elemento del dialog (paper) que matchea, o null. Último match = topmost.
   function getNativePriceModal() {
     const dialogs = document.querySelectorAll('[role="dialog"], .MuiDialog-paper');
     let found = null;
     for (const d of dialogs) {
       const titleEl = d.querySelector('.MuiDialogTitle-root');
-      const t = (titleEl ? titleEl.textContent : d.textContent) || '';
-      // Ancla idioma-independiente (SEGURIDAD): el schema RJSF de precio (root_DatosPrecio_*)
-      // solo existe en este modal → el candado se activa aunque traduzcan "Part Number Price".
-      const hasPriceSchema = !!d.querySelector('[id^="root_DatosPrecio"]');
-      if (MODAL_TITLE_RE.test(t) || hasPriceSchema) found = d;
+      const title = (titleEl ? titleEl.textContent : d.textContent) || '';
+      const hasPriceSchema = !!d.querySelector(PRICE_SCHEMA_SEL);
+      // Sin core cargado, la señal estructural sola sigue siendo un gate válido (fail-safe:
+      // nunca deja de ser candado por un problema de carga del módulo puro).
+      const C = Core();
+      const hit = (C && typeof C.isPriceModal === 'function')
+        ? C.isPriceModal({ hasPriceSchema, title })
+        : hasPriceSchema;
+      if (hit) found = d;
     }
     return found;
   }
