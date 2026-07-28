@@ -422,6 +422,64 @@ título **al navegar dentro** del panel quedó desplegado pero **sin confirmar e
 `/graphql` de la sesión empezó a atorarse por las recargas de prueba (límite por sesión, ver
 `po-listing-filters`) y no valía la pena arriesgar la sesión del operador por un `textContent`.
 
+### 🔴 ABIERTO — el dropdown de LÍNEA DESTINO solo ofrece la línea actual
+
+Reporte del operador (2026-07-27): *"el ruteador no me está dando más que la estación default, no
+las posibles ruteables"*. **No está resuelto.** Falta una definición de dominio, y hasta tenerla no
+se toca: elegir mal la línea destino manda material a la tina equivocada.
+
+**Causa mecánica — confirmada con datos en vivo (OT 15990):**
+`destinationLines()` busca las líneas alternativas **dentro del MISMO `treatmentId`** (junta las
+stations `-LI` del tratamiento que ya contiene la línea origen). Pero **cada línea tiene su PROPIO
+tratamiento, con distinto id**. Medido:
+
+| Fuente | Resultado para el tratamiento `121415` |
+|---|---|
+| Árbol de la receta (`StationTreatmentByWorkOrder` → `buildCandidatesFromTree`) | **1** station: `T204-LI Plata y Estaño s/Cobre Colgado (16.1)` |
+| `SearchStationsForTreatment(121415)` | **1** station, la misma |
+
+Las dos fuentes coinciden, así que **no es un fallo de la consulta**: la pregunta está mal hecha.
+`buildCandidatesFromTree` se escribió creyendo que el árbol era "la fuente autoritativa… incluye las
+stations -LI del tratamiento de Planificación" — lo es para las tinas de proceso, **no** para el
+selector de línea. Consecuencia: `destinationLines(cbt,'T204')` → `['T204']`.
+
+**Por qué no se notó antes:** el ruteo validado (22/22) fue T204→T205, una orden cuyo tratamiento
+selector sí traía varias líneas. Con recetas ancladas a una sola línea, el applet se queda mudo.
+
+**Catálogo real (`AllStations`, 1 sola query, sin paginar):** 775 stations, **28 de nivel-línea**
+(`-LI`), una por línea salvo T101 que tiene dos. `Plata y Estaño s/Cobre Colgado (16.1)` es un
+nombre **único** — no hay equivalente literal en otra línea, así que el match por nombre tampoco
+sirve. Las 28, para no volver a pedirlas:
+
+```
+T101 Pre-Limpiezas/Rodados/Decapados (Otras Líneas) · T101 Prelimpieza (4-5) · T102 Estaño e Iridizado (12)
+T103 Cromo Duro (11) · T104 Zinc y Estaño Manual (6) · T105 Zinc Semiautomático (7) · T106 Zinc Barril (10)
+T107 Plata Colgado Cx (60) · T108 Níquel Electroless (13) · T109 Níquel Barril (15) · T110 Plata Colgado (26)
+T111 Estaño s/Aluminio y s/Cobre - Anodizado (14) · T112 Níquel Electroless (13.2) · T113 Zinc Barril Manual (17)
+T114 Fosfato de Manganeso (7.1) · T115 Cromo Decorativo (23) · T116 Fosfato de Zinc y Pavón (7.2)
+T117 Zinc Níquel Bonete · T201 Níquel y Estaño Colgado (25) · T202 Plata Selectiva (16.2) · T203 Plata Barril (16)
+T204 Plata y Estaño s/Cobre Colgado (16.1) · T205 Plata y Estaño s/Barras (16.3) · T206 Estaño y Lavado Barril (18)
+T207 Anodizado y Electropulido (16.4) · T301 Estaño s/Cobre Barril (24) · T302 Reynosa · T401 Epóxico BT y MT (30)
+```
+
+**Hipótesis DESCARTADA por el operador:** que el número entre paréntesis fuera el código de proceso
+y la familia (`16`, `16.1`, `16.2`, `16.3`, `16.4`) marcara las líneas intercambiables. Encajaba con
+el T204→T205 validado (16.1→16.3), pero **el operador dijo que el número no significa eso**. No
+reciclar esta teoría sin preguntarle de nuevo.
+
+**Cobertura por tratamiento (por si sirve al criterio):** de los 10 tratamientos de la receta,
+**ninguna línea los cubre todos** — T204 cubre 5; T205/T102/T103/T104/T105/T107/T108 cubren 4. Así
+que "la línea que cubre toda la receta" tampoco es un criterio viable: daría cero opciones.
+
+**Siguiente paso (esperando al operador):** o bien 2-3 ejemplos de líneas a las que la OT 15990
+debería poder irse — con eso se deriva el patrón contra el catálogo —, o bien **lo que ofrece el
+dropdown nativo de Steelhead** en el modal *Crear rutas*, paso "T204 Listo para Procesar". Esa
+segunda vía es la mejor: es el criterio del propio ERP y se copia sin inventar nada.
+
+**Al implementar:** el arreglo mínimo (mirar el catálogo en vez del `treatmentId`) ya se sabe
+necesario, pero **el filtro** es lo que falta. Y `AllStations` trae 775 nodos en una query — cachear
+por sesión, no pedirlo por cada apertura del panel.
+
 ### Fuente de datos de las piezas
 `WorkOrder { idInDomain }` → `workOrderByIdInDomain.currentPartsTransferAccounts.nodes[]` da en UNA
 llamada `{id, partCount, partGroupId, partGroupByPartGroupId{id,name}, partNumberId}` más
