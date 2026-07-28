@@ -218,7 +218,26 @@
     };
   }
 
-  const api = { buildLanes, planSplit, planRegroup, reuseOrCreate, parseWorkOrderAccounts };
+  // ── Selección del tablero → orden a partir ─────────────────────────────────
+  // Partir es de UNA orden a la vez: la cuenta origen y sus grupos pertenecen a esa
+  // orden, y repartir piezas de varias en una sola pantalla no tiene payload posible.
+  // El tablero, en cambio, deja marcar N — así que la selección hay que traducirla a
+  // una intención explícita en vez de tomar "la primera" en silencio (eso partiría
+  // material de una orden que el operador no eligió).
+  function splitTargetFromSelection(selection) {
+    const ids = (selection || [])
+      .map((v) => String(v ?? '').trim())
+      .filter((v) => v && /^\d+$/.test(v));
+    const uniq = [...new Set(ids)];
+    if (!uniq.length) return { ok: false, reason: 'none', count: 0, idInDomain: null };
+    if (uniq.length > 1) return { ok: false, reason: 'many', count: uniq.length, idInDomain: null };
+    return { ok: true, reason: 'one', count: 1, idInDomain: Number(uniq[0]) };
+  }
+
+  const api = {
+    buildLanes, planSplit, planRegroup, reuseOrCreate, parseWorkOrderAccounts,
+    splitTargetFromSelection,
+  };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.AutoRouterGroups = api;
 })(typeof window !== 'undefined' ? window : globalThis);

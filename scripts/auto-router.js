@@ -4,9 +4,11 @@
 //   ruteo nativo de Steelhead) para capturar GRATIS el contexto de la orden:
 //   workOrderId, partNumberId y el árbol completo de recipeNodes. El modal nativo
 //   funciona como "selector de orden" — el applet no necesita pedir IDs internos.
-// · Dos FABs en la ficha de una OT, con roles separados: 🔀 RUTEA (la orden completa o
-//   cada grupo de piezas) y ✂️ PARTE/REAGRUPA las piezas — que es lo que va antes, porque
-//   un grupo no se puede rutear hasta que existe. En el board el 🔀 conserva su batch.
+// · Dos FABs con roles separados: 🔀 RUTEA (la orden completa o cada grupo de piezas)
+//   y ✂️ PARTE/REAGRUPA las piezas — que es lo que va antes, porque un grupo no se
+//   puede rutear hasta que existe. El ✂️ vive en la ficha de la OT Y en el tablero de
+//   planificación, tomando la orden de la fila marcada. En el board el 🔀 conserva su
+//   batch por selección.
 // · Expone las entradas del popup (`AutoRouter.open*FromPopup`), que el background
 //   ejecuta con executeScript en el mundo MAIN — ver §"Entradas desde el popup".
 //
@@ -20,7 +22,7 @@
 const AutoRouter = (() => {
   'use strict';
 
-  const VERSION = '0.3.4';
+  const VERSION = '0.4.0';
   const LOG = '[AR]';
   const api = () => window.SteelheadAPI;
   const log = (m) => api()?.log?.(m) ?? console.log(LOG, m);
@@ -179,25 +181,61 @@ const AutoRouter = (() => {
   }
 
   // ── FAB de partir piezas ───────────────────────────────────────────────────
-  // Vive SOLO en la ficha de una OT y NO depende del contexto capturado. Es la puerta
-  // del trabajo que va ANTES del ruteo: un grupo no se puede rutear hasta que existe.
+  // Es la puerta del trabajo que va ANTES del ruteo: un grupo no se puede rutear
+  // hasta que existe. Vive en la ficha de una OT y TAMBIÉN en el tablero de
+  // planificación — ahí es donde el operador decide partir un lote, y mandarlo a
+  // buscar la ficha de la orden solo para cortar piezas rompía el flujo. No depende
+  // del contexto capturado: el panel se carga del número de orden.
   function isWorkOrderDetail() {
     return /\/Domains\/\d+\/WorkOrders\/\d+/i.test(location.pathname);
   }
 
+  function splitFabApplies() {
+    return isWorkOrderDetail() || isBoardPage();
+  }
+
+  // Qué orden partiría el ✂️ con la selección actual del tablero. En la ficha la
+  // orden es la de la URL, así que no hay nada que resolver.
+  function boardSplitTarget() {
+    return window.AutoRouterGroups.splitTargetFromSelection(readBoardSelection());
+  }
+
+  const MSG_SPLIT = {
+    none: 'Partir piezas: marca en el tablero la orden cuyas piezas quieres partir y vuelve a presionar ✂️.',
+    many: (n) => `Partir piezas es de UNA orden a la vez (tienes ${n} marcadas): las piezas y sus grupos son de esa orden. Deja marcada solo la que quieres partir.`,
+  };
+
   function syncSplitFab() {
-    const show = isWorkOrderDetail();
+    const show = splitFabApplies();
     let fab = document.getElementById('sa-ar-fab-split');
     if (show && !fab) {
       fab = document.createElement('button');
       fab.id = 'sa-ar-fab-split';
       fab.className = 'sa-ar-fab sa-ar-fab-split';
-      fab.textContent = '✂️';
-      fab.title = 'Partir o reagrupar las piezas en grupos (mueve material real)';
       fab.onclick = openSplit;
       document.body.appendChild(fab);
     } else if (!show && fab) {
       fab.remove();
+      return;
+    }
+    if (!fab) return;
+    fab.textContent = '✂️';
+    if (isBoardPage()) {
+      // El badge dice sobre cuántas órdenes está parado el operador: sin él, "marca
+      // una sola" es un regaño sin contexto (la selección sobrevive al scroll y no
+      // siempre está a la vista).
+      const t = boardSplitTarget();
+      fab.title = t.ok
+        ? `Partir las piezas de la orden #${t.idInDomain} en grupos (mueve material real)`
+        : (t.reason === 'many' ? MSG_SPLIT.many(t.count) : MSG_SPLIT.none);
+      if (t.count > 0) {
+        const b = document.createElement('span');
+        b.className = 'sa-ar-badge';
+        b.textContent = String(t.count);
+        fab.appendChild(b);
+      }
+    } else {
+      fab.title = 'Partir o reagrupar las piezas en grupos (mueve material real)';
     }
   }
 
@@ -271,8 +309,9 @@ const AutoRouter = (() => {
   }
 
   // Ruteo POR PISTAS (la orden completa y/o cada grupo de piezas a su propia línea).
-  // La orden sale de la URL de su ficha; si no estamos ahí, se pide el número. No usa
-  // el contexto capturado del modal: ese trae UN grupo y aquí se necesitan todos.
+  // La orden sale de la URL de su ficha; en el tablero, de la fila marcada; si no hay
+  // ninguna de las dos, se pide el número. No usa el contexto capturado del modal:
+  // ese trae UN grupo y aquí se necesitan todos.
   function openLanes() { void openLanesAt('open'); }
   function openSplit() { void openLanesAt('openSplit'); }
 
@@ -280,13 +319,22 @@ const AutoRouter = (() => {
     if (!window.AutoRouterLanes) { alert('Auto-Ruteador: módulo de grupos no cargado.'); return; }
     const m = location.pathname.match(/\/WorkOrders\/(\d+)/);
     let idInDomain = m ? Number(m[1]) : null;
+    // `fromBoard` no es cosmético: el tablero es una FOTO que no se entera de que las
+    // piezas se movieron, así que el panel tiene que advertirlo y ofrecer recargarlo.
+    let fromBoard = false;
+    if (!idInDomain && isBoardPage()) {
+      const t = boardSplitTarget();
+      if (!t.ok) { alert(t.reason === 'many' ? MSG_SPLIT.many(t.count) : MSG_SPLIT.none); return; }
+      idInDomain = t.idInDomain;
+      fromBoard = true;
+    }
     if (!idInDomain) {
       const v = prompt('Número de orden (el que ves en Steelhead):');
       if (!v) return;
       idInDomain = Number(String(v).trim());
       if (!Number.isFinite(idInDomain)) { alert('Ese no es un número de orden válido.'); return; }
     }
-    window.AutoRouterLanes[metodo]({ idInDomain });
+    window.AutoRouterLanes[metodo]({ idInDomain, fromBoard });
   }
 
   // ── Entradas desde el popup ────────────────────────────────────────────────
@@ -323,8 +371,16 @@ const AutoRouter = (() => {
 
   function desdePopup(fn, que) {
     if (!window.AutoRouterLanes) return { error: 'Módulo de grupos no cargado.' };
-    setTimeout(fn, 0);
     const m = location.pathname.match(/\/WorkOrders\/(\d+)/);
+    if (!m && isBoardPage()) {
+      // Desde el tablero la orden la da la selección; si no cuadra, decirlo AQUÍ
+      // (el popup se cierra al hacer clic y un alert sobre la página se pierde).
+      const t = boardSplitTarget();
+      if (!t.ok) return { error: t.reason === 'many' ? MSG_SPLIT.many(t.count) : MSG_SPLIT.none };
+      setTimeout(fn, 0);
+      return { started: true, message: `Abriendo ${que} de la OT ${t.idInDomain}…` };
+    }
+    setTimeout(fn, 0);
     return {
       started: true,
       message: m

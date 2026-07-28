@@ -7,6 +7,11 @@
 // Convive con auto-router-panel.js (single-order, ya validado en producción): este
 // panel es la vista de órdenes CON grupos y no reemplaza aquel flujo.
 //
+// Se abre desde la ficha de la OT y desde el TABLERO de planificación (`ctx.fromBoard`).
+// Esa distinción no es cosmética: el tablero es una foto que no se entera de que las
+// piezas se movieron, así que ahí el panel advierte antes y ofrece actualizarlo después
+// — que es cuando los grupos nuevos ya se pueden programar.
+//
 // Depende de: AutoRouterEngine, AutoRouterGroups, AutoRouterAPI. Expone
 // window.AutoRouterLanes. Toda decisión de qué se escribe vive en AutoRouterGroups
 // (núcleo puro con golden tests); aquí solo hay DOM y orquestación.
@@ -32,6 +37,7 @@ const AutoRouterLanes = (() => {
       choice: new Map(),  // partGroupId|null -> destLine ('' = pendiente)
       sourceLine: null,
       busy: false,
+      fromBoard: false,   // se abrió desde el tablero de planificación
     };
   }
 
@@ -151,14 +157,17 @@ const AutoRouterLanes = (() => {
     injectStyles();
     state = fresh();
     state.ctx = ctx;
+    state.fromBoard = !!(ctx && ctx.fromBoard);
     const ot = ctx.idInDomain ?? ctx.workOrderId;
     renderShell(vista === 'split'
       ? `✂️ Partir / reagrupar piezas · OT ${ot}`
       : `🔀 Ruteo de la orden · OT ${ot}`);
-    renderBody(el('div', { class: 'sa-arl-note', text: 'Cargando piezas y rutas…' }));
+    renderBody(el('div', { class: 'sa-arl-note', text: 'Cargando piezas…' }));
     try {
-      await load();
-      if (vista === 'split') renderSplit(); else renderLanes();
+      await loadAccounts();
+      if (vista === 'split') { renderSplit(); return; }
+      await loadRoutes();
+      renderLanes();
     } catch (e) {
       log(`Error cargando: ${e.message}`);
       renderBody(el('div', { class: 'sa-arl-warn', text: `No se pudo cargar la orden: ${e.message}` }));
@@ -166,29 +175,87 @@ const AutoRouterLanes = (() => {
     }
   }
 
-  async function load() {
+  // La carga va en DOS fases a propósito. Partir y reagrupar solo necesitan las
+  // cuentas de piezas (una query ligera); el árbol de ruteo
+  // (`StationTreatmentByWorkOrder`) es la consulta pesada del flujo y solo hace falta
+  // para decidir rutas. Traerlo siempre castigaba justo el caso que ahora existe:
+  // partir desde el tablero, donde el `/graphql` de la sesión ya viene cargado.
+  async function loadAccounts() {
     const { ctx } = state;
     state.accounts = await ARAPI().fetchWorkOrderAccounts(ctx.idInDomain);
+    ctx.workOrderId = state.accounts.workOrderId;
+    ctx.partNumberId = ctx.partNumberId ?? state.accounts.partNumberId;
+  }
+
+  async function loadRoutes() {
+    const { ctx } = state;
     // Las rutas activas de TODAS las pistas: se piden con todos los grupos para que
     // el diff por pista tenga el panorama completo (cada pista se aísla después).
-    const groupIds = state.accounts.partLocations
-      .map((l) => l.partGroup?.id).filter((id) => id != null);
-    const partNumberId = ctx.partNumberId ?? state.accounts.partNumberId;
-    state.ctx.routeData = await ARAPI().fetchWorkOrderRouteData(
-      state.accounts.workOrderId, partNumberId, groupIds
+    const groupIds = [...new Set(state.accounts.partLocations
+      .map((l) => l.partGroup?.id).filter((id) => id != null))];
+    ctx.routeData = await ARAPI().fetchWorkOrderRouteData(
+      ctx.workOrderId, ctx.partNumberId, groupIds
     );
-    state.ctx.partNumberId = partNumberId;
-    state.ctx.workOrderId = state.accounts.workOrderId;
 
     state.lanes = Groups().buildLanes({
       partLocations: state.accounts.partLocations,
-      activeRoutes: state.ctx.routeData.activeRoutes,
+      activeRoutes: ctx.routeData.activeRoutes,
     });
-    state.sourceLine = detectSourceLine(state.ctx.routeData.recipeNodes);
+    state.sourceLine = detectSourceLine(ctx.routeData.recipeNodes);
     state.destLines = Engine().destinationLines(
-      state.ctx.routeData.candidatesByTreatment, state.sourceLine
+      ctx.routeData.candidatesByTreatment, state.sourceLine
     );
+    state.choice = new Map();
     for (const l of state.lanes) state.choice.set(l.partGroupId, PENDIENTE);
+  }
+
+  // Ir a la vista de ruteo desde cualquier otra: si el árbol todavía no se pidió (se
+  // abrió directo en "partir"), se trae aquí y no antes.
+  async function irARutear() {
+    if (state.busy) return;
+    if (state.accounts && state.ctx.routeData) { renderLanes(); return; }
+    setTitulo(`🔀 Ruteo de la orden · OT ${tituloOT()}`);
+    renderBody(el('div', { class: 'sa-arl-note', text: 'Cargando rutas de la orden…' }));
+    renderFooter(el('button', { class: 'sa-arl-btn ghost', text: 'Cerrar', onclick: close }));
+    try {
+      // Tras mover piezas las cuentas quedan invalidadas (`accounts = null`): hay
+      // grupos que antes no existían, y rutear sobre las pistas viejas apuntaría a
+      // material que ya no está ahí.
+      if (!state.accounts) await loadAccounts();
+      await loadRoutes();
+      renderLanes();
+    } catch (e) {
+      log(`Error cargando rutas: ${e.message}`);
+      renderBody(el('div', { class: 'sa-arl-warn', text: `No se pudieron cargar las rutas: ${e.message}` }));
+      renderFooter(el('button', { class: 'sa-arl-btn ghost', text: 'Cerrar', onclick: close }));
+    }
+  }
+
+  const recargarPagina = () => location.reload();
+
+  // Resultado de un movimiento de piezas (partir o reagrupar). Lo importante no es el
+  // "listo" sino que la pantalla de atrás quedó MINTIENDO: el tablero de planificación
+  // es una foto que no se entera de que nacieron grupos, y es justo ahí donde el
+  // operador va a querer programarlos. Por eso la recarga es el botón primario.
+  function renderPiezasMovidas(titulo, lineas) {
+    setTitulo(`${titulo} · OT ${tituloOT()}`);
+    renderBody(el('div', {}, [
+      ...lineas.map((t) => el('div', { class: 'sa-arl-note', text: t })),
+      el('div', { class: 'sa-arl-warn',
+        text: state.fromBoard
+          ? 'El tablero de planificación sigue mostrando la foto anterior. Actualízalo para ver '
+            + 'los grupos y programarlos ahí mismo.'
+          : 'Recarga la ficha de la orden para ver los grupos en Enrutamiento de Estación.' }),
+    ]));
+    renderFooter(
+      el('button', { class: 'sa-arl-btn ghost', text: 'Cerrar', onclick: close }),
+      el('button', { class: 'sa-arl-btn ghost', text: '🔀 Rutear', onclick: irARutear }),
+      el('button', {
+        class: 'sa-arl-btn primary',
+        text: state.fromBoard ? '🔄 Actualizar tablero' : '🔄 Recargar la página',
+        onclick: recargarPagina,
+      }),
+    );
   }
 
   // Misma heurística que el panel single-order: el nodo "Listo para Procesar" ancla
@@ -361,9 +428,19 @@ const AutoRouterLanes = (() => {
         el('h2', { text: 'Resultado' }),
         el('div', { class: 'sa-arl-note', text: ' ' }),
         ...resumen.map((r) => el('div', { class: 'sa-arl-note', text: r })),
-        el('div', { class: 'sa-arl-note', text: 'Recarga la pantalla de Enrutamiento de Estación para verlas.' }),
+        el('div', { class: 'sa-arl-note',
+          text: state.fromBoard
+            ? 'El tablero sigue mostrando las estaciones anteriores hasta que lo actualices.'
+            : 'Recarga la pantalla de Enrutamiento de Estación para verlas.' }),
       ]));
-      renderFooter(el('button', { class: 'sa-arl-btn primary', text: 'Cerrar', onclick: close }));
+      renderFooter(
+        el('button', { class: 'sa-arl-btn ghost', text: 'Cerrar', onclick: close }),
+        el('button', {
+          class: 'sa-arl-btn primary',
+          text: state.fromBoard ? '🔄 Actualizar tablero' : '🔄 Recargar la página',
+          onclick: recargarPagina,
+        })
+      );
     } catch (e) {
       state.busy = false;
       log(`Error aplicando: ${e.message}`);
@@ -383,7 +460,7 @@ const AutoRouterLanes = (() => {
     const cuentas = state.accounts.partLocations;
     if (!cuentas.length) {
       renderBody(el('div', { class: 'sa-arl-warn', text: 'Esta orden no tiene cuentas de piezas que partir.' }));
-      renderFooter(el('button', { class: 'sa-arl-btn ghost', text: '🔀 Rutear', onclick: renderLanes }));
+      renderFooter(el('button', { class: 'sa-arl-btn ghost', text: '🔀 Rutear', onclick: irARutear }));
       return;
     }
 
@@ -400,6 +477,15 @@ const AutoRouterLanes = (() => {
 
     const tbody = el('tbody');
     const cont = el('div', { class: 'sa-arl-split' }, [
+      // Partir escribe de inmediato: no hay preview ni "Aplicar" que retenga el
+      // cambio, como sí lo hay en el ruteo. Decirlo ANTES, no en el resultado.
+      el('div', { class: 'sa-arl-warn',
+        text: state.fromBoard
+          ? 'Al partir, las piezas se mueven de inmediato. El tablero de planificación no se '
+            + 'entera solo: al terminar te ofrezco actualizarlo para que aparezcan los grupos '
+            + 'nuevos y ya puedas programarlos.'
+          : 'Al partir, las piezas se mueven de inmediato (no hay preview ni deshacer; para '
+            + 'revertir hay que reagrupar).' }),
       el('div', { class: 'sa-arl-note',
         text: 'Las piezas de la cuenta origen se reparten entre los grupos. Las cantidades deben sumar exactamente el total.' }),
       el('div', { class: 'sa-arl-sec' }, [el('h3', { text: 'Cuenta origen' }), cuentaSel]),
@@ -440,7 +526,7 @@ const AutoRouterLanes = (() => {
     renderBody(cont);
     // La vista de partir es autosuficiente: reagrupar es su operación hermana (también
     // mueve material) y "🔀 Rutear" es el paso SIGUIENTE natural, no un "volver".
-    const pie = [el('button', { class: 'sa-arl-btn ghost', text: '🔀 Rutear', onclick: renderLanes })];
+    const pie = [el('button', { class: 'sa-arl-btn ghost', text: '🔀 Rutear', onclick: irARutear })];
     if (cuentas.length > 1) {
       pie.push(el('button', { class: 'sa-arl-btn ghost', text: '🔗 Reagrupar', onclick: renderRegroup }));
     }
@@ -492,10 +578,11 @@ const AutoRouterLanes = (() => {
       log(`Partición aplicada: cuenta ${origen.partsTransferAccountId} → ${splits.length} grupos.`);
 
       state.busy = false;
-      // Recarga: nacieron cuentas nuevas y las pistas cambiaron.
-      renderBody(el('div', { class: 'sa-arl-note', text: 'Piezas partidas. Recargando pistas…' }));
-      await load();
-      renderLanes();
+      // Nacieron cuentas nuevas: lo cargado ya no describe la orden.
+      state.accounts = null;
+      state.ctx.routeData = null;
+      renderPiezasMovidas('✂️ Piezas partidas',
+        filas.map((f) => `✅ Grupo ${String(f.name).trim()} · ${Number(f.partCount)} pzas`));
     } catch (e) {
       state.busy = false;
       log(`Error al partir: ${e.message}`);
@@ -573,7 +660,7 @@ const AutoRouterLanes = (() => {
     renderBody(cont);
     renderFooter(
       el('button', { class: 'sa-arl-btn ghost', text: '✂️ Partir', onclick: renderSplit }),
-      el('button', { class: 'sa-arl-btn ghost', text: '🔀 Rutear', onclick: renderLanes }),
+      el('button', { class: 'sa-arl-btn ghost', text: '🔀 Rutear', onclick: irARutear }),
       el('button', { class: 'sa-arl-btn primary', text: '🔗 Reagrupar',
         onclick: () => confirmarRegroup(cuentas, marcadas, () => destino, errBox) }),
     );
@@ -595,9 +682,13 @@ const AutoRouterLanes = (() => {
       await ARAPI().regroupParts(p.payload);
       log(`Reagrupación aplicada hacia el grupo ${getDestino()}.`);
       state.busy = false;
-      renderBody(el('div', { class: 'sa-arl-note', text: 'Piezas reagrupadas. Recargando pistas…' }));
-      await load();
-      renderLanes();
+      const destino = getDestino();
+      const nombre = cuentas.find((c) => c.partGroup?.id === destino)?.partGroup?.name ?? destino;
+      const movidas = p.payload.input.partsTransferEventsPayload[0].partsTransfers.length;
+      state.accounts = null;
+      state.ctx.routeData = null;
+      renderPiezasMovidas('🔗 Piezas reagrupadas',
+        [`✅ ${movidas} cuenta(s) juntadas en el grupo ${nombre}`]);
     } catch (e) {
       state.busy = false;
       log(`Error al reagrupar: ${e.message}`);
