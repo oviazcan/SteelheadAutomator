@@ -674,6 +674,8 @@
       ],
       "scripts": [
         "scripts/steelhead-api.js",
+        "scripts/auto-router-engine.js",
+        "scripts/auto-router-api.js",
         "scripts/wo-schedule-core.js",
         "scripts/wo-schedule-button.js"
       ],

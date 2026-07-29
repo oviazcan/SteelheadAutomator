@@ -321,3 +321,34 @@ es lo que hace capturable el dato faltante con criterio — *"en T204-FL01 caben
 cabe 1; ¿cuántas en T114-FL01?"* — en vez de pedir un número al aire. Y si la estación ofrece
 varios racks, `opcionesEstacion` los expone para que la UI deje elegir. Los racks **archivados**
 nunca son candidatos.
+
+
+## Fase 2b CABLEADA — crear la tarea y corregir el dato en el acto (2026-07-28)
+
+**Decisión del operador:** captura **quien programa**, no ingeniería. *"Debería pasárselo a
+ingeniería, pero como va a estar en piso, que lo verifique directamente."* Eso cambia el diseño:
+la captura manual deja de ser un riesgo y pasa a ser **el mecanismo de verificación** — quien
+teclea las piezas por carga tiene el rack enfrente.
+
+El 📅 de «Sin programar» ahora abre el modal de creación: paso, fecha/hora, tipo de rack, piezas
+por carga y los dos tiempos. **El efecto se recalcula y se muestra mientras tecleas**
+(`13504 piezas → 9 cargas → 141 min`), que es lo que sustituye a una fuente automática de datos.
+Al crear, se relee el programa y el readout del header se actualiza con lo que quedó de verdad.
+
+### Guardar el dato maestro es un botón APARTE
+No es efecto lateral de programar. El botón cambia de texto según el caso —**«Agregar piezas por
+carga»** cuando el rack de la línea destino no está ligado al PN, **«Corregir»** cuando ya
+existe— y pide confirmación que dice explícitamente que **aplica a todas las órdenes de ese PN en
+ese rack, no solo a ésta**. Es la diferencia entre arreglar el dato y parchear la tarea: la
+próxima vez que alguien programe ese PN en esa línea, el dato ya está.
+
+### Qué queda sin validar en vivo
+- **Ninguna corrida real de creación.** El payload se reproduce byte a byte contra el capturado y
+  el motor tiene 80 tests, pero crear una tarea escribe en el planificador: primer uso sobre una
+  orden de prueba.
+- **`partsPerBatch = partsPerRack × rackCount`** sigue siendo hipótesis de un solo caso. En el
+  modal el campo es editable y el resultado se ve antes de confirmar, así que un valor equivocado
+  se nota en pantalla (cargas y horas) antes de escribir.
+- El modal asume **rackCount = 1**; cuando la estación declare varios racks hay que leer
+  `stationTreatmentRackTypes` de esa estación (hoy solo se ha visto dentro de
+  `RelatedSchedulingInformation`, que son ~87 MB).
