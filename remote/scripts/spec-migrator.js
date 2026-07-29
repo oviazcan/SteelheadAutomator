@@ -2885,6 +2885,13 @@ const SpecMigrator = (() => {
           // quedaban sin corregir aunque se detectaran.
           releasePlan,
           forcedNodeIds: mappedParams.filter(p => p.processNodeId).map(p => p.processNodeId),
+          // 2026-07-29: el contador mezclaba dos cosas muy distintas y el operador no podía
+          // decidir sobre el total. `tipo` las separa: DUP = 2+ params vivos en el campo;
+          // NODO = uno solo, pero clavado a un processNode (lo que dejó bulk-upload antes de
+          // la regla 1.4.38); MIXTO = las dos a la vez.
+          tipo: (mappedParams.length > 1
+                  ? (releasePlan.action === 'ok' ? 'DUP' : 'MIXTO')
+                  : 'NODO'),
         };
         groups.push(group);
 
@@ -2894,14 +2901,29 @@ const SpecMigrator = (() => {
         dupState.decisions.set(group.key, { winnerRowId, ignored: false });
       }
     }, 6, (done, total) => {
-      if (progMsg2) progMsg2.textContent = `${done}/${total} PNs revisados — ${groups.length} grupos duplicados`;
+      if (progMsg2) {
+        const nDup = groups.filter(g => g.tipo === 'DUP').length;
+        const nNodo = groups.filter(g => g.tipo === 'NODO').length;
+        const nMix = groups.filter(g => g.tipo === 'MIXTO').length;
+        progMsg2.textContent = `${done}/${total} PNs revisados — ${groups.length} hallazgos: `
+          + `${nDup} duplicados · ${nNodo} con nodo forzado`
+          + (nMix ? ` · ${nMix} ambos` : '');
+      }
       if (progBar2) progBar2.style.width = `${(done / total) * 100}%`;
     });
 
     if (dupState.runId !== myRunId) return;
     dupState.groups = groups;
 
-    log(`[SPM-dup] Fase 2 OK: ${groups.length} grupos duplicados en ${new Set(groups.map(g => g.pnId)).size} PNs (${fetchErrors.length} errores fetch)`);
+    {
+      const nDup = groups.filter(g => g.tipo === 'DUP').length;
+      const nNodo = groups.filter(g => g.tipo === 'NODO').length;
+      const nMix = groups.filter(g => g.tipo === 'MIXTO').length;
+      const nAmb = groups.filter(g => g.releasePlan && g.releasePlan.action === 'ambiguous').length;
+      log(`[SPM-dup] Fase 2 OK: ${groups.length} hallazgos en ${new Set(groups.map(g => g.pnId)).size} PNs `
+        + `(${nDup} duplicados · ${nNodo} nodo forzado · ${nMix} ambos · ${nAmb} ambiguos que NO se tocan) `
+        + `(${fetchErrors.length} errores fetch)`);
+    }
 
     if (!groups.length) {
       dupSetBody(`<div class="dup-success">
@@ -2936,14 +2958,42 @@ const SpecMigrator = (() => {
       span.appendChild(b);
       return span;
     };
+    // 2026-07-29: desglose por tipo. El total mezcla duplicados con nodo forzado, que son
+    // problemas distintos y de distinto riesgo — sin separarlos no se puede decidir.
+    const nDup = groups.filter(g => g.tipo === 'DUP').length;
+    const nNodo = groups.filter(g => g.tipo === 'NODO').length;
+    const nMix = groups.filter(g => g.tipo === 'MIXTO').length;
+    const nAmb = groups.filter(g => g.releasePlan && g.releasePlan.action === 'ambiguous').length;
+    const nRepone = groups.filter(g => g.releasePlan && g.releasePlan.action === 'rewrite').length;
+
     stats.appendChild(mk('PNs revisados', scannedCount));
-    stats.appendChild(mk('PNs con duplicados', uniquePNs));
-    stats.appendChild(mk('Grupos', groups.length));
+    stats.appendChild(mk('PNs afectados', uniquePNs));
+    stats.appendChild(mk('Hallazgos', groups.length));
+    stats.appendChild(mk('· duplicados', nDup));
+    stats.appendChild(mk('· nodo forzado', nNodo + nMix));
+    if (nAmb) stats.appendChild(mk('· ambiguos (NO se tocan)', nAmb));
     stats.appendChild(mk('Auto-decidibles', autoCount));
     stats.appendChild(mk('Manuales', manualCount));
     stats.appendChild(mk('Params a archivar', losersCount));
     if (fetchErrors.length) stats.appendChild(mk('Errores fetch', fetchErrors.length));
     body.appendChild(stats);
+
+    // 2026-07-29: aviso explícito de lo que se va a REPONER. Archivar es reversible con el
+    // rowId del XLSX; reponer crea filas nuevas, así que el conteo va por delante.
+    if (nNodo + nMix > 0) {
+      const av = document.createElement('div');
+      av.style.cssText = 'background:#1e293b;border-left:3px solid #a78bfa;border-radius:6px;padding:8px 10px;margin-bottom:8px;font-size:11px;color:#cbd5e1';
+      const t1 = document.createElement('div');
+      t1.textContent = (nNodo + nMix) + ' hallazgos son de NODO FORZADO, no duplicados: el parámetro '
+        + 'está clavado a un processNode, y por eso Steelhead lo materializa en ese nodo (el raíz) '
+        + 'al crear cada orden nueva en vez de dejarlo caer donde el specField está declarado.';
+      const t2 = document.createElement('div');
+      t2.style.cssText = 'margin-top:4px';
+      t2.textContent = 'Se archivan y se REPONEN ' + nRepone + ' sin nodo. Los ' + nAmb
+        + ' ambiguos (valores distintos entre las filas forzadas) no se tocan.';
+      av.append(t1, t2);
+      body.appendChild(av);
+    }
 
     // 0.4.3: nota informativa de la regla (sin toggle — la regla es absoluta).
     if (autoCount > 0) {
