@@ -156,6 +156,15 @@ Se agrupan los activos por `specFieldParamBySpecFieldParamId.specFieldSpecBySpec
 | `AMBIGUO` | La cascada §4 no resolvió | reportar, no tocar |
 | `SIN_CATÁLOGO` | El campo no existe en ninguna spec viva de la OT | reportar, no tocar |
 
+Y un caso que no es casilla: **huérfanas**. Filas aplicadas a un campo que el nodo **no declara**
+en `recipeNodeSpecFields`. Apareció al construir el fixture de los golden tests, y es real: al
+aplicar un parámetro de un campo nuevo el ERP declara el campo en el nodo, así que un snapshot
+tomado entre ambos momentos las muestra descolgadas.
+
+Como el universo de casillas sale de lo que el nodo *declara*, una huérfana no genera casilla y
+**no se toca** — escribir sobre algo que el modelo de la orden ya no reconoce es peor que
+dejarlo. Pero **sí se reporta**: es un parámetro vivo que nadie está mirando.
+
 ### 5.2 Equivalencia — cascada que solo puede absolver
 
 **Verificado en vivo contra la OT 5769 (§8).** Resultado: 136 `OK`, 13 `VACÍO`,

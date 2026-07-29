@@ -1,0 +1,1020 @@
+{
+ "_comment": "Fixture REAL. OT 5769 (id 1756468) / NP 3044551 \"80236-167-07\", dominio 344, capturado 2026-07-28. La OT viene de scan_results_2026-07-28_201655 (GetPartNumberWorkOrderSpecsInfo), recortada a 4 nodos y 9 campos. Las filas 26249942/26249943 del nodo 42513391 y los 13 params del NP se verificaron EN VIVO contra el ERP. Cubre OK-por-identidad, OK-por-linaje, VACIO y DIFIERE. El campo 33579 del nodo 42513391 se declara aqui porque en vivo el ERP lo declaro al aplicarle un parametro (el snapshot del scan es anterior a ese momento). Ver docs/superpowers/specs/2026-07-28-wo-spec-params-reapply-design.md",
+ "workOrder": {
+  "id": 1756468,
+  "idInDomain": 5769,
+  "name": "",
+  "partNumberWorkOrderSpecsByWorkOrderId": {
+   "nodes": [
+    {
+     "id": 5063398,
+     "partNumberId": 3044551,
+     "archivedAt": null,
+     "specBySpecId": {
+      "id": 14344,
+      "name": "40004-014-01 (Estaño)",
+      "revisionNumber": 1,
+      "specFieldSpecsBySpecId": {
+       "nodes": [
+        {
+         "id": 106115,
+         "archivedAt": null,
+         "specFieldId": 15630,
+         "isGeneric": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 12533622,
+            "name": "5 - 8 µm"
+           },
+           {
+            "id": 32594227,
+            "name": "5 - 10 µm"
+           }
+          ]
+         },
+         "specFieldBySpecFieldId": {
+          "id": 15630,
+          "name": "Espesor",
+          "type": "NUMBER"
+         }
+        },
+        {
+         "id": 282984,
+         "archivedAt": null,
+         "specFieldId": 33579,
+         "isGeneric": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 32367241,
+            "name": "0.5 - 1.0 µm"
+           },
+           {
+            "id": 32596235,
+            "name": "No aplica"
+           }
+          ]
+         },
+         "specFieldBySpecFieldId": {
+          "id": 33579,
+          "name": "Espesor (Intermedio)",
+          "type": "NUMBER"
+         }
+        },
+        {
+         "id": 106116,
+         "archivedAt": null,
+         "specFieldId": 15820,
+         "isGeneric": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 15663320,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldBySpecFieldId": {
+          "id": 15820,
+          "name": "Adherencia",
+          "type": "BOOLEAN"
+         }
+        },
+        {
+         "id": 189604,
+         "archivedAt": null,
+         "specFieldId": 19445,
+         "isGeneric": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 22192591,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldBySpecFieldId": {
+          "id": 19445,
+          "name": "Apariencia Homogénea",
+          "type": "BOOLEAN"
+         }
+        },
+        {
+         "id": 146045,
+         "archivedAt": null,
+         "specFieldId": 22067,
+         "isGeneric": true,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 17544252,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldBySpecFieldId": {
+          "id": 22067,
+          "name": "Primeras Piezas",
+          "type": "DROPDOWN"
+         }
+        },
+        {
+         "id": 213253,
+         "archivedAt": null,
+         "specFieldId": 28479,
+         "isGeneric": true,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 25502508,
+            "name": "Elección"
+           }
+          ]
+         },
+         "specFieldBySpecFieldId": {
+          "id": 28479,
+          "name": "Instrumento de Medición",
+          "type": "DROPDOWN"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": 5063399,
+     "partNumberId": 3044551,
+     "archivedAt": null,
+     "specBySpecId": {
+      "id": 16165,
+      "name": "Inspección Recibo",
+      "revisionNumber": 1,
+      "specFieldSpecsBySpecId": {
+       "nodes": [
+        {
+         "id": 149703,
+         "archivedAt": null,
+         "specFieldId": 22547,
+         "isGeneric": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 17854613,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldBySpecFieldId": {
+          "id": 22547,
+          "name": "Condiciones Adecuadas del Material Recibido",
+          "type": "BOOLEAN"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": 5063400,
+     "partNumberId": 3044551,
+     "archivedAt": null,
+     "specBySpecId": {
+      "id": 22402,
+      "name": "Preparación de Surtido en Almacén ",
+      "revisionNumber": 1,
+      "specFieldSpecsBySpecId": {
+       "nodes": [
+        {
+         "id": 196923,
+         "archivedAt": null,
+         "specFieldId": 30057,
+         "isGeneric": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 22792982,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldBySpecFieldId": {
+          "id": 30057,
+          "name": " PC-00 Surtimiento a la línea de producción",
+          "type": "SENSOR"
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": 5063402,
+     "partNumberId": 3044551,
+     "archivedAt": null,
+     "specBySpecId": {
+      "id": 22597,
+      "name": "T201-LI (25.0)",
+      "revisionNumber": 1,
+      "specFieldSpecsBySpecId": {
+       "nodes": [
+        {
+         "id": 210882,
+         "archivedAt": null,
+         "specFieldId": 31018,
+         "isGeneric": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 24897078,
+            "name": "10 - 22 g/L"
+           }
+          ]
+         },
+         "specFieldBySpecFieldId": {
+          "id": 31018,
+          "name": "T201-TI00-002 Concentración de Sales de Sodio",
+          "type": "SENSOR"
+         }
+        }
+       ]
+      }
+     }
+    }
+   ]
+  },
+  "recipeNodesByWorkOrderId": {
+   "nodes": [
+    {
+     "id": 42513351,
+     "name": "T201 (DEC)-T201 (EST)-CU-VARIOS (25.0)",
+     "type": "PROCESS",
+     "recipeInd": 0,
+     "recipeNodeSpecFieldsByRecipeNodeId": {
+      "nodes": [
+       {
+        "id": 36449398,
+        "specFieldId": 15630,
+        "specFieldBySpecFieldId": {
+         "id": 15630,
+         "name": "Espesor"
+        }
+       },
+       {
+        "id": 36449399,
+        "specFieldId": 15820,
+        "specFieldBySpecFieldId": {
+         "id": 15820,
+         "name": "Adherencia"
+        }
+       },
+       {
+        "id": 36449400,
+        "specFieldId": 19445,
+        "specFieldBySpecFieldId": {
+         "id": 19445,
+         "name": "Apariencia Homogénea"
+        }
+       },
+       {
+        "id": 36449401,
+        "specFieldId": 22067,
+        "specFieldBySpecFieldId": {
+         "id": 22067,
+         "name": "Primeras Piezas"
+        }
+       },
+       {
+        "id": 36449402,
+        "specFieldId": 28479,
+        "specFieldBySpecFieldId": {
+         "id": 28479,
+         "name": "Instrumento de Medición"
+        }
+       }
+      ]
+     },
+     "partNumberRecipeNodeSpecFieldParamsByRecipeNodeId": {
+      "nodes": [
+       {
+        "id": 22341384,
+        "archivedAt": null,
+        "partNumberId": 3044551,
+        "specFieldId": 15630,
+        "recipeNodeId": 42513351,
+        "partNumberWorkOrderSpecByDrivenBy": {
+         "id": 5063398
+        },
+        "specFieldParamBySpecFieldParamId": {
+         "id": 29917475,
+         "name": "5 - 8 µm",
+         "isDefault": false,
+         "minimumValue": 5,
+         "maximumValue": 8,
+         "targetValue": null,
+         "unitId": 3974,
+         "specFieldParamByDerivedFromId": {
+          "id": 28818108,
+          "name": "5 - 10 µm"
+         },
+         "specFieldSpecBySpecFieldSpecId": {
+          "id": 106115,
+          "specBySpecId": {
+           "id": 14344,
+           "name": "40004-014-01 (Estaño)"
+          },
+          "specFieldBySpecFieldId": {
+           "id": 15630,
+           "name": "Espesor"
+          }
+         }
+        }
+       },
+       {
+        "id": 22341385,
+        "archivedAt": null,
+        "partNumberId": 3044551,
+        "specFieldId": 15820,
+        "recipeNodeId": 42513351,
+        "partNumberWorkOrderSpecByDrivenBy": {
+         "id": 5063398
+        },
+        "specFieldParamBySpecFieldParamId": {
+         "id": 29917476,
+         "name": "Sí o No",
+         "isDefault": false,
+         "minimumValue": null,
+         "maximumValue": null,
+         "targetValue": null,
+         "unitId": null,
+         "specFieldParamByDerivedFromId": {
+          "id": 28818109,
+          "name": "Sí o No"
+         },
+         "specFieldSpecBySpecFieldSpecId": {
+          "id": 106116,
+          "specBySpecId": {
+           "id": 14344,
+           "name": "40004-014-01 (Estaño)"
+          },
+          "specFieldBySpecFieldId": {
+           "id": 15820,
+           "name": "Adherencia"
+          }
+         }
+        }
+       },
+       {
+        "id": 22341386,
+        "archivedAt": null,
+        "partNumberId": 3044551,
+        "specFieldId": 19445,
+        "recipeNodeId": 42513351,
+        "partNumberWorkOrderSpecByDrivenBy": {
+         "id": 5063398
+        },
+        "specFieldParamBySpecFieldParamId": {
+         "id": 29917477,
+         "name": "Sí o No",
+         "isDefault": false,
+         "minimumValue": null,
+         "maximumValue": null,
+         "targetValue": null,
+         "unitId": null,
+         "specFieldParamByDerivedFromId": {
+          "id": 28818110,
+          "name": "Sí o No"
+         },
+         "specFieldSpecBySpecFieldSpecId": {
+          "id": 189604,
+          "specBySpecId": {
+           "id": 14344,
+           "name": "40004-014-01 (Estaño)"
+          },
+          "specFieldBySpecFieldId": {
+           "id": 19445,
+           "name": "Apariencia Homogénea"
+          }
+         }
+        }
+       },
+       {
+        "id": 22341387,
+        "archivedAt": null,
+        "partNumberId": 3044551,
+        "specFieldId": 22067,
+        "recipeNodeId": 42513351,
+        "partNumberWorkOrderSpecByDrivenBy": {
+         "id": 5063398
+        },
+        "specFieldParamBySpecFieldParamId": {
+         "id": 29917478,
+         "name": "Sí o No",
+         "isDefault": false,
+         "minimumValue": null,
+         "maximumValue": null,
+         "targetValue": null,
+         "unitId": null,
+         "specFieldParamByDerivedFromId": {
+          "id": 17544252,
+          "name": "Sí o No"
+         },
+         "specFieldSpecBySpecFieldSpecId": {
+          "id": 146045,
+          "specBySpecId": {
+           "id": 14344,
+           "name": "40004-014-01 (Estaño)"
+          },
+          "specFieldBySpecFieldId": {
+           "id": 22067,
+           "name": "Primeras Piezas"
+          }
+         }
+        }
+       },
+       {
+        "id": 22341388,
+        "archivedAt": null,
+        "partNumberId": 3044551,
+        "specFieldId": 28479,
+        "recipeNodeId": 42513351,
+        "partNumberWorkOrderSpecByDrivenBy": {
+         "id": 5063398
+        },
+        "specFieldParamBySpecFieldParamId": {
+         "id": 29917479,
+         "name": "Elección",
+         "isDefault": false,
+         "minimumValue": null,
+         "maximumValue": null,
+         "targetValue": null,
+         "unitId": null,
+         "specFieldParamByDerivedFromId": {
+          "id": 25502508,
+          "name": "Elección"
+         },
+         "specFieldSpecBySpecFieldSpecId": {
+          "id": 213253,
+          "specBySpecId": {
+           "id": 14344,
+           "name": "40004-014-01 (Estaño)"
+          },
+          "specFieldBySpecFieldId": {
+           "id": 28479,
+           "name": "Instrumento de Medición"
+          }
+         }
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": 42513352,
+     "name": "SP Inspección Recibo",
+     "type": "SUB_PROCESS",
+     "recipeInd": 1,
+     "recipeNodeSpecFieldsByRecipeNodeId": {
+      "nodes": []
+     },
+     "partNumberRecipeNodeSpecFieldParamsByRecipeNodeId": {
+      "nodes": []
+     }
+    },
+    {
+     "id": 42513364,
+     "name": "T201-TI00-002 Desengrase Electrolítico Metex",
+     "type": "STEP",
+     "recipeInd": 13,
+     "recipeNodeSpecFieldsByRecipeNodeId": {
+      "nodes": [
+       {
+        "id": 36449274,
+        "specFieldId": 31018,
+        "specFieldBySpecFieldId": {
+         "id": 31018,
+         "name": "T201-TI00-002 Concentración de Sales de Sodio"
+        }
+       }
+      ]
+     },
+     "partNumberRecipeNodeSpecFieldParamsByRecipeNodeId": {
+      "nodes": []
+     }
+    },
+    {
+     "id": 42513391,
+     "name": "T201-IC00-001 Inspeccionando y Empacando",
+     "type": "QUALITY_ASSURANCE_NODE",
+     "recipeInd": 40,
+     "recipeNodeSpecFieldsByRecipeNodeId": {
+      "nodes": [
+       {
+        "id": 36449386,
+        "specFieldId": 15630,
+        "specFieldBySpecFieldId": {
+         "id": 15630,
+         "name": "Espesor"
+        }
+       },
+       {
+        "id": 36449389,
+        "specFieldId": 19445,
+        "specFieldBySpecFieldId": {
+         "id": 19445,
+         "name": "Apariencia Homogénea"
+        }
+       },
+       {
+        "id": 36449387,
+        "specFieldId": 15820,
+        "specFieldBySpecFieldId": {
+         "id": 15820,
+         "name": "Adherencia"
+        }
+       },
+       {
+        "id": 36449388,
+        "specFieldId": 22067,
+        "specFieldBySpecFieldId": {
+         "id": 22067,
+         "name": "Primeras Piezas"
+        }
+       },
+       {
+        "id": 36449390,
+        "specFieldId": 28479,
+        "specFieldBySpecFieldId": {
+         "id": 28479,
+         "name": "Instrumento de Medición"
+        }
+       },
+       {
+        "id": 999001,
+        "specFieldId": 33579,
+        "specFieldBySpecFieldId": {
+         "id": 33579,
+         "name": "Espesor (Intermedio)"
+        }
+       }
+      ]
+     },
+     "partNumberRecipeNodeSpecFieldParamsByRecipeNodeId": {
+      "nodes": [
+       {
+        "id": 26249942,
+        "archivedAt": null,
+        "partNumberId": 3044551,
+        "specFieldId": 15630,
+        "recipeNodeId": 42513391,
+        "partNumberWorkOrderSpecByDrivenBy": {
+         "id": 5063398
+        },
+        "specFieldParamBySpecFieldParamId": {
+         "id": 34924257,
+         "name": "5 - 8 µm",
+         "isDefault": false,
+         "minimumValue": 5,
+         "maximumValue": 8,
+         "targetValue": null,
+         "unitId": 3974,
+         "specFieldParamByDerivedFromId": {
+          "id": 12533622,
+          "name": "5 - 8 µm"
+         },
+         "specFieldSpecBySpecFieldSpecId": {
+          "id": 106115,
+          "specBySpecId": {
+           "id": 14344,
+           "name": "40004-014-01 (Estaño)"
+          },
+          "specFieldBySpecFieldId": {
+           "id": 15630,
+           "name": "Espesor"
+          }
+         }
+        }
+       },
+       {
+        "id": 26249943,
+        "archivedAt": null,
+        "partNumberId": 3044551,
+        "specFieldId": 33579,
+        "recipeNodeId": 42513391,
+        "partNumberWorkOrderSpecByDrivenBy": {
+         "id": 5063398
+        },
+        "specFieldParamBySpecFieldParamId": {
+         "id": 34924258,
+         "name": "0.5 - 1.0 µm",
+         "isDefault": false,
+         "minimumValue": 0.5,
+         "maximumValue": 1,
+         "targetValue": null,
+         "unitId": 3974,
+         "specFieldParamByDerivedFromId": {
+          "id": 32367241,
+          "name": "0.5 - 1.0 µm"
+         },
+         "specFieldSpecBySpecFieldSpecId": {
+          "id": 282984,
+          "specBySpecId": {
+           "id": 14344,
+           "name": "40004-014-01 (Estaño)"
+          },
+          "specFieldBySpecFieldId": {
+           "id": 33579,
+           "name": "Espesor (Intermedio)"
+          }
+         }
+        }
+       }
+      ]
+     }
+    }
+   ]
+  }
+ },
+ "partNumber": {
+  "id": 3044551,
+  "name": "80236-167-07",
+  "partNumberSpecFieldParamsByPartNumberId": {
+   "nodes": [
+    {
+     "id": 5511462,
+     "archivedAt": "2026-01-01T00:00:00Z",
+     "specFieldId": 15630,
+     "specFieldParamBySpecFieldParamId": {
+      "id": 20878499,
+      "name": "5.0 - 10.0 µm",
+      "isDefault": false,
+      "minimumValue": 5,
+      "maximumValue": 10,
+      "targetValue": null,
+      "unitId": 3974,
+      "specFieldParamByDerivedFromId": {
+       "id": 17980760,
+       "name": "5.0 - 10.0 µm"
+      },
+      "specFieldSpecBySpecFieldSpecId": {
+       "id": 150435,
+       "specBySpecId": {
+        "id": 15999,
+        "name": "48957-014-01 (Níquel Electroless)"
+       },
+       "specFieldBySpecFieldId": {
+        "id": 15630,
+        "name": "Espesor"
+       }
+      }
+     }
+    },
+    {
+     "id": 5517649,
+     "archivedAt": null,
+     "specFieldId": 15820,
+     "specFieldParamBySpecFieldParamId": {
+      "id": 20889468,
+      "name": "Sí o No",
+      "isDefault": false,
+      "minimumValue": null,
+      "maximumValue": null,
+      "targetValue": null,
+      "unitId": null,
+      "specFieldParamByDerivedFromId": {
+       "id": 17980761,
+       "name": "Sí o No"
+      },
+      "specFieldSpecBySpecFieldSpecId": {
+       "id": 150436,
+       "specBySpecId": {
+        "id": 15999,
+        "name": "48957-014-01 (Níquel Electroless)"
+       },
+       "specFieldBySpecFieldId": {
+        "id": 15820,
+        "name": "Adherencia"
+       }
+      }
+     }
+    },
+    {
+     "id": 5524601,
+     "archivedAt": null,
+     "specFieldId": 19445,
+     "specFieldParamBySpecFieldParamId": {
+      "id": 20904071,
+      "name": "Sí o No",
+      "isDefault": false,
+      "minimumValue": null,
+      "maximumValue": null,
+      "targetValue": null,
+      "unitId": null,
+      "specFieldParamByDerivedFromId": {
+       "id": 17980762,
+       "name": "Sí o No"
+      },
+      "specFieldSpecBySpecFieldSpecId": {
+       "id": 150437,
+       "specBySpecId": {
+        "id": 15999,
+        "name": "48957-014-01 (Níquel Electroless)"
+       },
+       "specFieldBySpecFieldId": {
+        "id": 19445,
+        "name": "Apariencia Homogénea"
+       }
+      }
+     }
+    },
+    {
+     "id": 5534696,
+     "archivedAt": null,
+     "specFieldId": 22067,
+     "specFieldParamBySpecFieldParamId": {
+      "id": 17980763,
+      "name": "Sí o No",
+      "isDefault": true,
+      "minimumValue": null,
+      "maximumValue": null,
+      "targetValue": null,
+      "unitId": null,
+      "specFieldParamByDerivedFromId": {
+       "id": 17544245,
+       "name": "Sí o No"
+      },
+      "specFieldSpecBySpecFieldSpecId": {
+       "id": 150438,
+       "specBySpecId": {
+        "id": 15999,
+        "name": "48957-014-01 (Níquel Electroless)"
+       },
+       "specFieldBySpecFieldId": {
+        "id": 22067,
+        "name": "Primeras Piezas"
+       }
+      }
+     }
+    },
+    {
+     "id": 6995689,
+     "archivedAt": null,
+     "specFieldId": 28479,
+     "specFieldParamBySpecFieldParamId": {
+      "id": 25612225,
+      "name": "Elección",
+      "isDefault": true,
+      "minimumValue": null,
+      "maximumValue": null,
+      "targetValue": null,
+      "unitId": null,
+      "specFieldParamByDerivedFromId": {
+       "id": 25317643,
+       "name": "Elección"
+      },
+      "specFieldSpecBySpecFieldSpecId": {
+       "id": 213493,
+       "specBySpecId": {
+        "id": 15999,
+        "name": "48957-014-01 (Níquel Electroless)"
+       },
+       "specFieldBySpecFieldId": {
+        "id": 28479,
+        "name": "Instrumento de Medición"
+       }
+      }
+     }
+    },
+    {
+     "id": 7931378,
+     "archivedAt": "2026-01-01T00:00:00Z",
+     "specFieldId": 15630,
+     "specFieldParamBySpecFieldParamId": {
+      "id": 28818108,
+      "name": "5 - 10 µm",
+      "isDefault": false,
+      "minimumValue": 5,
+      "maximumValue": 10,
+      "targetValue": 8,
+      "unitId": 3974,
+      "specFieldParamByDerivedFromId": {
+       "id": 12533622,
+       "name": "5 - 10 µm"
+      },
+      "specFieldSpecBySpecFieldSpecId": {
+       "id": 106115,
+       "specBySpecId": {
+        "id": 14344,
+        "name": "40004-014-01 (Estaño)"
+       },
+       "specFieldBySpecFieldId": {
+        "id": 15630,
+        "name": "Espesor"
+       }
+      }
+     }
+    },
+    {
+     "id": 7931379,
+     "archivedAt": null,
+     "specFieldId": 15820,
+     "specFieldParamBySpecFieldParamId": {
+      "id": 28818109,
+      "name": "Sí o No",
+      "isDefault": false,
+      "minimumValue": null,
+      "maximumValue": null,
+      "targetValue": null,
+      "unitId": null,
+      "specFieldParamByDerivedFromId": {
+       "id": 15663320,
+       "name": "Sí o No"
+      },
+      "specFieldSpecBySpecFieldSpecId": {
+       "id": 106116,
+       "specBySpecId": {
+        "id": 14344,
+        "name": "40004-014-01 (Estaño)"
+       },
+       "specFieldBySpecFieldId": {
+        "id": 15820,
+        "name": "Adherencia"
+       }
+      }
+     }
+    },
+    {
+     "id": 7931380,
+     "archivedAt": null,
+     "specFieldId": 19445,
+     "specFieldParamBySpecFieldParamId": {
+      "id": 28818110,
+      "name": "Sí o No",
+      "isDefault": false,
+      "minimumValue": null,
+      "maximumValue": null,
+      "targetValue": null,
+      "unitId": null,
+      "specFieldParamByDerivedFromId": {
+       "id": 22192591,
+       "name": "Sí o No"
+      },
+      "specFieldSpecBySpecFieldSpecId": {
+       "id": 189604,
+       "specBySpecId": {
+        "id": 14344,
+        "name": "40004-014-01 (Estaño)"
+       },
+       "specFieldBySpecFieldId": {
+        "id": 19445,
+        "name": "Apariencia Homogénea"
+       }
+      }
+     }
+    },
+    {
+     "id": 7931381,
+     "archivedAt": null,
+     "specFieldId": 22067,
+     "specFieldParamBySpecFieldParamId": {
+      "id": 17544252,
+      "name": "Sí o No",
+      "isDefault": true,
+      "minimumValue": null,
+      "maximumValue": null,
+      "targetValue": null,
+      "unitId": null,
+      "specFieldParamByDerivedFromId": null,
+      "specFieldSpecBySpecFieldSpecId": {
+       "id": 146045,
+       "specBySpecId": {
+        "id": 14344,
+        "name": "40004-014-01 (Estaño)"
+       },
+       "specFieldBySpecFieldId": {
+        "id": 22067,
+        "name": "Primeras Piezas"
+       }
+      }
+     }
+    },
+    {
+     "id": 7931382,
+     "archivedAt": null,
+     "specFieldId": 28479,
+     "specFieldParamBySpecFieldParamId": {
+      "id": 25502508,
+      "name": "Elección",
+      "isDefault": true,
+      "minimumValue": null,
+      "maximumValue": null,
+      "targetValue": null,
+      "unitId": null,
+      "specFieldParamByDerivedFromId": {
+       "id": 25317643,
+       "name": "Elección"
+      },
+      "specFieldSpecBySpecFieldSpecId": {
+       "id": 213253,
+       "specBySpecId": {
+        "id": 14344,
+        "name": "40004-014-01 (Estaño)"
+       },
+       "specFieldBySpecFieldId": {
+        "id": 28479,
+        "name": "Instrumento de Medición"
+       }
+      }
+     }
+    },
+    {
+     "id": 9176423,
+     "archivedAt": "2026-01-01T00:00:00Z",
+     "specFieldId": 15630,
+     "specFieldParamBySpecFieldParamId": {
+      "id": 33521308,
+      "name": "5 - 10 µm",
+      "isDefault": false,
+      "minimumValue": 5,
+      "maximumValue": 10,
+      "targetValue": null,
+      "unitId": 3974,
+      "specFieldParamByDerivedFromId": {
+       "id": 32594227,
+       "name": "5 - 10 µm"
+      },
+      "specFieldSpecBySpecFieldSpecId": {
+       "id": 106115,
+       "specBySpecId": {
+        "id": 14344,
+        "name": "40004-014-01 (Estaño)"
+       },
+       "specFieldBySpecFieldId": {
+        "id": 15630,
+        "name": "Espesor"
+       }
+      }
+     }
+    },
+    {
+     "id": 9230936,
+     "archivedAt": null,
+     "specFieldId": 15630,
+     "specFieldParamBySpecFieldParamId": {
+      "id": 33666976,
+      "name": "5 - 10 µm",
+      "isDefault": false,
+      "minimumValue": 5,
+      "maximumValue": 10,
+      "targetValue": null,
+      "unitId": 3974,
+      "specFieldParamByDerivedFromId": {
+       "id": 32594227,
+       "name": "5 - 10 µm"
+      },
+      "specFieldSpecBySpecFieldSpecId": {
+       "id": 106115,
+       "specBySpecId": {
+        "id": 14344,
+        "name": "40004-014-01 (Estaño)"
+       },
+       "specFieldBySpecFieldId": {
+        "id": 15630,
+        "name": "Espesor"
+       }
+      }
+     }
+    },
+    {
+     "id": 9230937,
+     "archivedAt": null,
+     "specFieldId": 33579,
+     "specFieldParamBySpecFieldParamId": {
+      "id": 33666977,
+      "name": "No aplica",
+      "isDefault": false,
+      "minimumValue": null,
+      "maximumValue": null,
+      "targetValue": null,
+      "unitId": null,
+      "specFieldParamByDerivedFromId": {
+       "id": 32596235,
+       "name": "No aplica"
+      },
+      "specFieldSpecBySpecFieldSpecId": {
+       "id": 282984,
+       "specBySpecId": {
+        "id": 14344,
+        "name": "40004-014-01 (Estaño)"
+       },
+       "specFieldBySpecFieldId": {
+        "id": 33579,
+        "name": "Espesor (Intermedio)"
+       }
+      }
+     }
+    }
+   ]
+  }
+ }
+}
