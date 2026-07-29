@@ -81,7 +81,9 @@
         "CreateProcessNodePartNumberOptInout": "f6fe26e4494c8c91d076975a8d7e89ed2f90a487d05f8bc021c2e296f3d6124f",
         "CreateNewPartGroup": "7ee30dd45af56f280ac45423349bb03b23ba6be7fb70aba6fe8ecfae819d54e4",
         "UpdateManyScheduleTasks": "14c097944aca8f0f4d47f3bac5d6c8b2a35d3b2adec3adb72bda66a24b2d6e7b",
-        "CreateManyScheduleTasks": "9039afe7fe853a54fc1c31ad0d51e91dccd24b37c2698d786dc58bd1835c46c9"
+        "CreateManyScheduleTasks": "9039afe7fe853a54fc1c31ad0d51e91dccd24b37c2698d786dc58bd1835c46c9",
+        "ArchivePartNumberRecipeNodeSpecFieldParams": "7d33b66bb244910a9065c631630bceb15f01ca282ac208b16fecf85df36937a4",
+        "AddParamsToPartNumberRecipeNodeSpecFieldParam": "8e8b0ab50c0404a01985ec894d0c91d3eab4159c6360f923b9920b8e344aaef0"
       },
       "queries": {
         "AllStations": "834516258e392dcd9c666c2349992e3f6744aaf536cb127cb8c9eb4347f883f7",
@@ -202,7 +204,8 @@
         "GetWorkOrderPartsTransfers": "da4e8740973139bb23f3f0d37a0ea83a05b6d67cdab2c1bea1e154dff37aa284",
         "PurchaseOrders": "32f823d324b6b91e78fe43c93ab82042b931797f5592d088c4f1563051210d84",
         "SearchBills": "e50ba3ee7d2e694476d5180abdd978fa21f5147251c02d4cef051973b408bd8a",
-        "FindPartGroupQuery": "85121b64ebe7c614a0c3de7a730c45488b0ca45ea6731ff8c88efafb0667774c"
+        "FindPartGroupQuery": "85121b64ebe7c614a0c3de7a730c45488b0ca45ea6731ff8c88efafb0667774c",
+        "GetPartNumberWorkOrderSpecsInfo": "0d77c6496b506be62b92c1d821b2e0ec115838cb404ef3ab1cffe2270ddeb827"
       }
     },
     "domain": {
@@ -1046,7 +1049,9 @@
         "scripts/steelhead-api.js",
         "scripts/host-cleanup-shared.js",
         "scripts/spec-migrator-normalize.js",
-        "scripts/spec-migrator.js"
+        "scripts/spec-migrator.js",
+        "scripts/wo-spec-params-core.js",
+        "scripts/wo-spec-params.js"
       ],
       "requiredPermissions": [
         "READ_SPECS",
@@ -1089,6 +1094,15 @@
           "handler": "message",
           "message": "validate-duplicate-params",
           "fn": "SpecMigrator.runDuplicateParamsValidator"
+        },
+        {
+          "id": "reapply-wo-params",
+          "label": "Reaplicar Params en OTs",
+          "sublabel": "Alinea las specs de las órdenes con su Número de Parte",
+          "icon": "🔧",
+          "handler": "message",
+          "message": "reapply-wo-params",
+          "fn": "WoSpecParams.openFromPopup"
         }
       ]
     },
@@ -2754,6 +2768,21 @@
       "type": "mutation",
       "description": "CREA tareas de programación donde no hay (la que dispara el Save del Schedule Board al programar una orden sin tarea). Payload REAL capturado 2026-07-28 → fixture tools/test/fixtures/wo-schedule-create-task.json. Forma: {scheduledTasks:{mnScheduleTask:[{scheduleId,treatmentId,stationId,expectedStartTime,totalTimeMinutes,cycleTimeMinutes,treatmentTimeMinutes,isIntentional:false,status:'UNSCHEDULED',scheduleTaskElementsByScheduleTaskId:{nodes:[{partSetUuid (UUID v4 del CLIENTE),recipeNodeId,partNumberId,rackIdLineage,rackTypeIdLineage (STRING, no array),partCount,partsPerBatch,relatedPartTransferAccounts:[{id,partCount}]}]}}]}, scheduleIdFilter:{equalTo:scheduleId}}. totalTimeMinutes NO se manda tal cual: total = treatmentTime + (ceil(partCount/partsPerBatch)-1)*cycleTime (validado contra 4 tareas reales). Los tiempos salen de TreatmentTime (cycleTime/totalTime como Interval de Postgres) con overrides por especificidad. A diferencia de UpdateManyScheduleTasks, la respuesta SÍ devuelve la tarea creada.",
       "usedBy": "wo-schedule-button"
+    },
+    "GetPartNumberWorkOrderSpecsInfo": {
+      "type": "query",
+      "description": "Specs de una OT + sus nodos de receta con los parámetros aplicados. Vars {partNumberId,workOrderId} (ambos ids GLOBALES, no idInDomain). PESADA: ~0.87 MB por (OT × NP) — destilar y descartar el crudo. La spec EXTERNA (del cliente) es la única con partNumberSpecByPartNumberSpecId",
+      "usedBy": "wo-spec-params"
+    },
+    "ArchivePartNumberRecipeNodeSpecFieldParams": {
+      "type": "mutation",
+      "description": "Archivar filas de PartNumberRecipeNodeSpecFieldParam por id. Acepta lote: {partNumberRecipeNodeSpecFieldParamIds:[Int],archivedAt:ISO}",
+      "usedBy": "wo-spec-params"
+    },
+    "AddParamsToPartNumberRecipeNodeSpecFieldParam": {
+      "type": "mutation",
+      "description": "Aplicar parámetros a los nodos de receta de una OT. input.parametersToAdd[]={specFieldId,specFieldParamId,recipeNodeId,geometryTypeSpecFieldId:null,locationId:null,drivenBy}. drivenBy=id del PartNumberWorkOrderSpec. CRÍTICO: specFieldParamId es el id del CATÁLOGO de la spec — el server CLONA y el registro queda con otro id, encadenado por derivedFromId",
+      "usedBy": "wo-spec-params"
     }
   },
   "scripts": [

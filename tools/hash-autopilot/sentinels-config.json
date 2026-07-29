@@ -182,6 +182,17 @@
       ],
       "_estrategia": "capture-abort",
       "_nota": "Se dispara al GUARDAR el Schedule Board tras programar una orden que no tenia tarea (breadcrumb button:Save, scan 2026-07-28). CAPTURA-Y-ABORTA: la op se marca en sink.abortOps ANTES de tocar Guardar, asi que el request se registra y se aborta -> no se crea ninguna tarea. OJO: aqui NO hay objeto Centinela que sirva de segundo candado (el board es global), asi que el UNICO candado es el abort -> no cambiar la estrategia sin repensarlo. PENDIENTE de correr headless: programar desde el board implica arrastrar una orden al calendario, que es DOM de FullCalendar (.fc-event) y no esta guionizado. Alternativa mas simple cuando la OT Centinela 11677 (ya desarchivada) este sin tarea: programarla desde su propia ficha. usedBy: wo-schedule-button."
+    },
+    "workOrderSpecParams": {
+      "id": 11677,
+      "screenPath": "/Domains/{domain}/WorkOrders/{id}",
+      "marker": "Centinela",
+      "_para": [
+        "ArchivePartNumberRecipeNodeSpecFieldParams",
+        "AddParamsToPartNumberRecipeNodeSpecFieldParam"
+      ],
+      "_estrategia": "capture-abort",
+      "_nota": "OT Centinela 11677. Las dos se disparan en el modal \"Editar Especificaciones\" de la ficha (ancla ESTRUCTURAL data-steelhead-component-id=\"WORK_ORDER_PAGE_PARTS_EDIT_SPECS_BUTTON\" para abrirlo, y \"WORK_PARTS_INFO_SAVE_SPECS_AND_CLOSE_BUTTON\" para guardar — ambos verificados en vivo el 2026-07-28; esa pantalla mezcla idiomas, el texto no sirve de ancla). Secuencia: abrir el modal, CAMBIAR el parámetro de un campo y guardar; Archive sale si el campo ya tenía parámetro y AddParams siempre. CAPTURA-Y-ABORTA: las dos ops se marcan en sink.abortOps ANTES de tocar guardar, así el request se registra y se aborta -> la OT Centinela no queda modificada. Doble candado: la ficha debe decir \"Centinela\" (isSentinel fail-closed) + abort. PENDIENTE de correr headless: cambiar el parámetro es un dropdown del modal que aún no está guionizado, y hay que confirmar que la OT Centinela tenga al menos una spec con un campo de dos opciones (si solo hay una, no hay cambio que provocar). usedBy: wo-spec-params."
     }
   },
   "_dominio": "TLC/344 (Toluca — los centinelas viven aquí; 344 es TLC, NO MTY. MTY es otro dominio sin datos aún)"
