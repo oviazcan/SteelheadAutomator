@@ -186,3 +186,117 @@ test('buildCsv: escapa comillas y comas de los nombres', () => {
   assert.match(csv, /"A,B""C"/);
   assert.match(csv, /"nodo, con coma"/);
 });
+
+// ── Fase 2: origen por Número de Parte ───────────────────────────────────────
+
+test('parsePastedPartNumbers: separa ids numéricos de nombres', () => {
+  const r = G.parsePastedPartNumbers('3044551\n80236-167-07\n 3612955 \nABC-123');
+  assert.deepEqual(r.ids, [3044551, 3612955]);
+  assert.deepEqual(r.names, ['80236-167-07', 'ABC-123']);
+  assert.equal(r.ignored, 0);
+});
+
+test('parsePastedPartNumbers: deduplica y respeta el orden', () => {
+  const r = G.parsePastedPartNumbers('80236-167-07, 80236-167-07\n3044551\n3044551');
+  assert.deepEqual(r.names, ['80236-167-07']);
+  assert.deepEqual(r.ids, [3044551]);
+});
+
+test('parsePastedPartNumbers: entrada vacía no truena', () => {
+  const r = G.parsePastedPartNumbers('');
+  assert.deepEqual(r.ids, []);
+  assert.deepEqual(r.names, []);
+});
+
+test('resolvePartNumbers: un nombre homónimo se expande a TODOS sus NP', async () => {
+  const deps = {
+    searchPartNumbers: async (q) => ([
+      { id: 3044551, name: '80236-167-07' },
+      { id: 3612955, name: '80236-167-07' },
+      { id: 999, name: '80236-167-07-B' },   // parcial: NO debe entrar
+    ]),
+    getPartNumber: async (id) => ({ id, name: 'PN' + id }),
+  };
+  const r = await G.resolvePartNumbers({ ids: [], names: ['80236-167-07'] }, deps);
+  assert.deepEqual(r.partNumberIds.sort((a, b) => a - b), [3044551, 3612955]);
+  assert.equal(r.porNombre['80236-167-07'].length, 2);
+  assert.deepEqual(r.noResueltos, []);
+});
+
+test('resolvePartNumbers: un nombre sin coincidencia exacta se reporta', async () => {
+  const deps = {
+    searchPartNumbers: async () => ([{ id: 1, name: 'OTRO-NOMBRE' }]),
+    getPartNumber: async (id) => ({ id, name: 'PN' + id }),
+  };
+  const r = await G.resolvePartNumbers({ ids: [], names: ['NO-EXISTE'] }, deps);
+  assert.deepEqual(r.partNumberIds, []);
+  assert.deepEqual(r.noResueltos, ['NO-EXISTE']);
+});
+
+test('resolvePartNumbers: los ids pegados pasan directo, sin buscar', async () => {
+  let buscó = false;
+  const deps = {
+    searchPartNumbers: async () => { buscó = true; return []; },
+    getPartNumber: async (id) => ({ id, name: 'PN' + id }),
+  };
+  const r = await G.resolvePartNumbers({ ids: [3044551], names: [] }, deps);
+  assert.deepEqual(r.partNumberIds, [3044551]);
+  assert.equal(buscó, false);
+});
+
+test('findWorkOrdersForPartNumbers: junta las OTs y DEDUPLICA entre NPs', async () => {
+  const deps = {
+    workOrdersForPartNumber: async (pnId) => (pnId === 1
+      ? [{ id: 100, idInDomain: 5769 }, { id: 101, idInDomain: 5770 }]
+      : [{ id: 101, idInDomain: 5770 }, { id: 102, idInDomain: 5771 }]),
+  };
+  const r = await G.findWorkOrdersForPartNumbers([1, 2], deps);
+  assert.deepEqual(r.idsInDomain.sort((a, b) => a - b), [5769, 5770, 5771]);
+  assert.equal(r.porPartNumber[1].length, 2);
+  assert.equal(r.porPartNumber[2].length, 2);
+});
+
+test('findWorkOrdersForPartNumbers: un NP sin órdenes no rompe ni aporta', async () => {
+  const deps = { workOrdersForPartNumber: async (pnId) => (pnId === 1 ? [{ id: 1, idInDomain: 10 }] : []) };
+  const r = await G.findWorkOrdersForPartNumbers([1, 2], deps);
+  assert.deepEqual(r.idsInDomain, [10]);
+  assert.deepEqual(r.sinOrdenes, [2]);
+});
+
+test('findWorkOrdersForPartNumbers: si una consulta falla, lo reporta y sigue', async () => {
+  const deps = {
+    workOrdersForPartNumber: async (pnId) => {
+      if (pnId === 2) throw new Error('Failed to fetch');
+      return [{ id: 1, idInDomain: 10 }];
+    }
+  };
+  const r = await G.findWorkOrdersForPartNumbers([1, 2], deps);
+  assert.deepEqual(r.idsInDomain, [10]);
+  assert.equal(r.errores.length, 1);
+  assert.match(r.errores[0], /Failed to fetch/);
+});
+
+test('el filtro de órdenes por NP usa partNumberIdFilter — los nombres parecidos NO filtran', () => {
+  // Verificado en vivo el 2026-07-28: partNumberIdFilter → 4 órdenes; partNumberIdsFilter,
+  // partNumberFilter y partNumberIds devuelven 4284 (el dominio ENTERO) porque el server los
+  // IGNORA en silencio. Un typo aquí no falla ruidosamente: procesaría todas las órdenes.
+  const src = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'remote', 'scripts', 'wo-spec-params.js'), 'utf8');
+  // Se mira SOLO el cuerpo de workOrdersForPartNumber: fuera de ahí, "partNumberIds" es el
+  // nombre legítimo de una estructura interna, y el comentario nombra los malos a propósito.
+  const i = src.indexOf('async workOrdersForPartNumber(');
+  assert.ok(i > 0, 'no encontré workOrdersForPartNumber');
+  const cuerpo = src.slice(i, src.indexOf('\n    }', i));
+  assert.match(cuerpo, /partNumberIdFilter:\s*\[partNumberId\]/,
+    'debe filtrar con partNumberIdFilter');
+  for (const malo of ['partNumberIdsFilter', 'partNumberFilter:', 'partNumberIds:']) {
+    assert.equal(cuerpo.includes(malo), false,
+      'no uses ' + malo + ' — el server lo ignora en silencio y devuelve el dominio entero');
+  }
+});
+
+test('el modo por NP está expuesto y cableado', () => {
+  assert.equal(typeof G.parsePastedPartNumbers, 'function');
+  assert.equal(typeof G.resolvePartNumbers, 'function');
+  assert.equal(typeof G.findWorkOrdersForPartNumbers, 'function');
+});

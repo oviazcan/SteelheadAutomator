@@ -6,7 +6,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '0.1.0';
+  const VERSION = '0.2.0';
   const PANEL_ID = 'sa-wo-spec-params-panel';
   const STYLE_ID = 'sa-wo-spec-params-style';
   const FAB_ID = 'sa-wo-spec-params-fab';
@@ -38,6 +38,81 @@
     return { ids, ignored };
   }
 
+  // Pega Números de Parte: separa ids numéricos de nombres. Ambos conviven en la misma caja
+  // porque el operador a veces trae la lista del ERP (ids) y a veces del cliente (nombres).
+  function parsePastedPartNumbers(text) {
+    const ids = [], names = [];
+    const seenId = new Set(), seenName = new Set();
+    let ignored = 0;
+    for (const raw of String(text == null ? '' : text).split(/[\n,;]+/)) {
+      const t = raw.trim();
+      if (!t) continue;
+      if (/^\d+$/.test(t)) {
+        const n = parseInt(t, 10);
+        if (!seenId.has(n)) { seenId.add(n); ids.push(n); }
+      } else if (/^[\w][\w .\-/]*$/.test(t)) {
+        const u = t.toUpperCase();
+        if (!seenName.has(u)) { seenName.add(u); names.push(t); }
+      } else {
+        ignored++;
+      }
+    }
+    return { ids, names, ignored };
+  }
+
+  // Nombre → ids. OJO: los nombres de NP NO son únicos — verificado el 2026-07-28, "80236-167-07"
+  // resuelve a NUEVE NPs activos. Se expande a TODOS los homónimos exactos, y eso es seguro:
+  // cada orden se compara contra el NP que ELLA tiene asociado, nunca contra "el que pegaste".
+  // Expandir solo amplía la cobertura; no puede corregir una orden contra el NP equivocado.
+  async function resolvePartNumbers(parsed, deps) {
+    const D = deps || realDeps;
+    const out = { partNumberIds: [], porNombre: {}, noResueltos: [], errores: [] };
+    const seen = new Set();
+    for (const id of (parsed.ids || [])) {
+      if (!seen.has(id)) { seen.add(id); out.partNumberIds.push(id); }
+    }
+    for (const name of (parsed.names || [])) {
+      let nodes = [];
+      try {
+        nodes = await D.searchPartNumbers(name);
+      } catch (e) {
+        out.errores.push(name + ': ' + ((e && e.message) ? e.message : String(e)));
+        continue;
+      }
+      const target = String(name).trim().toUpperCase();
+      const exactos = (nodes || []).filter(n => String(n.name || '').trim().toUpperCase() === target);
+      if (!exactos.length) { out.noResueltos.push(name); continue; }
+      out.porNombre[name] = exactos.map(n => ({ id: n.id, name: n.name }));
+      for (const n of exactos) {
+        if (!seen.has(n.id)) { seen.add(n.id); out.partNumberIds.push(n.id); }
+      }
+    }
+    return out;
+  }
+
+  // NPs → sus órdenes abiertas. Una orden puede colgar de varios NPs, así que se deduplica.
+  async function findWorkOrdersForPartNumbers(partNumberIds, deps) {
+    const D = deps || realDeps;
+    const out = { idsInDomain: [], porPartNumber: {}, sinOrdenes: [], errores: [] };
+    const seen = new Set();
+    for (const pnId of (partNumberIds || [])) {
+      let wos = [];
+      try {
+        wos = await D.workOrdersForPartNumber(pnId);
+      } catch (e) {
+        out.errores.push('NP ' + pnId + ': ' + ((e && e.message) ? e.message : String(e)));
+        continue;
+      }
+      out.porPartNumber[pnId] = wos || [];
+      if (!wos || !wos.length) { out.sinOrdenes.push(pnId); continue; }
+      for (const w of wos) {
+        const k = w.idInDomain;
+        if (k != null && !seen.has(k)) { seen.add(k); out.idsInDomain.push(k); }
+      }
+    }
+    return out;
+  }
+
   function api() { return window.SteelheadAPI; }
   function core() { return window.WoSpecParamsCore; }
 
@@ -67,6 +142,34 @@
     async getPartNumber(partNumberId) {
       const d = await api().query('GetPartNumber', { partNumberId }, 'GetPartNumber');
       return d && d.partNumberById;
+    },
+    // Nombre → NPs. searchQuery hace match PARCIAL; el filtro exacto lo pone resolvePartNumbers.
+    async searchPartNumbers(name) {
+      const d = await api().query('SearchPartNumbers',
+        { searchQuery: name, first: 100, offset: 0, orderBy: ['ID_DESC'] }, 'SearchPartNumbers');
+      return (d && d.searchPartNumbers && d.searchPartNumbers.nodes) || [];
+    },
+    // NP → sus órdenes ABIERTAS (status ACTIVE), paginado.
+    // `partNumberIdFilter` NO aparece en el sample del scan: se descubrió probando en vivo el
+    // 2026-07-28. CUIDADO: los nombres parecidos (partNumberIdsFilter, partNumberFilter,
+    // partNumberIds) el server los IGNORA EN SILENCIO y devuelve el dominio completo — 4284
+    // órdenes en vez de 4. Un typo aquí no falla: procesa todo. Por eso el test lo fija.
+    async workOrdersForPartNumber(partNumberId) {
+      const PAGE = 100;
+      const out = [];
+      for (let offset = 0; ; offset += PAGE) {
+        const d = await api().query('AllWorkOrders', {
+          status: 'ACTIVE', includeArchived: 'NO', couponWorkOrders: null, computeMargins: false,
+          orderBy: ['ID_DESC'], offset, first: PAGE, searchQuery: '',
+          partNumberIdFilter: [partNumberId]
+        }, 'AllWorkOrders');
+        const paged = d && d.pagedData;
+        const nodes = (paged && paged.nodes) || [];
+        for (const n of nodes) out.push({ id: n.id, idInDomain: n.idInDomain, name: n.name || '' });
+        const total = paged && paged.totalCount;
+        if (!nodes.length || out.length >= (total || 0) || offset > 5000) break;
+      }
+      return out;
     }
   };
 
@@ -311,24 +414,102 @@
 
     if (o.mode === 'pantalla' && fromScreen) { runAnalysis(ui, [fromScreen]); return; }
 
-    const p = el('p', null,
-      'Pega los números de orden, uno por renglón. También acepta comas.');
+    // Dos orígenes: por orden o por Número de Parte.
+    let modo = o.mode === 'np' ? 'np' : 'ot';
+    const tabs = el('div');
+    tabs.style.cssText = 'display:flex;gap:8px;margin-bottom:12px';
+    const bOT = el('button', null, 'Por orden');
+    const bNP = el('button', null, 'Por Número de Parte');
+    const p = el('p');
     const ta = el('textarea');
-    ta.setAttribute('placeholder', '5769\n5770\n5771');
-    if (fromScreen) ta.value = String(fromScreen);
-    const hint = el('p', 'sa-mut',
-      'Se leen sus specs y se comparan contra el Número de Parte. Nada se escribe todavía.');
-    ui.bd.append(p, ta, hint);
+    const hint = el('p', 'sa-mut');
+
+    function pintar() {
+      bOT.className = modo === 'ot' ? 'sa-go' : '';
+      bNP.className = modo === 'np' ? 'sa-go' : '';
+      if (modo === 'ot') {
+        p.textContent = 'Pega los números de orden, uno por renglón. También acepta comas.';
+        ta.setAttribute('placeholder', '5769\n5770\n5771');
+        hint.textContent = 'Se leen sus specs y se comparan contra el Número de Parte. Nada se escribe todavía.';
+      } else {
+        p.textContent = 'Pega los Números de Parte que corregiste — nombres o ids, uno por renglón.';
+        ta.setAttribute('placeholder', '80236-167-07\n3044551');
+        hint.textContent = 'Busco todas sus órdenes abiertas. Un mismo nombre puede corresponder a varios '
+          + 'Números de Parte distintos: se toman todos, y cada orden se compara contra el suyo.';
+      }
+    }
+    bOT.addEventListener('click', () => { modo = 'ot'; pintar(); });
+    bNP.addEventListener('click', () => { modo = 'np'; pintar(); });
+    tabs.append(bOT, bNP);
+    if (fromScreen && modo === 'ot') ta.value = String(fromScreen);
+    pintar();
+    ui.bd.append(tabs, p, ta, hint);
 
     const go = el('button', 'sa-go', 'Analizar');
     go.addEventListener('click', () => {
-      const parsed = parsePastedWorkOrders(ta.value);
-      if (!parsed.ids.length) { alert('No encontré ningún número de orden.'); return; }
-      runAnalysis(ui, parsed.ids, parsed.ignored);
+      if (modo === 'ot') {
+        const parsed = parsePastedWorkOrders(ta.value);
+        if (!parsed.ids.length) { alert('No encontré ningún número de orden.'); return; }
+        runAnalysis(ui, parsed.ids, parsed.ignored);
+      } else {
+        const parsed = parsePastedPartNumbers(ta.value);
+        if (!parsed.ids.length && !parsed.names.length) { alert('No encontré ningún Número de Parte.'); return; }
+        runFromPartNumbers(ui, parsed);
+      }
     });
     const cancel = el('button', null, 'Cancelar');
     cancel.addEventListener('click', closePanel);
     ui.ft.append(cancel, go);
+  }
+
+  // Fase 2 — de Números de Parte a sus órdenes
+  async function runFromPartNumbers(ui, parsed) {
+    setTitle(ui, '🔧 Buscando las órdenes de esos Números de Parte…');
+    clear(ui.bd); clear(ui.ft);
+    const status = el('p', null, 'Resolviendo Números de Parte…');
+    ui.bd.appendChild(status);
+
+    const res = await resolvePartNumbers(parsed);
+    if (!res.partNumberIds.length) {
+      clear(ui.bd);
+      const w = el('div', 'sa-err');
+      w.appendChild(el('div', null, 'No pude resolver ningún Número de Parte.'));
+      for (const n of res.noResueltos) w.appendChild(el('div', null, '  sin coincidencia exacta: ' + n));
+      for (const e of res.errores) w.appendChild(el('div', null, '  ' + e));
+      ui.bd.appendChild(w);
+      const c = el('button', null, 'Cerrar'); c.addEventListener('click', closePanel);
+      ui.ft.appendChild(c);
+      return;
+    }
+
+    status.textContent = 'Buscando órdenes abiertas de ' + res.partNumberIds.length + ' Número(s) de Parte…';
+    const wos = await findWorkOrdersForPartNumbers(res.partNumberIds);
+
+    // Lo que el operador necesita saber ANTES de que arranque el análisis pesado
+    const nota = el('div', 'sa-sum');
+    const nNombres = Object.keys(res.porNombre).length;
+    if (nNombres) {
+      for (const nombre of Object.keys(res.porNombre)) {
+        const lista = res.porNombre[nombre];
+        nota.appendChild(el('div', null,
+          '"' + nombre + '" → ' + lista.length + ' Número(s) de Parte' +
+          (lista.length > 1 ? ' con ese mismo nombre' : '')));
+      }
+    }
+    nota.appendChild(el('div', null,
+      res.partNumberIds.length + ' Números de Parte · ' + wos.idsInDomain.length + ' órdenes abiertas'));
+    if (wos.sinOrdenes.length) nota.appendChild(el('div', 'sa-mut',
+      wos.sinOrdenes.length + ' sin ninguna orden abierta (no aportan nada)'));
+    ui.bd.appendChild(nota);
+    for (const n of res.noResueltos) ui.bd.appendChild(el('div', 'sa-mut', 'Sin coincidencia exacta: ' + n));
+
+    if (!wos.idsInDomain.length) {
+      ui.bd.appendChild(el('p', null, 'Ninguno tiene órdenes abiertas: no hay nada que corregir.'));
+      const c = el('button', null, 'Cerrar'); c.addEventListener('click', closePanel);
+      ui.ft.appendChild(c);
+      return;
+    }
+    await runAnalysis(ui, wos.idsInDomain, parsed.ignored);
   }
 
   // Fase 2 — análisis y preview
@@ -522,6 +703,7 @@
   function openFromPopup() {
     setTimeout(() => {
       try {
+        if (typeof location === 'undefined' || typeof document === 'undefined') return;
         const id = parseWorkOrderIdInDomain(location.pathname);
         window.WoSpecParams.open({ mode: id ? 'pantalla' : 'pegar' });
       } catch (e) {
@@ -564,6 +746,7 @@
   window.WoSpecParams = {
     VERSION,
     isWorkOrderDetailPath, parseWorkOrderIdInDomain, parsePastedWorkOrders,
+    parsePastedPartNumbers, resolvePartNumbers, findWorkOrdersForPartNumbers,
     analyzeWorkOrder, summarize, applyPlan, buildCsv,
     open, openFromPopup, closePanel, init,
     _realDeps: realDeps, _writeDeps: writeDeps
