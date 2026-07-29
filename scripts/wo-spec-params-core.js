@@ -9,10 +9,17 @@
 //
 // HAY DOS UNIVERSOS, no uno:
 //   · Spec EXTERNA (la del cliente, vía el NP; se reconoce porque su PartNumberWorkOrderSpec
-//     apunta a un partNumberSpec): TODOS sus campos vivos son casillas, y SOLO del nodo de
-//     inspección y empaque de la línea. Los que ese nodo no declara se FUERZAN.
-//     Un parámetro suyo en cualquier otro nodo es una ANOMALÍA: se reporta y no se toca.
+//     apunta a un partNumberSpec): TODOS sus campos vivos son casillas, y la COBERTURA SE MIDE
+//     POR ORDEN — un campo cuenta como cubierto si vive en CUALQUIER nodo, no solo en el de
+//     inspección. Solo lo que no está en ninguno se aplica (en el de inspección, forzándolo si
+//     ese nodo no lo declara).
 //   · Specs de PROCESO/línea: el universo es lo que cada nodo declara en recipeNodeSpecFields.
+//
+// v0.4.0 — POR QUÉ la cobertura es por orden: la receta reparte los campos externos entre
+// varios nodos que los declaran (el raíz y el de inspección declaran los mismos), y mirar solo
+// el de inspección hacía proponer duplicados de lo que ya existía. En la corrida real del
+// 2026-07-29 sobre 4436 órdenes eso eran ~7660 de 9551 cambios. Verificado contra las OTs
+// 16339/16341 (repartidas) y 16333 (todo en el QA): a las tres les faltaba SOLO el campo 33579.
 //
 // OJO — el ERP CLONA el parámetro al aplicarlo: pides el id del catálogo y queda un clon nuevo
 // que guarda su origen en specFieldParamByDerivedFromId. Por eso todo se normaliza con
@@ -293,15 +300,19 @@
   }
 
   // Clasifica TODAS las casillas de una OT, con los dos universos descritos arriba.
-  function classifyWorkOrder(input) {
+  function classifyWorkOrder(input, opts) {
+    const migrarAInspeccion = !!(opts && opts.migrarAInspeccion);
     const workOrder = input && input.workOrder;
     const partNumber = input && input.partNumber;
     const cells = [];
     const orphans = [];
     const anomalies = [];
-    const tally = { OK: 0, VACIO: 0, DIFIERE: 0, DUPLICADO: 0, AMBIGUO: 0, SIN_CATALOGO: 0 };
+    const fueraDeInspeccion = [];
+    const faltantesSinDestino = [];
+    const tally = { OK: 0, VACIO: 0, DIFIERE: 0, DUPLICADO: 0, AMBIGUO: 0, SIN_CATALOGO: 0, MIGRAR: 0 };
     if (!workOrder) {
-      return { cells, tally, orphans, anomalies, externalSpec: null, inspectionNode: null };
+      return { cells, tally, orphans, anomalies, fueraDeInspeccion, faltantesSinDestino,
+               externalSpec: null, inspectionNode: null };
     }
 
     const externalSpec = findExternalSpec(workOrder);
@@ -313,22 +324,95 @@
     const pnIndex = buildPartNumberIndex(partNumber);
     const nodes = (workOrder.recipeNodesByWorkOrderId && workOrder.recipeNodesByWorkOrderId.nodes) || [];
 
-    // Universo EXTERNA: los campos de la spec del cliente, completos, en el nodo de inspección.
-    if (externalSpec && targetId != null) {
-      const target = inspectionNode.node;
-      const declared = new Set(((target.recipeNodeSpecFieldsByRecipeNodeId
+    // Universo EXTERNA: los campos de la spec del cliente.
+    //
+    // La cobertura se mide POR ORDEN, no por nodo. Un campo puede vivir en cualquier nodo que
+    // lo DECLARE —el raíz y el de inspección suelen declarar los mismos— y estar ahí ya cuenta
+    // como cubierto. Mirar solo el nodo de inspección hacía proponer duplicados de lo que ya
+    // existía en otro lado: en la corrida del 2026-07-29 eran ~7660 de 9551 cambios.
+    if (externalSpec) {
+      // Dónde vive hoy cada campo externo, en toda la orden.
+      const ubicaciones = new Map();   // specFieldId → [{ node, row }]
+      for (const node of nodes) {
+        if (!node) continue;
+        for (const a of ((node.partNumberRecipeNodeSpecFieldParamsByRecipeNodeId
+          && node.partNumberRecipeNodeSpecFieldParamsByRecipeNodeId.nodes) || [])) {
+          if (!a || a.archivedAt || !extFields.has(a.specFieldId)) continue;
+          if (!ubicaciones.has(a.specFieldId)) ubicaciones.set(a.specFieldId, []);
+          ubicaciones.get(a.specFieldId).push({ node, row: a });
+        }
+      }
+
+      const target = (inspectionNode && inspectionNode.node) || null;
+      const declaredTarget = new Set(target ? ((target.recipeNodeSpecFieldsByRecipeNodeId
         && target.recipeNodeSpecFieldsByRecipeNodeId.nodes) || [])
-        .map(f => f && f.specFieldId).filter(x => x != null));
-      const appliedByField = groupActiveByField(target);
+        .map(f => f && f.specFieldId).filter(x => x != null) : []);
+
       for (const specFieldId of externalSpec.fieldIds) {
         const f = externalSpec.bySpecFieldId.get(specFieldId);
+        const fieldName = (f && f.specFieldBySpecFieldId && f.specFieldBySpecFieldId.name) || '';
+        const donde = ubicaciones.get(specFieldId) || [];
+        const desired = resolveDesired(specFieldId, catalogIndex, pnIndex);
+
+        if (donde.length === 0) {
+          // No está en NINGÚN nodo: es lo único que de verdad falta. Se aplica en el de
+          // inspección, forzándolo si ese nodo no declara el campo.
+          if (!target) {
+            faltantesSinDestino.push({ specFieldId, fieldName });
+            continue;
+          }
+          cells.push(buildCell({
+            node: target, specFieldId, fieldName, rows: [], desired,
+            scope: 'EXTERNA', forced: !declaredTarget.has(specFieldId), tally
+          }));
+          continue;
+        }
+
+        // Ya existe: la casilla vive donde está aplicada, y ahí se compara contra el NP.
+        // Con varias ubicaciones, buildCell resuelve el DUPLICADO sobre el nodo de la primera.
+        const rows = donde.map(d => d.row);
+        const host = donde[0].node;
+
+        // MIGRAR: si el operador lo pidió y el campo no está en el nodo de inspección, se
+        // archiva donde esté y se repone allá. Sin destino identificado NO se mueve nada:
+        // sacar un parámetro de su nodo sin saber dónde ponerlo lo deja huérfano.
+        const fueraDelQA = target && donde.every(d => d.node.id !== target.id);
+        if (migrarAInspeccion && fueraDelQA && desired.via !== 'AMBIGUO'
+            && desired.via !== 'SIN_CATALOGO' && desired.writeId != null) {
+          cells.push({
+            recipeNodeId: target.id, recipeNodeName: target.name || '',
+            specFieldId, fieldName, specName: desired.specName || '',
+            status: 'MIGRAR', via: desired.via, desired, appliedRows: rows,
+            toArchiveIds: rows.map(r => r.id),
+            toAddWriteId: desired.writeId,
+            pnwosId: desired.pnwosId || null,
+            reason: 'vivía en ' + (host.name || host.id) + '; se mueve al nodo de inspección',
+            forced: !declaredTarget.has(specFieldId), scope: 'EXTERNA',
+            migradoDesde: { recipeNodeId: host.id, recipeNodeName: host.name || '' }
+          });
+          tally.MIGRAR = (tally.MIGRAR || 0) + 1;
+          continue;
+        }
+
         cells.push(buildCell({
-          node: target, specFieldId,
-          fieldName: (f && f.specFieldBySpecFieldId && f.specFieldBySpecFieldId.name) || '',
-          rows: appliedByField.get(specFieldId) || [],
-          desired: resolveDesired(specFieldId, catalogIndex, pnIndex),
-          scope: 'EXTERNA', forced: !declared.has(specFieldId), tally
+          node: host, specFieldId, fieldName, rows, desired,
+          scope: 'EXTERNA', forced: false, tally
         }));
+
+        // Dato para el operador: qué campos externos viven fuera del nodo de inspección.
+        // NO se mueven — moverlos toca órdenes que ya están en piso y es decisión aparte.
+        if (target) {
+          for (const d of donde) {
+            if (d.node.id === target.id) continue;
+            fueraDeInspeccion.push({
+              specFieldId, fieldName,
+              recipeNodeId: d.node.id, recipeNodeName: d.node.name || '',
+              recipeNodeType: d.node.type || '', rowId: d.row.id,
+              paramName: (d.row.specFieldParamBySpecFieldParamId
+                && d.row.specFieldParamBySpecFieldParamId.name) || ''
+            });
+          }
+        }
       }
     }
 
@@ -337,22 +421,10 @@
       if (!node) continue;
       const appliedByField = groupActiveByField(node);
 
-      // Parámetros de la spec externa fuera del nodo de inspección: error de datos, no casilla.
-      if (node.id !== targetId) {
-        for (const entry of appliedByField) {
-          const fieldId = entry[0];
-          if (!extFields.has(fieldId)) continue;
-          for (const r of entry[1]) {
-            const sfp = r.specFieldParamBySpecFieldParamId || {};
-            anomalies.push({
-              recipeNodeId: node.id, recipeNodeName: node.name || '', recipeNodeType: node.type || '',
-              specFieldId: fieldId,
-              fieldName: (r.specFieldBySpecFieldId && r.specFieldBySpecFieldId.name) || '',
-              rowId: r.id, paramName: sfp.name || ''
-            });
-          }
-        }
-      }
+      // Ya no hay "anomalías" de la spec externa: el universo EXTERNA cubre TODOS sus campos
+      // vivan donde vivan, y que un nodo no declare el campo es exactamente lo que significa
+      // "forzado" — algo que nosotros mismos hacemos a propósito. Lo que sí se reporta es
+      // fueraDeInspeccion, arriba: dónde vive cada campo, para que el operador decida.
 
       // Casillas de proceso: lo que el nodo declara, MENOS los campos de la spec externa
       // (esos ya se trataron arriba, y solo en el nodo de inspección).
@@ -385,7 +457,8 @@
       }
     }
 
-    return { cells, tally, orphans, anomalies, externalSpec, inspectionNode };
+    return { cells, tally, orphans, anomalies, fueraDeInspeccion, faltantesSinDestino,
+             externalSpec, inspectionNode };
   }
 
   // ── Plan de escritura ─────────────────────────────────────────────────────
@@ -401,7 +474,7 @@
 
     for (const c of cells) {
       if (c.status === 'AMBIGUO' || c.status === 'SIN_CATALOGO') { out.skipped.push(c); continue; }
-      if (c.status === 'OK') continue;
+      if (c.status === 'OK') continue;   // MIGRAR sí escribe: archiva en origen y repone en destino
 
       let changed = false;
       for (const id of (c.toArchiveIds || [])) { out.archiveIds.push(id); changed = true; }

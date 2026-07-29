@@ -2826,7 +2826,13 @@ const SpecMigrator = (() => {
       }
 
       for (const [sfsId, bucket] of buckets) {
-        if (bucket.params.length < 2) continue;
+        // 2026-07-29: un SpecField con UNA sola fila también entra si esa fila trae
+        // processNodeId FORZADO. Antes el `< 2` la saltaba, y ese es exactamente el caso que
+        // dejó `bulk-upload` antes de la regla 1.4.38: params clavados al defaultProcessNodeId
+        // del NP, que Steelhead materializa en el nodo RAÍZ de cada OT nueva. El deduplicador
+        // corría sobre todo el dominio y no los veía.
+        const tieneNodoForzado = bucket.params.some(p => p.processNodeId);
+        if (bucket.params.length < 2 && !tieneNodoForzado) continue;
         const sorted = [...bucket.params].sort((a, b) => Number(b.id) - Number(a.id));
 
         const mappedParams = sorted.map(p => ({
@@ -2845,6 +2851,13 @@ const SpecMigrator = (() => {
         // autoDecidable: sameSfp (o sameName) Y al menos un row tiene processNodeId=NULL.
         //   Si ningún row tiene NULL queda manual: el validator sólo archive y no podemos
         //   convertir un row con processNode en NULL (eso lo hace bulk-upload).
+        // Plan de liberación de nodo forzado (núcleo puro, testeado).
+        const SMNref = (typeof window !== 'undefined' && window.SpecMigratorNormalize) || null;
+        const releasePlan = SMNref
+          ? SMNref.planForcedNodeRelease(mappedParams.map(p => ({
+              id: p.rowId, processNodeId: p.processNodeId, paramId: p.sfpId, paramName: p.sfpName })))
+          : { action: 'ok', archiveIds: [], insertParamId: null };
+
         const firstSfpId = mappedParams[0].sfpId;
         const firstName = mappedParams[0].sfpName;
         const sameSfp = firstSfpId != null && mappedParams.every(p => p.sfpId === firstSfpId);
@@ -2867,6 +2880,11 @@ const SpecMigrator = (() => {
           sameSfp,
           sameName,
           autoDecidable,
+          // 2026-07-29: qué hacer con las filas de nodo forzado. 'rewrite' exige INSERTAR
+          // una fila sin nodo — el apply masivo solo sabía archivar, y por eso estos casos
+          // quedaban sin corregir aunque se detectaran.
+          releasePlan,
+          forcedNodeIds: mappedParams.filter(p => p.processNodeId).map(p => p.processNodeId),
         };
         groups.push(group);
 
@@ -3124,16 +3142,41 @@ const SpecMigrator = (() => {
     void parentRunId;
 
     const tasks = [];
+    // 2026-07-29: además de archivar sobrantes, LIBERAR el nodo forzado. Un param del NP con
+    // processNodeId hace que Steelhead lo materialice en ESE nodo al crear la OT (el raíz),
+    // en vez de dejarlo caer en el nodo que declara el specField. Liberar = archivar la fila
+    // forzada y reponer la misma con processNodeId:null. Hasta hoy el apply solo archivaba,
+    // así que estos casos se detectaban pero no se corregían.
+    const releases = [];
     for (const g of dupState.groups) {
       const dec = dupState.decisions.get(g.key);
       if (!dec || dec.ignored) continue;
+
+      const rp = g.releasePlan || { action: 'ok', archiveIds: [], insertParamId: null };
+      if (rp.action === 'rewrite' || rp.action === 'archive-only') {
+        const yaArchivadas = new Set(rp.archiveIds || []);
+        for (const id of (rp.archiveIds || [])) {
+          tasks.push({ group: g, paramRowId: id, sfpName: '(nodo forzado)', esLiberacion: true });
+        }
+        if (rp.action === 'rewrite' && rp.insertParamId != null) {
+          releases.push({ group: g, specFieldId: g.fieldId, specFieldParamId: rp.insertParamId });
+        }
+        // el resto de sobrantes del grupo, si los hubiera
+        for (const p of g.params) {
+          if (p.rowId === dec.winnerRowId || yaArchivadas.has(p.rowId)) continue;
+          tasks.push({ group: g, paramRowId: p.rowId, sfpName: p.sfpName });
+        }
+        continue;
+      }
+      if (rp.action === 'ambiguous') continue;   // valores distintos: no se decide solo
+
       for (const p of g.params) {
         if (p.rowId === dec.winnerRowId) continue;
         tasks.push({ group: g, paramRowId: p.rowId, sfpName: p.sfpName });
       }
     }
 
-    if (!tasks.length) {
+    if (!tasks.length && !releases.length) {
       alert('No hay nada que archivar (todos los grupos están ignorados o solo tienen 1 param).');
       return;
     }
@@ -3179,7 +3222,37 @@ const SpecMigrator = (() => {
     body.innerHTML = '';
     const sum = document.createElement('div');
     sum.className = okRows.length && !errRows.length ? 'dup-success' : 'dup-error';
-    sum.textContent = `Resultado: ${okRows.length} archivados, ${errRows.length} errores. Reversible vía UpdatePartNumberSpecParam con archivedAt:null (usa los rowId del XLSX).`;
+    // Reponer, SIN nodo, los params liberados. Va DESPUÉS del archivado: si se insertara
+    // antes, chocaría con el constraint de 1 fila viva por specFieldId.
+    let repuestos = 0;
+    for (const r of releases) {
+      if (dupState.runId !== myRunId) break;
+      try {
+        await dupWithRetry(
+          () => api().query('AddParamsToPartNumber', {
+            input: {
+              partNumberId: r.group.pnId,
+              parametersToAdd: [{
+                specFieldId: Number(r.specFieldId),
+                specFieldParamId: Number(r.specFieldParamId),
+                isGeneric: false,
+                geometryTypeSpecFieldId: null,
+                processNodeId: null,          // ← el punto de todo esto
+                processNodeOccurrence: null,
+                locationId: null,
+              }],
+            },
+          }, 'AddParamsToPartNumber'),
+          `reponer sin nodo pn=${r.group.pnId} field=${r.specFieldId}`
+        );
+        repuestos++;
+      } catch (e) {
+        errRows.push({ group: r.group, paramRowId: '(reposición)', sfpName: '(sin nodo)',
+                       error: e?.message || String(e) });
+      }
+    }
+
+    sum.textContent = `Resultado: ${okRows.length} archivados, ${repuestos} repuestos sin nodo, ${errRows.length} errores. Reversible vía UpdatePartNumberSpecParam con archivedAt:null (usa los rowId del XLSX).`;
     body.appendChild(sum);
 
     if (errRows.length) {

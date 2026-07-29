@@ -6,7 +6,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '0.3.0';
+  const VERSION = '0.5.0';
   const PANEL_ID = 'sa-wo-spec-params-panel';
   const STYLE_ID = 'sa-wo-spec-params-style';
   const FAB_ID = 'sa-wo-spec-params-fab';
@@ -167,6 +167,7 @@
       workOrderId: r.workOrderId,
       tieneTrabajo,
       nAnomalias: (r.anomalies || []).length,
+      nFueraDeInspeccion: (r.fueraDeInspeccion || []).length,
       nForzadas: (r.cells || []).filter(c => c && c.forced).length,
       nOmitidas: (plan.skipped || []).length
     };
@@ -373,7 +374,8 @@
           if (_pnCache) _pnCache.set(partNumberId, partNumber);
         }
         if (!workOrder) { results.push({ partNumberId, idInDomain, error: 'sin datos de specs' }); continue; }
-        const cls = C.classifyWorkOrder({ workOrder, partNumber });
+        const cls = C.classifyWorkOrder({ workOrder, partNumber },
+                                        { migrarAInspeccion: _migrarAInspeccion });
         const plan = C.buildWritePlan(cls, { partNumberId });
         workOrder = null;   // EJE A: soltar los 0.87 MB antes de la siguiente vuelta
         results.push({
@@ -385,6 +387,8 @@
           cells: cls.cells,
           orphans: cls.orphans,
           anomalies: cls.anomalies,
+          fueraDeInspeccion: cls.fueraDeInspeccion || [],
+          faltantesSinDestino: cls.faltantesSinDestino || [],
           externalSpec: cls.externalSpec
             ? { specName: cls.externalSpec.specName, nCampos: cls.externalSpec.fieldIds.size }
             : null,
@@ -402,7 +406,7 @@
 
   function summarize(results) {
     const s = { ordenes: 0, casillas: 0, aCorregir: 0, omitidas: 0, aArchivar: 0, aAgregar: 0,
-                forzadas: 0, anomalias: 0 };
+                forzadas: 0, anomalias: 0, fueraDeInspeccion: 0 };
     for (const r of (results || [])) {
       if (!r || !r.tally) continue;
       s.ordenes++;
@@ -415,6 +419,7 @@
       s.aAgregar += (r.plan && r.plan.parametersToAdd ? r.plan.parametersToAdd.length : 0);
       s.forzadas += (r.cells || []).filter(c => c && c.forced).length;
       s.anomalias += (r.anomalies || []).length;
+      s.fueraDeInspeccion += (r.fueraDeInspeccion || []).length;
     }
     return s;
   }
@@ -616,7 +621,17 @@
     tabs.append(bOT, bNP, bTodo);
     if (fromScreen && modo === 'ot') ta.value = String(fromScreen);
     pintar();
-    ui.bd.append(tabs, p, ta, hint);
+    const migWrap = el('label', 'sa-mut');
+    migWrap.style.cssText = 'display:flex;gap:8px;align-items:flex-start;margin-top:12px;cursor:pointer';
+    const migChk = document.createElement('input');
+    migChk.type = 'checkbox';
+    migChk.checked = _migrarAInspeccion;
+    migChk.addEventListener('change', () => { _migrarAInspeccion = migChk.checked; });
+    const migTxt = el('span', null,
+      'Mover al nodo de Inspección y Empaque los parámetros que hoy viven en otro nodo. '
+      + 'Sin esto solo se aplica lo que falta; con esto además se reubica lo existente.');
+    migWrap.append(migChk, migTxt);
+    ui.bd.append(tabs, p, ta, hint, migWrap);
 
     const go = el('button', 'sa-go', 'Analizar');
     go.addEventListener('click', () => {
@@ -642,6 +657,7 @@
   const CK_KEY = 'scan-dominio';
   let _stopScan = false;
   let _memMonitor = null;
+  let _migrarAInspeccion = false;   // lo enciende el operador en el panel
 
   async function openScan(ui0) {
     const ui = ui0 || buildShell('🔧 Escanear todas las órdenes abiertas');
@@ -1203,6 +1219,8 @@
     isWorkOrderDetailPath, parseWorkOrderIdInDomain, parsePastedWorkOrders,
     parsePastedPartNumbers, resolvePartNumbers, findWorkOrdersForPartNumbers,
     runPool, planScanChunks, mergeCheckpoint, slimResult, openScan,
+    setMigrarAInspeccion: (v) => { _migrarAInspeccion = !!v; },
+    getMigrarAInspeccion: () => _migrarAInspeccion,
     analyzeWorkOrder, summarize, applyPlan, buildCsv,
     open, openFromPopup, closePanel, init,
     _realDeps: realDeps, _writeDeps: writeDeps

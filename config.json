@@ -1,6 +1,6 @@
 {
-  "version": "1.11.2",
-  "lastUpdated": "2026-07-28T23:25",
+  "version": "1.11.3",
+  "lastUpdated": "2026-07-29T15:41",
   "extensionVersion": "1.7.1",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -2881,8 +2881,8 @@
     "scripts/sensor-graph-hide-all-core.js": "795d1741fc04de7b8a5a111542e36fe53a8b3ee473c3f0b7a457780df3ea213e",
     "scripts/sensor-graph-hide-all.js": "3da2ad449d6792035a8ae952cc829ad7d6b5dd598b7281799b473cea5087ca6f",
     "scripts/sensor-status-autofill.js": "e19d6183c84c1cdd153110bdd31b3eb95b1973b089210182a177937a11f2b6bd",
-    "scripts/spec-migrator-normalize.js": "11873800f3805139c2ffc8f9f25dc36efb8ec575f9e84b3ce96638a76072ffdb",
-    "scripts/spec-migrator.js": "0ea0a1ce778ac237c15c3dd7b53a18597a3254289f87d09386415a30ad3d2ac1",
+    "scripts/spec-migrator-normalize.js": "57348dcb7c1b79025b871a6e08d7a0e69e2070cb0e1ecb22ff02d4beaee75399",
+    "scripts/spec-migrator.js": "5d85850f331da94560ca7ff1a41e5b703230738c71dab8c88ae3a358d307fb9b",
     "scripts/spec-params-bulk.js": "f49affd0af9c7aa11fd8ab586b4a2b70c71e34405796f5d136909db0184a929b",
     "scripts/spec-shared.js": "9a4adf965ffac349fdc69dd05b6bc1c50bb4dcc298333c7ff245acd955d0b255",
     "scripts/steelhead-api.js": "9377271a0ee2dd11b2a17908717575951b904c0ce6184ef07819d90b93c5de32",
@@ -2901,7 +2901,7 @@
     "scripts/wo-mover.js": "e924dfd9fb5d82ed65ab75151adcdc32cd4a94e950b8fcc2add9a9a65c78aefd",
     "scripts/wo-schedule-button.js": "cd1b7a6f51d86a0d25e208f2bb85fe18654153b0ba5ab183081c6c6e223e331c",
     "scripts/wo-schedule-core.js": "e36c4e61b973298c95a0094508101760f1d9f54548fdcb865be6646844de78b1",
-    "scripts/wo-spec-params-core.js": "0ad2319cdae9d3a335e1d27c3094dfd8d0f34032c2cc3d9ec26fba824c7a703d",
-    "scripts/wo-spec-params.js": "0ec8abb9d7effddfb9d455c254a83d46e80c18b94eb2d8ac903b46e92c659d44"
+    "scripts/wo-spec-params-core.js": "007bcedf3418fe2ff635f3586e14e4b5cd0beadf954bde374b1ad307e800a493",
+    "scripts/wo-spec-params.js": "bd6c237e5e10856710fed945516413e73f0c347523353385b9ca4a4b38b52e9f"
   }
 }
