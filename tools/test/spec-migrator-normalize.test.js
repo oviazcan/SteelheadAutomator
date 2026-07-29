@@ -1,7 +1,8 @@
 'use strict';
 const { test } = require('node:test');
 const assert = require('node:assert');
-const { planFieldNormalization, extractFieldRows, norm } = require('../../remote/scripts/spec-migrator-normalize.js');
+const SMN = require('../../remote/scripts/spec-migrator-normalize.js');
+const { planFieldNormalization, extractFieldRows, norm } = SMN;
 
 // ── planFieldNormalization ──────────────────────────────────────────────
 test('normalize: 1 activa, mismo nombre, distinto id → migrar', () => {
@@ -113,4 +114,74 @@ test('caso real 211394C: extractFieldRows + plan → normalize', () => {
   const plan = planFieldNormalization(rows, { newParamId: 'sfp_catalogo', newParamName: 'Sí o No' });
   assert.equal(plan.action, 'normalize');
   assert.equal(plan.oldRowId, '8831137'); // archiva la ACTIVA vieja
+});
+
+// ── Liberar nodo forzado (2026-07-29) ───────────────────────────────────────
+// Un parámetro del NP con processNodeId forzado hace que Steelhead lo materialice en ESE nodo
+// al crear la OT — típicamente el raíz— en vez de dejar que caiga en el nodo que declara el
+// specField. Lo escribía bulk-upload antes de la regla 1.4.38 (commit 046ec5b, 2026-05-25):
+//     processNodeId: part.processId || pn.defaultProcessNodeId || null
+// El fix detuvo la sangría pero los datos quedaron. El deduplicador no los ve por dos razones:
+// solo mira SpecFields con 2+ params, y su modo masivo solo archiva (no sabe insertar).
+
+test('planForcedNodeRelease: una sola fila con nodo forzado → archivar y reponer con null', () => {
+  const r = SMN.planForcedNodeRelease([
+    { id: 5001, processNodeId: 241753, paramId: 8801, paramName: 'Sí o No' },
+  ]);
+  assert.equal(r.action, 'rewrite');
+  assert.deepEqual(r.archiveIds, [5001]);
+  assert.equal(r.insertParamId, 8801, 'se repone el MISMO parámetro, solo que sin nodo');
+});
+
+test('planForcedNodeRelease: si ya hay una con null, las de nodo solo se archivan', () => {
+  const r = SMN.planForcedNodeRelease([
+    { id: 5001, processNodeId: 241753, paramId: 8801, paramName: 'Sí o No' },
+    { id: 5002, processNodeId: null, paramId: 8801, paramName: 'Sí o No' },
+  ]);
+  assert.equal(r.action, 'archive-only');
+  assert.deepEqual(r.archiveIds, [5001]);
+  assert.equal(r.insertParamId, null, 'la fila sin nodo ya cumple: no hay que insertar');
+});
+
+test('planForcedNodeRelease: sin nodo forzado no hay nada que hacer', () => {
+  const r = SMN.planForcedNodeRelease([
+    { id: 5002, processNodeId: null, paramId: 8801, paramName: 'Sí o No' },
+  ]);
+  assert.equal(r.action, 'ok');
+  assert.deepEqual(r.archiveIds, []);
+});
+
+test('planForcedNodeRelease: varias con nodo pero MISMO parámetro → una sola reposición', () => {
+  const r = SMN.planForcedNodeRelease([
+    { id: 5001, processNodeId: 241753, paramId: 8801, paramName: 'Sí o No' },
+    { id: 5003, processNodeId: 999888, paramId: 8801, paramName: 'Sí o No' },
+  ]);
+  assert.equal(r.action, 'rewrite');
+  assert.deepEqual(r.archiveIds.sort((a, b) => a - b), [5001, 5003]);
+  assert.equal(r.insertParamId, 8801);
+});
+
+test('planForcedNodeRelease: valores DISTINTOS no se deciden solos', () => {
+  const r = SMN.planForcedNodeRelease([
+    { id: 5001, processNodeId: 241753, paramId: 8801, paramName: '5 - 8 µm' },
+    { id: 5003, processNodeId: 999888, paramId: 8802, paramName: '5 - 10 µm' },
+  ]);
+  assert.equal(r.action, 'ambiguous');
+  assert.deepEqual(r.archiveIds, [], 'no se toca nada: elegir el valor no es cosa del applet');
+  assert.match(r.reason, /distinto/i);
+});
+
+test('planForcedNodeRelease: mismo nombre con id distinto se trata como equivalente', () => {
+  // revisión nueva del catálogo: mismo valor, otro specFieldParamId
+  const r = SMN.planForcedNodeRelease([
+    { id: 5001, processNodeId: 241753, paramId: 8801, paramName: 'Sí o No' },
+    { id: 5003, processNodeId: 241753, paramId: 9999, paramName: 'sí o no' },
+  ]);
+  assert.equal(r.action, 'rewrite');
+  assert.equal(r.insertParamId, 9999, 'se repone el más reciente');
+});
+
+test('planForcedNodeRelease: entrada vacía no truena', () => {
+  assert.equal(SMN.planForcedNodeRelease([]).action, 'ok');
+  assert.equal(SMN.planForcedNodeRelease(null).action, 'ok');
 });

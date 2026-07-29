@@ -19,6 +19,59 @@
   function norm(s) { return String(s == null ? '' : s).trim().toLowerCase(); }
 
   /**
+   * Decide cómo liberar un SpecField cuyas filas traen processNodeId FORZADO.
+   *
+   * Por qué importa: en el NP el parámetro debe ir SIN nodo. Cuando trae uno forzado,
+   * Steelhead lo materializa en ESE nodo al crear la OT —típicamente el raíz— en vez de
+   * dejar que caiga en el nodo que declara el specField. Resultado: órdenes con el
+   * parámetro en el lugar equivocado.
+   *
+   * Origen del daño: `bulk-upload` escribía `processNodeId: part.processId ||
+   * pn.defaultProcessNodeId` hasta la regla 1.4.38 (commit 046ec5b, 2026-05-25). El fix
+   * detuvo la sangría pero no limpió lo ya escrito, y el deduplicador no lo alcanza: solo
+   * mira SpecFields con 2+ params y su modo masivo únicamente archiva.
+   *
+   * @param {Array<{id, processNodeId, paramId, paramName}>} activeRows
+   *        Filas ACTIVAS del MISMO specFieldSpec en un NP.
+   * @returns {{action, archiveIds:number[], insertParamId:number|null, reason?:string}}
+   *   - 'ok'           → ninguna tiene nodo forzado; nada que hacer.
+   *   - 'archive-only' → ya existe una sin nodo: basta archivar las forzadas.
+   *   - 'rewrite'      → todas están forzadas y valen lo mismo: archivar todas y reponer una
+   *                      sin nodo con ese mismo parámetro.
+   *   - 'ambiguous'    → las forzadas tienen valores DISTINTOS: elegir cuál vale no le toca
+   *                      al applet. No se archiva nada.
+   */
+  function planForcedNodeRelease(activeRows) {
+    const rows = Array.isArray(activeRows) ? activeRows.filter(Boolean) : [];
+    const forced = rows.filter(r => r.processNodeId);
+    if (!forced.length) return { action: 'ok', archiveIds: [], insertParamId: null };
+
+    const libres = rows.filter(r => !r.processNodeId);
+    if (libres.length) {
+      // Ya hay una fila que cumple el contrato: las forzadas sobran.
+      return { action: 'archive-only', archiveIds: forced.map(r => r.id), insertParamId: null };
+    }
+
+    // Todas forzadas. Solo se puede reponer si representan el MISMO valor: distinto nombre
+    // significaría elegir criterio de calidad, y eso no lo decide una herramienta.
+    const nombres = new Set(forced.map(r => norm(r.paramName)));
+    if (nombres.size > 1) {
+      return {
+        action: 'ambiguous', archiveIds: [], insertParamId: null,
+        reason: 'las filas forzadas tienen valores distinto entre sí (' +
+                forced.map(r => JSON.stringify(r.paramName)).join(' vs ') + ')'
+      };
+    }
+    // Mismo valor: se repone el parámetro de id más alto (el del catálogo más reciente).
+    const ganador = forced.slice().sort((a, b) => Number(b.paramId) - Number(a.paramId))[0];
+    return {
+      action: 'rewrite',
+      archiveIds: forced.map(r => r.id),
+      insertParamId: ganador.paramId != null ? ganador.paramId : null
+    };
+  }
+
+  /**
    * Decide qué hacer con UN field "falso pendiente" de un PN.
    * @param {Array<{id, archivedAt, processNodeId, paramId, paramName}>} fieldRows
    *        TODAS las filas (activas y archivadas) del MISMO specFieldId en el PN.
@@ -66,7 +119,8 @@
     return out;
   }
 
-  const api = { planFieldNormalization: planFieldNormalization, extractFieldRows: extractFieldRows, norm: norm };
+  const api = { planFieldNormalization: planFieldNormalization, extractFieldRows: extractFieldRows,
+                planForcedNodeRelease: planForcedNodeRelease, norm: norm };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (typeof window !== 'undefined') window.SpecMigratorNormalize = api;
 })();

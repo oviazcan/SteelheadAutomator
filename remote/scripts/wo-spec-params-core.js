@@ -300,7 +300,8 @@
   }
 
   // Clasifica TODAS las casillas de una OT, con los dos universos descritos arriba.
-  function classifyWorkOrder(input) {
+  function classifyWorkOrder(input, opts) {
+    const migrarAInspeccion = !!(opts && opts.migrarAInspeccion);
     const workOrder = input && input.workOrder;
     const partNumber = input && input.partNumber;
     const cells = [];
@@ -308,7 +309,7 @@
     const anomalies = [];
     const fueraDeInspeccion = [];
     const faltantesSinDestino = [];
-    const tally = { OK: 0, VACIO: 0, DIFIERE: 0, DUPLICADO: 0, AMBIGUO: 0, SIN_CATALOGO: 0 };
+    const tally = { OK: 0, VACIO: 0, DIFIERE: 0, DUPLICADO: 0, AMBIGUO: 0, SIN_CATALOGO: 0, MIGRAR: 0 };
     if (!workOrder) {
       return { cells, tally, orphans, anomalies, fueraDeInspeccion, faltantesSinDestino,
                externalSpec: null, inspectionNode: null };
@@ -371,6 +372,28 @@
         // Con varias ubicaciones, buildCell resuelve el DUPLICADO sobre el nodo de la primera.
         const rows = donde.map(d => d.row);
         const host = donde[0].node;
+
+        // MIGRAR: si el operador lo pidió y el campo no está en el nodo de inspección, se
+        // archiva donde esté y se repone allá. Sin destino identificado NO se mueve nada:
+        // sacar un parámetro de su nodo sin saber dónde ponerlo lo deja huérfano.
+        const fueraDelQA = target && donde.every(d => d.node.id !== target.id);
+        if (migrarAInspeccion && fueraDelQA && desired.via !== 'AMBIGUO'
+            && desired.via !== 'SIN_CATALOGO' && desired.writeId != null) {
+          cells.push({
+            recipeNodeId: target.id, recipeNodeName: target.name || '',
+            specFieldId, fieldName, specName: desired.specName || '',
+            status: 'MIGRAR', via: desired.via, desired, appliedRows: rows,
+            toArchiveIds: rows.map(r => r.id),
+            toAddWriteId: desired.writeId,
+            pnwosId: desired.pnwosId || null,
+            reason: 'vivía en ' + (host.name || host.id) + '; se mueve al nodo de inspección',
+            forced: !declaredTarget.has(specFieldId), scope: 'EXTERNA',
+            migradoDesde: { recipeNodeId: host.id, recipeNodeName: host.name || '' }
+          });
+          tally.MIGRAR = (tally.MIGRAR || 0) + 1;
+          continue;
+        }
+
         cells.push(buildCell({
           node: host, specFieldId, fieldName, rows, desired,
           scope: 'EXTERNA', forced: false, tally
@@ -451,7 +474,7 @@
 
     for (const c of cells) {
       if (c.status === 'AMBIGUO' || c.status === 'SIN_CATALOGO') { out.skipped.push(c); continue; }
-      if (c.status === 'OK') continue;
+      if (c.status === 'OK') continue;   // MIGRAR sí escribe: archiva en origen y repone en destino
 
       let changed = false;
       for (const id of (c.toArchiveIds || [])) { out.archiveIds.push(id); changed = true; }

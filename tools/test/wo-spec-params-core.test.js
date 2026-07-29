@@ -472,3 +472,49 @@ test('v0.4.0: el plan de la orden repartida propone UN solo cambio', () => {
   assert.equal(plan.parametersToAdd.length, 1);
   assert.equal(plan.parametersToAdd[0].specFieldId, 33579);
 });
+
+// ── v0.5.0: MIGRAR al nodo de inspección ────────────────────────────────────
+// Decisión del operador (2026-07-29): los parámetros que hoy viven en el nodo raíz deben
+// quedar en el de Inspección y Empaque. Migrar = archivar en el raíz + aplicar en el QA.
+
+test('v0.5.0: sin migrar, un campo que vive en el nodo raíz se deja quieto', () => {
+  const { cells } = Core.classifyWorkOrder(REPARTIDA);
+  const adh = cells.find(c => c.specFieldId === 15820);
+  assert.equal(adh.status, 'OK');
+  assert.deepEqual(adh.toArchiveIds, []);
+});
+
+test('v0.5.0: con migrar, el campo del nodo raíz se archiva y se repone en el de inspección', () => {
+  const { cells } = Core.classifyWorkOrder(REPARTIDA, { migrarAInspeccion: true });
+  const adh = cells.find(c => c.specFieldId === 15820);
+  assert.equal(adh.status, 'MIGRAR');
+  assert.deepEqual(adh.toArchiveIds, [5001], 'archiva la fila del nodo raíz');
+  assert.equal(adh.recipeNodeId, 47237754, 'la reposición va al nodo de inspección');
+  assert.ok(adh.toAddWriteId > 0);
+});
+
+test('v0.5.0: migrar NO toca lo que ya está en el nodo de inspección', () => {
+  const { cells } = Core.classifyWorkOrder(REPARTIDA, { migrarAInspeccion: true });
+  const esp = cells.find(c => c.specFieldId === 15630);   // ya vive en el QA
+  assert.equal(esp.status, 'OK');
+  assert.deepEqual(esp.toArchiveIds, []);
+});
+
+test('v0.5.0: sin nodo de inspección identificable, migrar no hace nada', () => {
+  const wo = JSON.parse(JSON.stringify(REPARTIDA.workOrder));
+  wo.recipeNodesByWorkOrderId.nodes = wo.recipeNodesByWorkOrderId.nodes
+    .filter(n => n.type !== 'QUALITY_ASSURANCE_NODE');
+  const r = Core.classifyWorkOrder({ workOrder: wo, partNumber: REPARTIDA.partNumber },
+                                   { migrarAInspeccion: true });
+  assert.equal(r.cells.some(c => c.status === 'MIGRAR'), false,
+    'sin destino seguro no se mueve material de sitio');
+});
+
+test('v0.5.0: el plan de migración archiva en el raíz y escribe en el de inspección', () => {
+  const cls = Core.classifyWorkOrder(REPARTIDA, { migrarAInspeccion: true });
+  const plan = Core.buildWritePlan(cls, { partNumberId: 3017555 });
+  assert.ok(plan.archiveIds.includes(5001));
+  const add = plan.parametersToAdd.find(a => a.specFieldId === 15820);
+  assert.ok(add, 'debe reponer Adherencia');
+  assert.equal(add.recipeNodeId, 47237754);
+});
