@@ -1,6 +1,6 @@
 # `wo-spec-params` — Reaplicar Parámetros en Órdenes de Trabajo
 
-**Versión:** 0.3.0 (las tres fases) · **Estado:** ✅ **VIVO (config 1.11.2, tag `v1.11.2`)** · fase 1 **VALIDADA END-TO-END** por el operador el 2026-07-28; fases 2 y 3 sin corrida real
+**Versión:** 0.5.0 · **Estado:** ✅ **VIVO (config 1.11.3, tag `v1.11.3`)** · fase 1 validada end-to-end el 2026-07-28; fases 2 y 3 y el modo *migrar* **sin corrida real**
 **Bundle:** 5ª acción de *Ajuste Masivo de Specs* (`spec-migrator`)
 **Diseño:** [`docs/superpowers/specs/2026-07-28-wo-spec-params-reapply-design.md`](../superpowers/specs/2026-07-28-wo-spec-params-reapply-design.md)
 **Plan:** [`docs/superpowers/plans/2026-07-28-wo-spec-params-fase1.md`](../superpowers/plans/2026-07-28-wo-spec-params-fase1.md)
@@ -246,6 +246,87 @@ peticiones en ráfaga —sin devolver 429, sin recuperarse al recargar— y tumb
 pantalla nativa, porque el límite es por sesión y no por pestaña.
 
 **Las escrituras van en serie.** La lectura tolera pool; escribir no.
+
+## 2026-07-29 — el bug que el operador cazó mirando el patrón
+
+La corrida de las 4436 órdenes reportó **9551 cambios en 1890 órdenes**, con casi todas
+diciendo exactamente `5 cambios · 1 forzada · 4 anomalías`. El operador frenó: *"me llama la
+atención que quiere hacer muchos cambios en órdenes nuevas"*. **Un hallazgo genuino no se
+repite idéntico 1890 veces** — eso era firma de bug, y lo era.
+
+### Causa
+La cobertura se medía **por nodo** en vez de **por orden**. Los campos de la spec externa viven
+REPARTIDOS entre nodos que los declaran —el raíz y el de inspección declaran los mismos— y
+mirando solo el de inspección se proponía agregar ahí lo que ya existía en el raíz.
+
+| | reparto | applet decía | |
+|---|---|---|---|
+| OT 16333 | todo en el QA | 1 cambio | ✓ |
+| OT 16341 | 4 en PROCESS, 1 en QA | 5 cambios | ✗ |
+| OT 16339 | 4 en PROCESS, 1 en QA | 5 cambios | ✗ |
+
+A las **tres** les faltaba lo mismo: el campo 33579. De 9551 cambios, ~1890 eran legítimos y
+**~7660 habrían duplicado parámetros**.
+
+### Por qué la fase 1 pasó la validación y esto no
+La OT 5769 con la que se validó **no era representativa**: el operador ya había trabajado en
+ella a mano, así que su nodo de inspección tenía parámetros. En órdenes vírgenes el reparto es
+el otro. **Validar sobre un caso ya tocado esconde el comportamiento normal.**
+
+## El nodo raíz: diagnóstico cerrado
+
+**Culpable: `bulk-upload`, no el deduplicador.** Hasta el commit `046ec5b` (regla 1.4.38,
+2026-05-25) escribía:
+
+```js
+processNodeId: part.processId || pn.defaultProcessNodeId || null
+```
+
+Forzaba el proceso **por defecto del NP**. Verificado en vivo: el NP `80247-572-20` tiene 4
+params con `NODO=241753`, y su `processNodeByDefaultProcessNodeId` es exactamente `241753`
+(`"T204 (DEC)-T204 (EST)-CU/BR-VARIOS (16.1)"`) — el mismo nombre del nodo raíz de la OT 16339.
+
+**La regla de herencia del ERP** (aportada por el operador): al crear una OT se heredan del NP
+sus specs, specFields y parámetros; si el parámetro **no** trae nodo forzado se aplica al nodo
+que declare ese specField, y si ninguno lo declara **queda fuera**. Con nodo forzado, va a ese
+nodo. De ahí que los 4 aparezcan en el raíz aunque el raíz no declare los campos: **no llegaron
+por declaración, llegaron por nodo forzado**.
+
+El fix de mayo detuvo la sangría pero **no limpió lo ya escrito**.
+
+### Por qué el deduplicador no los corrigió, corriendo sobre todo el dominio
+
+Dos límites, ninguno de lógica:
+
+1. `if (bucket.params.length < 2) continue` — solo miraba SpecFields **duplicados**, y estos
+   casos tienen **una sola** fila (forzada, pero una).
+2. Su modo masivo **solo archivaba**. Lo admitía su propio comentario: *"el validator sólo
+   archive y no podemos convertir un row con processNode en NULL"*.
+
+### Por qué el Espesor Intermedio no se aplicaba
+El parámetro correcto vivía bajo el nombre viejo, **archivado**. *Asignar Params Pendientes*
+pregunta *"¿qué NP no tienen este param?"*; como el NP sí tenía una fila, no salía como
+pendiente. El hueco estaba en la OT, y ningún applet las miraba.
+
+## Los dos frentes de corrección (0.5.0)
+
+**Frente NP** — se levantan los dos límites del deduplicador. Un SpecField con una sola fila
+entra si trae nodo forzado, y el apply **repone con `processNodeId: null` después de archivar**
+(antes chocaría con el constraint de 1 fila viva por specFieldId). La decisión vive en
+`planForcedNodeRelease` (núcleo puro, 7 tests): `ok` · `archive-only` · `rewrite` ·
+**`ambiguous`** cuando las filas forzadas tienen valores distintos — ahí **no se toca nada**,
+porque elegir criterio de calidad no le toca a una herramienta.
+
+**Frente OT** — modo `migrarAInspeccion`, interruptor en el panel, apagado por omisión: archiva
+el parámetro donde esté y lo repone en el nodo de Inspección y Empaque. **Sin nodo de
+inspección identificado no mueve nada**: sacar un parámetro sin saber dónde ponerlo lo deja
+huérfano.
+
+### El orden de ejecución importa
+1. **Frente NP primero** → las OTs nuevas nacen bien.
+2. **Frente OT después** → acomoda las que ya existen.
+
+Al revés se migran órdenes que van a seguir naciendo torcidas.
 
 ## Pendientes
 
