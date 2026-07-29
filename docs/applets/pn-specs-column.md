@@ -236,3 +236,19 @@ confirmar los valores contra un NP conocido, la paginación (el observer re-inye
 de la tabla. Lo verificado hasta aquí es la **extracción** (30/30 golden, fixture real) y el
 **posicionamiento DOM** (simulacro sobre la tabla real de 50 filas); falta el applet completo
 corriendo de punta a punta.
+
+### Safari/iPad — bundle v0.6.7 (2026-07-29)
+
+Rebuild sin altas (`safari-bundle-scan.py`: 0 integrables). `pn-specs-column` ya estaba en la
+lista blanca desde v0.5.3, así que bastó reconstruir para que el artefacto tomara las 5 columnas
+— verificado en `main-bundle.js`: `extractPnRow` ×3, `extractUnitFactors` ×3, `fmtFactor` ×4,
+`sa-pncol-metal` ×2 (antes: 0 de cada uno). Es **FAB-only**: el `autoInject:true` pone la barra
+de toggles en el header de `/PartNumbers`, no necesita lanzador de popup.
+
+El mismo rebuild saldó el pendiente de `wo-schedule-button` **0.9.0** (`pickAnchorSteps` ×3,
+también ausente antes). `node --check` OK, `build-safari.test.js` 10/10, suite 83/83.
+Artefacto: **1 579 883 bytes** (antes 1 548 318). Ojo con el número que imprime
+`build-safari.sh` — son **caracteres**, no bytes.
+
+**Falta recompilar en Xcode** (el bundle es estático). Los `Resources/` del proyecto ya están
+sincronizados con `bridge.js`, `popup.js`, `popup.html`, `main-bundle.js` y `manifest.json` 0.6.7.
