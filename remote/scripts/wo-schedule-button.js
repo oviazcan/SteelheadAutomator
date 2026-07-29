@@ -65,6 +65,7 @@ const WoScheduleButton = (() => {
       // 📅 de una tarea EXISTENTE: abre el modal de programación intencional.
       '#' + INLINE_ID + ' .sa-wosched-cal.on{cursor:pointer;}',
       '#' + INLINE_ID + ' .sa-wosched-cal.on:hover{transform:scale(1.15);}',
+      '#' + INLINE_ID + ' .sa-wosched-rut{margin-right:1px;}',
       // ── Modal (dark mode: regla del repo — la UI propia nunca se confunde con la de SH) ──
       '.sa-wosm-ov{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:2147483642;',
       'display:flex;align-items:center;justify-content:center;}',
@@ -87,9 +88,19 @@ const WoScheduleButton = (() => {
       '.sa-wosm-note{font-size:12.5px;color:#9aa7b5;line-height:1.45;margin-bottom:10px;}',
       '.sa-wosm-lbl{display:block;font-size:11.5px;color:#9aa7b5;text-transform:uppercase;',
       'letter-spacing:.04em;font-weight:600;margin:14px 0 5px;}',
-      '.sa-wosm input[type="datetime-local"]{width:100%;font-size:14px;padding:8px 9px;',
-      'border:1px solid #3a4757;border-radius:6px;background:#141a23;color:#e6e9ee;',
-      'font-family:inherit;color-scheme:dark;}',
+      // TODOS los campos van oscuros. Antes solo el datetime-local lo estaba y los demás
+      // salían con el blanco nativo del navegador: sobre el panel oscuro el contraste era
+      // violento y además rompía la regla del repo (nuestra UI se distingue de la de SH).
+      '.sa-wosm input,.sa-wosm select,.sa-wosm textarea{width:100%;font-size:14px;padding:8px 9px;',
+      'border:1px solid #3a4757;border-radius:6px;background:#141a23;color:#dfe5ec;',
+      'font-family:inherit;color-scheme:dark;box-sizing:border-box;}',
+      '.sa-wosm input:focus,.sa-wosm select:focus{outline:none;border-color:#13a36f;}',
+      '.sa-wosm input::placeholder{color:#6b7787;}',
+      '.sa-wosm-anclas{background:#202a37;border:1px solid #33404f;border-radius:7px;padding:10px 12px;}',
+      '.sa-wosm-ancla{display:flex;align-items:flex-start;gap:8px;font-size:13px;padding:3px 0;}',
+      '.sa-wosm-ancla input[type="checkbox"]{width:auto;margin-top:3px;flex:0 0 auto;}',
+      '.sa-wosm-ancla b{color:#f0f3f7;font-weight:600;}',
+      '.sa-wosm-ancla span{color:#9aa7b5;}',
       '.sa-wosm-warn{background:#3a2a1c;border:1px solid #6b4a2e;color:#f0a35e;padding:9px 11px;',
       'border-radius:7px;font-size:12.5px;line-height:1.45;margin-top:12px;}',
       '.sa-wosm-err{background:#3a1f1c;border:1px solid #6b3230;color:#f08a7a;padding:9px 11px;',
@@ -130,6 +141,25 @@ const WoScheduleButton = (() => {
   function addRow(el, text, opts) {
     opts = opts || {};
     const row = document.createElement('div'); row.className = 'sa-wosched-row2';
+    // 🔀 ANTES del 📅 porque ése es el orden real del trabajo: a veces hay que mover la
+    // orden de línea antes de poder programarla. Abre el ruteo de la ORDEN COMPLETA.
+    if (opts.rutear !== false) {
+      const rut = document.createElement('span');
+      rut.className = 'sa-wosched-cal sa-wosched-rut on';
+      rut.textContent = '🔀';
+      rut.title = 'Rutear esta orden a otra línea (toda la orden) — hazlo antes de programar';
+      rut.setAttribute('role', 'button');
+      rut.setAttribute('tabindex', '0');
+      const rutear = function () {
+        if (window.AutoRouter && window.AutoRouter.openLanes) window.AutoRouter.openLanes();
+        else alert('El auto-ruteador no está cargado en esta pantalla.');
+      };
+      rut.addEventListener('click', rutear);
+      rut.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); rutear(); }
+      });
+      row.appendChild(rut);
+    }
     const cal = document.createElement('span'); cal.className = 'sa-wosched-cal'; cal.textContent = '📅';
     cal.title = opts.calTitle || 'Programación de esta OT.';
     // Sin tarea: el 📅 CREA (Fase 2b). Con tarea: la fija (2a). Dos trabajos, un ícono,
@@ -199,7 +229,7 @@ const WoScheduleButton = (() => {
       return;
     }
     // Un 📅 por tarea/estación (Fase 2: cada 📅 programa ESE paso de la OT).
-    tasks.forEach(function (t) { addRow(el, taskText(t), { task: t }); });
+    tasks.forEach(function (t, i) { addRow(el, taskText(t), { task: t, rutear: i === 0 }); });
     el.title = tasks.map(function (t, i) { return (i + 1) + ') ' + taskText(t); }).join('\n');
   }
 
@@ -395,18 +425,27 @@ const WoScheduleButton = (() => {
     const partNumberId = (cuentas.find((c) => c.partNumberId != null) || {}).partNumberId || null;
     if (partNumberId == null) throw new Error('La orden no tiene número de parte asociado.');
 
-    // Árbol de la receta: pasos con su tratamiento y su tina efectiva (ruta activa o default).
+    // Árbol de la receta. NO se programa tina por tina: solo los tratamientos ANCLA (los
+    // que corren en una estación con calendario de planificación). El árbol no trae el
+    // grupo del tratamiento, así que se pide aparte — es una query chica.
     const rd = await window.AutoRouterAPI.fetchWorkOrderRouteData(wo.id, partNumberId, []);
-    const activaPorNodo = new Map();
-    for (const a of rd.activeRoutes || []) if (a && a.recipeNodeId != null) activaPorNodo.set(a.recipeNodeId, a.stationId);
-    const pasos = (rd.recipeNodes || [])
-      .filter((n) => n.treatmentId != null && (activaPorNodo.has(n.id) || n.defaultStation))
-      .map((n) => ({
-        recipeNodeId: n.id, name: n.name, treatmentId: n.treatmentId,
-        stationId: activaPorNodo.has(n.id) ? activaPorNodo.get(n.id) : n.defaultStation.id,
-        stationName: (activaPorNodo.has(n.id) && !n.defaultStation) ? '' : (n.defaultStation ? n.defaultStation.name : ''),
-      }));
-    if (!pasos.length) throw new Error('Esta orden no tiene pasos con estación para programar.');
+    const rutas = {};
+    for (const a of rd.activeRoutes || []) if (a && a.recipeNodeId != null) rutas[a.recipeNodeId] = a.stationId;
+    const treatmentIds = [...new Set((rd.recipeNodes || [])
+      .map((n) => n.treatmentId).filter((t) => t != null))];
+    let grupos = {};
+    try {
+      const tg = await api.query('RelatedSchedulingTreatments', { treatmentIds: treatmentIds }, 'RelatedSchedulingTreatments');
+      grupos = C.parseTreatmentGroups(tg);
+    } catch (e) {
+      throw new Error('No pude leer qué tratamientos son de planificación: ' + e.message);
+    }
+    const anclas = C.pickAnchorSteps(rd.recipeNodes, grupos, rutas);
+    if (!anclas.length) {
+      throw new Error('Esta orden no tiene ningún tratamiento de planificación con estación. '
+        + 'Solo se programan los pasos ancla ("Listo para procesar" y equivalentes); '
+        + 'si falta, revisa la receta o rutea la orden primero.');
+    }
 
     // scheduleId: del board que ya se lee para el readout.
     let scheduleId = null;
@@ -430,7 +469,7 @@ const WoScheduleButton = (() => {
 
     return {
       woIdInDomain: woIdInDomain, workOrderId: wo.id, partNumberId: partNumberId,
-      cuentas: cuentas, pasos: pasos, scheduleId: scheduleId,
+      cuentas: cuentas, anclas: anclas, scheduleId: scheduleId,
       rackTypes: rackTypes, pnRacks: pnRacks,
     };
   }
@@ -461,21 +500,27 @@ const WoScheduleButton = (() => {
     loadCreateContext(woIdInDomain).then(function (ctx) {
       const totalPiezas = ctx.cuentas.reduce(function (s, c) { return s + c.partCount; }, 0);
       const st = {
-        paso: ctx.pasos[0],
+        marcados: new Set(ctx.anclas.map(function (a, i) { return i; })),  // por default TODOS
         cuando: '',
         rackTypeId: null,
         partsPerRack: '',
         cycle: '', total: '',
         busy: false,
       };
-      // Precarga del rack: el que el PN ya tenga ligado; si tiene varios, el primero.
-      if (ctx.pnRacks.length) {
-        const p0 = ctx.pnRacks[0];
-        st.rackTypeId = p0.rackTypeId;
-        st.partsPerRack = p0.partsPerRack != null ? String(p0.partsPerRack) : '';
-      } else if (ctx.rackTypes.length) {
-        st.rackTypeId = ctx.rackTypes[0].id;
+      // El rack default sigue a la LÍNEA que se va a programar (la del primer ancla
+      // marcado), no al "primer rack que el PN tenga": ese puede ser de otra línea.
+      function lineaActual() {
+        const i = [...st.marcados][0];
+        const a = ctx.anclas[i != null ? i : 0];
+        return a ? a.lineCode : null;
       }
+      function aplicaRackDeLinea() {
+        const r = C.pickRackForLine(ctx.rackTypes, ctx.pnRacks, lineaActual());
+        if (!r) return;
+        st.rackTypeId = r.rackTypeId;
+        st.partsPerRack = r.partsPerRack != null ? String(r.partsPerRack) : '';
+      }
+      aplicaRackDeLinea();
 
       const sel = (opciones, valor, onchange) => {
         const s = elm('select', { onchange: onchange });
@@ -494,8 +539,27 @@ const WoScheduleButton = (() => {
       };
 
       const diag = elm('div');
-      const pasoSel = sel(ctx.pasos.map(function (p, i) { return { v: i, t: p.name + (p.stationName ? ' · ' + p.stationName : '') }; }),
-        0, function (e) { st.paso = ctx.pasos[Number(e.target.value)]; pinta(); });
+      // Se programa la ORDEN COMPLETA por ancla. Con varias líneas hay varios anclas y se
+      // crean varias tareas — por eso van con checkbox y no en un select excluyente.
+      const anclasBox = elm('div', { class: 'sa-wosm-anclas' });
+      ctx.anclas.forEach(function (a, i) {
+        const fila = elm('div', { class: 'sa-wosm-ancla' });
+        const cb = elm('input', { type: 'checkbox' });
+        cb.checked = st.marcados.has(i);
+        cb.addEventListener('change', function (e) {
+          if (e.target.checked) st.marcados.add(i); else st.marcados.delete(i);
+          aplicaRackDeLinea();
+          rackSel.value = String(st.rackTypeId);
+          pptInput.value = st.partsPerRack;
+          pinta();
+        });
+        fila.appendChild(cb);
+        fila.appendChild(elm('div', {}, [
+          elm('b', { text: (a.lineCode ? a.lineCode + ' · ' : '') + (a.name || a.treatmentName) }),
+          elm('span', { text: a.stationName ? ' — ' + a.stationName : '' }),
+        ]));
+        anclasBox.appendChild(fila);
+      });
       const fecha = elm('input', { type: 'datetime-local', value: '' });
       fecha.addEventListener('input', function (e) { st.cuando = e.target.value; });
       const rackSel = sel(ctx.rackTypes.map(function (r) { return { v: r.id, t: r.name }; }), st.rackTypeId,
@@ -571,7 +635,7 @@ const WoScheduleButton = (() => {
       cuerpo().appendChild(elm('div', {}, [
         elm('div', { class: 'sa-wosm-note',
           text: `PN ${ctx.partNumberId} · ${totalPiezas} piezas · ${ctx.cuentas.length} cuenta(s)` }),
-        campo('Paso a programar', pasoSel),
+        campo(ctx.anclas.length > 1 ? 'Se programará en estas líneas' : 'Se programará en', anclasBox),
         campo('Fecha y hora de inicio', fecha),
         campo('Tipo de rack', rackSel),
         campo('Piezas por carga', pptInput),
@@ -622,32 +686,41 @@ const WoScheduleButton = (() => {
         const iso = localToIso(st.cuando);
         if (!iso) { aviso('sa-wosm-err', 'Escribe una fecha y hora válidas.'); return; }
         if (ctx.scheduleId == null) { aviso('sa-wosm-err', 'No pude determinar el programa (schedule) de esta orden.'); return; }
+        const elegidos = [...st.marcados].map(function (i) { return ctx.anclas[i]; }).filter(Boolean);
+        if (!elegidos.length) { aviso('sa-wosm-err', 'Marca al menos una línea donde programar.'); return; }
         const tt = tiempos();
         const ppr = Number(st.partsPerRack);
-        const vars = C.buildScheduleTaskCreateInput({
-          scheduleId: ctx.scheduleId, treatmentId: st.paso.treatmentId, stationId: st.paso.stationId,
-          expectedStartTime: iso,
-          cycleTimeMinutes: tt.cycleTimeMinutes, treatmentTimeMinutes: tt.treatmentTimeMinutes,
-          isIntentional: false,
-          partSetUuid: uuidV4(), recipeNodeId: st.paso.recipeNodeId, partNumberId: ctx.partNumberId,
-          rackTypeIdLineage: st.rackTypeId, rackIdLineage: null,
-          partCount: totalPiezas, partsPerBatch: ppr,
-          relatedPartTransferAccounts: ctx.cuentas.map(function (c) { return { id: c.id, partCount: c.partCount }; }),
-        });
-        if (!vars) { aviso('sa-wosm-err', 'Faltan datos para crear la tarea.'); return; }
+        const cuentas = ctx.cuentas.map(function (c) { return { id: c.id, partCount: c.partCount }; });
         st.busy = true; pinta();
-        aviso('sa-wosm-note', 'Creando la tarea…');
+        aviso('sa-wosm-note', elegidos.length > 1 ? `Creando ${elegidos.length} tareas…` : 'Creando la tarea…');
         try {
-          const data = await window.SteelheadAPI.query('CreateManyScheduleTasks', vars, 'CreateManyScheduleTasks');
-          const creadas = C.parseCreatedScheduleTasks(data);
-          if (!creadas.length) throw new Error('El servidor no devolvió ninguna tarea creada.');
+          // Una tarea por ancla: la orden completa se programa en cada línea que la corre.
+          const hechas = [];
+          for (const a of elegidos) {
+            const vars = C.buildScheduleTaskCreateInput({
+              scheduleId: ctx.scheduleId, treatmentId: a.treatmentId, stationId: a.stationId,
+              expectedStartTime: iso,
+              cycleTimeMinutes: tt.cycleTimeMinutes, treatmentTimeMinutes: tt.treatmentTimeMinutes,
+              isIntentional: false,
+              partSetUuid: uuidV4(), recipeNodeId: a.recipeNodeId, partNumberId: ctx.partNumberId,
+              rackTypeIdLineage: st.rackTypeId, rackIdLineage: null,
+              partCount: totalPiezas, partsPerBatch: ppr,
+              relatedPartTransferAccounts: cuentas,
+            });
+            if (!vars) throw new Error('Faltan datos para crear la tarea de ' + (a.lineCode || a.name) + '.');
+            const data = await window.SteelheadAPI.query('CreateManyScheduleTasks', vars, 'CreateManyScheduleTasks');
+            const creadas = C.parseCreatedScheduleTasks(data);
+            if (!creadas.length) throw new Error('El servidor no devolvió tarea para ' + (a.lineCode || a.name) + '.');
+            hechas.push({ linea: a.lineCode || a.name, t: creadas[0] });
+          }
           // Relee el programa: el readout del header se actualiza con lo que quedó de verdad.
           const tasks = await refetchTasks(woIdInDomain);
           const el = document.getElementById(INLINE_ID);
           if (el) renderInline(el, tasks);
           st.busy = false; pinta();
-          const c0 = creadas[0];
-          aviso('sa-wosm-ok', `✅ Tarea creada (#${c0.taskId}) · ${Math.round(c0.totalTimeMinutes)} min · ${c0.status}.`);
+          aviso('sa-wosm-ok', '✅ ' + hechas.map(function (h) {
+            return `${h.linea}: tarea #${h.t.taskId} · ${Math.round(h.t.totalTimeMinutes)} min`;
+          }).join(' · '));
         } catch (e) {
           st.busy = false; pinta();
           aviso('sa-wosm-err', (e && e.persistedQueryRotated)

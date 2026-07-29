@@ -908,3 +908,96 @@ test('la estación con varios racks respeta el pedido', () => {
   assert.equal(r.partsPerRack, 1);
   assert.equal(r.opcionesEstacion.length, 2, 'la UI necesita ofrecer las dos');
 });
+
+// ══════════════════════════════════════════════════════════════════════════
+// Qué se puede programar: los tratamientos ANCLA (corrección del operador)
+// ══════════════════════════════════════════════════════════════════════════
+// La v1 del modal ofrecía TODAS las tinas — mal. Solo se programa la orden completa
+// contemplando el/los tratamiento(s) ancla: los que corren en estación CON CALENDARIO
+// ("Listo para procesar", satélites). El marcador es el grupo de tratamiento 2344
+// (Planificación), confirmado con datos reales de RelatedSchedulingTreatments.
+const GRUPOS_REAL = {          // salida real: 2344 = Planificación, 2346 = tina normal
+  82789: { groupId: 2344, name: 'T110 (PLA)-CU-VARIOS' },
+  82801: { groupId: 2344, name: 'T202 (PLA)-CU-VARIOS' },
+  82877: { groupId: 2346, name: 'TR-PRM-001 Antitarnish Manual' },
+};
+
+test('parseTreatmentGroups lee el grupo de cada tratamiento', () => {
+  const g = Core.parseTreatmentGroups({ allTreatments: { nodes: [
+    { id: 82789, name: 'T110 (PLA)-CU-VARIOS', treatmentGroupByTreatmentGroupId: { id: 2344 } },
+    { id: 82877, name: 'TR-PRM-001 Antitarnish Manual', treatmentGroupByTreatmentGroupId: { id: 2346 } },
+  ] } });
+  assert.equal(g[82789].groupId, Core.PLANNING_TREATMENT_GROUP_ID);
+  assert.equal(g[82877].groupId, 2346);
+});
+
+test('pickAnchorSteps deja SOLO los anclas — no las tinas', () => {
+  const nodos = [
+    { id: 1, name: 'T110 Listo para Procesar', treatmentId: 82789, defaultStation: { id: 100, name: 'T110-LI Plata Colgado (26)' } },
+    { id: 2, name: 'Antitarnish', treatmentId: 82877, defaultStation: { id: 200, name: 'T110-TI00-007 Antitarnish' } },
+    { id: 3, name: 'Enjuague', treatmentId: 82877, defaultStation: { id: 201, name: 'T110-TI00-008 Enjuague' } },
+  ];
+  const anclas = Core.pickAnchorSteps(nodos, GRUPOS_REAL, {});
+  assert.equal(anclas.length, 1, 'una tina normal NO es programable');
+  assert.equal(anclas[0].recipeNodeId, 1);
+  assert.equal(anclas[0].lineCode, 'T110');
+});
+
+test('una orden en DOS líneas da dos anclas (se programa en las dos)', () => {
+  const nodos = [
+    { id: 1, name: 'T110 Listo', treatmentId: 82789, defaultStation: { id: 100, name: 'T110-LI Plata Colgado (26)' } },
+    { id: 5, name: 'T202 Listo', treatmentId: 82801, defaultStation: { id: 300, name: 'T202-LI Plata Selectiva (16.2)' } },
+  ];
+  const anclas = Core.pickAnchorSteps(nodos, GRUPOS_REAL, {});
+  assert.deepEqual(anclas.map((a) => a.lineCode), ['T110', 'T202']);
+});
+
+test('pickAnchorSteps respeta la RUTA ACTIVA sobre la estación default', () => {
+  const nodos = [{ id: 1, name: 'Listo', treatmentId: 82789, defaultStation: { id: 100, name: 'T110-LI' } }];
+  const anclas = Core.pickAnchorSteps(nodos, GRUPOS_REAL, { 1: 999 });
+  assert.equal(anclas[0].stationId, 999, 'si ya se ruteó, se programa donde quedó');
+});
+
+test('un ancla sin estación no se ofrece', () => {
+  const nodos = [{ id: 1, name: 'Listo', treatmentId: 82789, defaultStation: null }];
+  assert.deepEqual(Core.pickAnchorSteps(nodos, GRUPOS_REAL, {}), []);
+});
+
+// ── El rack default sigue a la LÍNEA que se programa ─────────────────────────
+// Caso reportado con captura: programando en T109, el modal ofrecía T111-RA01 — el primer
+// rack ligado al PN, que es de otra línea.
+const CATALOGO = [
+  { id: 2657, name: 'T111-RA01', partsPerRackDefault: 45 },
+  { id: 2701, name: 'T109-RA01', partsPerRackDefault: 60 },
+  { id: 2705, name: 'T204-FL01', partsPerRackDefault: 4 },
+];
+
+test('el rack default es el de la LÍNEA que se programa, no el primero del PN', () => {
+  const pnRacks = [{ rackTypeId: 2657, partsPerRack: 45 }];   // el PN solo tiene el de T111
+  const r = Core.pickRackForLine(CATALOGO, pnRacks, 'T109');
+  assert.equal(r.rackTypeName, 'T109-RA01', 'programando en T109 no puede ofrecer T111-RA01');
+  assert.equal(r.yaExiste, false, 'y avisa que hay que AGREGAR las piezas por carga');
+  assert.equal(r.partsPerRack, null);
+});
+
+test('si el PN ya tiene piezas en un rack DE ESA línea, se prefiere ése', () => {
+  const cat = CATALOGO.concat([{ id: 2702, name: 'T109-RA02', partsPerRackDefault: 30 }]);
+  const pnRacks = [{ rackTypeId: 2702, partsPerRack: 33 }];
+  const r = Core.pickRackForLine(cat, pnRacks, 'T109');
+  assert.equal(r.rackTypeName, 'T109-RA02');
+  assert.equal(r.partsPerRack, 33);
+  assert.equal(r.yaExiste, true);
+});
+
+test('sin rack de esa línea cae a lo que el PN use (y no truena sin catálogo)', () => {
+  const r = Core.pickRackForLine(CATALOGO, [{ rackTypeId: 2705, partsPerRack: 4 }], 'T999');
+  assert.equal(r.rackTypeName, 'T204-FL01');
+  assert.equal(Core.pickRackForLine([], [], 'T109'), null);
+});
+
+test('lineCodeOf saca la línea de estaciones y de tratamientos', () => {
+  assert.equal(Core.lineCodeOf('T109-EN00-001 Carga de Barril'), 'T109');
+  assert.equal(Core.lineCodeOf('T110 (PLA)-CU-VARIOS'), 'T110');
+  assert.equal(Core.lineCodeOf('TR-PRM-001 Antitarnish'), null);
+  assert.equal(Core.lineCodeOf(null), null);
+});
