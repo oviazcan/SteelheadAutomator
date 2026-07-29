@@ -132,6 +132,21 @@ const WoScheduleButton = (() => {
     const row = document.createElement('div'); row.className = 'sa-wosched-row2';
     const cal = document.createElement('span'); cal.className = 'sa-wosched-cal'; cal.textContent = '📅';
     cal.title = opts.calTitle || 'Programación de esta OT.';
+    // Sin tarea: el 📅 CREA (Fase 2b). Con tarea: la fija (2a). Dos trabajos, un ícono,
+    // porque desde el readout el operador siempre está preguntando lo mismo: "¿cuándo va?".
+    if (opts.crear) {
+      cal.className += ' on';
+      cal.setAttribute('role', 'button');
+      cal.setAttribute('tabindex', '0');
+      const abrir = function () {
+        const wo = currentWoIdInDomain();
+        if (wo != null) openCreateTaskModal(wo);
+      };
+      cal.addEventListener('click', abrir);
+      cal.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); abrir(); }
+      });
+    }
     if (opts.task) {
       const t = opts.task;
       if (t.stationId != null) cal.setAttribute('data-sa-station-id', String(t.stationId));
@@ -179,9 +194,8 @@ const WoScheduleButton = (() => {
     el.textContent = '';
     if (!tasks || !tasks.length) {
       el.title = 'Esta OT no está programada.';
-      addRow(el, 'Sin programar', { muted: true,
-        calTitle: 'Esta OT todavía no tiene tarea en el programa. Créala en el tablero de '
-                + 'planificación; desde aquí se puede fijar la hora de una tarea existente.' });
+      addRow(el, 'Sin programar', { muted: true, crear: true,
+        calTitle: 'Programar esta OT: elegir paso, estación y hora (Fase 2b)' });
       return;
     }
     // Un 📅 por tarea/estación (Fase 2: cada 📅 programa ESE paso de la OT).
@@ -346,6 +360,307 @@ const WoScheduleButton = (() => {
 
     btnFijar.addEventListener('click', function () { aplicar(true); });
     if (btnSoltar) btnSoltar.addEventListener('click', function () { aplicar(false); });
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Fase 2b — CREAR la tarea donde no hay, corrigiendo el dato maestro en el acto
+  // ══════════════════════════════════════════════════════════════════════════
+  // Decisión del operador (2026-07-28): captura quien programa, porque está EN PISO y
+  // puede verificar la carga físicamente. Por eso el modal deja capturar piezas por carga
+  // y tiempos, muestra el efecto ANTES de confirmar, y guarda el dato en la fuente — no
+  // como parche de esta tarea. Guardar el dato maestro es un botón APARTE de crear: toca
+  // a todos los que usen ese PN/rack o ese tratamiento, no solo a esta orden.
+
+  function uuidV4() {
+    try { if (crypto && crypto.randomUUID) return crypto.randomUUID(); } catch (_) {}
+    // Fallback: el shape lo fija el servidor, así que se respeta v4 exacto.
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+      const r = Math.random() * 16 | 0;
+      return (c === 'x' ? r : ((r & 0x3) | 0x8)).toString(16);
+    });
+  }
+
+  // Reúne lo necesario para crear, con queries que YA están en config.
+  async function loadCreateContext(woIdInDomain) {
+    const api = window.SteelheadAPI;
+    const C = Core();
+    const domainId = C.parseDomainId(location.pathname);
+
+    const woData = await api.query('WorkOrder', { idInDomain: woIdInDomain }, 'WorkOrder');
+    const wo = woData && woData.workOrderByIdInDomain;
+    if (!wo || wo.id == null) throw new Error('No se pudo leer la orden.');
+    const cuentas = ((wo.currentPartsTransferAccounts && wo.currentPartsTransferAccounts.nodes) || [])
+      .filter(Boolean)
+      .map((n) => ({ id: n.id, partCount: Number(n.partCount) || 0, partNumberId: n.partNumberId }));
+    const partNumberId = (cuentas.find((c) => c.partNumberId != null) || {}).partNumberId || null;
+    if (partNumberId == null) throw new Error('La orden no tiene número de parte asociado.');
+
+    // Árbol de la receta: pasos con su tratamiento y su tina efectiva (ruta activa o default).
+    const rd = await window.AutoRouterAPI.fetchWorkOrderRouteData(wo.id, partNumberId, []);
+    const activaPorNodo = new Map();
+    for (const a of rd.activeRoutes || []) if (a && a.recipeNodeId != null) activaPorNodo.set(a.recipeNodeId, a.stationId);
+    const pasos = (rd.recipeNodes || [])
+      .filter((n) => n.treatmentId != null && (activaPorNodo.has(n.id) || n.defaultStation))
+      .map((n) => ({
+        recipeNodeId: n.id, name: n.name, treatmentId: n.treatmentId,
+        stationId: activaPorNodo.has(n.id) ? activaPorNodo.get(n.id) : n.defaultStation.id,
+        stationName: (activaPorNodo.has(n.id) && !n.defaultStation) ? '' : (n.defaultStation ? n.defaultStation.name : ''),
+      }));
+    if (!pasos.length) throw new Error('Esta orden no tiene pasos con estación para programar.');
+
+    // scheduleId: del board que ya se lee para el readout.
+    let scheduleId = null;
+    try {
+      const raw = await api.query('WorkOrderSchedule', { domainId: domainId, workOrderId: wo.id }, 'WorkOrderSchedule');
+      const sch = (raw && raw.allSchedules && raw.allSchedules.nodes) || [];
+      if (sch.length && sch[0].id != null) scheduleId = sch[0].id;
+    } catch (_) { /* se pide abajo si no salió */ }
+
+    // Racks: catálogo + los que el PN ya tiene ligados (con sus piezas por carga).
+    let rackTypes = [], pnRacks = [];
+    try {
+      const rk = await api.query('CreateEditPartsPerRackTypeQuery', { partNumberId: partNumberId }, 'CreateEditPartsPerRackTypeQuery');
+      rackTypes = ((rk && rk.allRackTypes && rk.allRackTypes.nodes) || [])
+        .filter((n) => n && n.id != null && n.archivedAt == null)
+        .map((n) => ({ id: n.id, name: String(n.name || ('Rack ' + n.id)), partsPerRackDefault: n.partsPerRackDefault }));
+      const pn = rk && rk.partNumberById;
+      pnRacks = ((pn && pn.partNumberRackTypesByPartNumberId && pn.partNumberRackTypesByPartNumberId.nodes) || [])
+        .filter(Boolean);
+    } catch (e) { log('No se pudo leer el catálogo de racks: ' + e.message); }
+
+    return {
+      woIdInDomain: woIdInDomain, workOrderId: wo.id, partNumberId: partNumberId,
+      cuentas: cuentas, pasos: pasos, scheduleId: scheduleId,
+      rackTypes: rackTypes, pnRacks: pnRacks,
+    };
+  }
+
+  function openCreateTaskModal(woIdInDomain) {
+    closeModal();
+    injectStyles();
+    const C = Core();
+    const msg = elm('div');
+    const ov = elm('div', { id: MODAL_ID, class: 'sa-wosm-ov' }, [
+      elm('div', { class: 'sa-wosm' }, [
+        elm('div', { class: 'sa-wosm-hd' }, [
+          elm('h2', { text: '📅 Programar OT ' + woIdInDomain }),
+          elm('button', { class: 'sa-wosm-x', text: '×', onclick: closeModal }),
+        ]),
+        elm('div', { class: 'sa-wosm-bd', id: 'sa-wosm-bd' }, [
+          elm('div', { class: 'sa-wosm-note', text: 'Cargando la orden…' }),
+        ]),
+        elm('div', { class: 'sa-wosm-ft', id: 'sa-wosm-ft' }),
+      ]),
+    ]);
+    ov.addEventListener('mousedown', function (e) { if (e.target === ov) closeModal(); });
+    document.body.appendChild(ov);
+
+    const cuerpo = () => document.getElementById('sa-wosm-bd');
+    const pie = () => document.getElementById('sa-wosm-ft');
+
+    loadCreateContext(woIdInDomain).then(function (ctx) {
+      const totalPiezas = ctx.cuentas.reduce(function (s, c) { return s + c.partCount; }, 0);
+      const st = {
+        paso: ctx.pasos[0],
+        cuando: '',
+        rackTypeId: null,
+        partsPerRack: '',
+        cycle: '', total: '',
+        busy: false,
+      };
+      // Precarga del rack: el que el PN ya tenga ligado; si tiene varios, el primero.
+      if (ctx.pnRacks.length) {
+        const p0 = ctx.pnRacks[0];
+        st.rackTypeId = p0.rackTypeId;
+        st.partsPerRack = p0.partsPerRack != null ? String(p0.partsPerRack) : '';
+      } else if (ctx.rackTypes.length) {
+        st.rackTypeId = ctx.rackTypes[0].id;
+      }
+
+      const sel = (opciones, valor, onchange) => {
+        const s = elm('select', { onchange: onchange });
+        opciones.forEach(function (o) {
+          const op = elm('option', { value: String(o.v), text: o.t });
+          if (String(o.v) === String(valor)) op.selected = true;
+          s.appendChild(op);
+        });
+        return s;
+      };
+      const campo = (etq, input) => elm('div', {}, [elm('label', { class: 'sa-wosm-lbl', text: etq }), input]);
+      const numInput = (valor, ph, oninput) => {
+        const i = elm('input', { type: 'number', min: '0', step: '1', value: valor, placeholder: ph || '' });
+        i.addEventListener('input', oninput);
+        return i;
+      };
+
+      const diag = elm('div');
+      const pasoSel = sel(ctx.pasos.map(function (p, i) { return { v: i, t: p.name + (p.stationName ? ' · ' + p.stationName : '') }; }),
+        0, function (e) { st.paso = ctx.pasos[Number(e.target.value)]; pinta(); });
+      const fecha = elm('input', { type: 'datetime-local', value: '' });
+      fecha.addEventListener('input', function (e) { st.cuando = e.target.value; });
+      const rackSel = sel(ctx.rackTypes.map(function (r) { return { v: r.id, t: r.name }; }), st.rackTypeId,
+        function (e) {
+          st.rackTypeId = Number(e.target.value);
+          const ya = ctx.pnRacks.find(function (p) { return Number(p.rackTypeId) === st.rackTypeId; });
+          st.partsPerRack = (ya && ya.partsPerRack != null) ? String(ya.partsPerRack) : '';
+          pptInput.value = st.partsPerRack;
+          pinta();
+        });
+      const pptInput = numInput(st.partsPerRack, 'piezas por carga', function (e) { st.partsPerRack = e.target.value; pinta(); });
+      const cycleInput = numInput(st.cycle, 'min', function (e) { st.cycle = e.target.value; pinta(); });
+      const totalInput = numInput(st.total, 'min', function (e) { st.total = e.target.value; pinta(); });
+
+      const btnDato = elm('button', { class: 'sa-wosm-btn ghost', text: '💾 Guardar dato maestro' });
+      const btnCrear = elm('button', { class: 'sa-wosm-btn primary', text: '📅 Crear tarea' });
+
+      function rackActual() {
+        const ya = ctx.pnRacks.find(function (p) { return Number(p.rackTypeId) === Number(st.rackTypeId); });
+        const rt = ctx.rackTypes.find(function (r) { return Number(r.id) === Number(st.rackTypeId); });
+        return {
+          rackTypeId: st.rackTypeId,
+          rackTypeName: rt ? rt.name : ('Rack ' + st.rackTypeId),
+          yaExiste: !!ya,
+          alternativas: ctx.pnRacks.map(function (p) {
+            const r = ctx.rackTypes.find(function (x) { return Number(x.id) === Number(p.rackTypeId); });
+            return { rackTypeId: p.rackTypeId, rackTypeName: r ? r.name : ('Rack ' + p.rackTypeId), partsPerRack: p.partsPerRack };
+          }),
+        };
+      }
+
+      function tiempos() {
+        const c = st.cycle === '' ? null : Number(st.cycle);
+        const t = st.total === '' ? null : Number(st.total);
+        return (c == null || t == null) ? null : { cycleTimeMinutes: c, treatmentTimeMinutes: t };
+      }
+
+      // Recalcula y MUESTRA el efecto antes de confirmar: es la verificación que sustituye
+      // a una fuente automática, y es la razón por la que el dato lo captura quien está en piso.
+      function pinta() {
+        const rack = rackActual();
+        const ppr = st.partsPerRack === '' ? null : Number(st.partsPerRack);
+        const d = C.diagnoseSchedulingData({
+          partCount: totalPiezas, partsPerRack: ppr, rackCount: 1,
+          rack: rack, treatmentTime: tiempos(),
+        });
+        diag.textContent = '';
+        if (d.problemas.length) {
+          d.problemas.forEach(function (p) {
+            const caja = elm('div', { class: p.bloquea ? 'sa-wosm-err' : 'sa-wosm-warn' });
+            caja.appendChild(elm('div', { text: (p.accion === 'AGREGAR' ? '➕ ' : '⚠️ ') + p.que }));
+            if (p.efecto) caja.appendChild(elm('div', { text: p.efecto }));
+            if (p.alternativas && p.alternativas.length) {
+              caja.appendChild(elm('div', { text: 'De referencia: '
+                + p.alternativas.map(function (a) { return a.rackTypeName + ' → ' + a.partsPerRack; }).join(' · ') }));
+            }
+            diag.appendChild(caja);
+          });
+        } else {
+          const tt = tiempos();
+          const r = C.scheduleTaskTimes({ partCount: totalPiezas, partsPerBatch: ppr,
+            cycleTimeMinutes: tt.cycleTimeMinutes, treatmentTimeMinutes: tt.treatmentTimeMinutes });
+          diag.appendChild(elm('div', { class: 'sa-wosm-ok',
+            text: `${totalPiezas} piezas → ${r.batches} carga(s) → ${Math.round(r.totalTimeMinutes)} min `
+                + `(~${(r.totalTimeMinutes / 60).toFixed(1)} h)` }));
+        }
+        btnCrear.disabled = st.busy || !d.ok || !st.cuando;
+        btnDato.disabled = st.busy;
+        btnDato.textContent = rack.yaExiste ? '💾 Corregir piezas por carga' : '➕ Agregar piezas por carga';
+      }
+
+      cuerpo().textContent = '';
+      cuerpo().appendChild(elm('div', {}, [
+        elm('div', { class: 'sa-wosm-note',
+          text: `PN ${ctx.partNumberId} · ${totalPiezas} piezas · ${ctx.cuentas.length} cuenta(s)` }),
+        campo('Paso a programar', pasoSel),
+        campo('Fecha y hora de inicio', fecha),
+        campo('Tipo de rack', rackSel),
+        campo('Piezas por carga', pptInput),
+        campo('Tiempo de ciclo (min)', cycleInput),
+        campo('Tiempo total del tratamiento (min)', totalInput),
+        diag, msg,
+      ]));
+      pie().textContent = '';
+      pie().appendChild(btnDato);
+      pie().appendChild(elm('button', { class: 'sa-wosm-btn ghost', text: 'Cerrar', onclick: closeModal }));
+      pie().appendChild(btnCrear);
+      pinta();
+
+      function aviso(clase, texto) { msg.textContent = ''; msg.appendChild(elm('div', { class: clase, text: texto })); }
+
+      // Guardar el dato maestro va APARTE y con confirmación propia: afecta a todos los que
+      // usen ese PN en ese rack, no solo a esta orden.
+      btnDato.addEventListener('click', async function () {
+        const rack = rackActual();
+        const plan = C.planPartsPerRackFix({
+          partNumberId: ctx.partNumberId, rackTypeId: rack.rackTypeId,
+          partsPerRack: st.partsPerRack === '' ? null : Number(st.partsPerRack),
+          yaExiste: rack.yaExiste,
+        });
+        if (!plan.valid) { aviso('sa-wosm-err', plan.error); return; }
+        const verbo = rack.yaExiste ? 'CAMBIAR a' : 'DAR DE ALTA en';
+        if (!confirm(`Vas a ${verbo} ${plan.variables.partsPerRack} piezas por carga para el PN `
+          + `${ctx.partNumberId} en ${rack.rackTypeName}.\n\nEsto es un DATO MAESTRO: aplica a todas las `
+          + `órdenes de ese número de parte en ese rack, no solo a ésta. ¿Continuar?`)) return;
+        st.busy = true; pinta();
+        try {
+          await window.SteelheadAPI.query(plan.op, plan.variables, plan.op);
+          // Refleja el alta localmente para que el diagnóstico deje de reclamar.
+          const ya = ctx.pnRacks.find(function (p) { return Number(p.rackTypeId) === Number(rack.rackTypeId); });
+          if (ya) ya.partsPerRack = plan.variables.partsPerRack;
+          else ctx.pnRacks.push({ rackTypeId: rack.rackTypeId, partsPerRack: plan.variables.partsPerRack });
+          st.busy = false;
+          aviso('sa-wosm-ok', rack.yaExiste ? '✅ Piezas por carga corregidas.' : '✅ Piezas por carga dadas de alta.');
+        } catch (e) {
+          st.busy = false;
+          aviso('sa-wosm-err', 'No se pudo guardar: ' + ((e && e.message) || 'error'));
+        }
+        pinta();
+      });
+
+      btnCrear.addEventListener('click', async function () {
+        if (st.busy) return;
+        const iso = localToIso(st.cuando);
+        if (!iso) { aviso('sa-wosm-err', 'Escribe una fecha y hora válidas.'); return; }
+        if (ctx.scheduleId == null) { aviso('sa-wosm-err', 'No pude determinar el programa (schedule) de esta orden.'); return; }
+        const tt = tiempos();
+        const ppr = Number(st.partsPerRack);
+        const vars = C.buildScheduleTaskCreateInput({
+          scheduleId: ctx.scheduleId, treatmentId: st.paso.treatmentId, stationId: st.paso.stationId,
+          expectedStartTime: iso,
+          cycleTimeMinutes: tt.cycleTimeMinutes, treatmentTimeMinutes: tt.treatmentTimeMinutes,
+          isIntentional: false,
+          partSetUuid: uuidV4(), recipeNodeId: st.paso.recipeNodeId, partNumberId: ctx.partNumberId,
+          rackTypeIdLineage: st.rackTypeId, rackIdLineage: null,
+          partCount: totalPiezas, partsPerBatch: ppr,
+          relatedPartTransferAccounts: ctx.cuentas.map(function (c) { return { id: c.id, partCount: c.partCount }; }),
+        });
+        if (!vars) { aviso('sa-wosm-err', 'Faltan datos para crear la tarea.'); return; }
+        st.busy = true; pinta();
+        aviso('sa-wosm-note', 'Creando la tarea…');
+        try {
+          const data = await window.SteelheadAPI.query('CreateManyScheduleTasks', vars, 'CreateManyScheduleTasks');
+          const creadas = C.parseCreatedScheduleTasks(data);
+          if (!creadas.length) throw new Error('El servidor no devolvió ninguna tarea creada.');
+          // Relee el programa: el readout del header se actualiza con lo que quedó de verdad.
+          const tasks = await refetchTasks(woIdInDomain);
+          const el = document.getElementById(INLINE_ID);
+          if (el) renderInline(el, tasks);
+          st.busy = false; pinta();
+          const c0 = creadas[0];
+          aviso('sa-wosm-ok', `✅ Tarea creada (#${c0.taskId}) · ${Math.round(c0.totalTimeMinutes)} min · ${c0.status}.`);
+        } catch (e) {
+          st.busy = false; pinta();
+          aviso('sa-wosm-err', (e && e.persistedQueryRotated)
+            ? 'El hash de CreateManyScheduleTasks rotó — avísale a Claude.'
+            : 'No se pudo crear: ' + ((e && e.message) || 'error'));
+        }
+      });
+    }).catch(function (e) {
+      cuerpo().textContent = '';
+      cuerpo().appendChild(elm('div', { class: 'sa-wosm-err', text: 'No se pudo preparar la programación: ' + ((e && e.message) || 'error') }));
+      pie().textContent = '';
+      pie().appendChild(elm('button', { class: 'sa-wosm-btn ghost', text: 'Cerrar', onclick: closeModal }));
+    });
   }
 
   // ── Carga de datos ───────────────────────────────────────────────────────────

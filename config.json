@@ -1,6 +1,6 @@
 {
-  "version": "1.9.4",
-  "lastUpdated": "2026-07-28T21:58",
+  "version": "1.10.0",
+  "lastUpdated": "2026-07-28T22:11",
   "extensionVersion": "1.7.1",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -674,6 +674,8 @@
       ],
       "scripts": [
         "scripts/steelhead-api.js",
+        "scripts/auto-router-engine.js",
+        "scripts/auto-router-api.js",
         "scripts/wo-schedule-core.js",
         "scripts/wo-schedule-button.js"
       ],
@@ -2862,7 +2864,7 @@
     "scripts/wo-deadline-changer.js": "169d0dc0c60030398a108ea73747848071159b7d4664305ad66833a0fe67265b",
     "scripts/wo-listing-columns.js": "7f3e11886246b828ceefb89a974670265ec3507d48465822cb15e1599c63583e",
     "scripts/wo-mover.js": "e924dfd9fb5d82ed65ab75151adcdc32cd4a94e950b8fcc2add9a9a65c78aefd",
-    "scripts/wo-schedule-button.js": "ae6b35e1c4905a25ae3c7905a17667e35a9ff123886cabdbd2de3846f2f4d6a4",
+    "scripts/wo-schedule-button.js": "5ab32387c2eddf8c338d96368dee036c97ac71e3cd3afa1bbf6abebcf4300c76",
     "scripts/wo-schedule-core.js": "13950d255ac6fbd2d854bf9244361832ff49b2cdd67cd1403e76178d8f698361"
   }
 }
