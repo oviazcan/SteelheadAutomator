@@ -193,6 +193,27 @@
       ],
       "_estrategia": "capture-abort",
       "_nota": "OT Centinela 11677. Las dos se disparan en el modal \"Editar Especificaciones\" de la ficha (ancla ESTRUCTURAL data-steelhead-component-id=\"WORK_ORDER_PAGE_PARTS_EDIT_SPECS_BUTTON\" para abrirlo, y \"WORK_PARTS_INFO_SAVE_SPECS_AND_CLOSE_BUTTON\" para guardar — ambos verificados en vivo el 2026-07-28; esa pantalla mezcla idiomas, el texto no sirve de ancla). Secuencia: abrir el modal, CAMBIAR el parámetro de un campo y guardar; Archive sale si el campo ya tenía parámetro y AddParams siempre. CAPTURA-Y-ABORTA: las dos ops se marcan en sink.abortOps ANTES de tocar guardar, así el request se registra y se aborta -> la OT Centinela no queda modificada. Doble candado: la ficha debe decir \"Centinela\" (isSentinel fail-closed) + abort. PENDIENTE de correr headless: cambiar el parámetro es un dropdown del modal que aún no está guionizado, y hay que confirmar que la OT Centinela tenga al menos una spec con un campo de dos opciones (si solo hay una, no hay cambio que provocar). usedBy: wo-spec-params."
+    },
+    "partNumberRackType": {
+      "id": 3770957,
+      "screenPath": "/PartNumbers/{id}",
+      "marker": "Centinela",
+      "_para": [
+        "CreatePartNumberPerPerRackType",
+        "UpdatePartNumberPerPerRackType"
+      ],
+      "_estrategia": "capture-abort",
+      "_nota": "PN Centinela 3770957 (el mismo de la entidad partNumber). Las dos ops salen del MISMO dialogo de piezas por carga: ficha del PN -> tipos de rack -> capturar piezas por rack. CREATE si el par (pn,rackType) es nuevo, UPDATE si ya existia -- no son intercambiables: el insert dispara unique constraint. Payloads reales capturados 2026-07-07 ({partNumberId:3770957, partsPerRack, rackTypeId:3049}), asi que el flujo esta confirmado sobre el propio centinela. CAPTURA-Y-ABORTA -> no se toca el dato maestro. PENDIENTE de correr headless: falta guionizar el DOM del dialogo. usedBy: wo-schedule-button, carga-masiva."
+    },
+    "treatmentTimes": {
+      "id": "treatment-times-dialog",
+      "screenPath": "/Processes",
+      "marker": "(catalogo de procesos - el candado es el abort)",
+      "_para": [
+        "CreateTreatmentTimesWithExpectedStationCostsUI"
+      ],
+      "_estrategia": "capture-abort",
+      "_nota": "Tiempos de tratamiento (payload real capturado 2026-05-15: treatmentId 88795 + stationId 12098 + cycleTime/totalTime como Interval). Se dispara al GUARDAR el dialogo de tiempos, cuya LECTURA (CreateEditTreatmentTimesDialogQuery) ya usa process-deep-audit. NO hay objeto Centinela para este catalogo -> el UNICO candado es el abort; no cambiar de estrategia sin repensarlo. PENDIENTE de correr headless: falta guionizar el DOM del dialogo. usedBy: wo-schedule-button."
     }
   },
   "_dominio": "TLC/344 (Toluca — los centinelas viven aquí; 344 es TLC, NO MTY. MTY es otro dominio sin datos aún)"

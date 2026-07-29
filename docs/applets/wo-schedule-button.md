@@ -250,3 +250,105 @@ Por eso el motor quedó listo y verificado, pero el 📅 de «Sin programar» **
 teclear un tiempo a mano entra al planificador igual de mal que calcularlo mal. El camino
 natural es `ScheduleInformationById` — copiar los tiempos de una tarea real del mismo
 treatment+estación y **fail-closed si no existe ninguna**, en vez de inventarlos.
+
+
+## Datos maestros faltantes: detectar el daño y corregirlo en la fuente (2026-07-28)
+
+Planteado por el operador: los dos huecos reales del piso son **el tratamiento genérico de
+Planificación sin tiempos** y **el tipo de rack sin piezas por carga**. El segundo es el
+peligroso porque **no falla: calcula**. Sin `partsPerRack` el planificador asume **1 pieza por
+carga**, así que 13 504 piezas se vuelven 13 504 cargas y la tarea pasa de **141 minutos a
+~112 días** — una duración irreal que entra al programa con cara de dato bueno y desacomoda
+todo lo que venga detrás.
+
+**Un dato maestro faltante no se resuelve con un default silencioso.** `diagnoseSchedulingData`
+lo nombra, **mide el efecto** (cargas y días concretos, no un "revisa la configuración") y dice
+dónde se corrige. `SIN_TIEMPOS` y `SIN_PIEZAS_POR_RACK` **bloquean**; `DURACION_IMPLAUSIBLE`
+(> 1 semana en una tina) solo advierte, porque puede ser legítimo.
+
+### Corregirlo resultó barato: las tres escrituras ya existían
+
+| Corrección | Mutación | Estado |
+|---|---|---|
+| Piezas por carga (alta) | `CreatePartNumberPerPerRackType` | payload real capturado `{partNumberId, partsPerRack, rackTypeId}` |
+| Piezas por carga (corrección) | `UpdatePartNumberPerPerRackType` | **ya en config y en uso por `carga-masiva`** |
+| Tiempos de tratamiento | `CreateTreatmentTimesWithExpectedStationCostsUI` | payload real capturado |
+
+Las dos de rack **no son intercambiables**: `SavePartNumberRackTypes` es insert-only y dispara
+unique constraint en `(pn, rackType)` — por eso existe la de update, y por eso
+`planPartsPerRackFix` elige según el par exista o no. Los tiempos viajan como **Interval de
+Postgres** (`{hours, minutes}`), no como minutos: `minutesToInterval` hace la conversión y
+`buildTreatmentTimeCreateInput` **rechaza un ciclo mayor que el total** (tarea imposible) antes
+de que llegue al ERP.
+
+La lectura para detectar el faltante también estaba: `CreateEditPartsPerRackTypeQuery`
+(`{partNumberId}` → `allRackTypes[].partsPerRackDefault`) y `CreateEditTreatmentTimesDialogQuery`
+(ya usada por `process-deep-audit`).
+
+**Rutas de regeneración:** `partNumberRackType` cuelga del **PN Centinela 3770957** — que es
+justamente el PN de los payloads capturados, así que el flujo ya está confirmado sobre el
+centinela. `treatmentTimes` no tiene objeto centinela (es un catálogo global), así que **su
+único candado es el abort**; no cambiar de estrategia sin repensarlo. La deuda del trinquete
+**bajó de 60 a 59**.
+
+
+### Las piezas por carga son POR LÍNEA — al re-rutear hay que AGREGAR, no corregir
+
+Precisión del operador, confirmada en datos reales (`SchedulablePartLocations`, scan
+2026-07-07): el PN **3015610** tiene **4** piezas por carga en `T204-FL01` y **1** en
+`T205-FL01`. Mismo número de parte, distinta línea, distinta carga — porque el dato vive en el
+par **(PN, tipo de rack)** y cada línea usa el suyo.
+
+**Consecuencia para el ruteo:** cuando una orden se manda a otra línea, el rack de la estación
+destino puede **no estar ligado** al PN. Entonces el dato no está *mal*: **no existe**. Y el
+arreglo no es corregir el que hay —que probablemente es correcto para SU línea— sino **agregar
+el de la línea nueva**. Confundir los dos casos pisaría un dato bueno.
+
+`resolveRackForStation(stationRackTypes, partNumberRackTypes)` resuelve el rack **de la estación
+destino** y devuelve `yaExiste`, que es lo que elige la mutación:
+
+| Caso | Acción | Mutación |
+|---|---|---|
+| El PN ya tiene ese rack | **CORREGIR** | `UpdatePartNumberPerPerRackType` |
+| El PN no tiene ese rack (línea nueva) | **AGREGAR** | `CreatePartNumberPerPerRackType` |
+| La estación no tiene rack configurado | ninguna — se reporta aparte (`ESTACION_SIN_RACK`) | — |
+
+No son intercambiables: el alta es insert-only y revienta con unique constraint en
+`(pn, rackType)`.
+
+Además devuelve **`alternativas`**: las piezas que el PN sí tiene declaradas en otros racks. Eso
+es lo que hace capturable el dato faltante con criterio — *"en T204-FL01 caben 4 y en T205-FL01
+cabe 1; ¿cuántas en T114-FL01?"* — en vez de pedir un número al aire. Y si la estación ofrece
+varios racks, `opcionesEstacion` los expone para que la UI deje elegir. Los racks **archivados**
+nunca son candidatos.
+
+
+## Fase 2b CABLEADA — crear la tarea y corregir el dato en el acto (2026-07-28)
+
+**Decisión del operador:** captura **quien programa**, no ingeniería. *"Debería pasárselo a
+ingeniería, pero como va a estar en piso, que lo verifique directamente."* Eso cambia el diseño:
+la captura manual deja de ser un riesgo y pasa a ser **el mecanismo de verificación** — quien
+teclea las piezas por carga tiene el rack enfrente.
+
+El 📅 de «Sin programar» ahora abre el modal de creación: paso, fecha/hora, tipo de rack, piezas
+por carga y los dos tiempos. **El efecto se recalcula y se muestra mientras tecleas**
+(`13504 piezas → 9 cargas → 141 min`), que es lo que sustituye a una fuente automática de datos.
+Al crear, se relee el programa y el readout del header se actualiza con lo que quedó de verdad.
+
+### Guardar el dato maestro es un botón APARTE
+No es efecto lateral de programar. El botón cambia de texto según el caso —**«Agregar piezas por
+carga»** cuando el rack de la línea destino no está ligado al PN, **«Corregir»** cuando ya
+existe— y pide confirmación que dice explícitamente que **aplica a todas las órdenes de ese PN en
+ese rack, no solo a ésta**. Es la diferencia entre arreglar el dato y parchear la tarea: la
+próxima vez que alguien programe ese PN en esa línea, el dato ya está.
+
+### Qué queda sin validar en vivo
+- **Ninguna corrida real de creación.** El payload se reproduce byte a byte contra el capturado y
+  el motor tiene 80 tests, pero crear una tarea escribe en el planificador: primer uso sobre una
+  orden de prueba.
+- **`partsPerBatch = partsPerRack × rackCount`** sigue siendo hipótesis de un solo caso. En el
+  modal el campo es editable y el resultado se ve antes de confirmar, así que un valor equivocado
+  se nota en pantalla (cargas y horas) antes de escribir.
+- El modal asume **rackCount = 1**; cuando la estación declare varios racks hay que leer
+  `stationTreatmentRackTypes` de esa estación (hoy solo se ha visto dentro de
+  `RelatedSchedulingInformation`, que son ~87 MB).

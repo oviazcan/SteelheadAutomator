@@ -581,6 +581,223 @@
     return p * (isFinite(r) && r > 0 ? r : 1);
   }
 
+  // ── El rack depende de la ESTACIÓN, no del PN ──────────────────────────────
+  // Las piezas por carga viven en el par (PN, tipo de rack), y cada línea usa el suyo. En
+  // datos reales el PN 3015610 tiene **4** piezas en `T204-FL01` y **1** en `T205-FL01`:
+  // el mismo número de parte, distinta línea, distinta carga.
+  //
+  // Consecuencia para el ruteo: al mandar una orden a otra línea, el rack de la estación
+  // destino puede **no estar ligado** al PN. Entonces el dato no está "mal", NO EXISTE —
+  // y el arreglo no es corregir el que hay (que puede ser correcto para su línea) sino
+  // AGREGAR el de la línea nueva. Por eso esto devuelve `yaExiste`, y las alternativas
+  // sirven de referencia para capturar el valor nuevo con criterio.
+  //
+  // stationRackTypes: stationTreatmentRackTypesByStationId.nodes[] → {rackTypeId, rackCount, rackTypeByRackTypeId{name,archivedAt}}
+  // partNumberRackTypes: partNumberRackTypesByPartNumberId.nodes[] → {rackTypeId, partsPerRack, rackTypeByRackTypeId{name,archivedAt}}
+  function resolveRackForStation(input) {
+    input = input || {};
+    const activos = (arr) => (arr || []).filter((n) => {
+      if (!n || n.rackTypeId == null) return false;
+      const rt = n.rackTypeByRackTypeId;
+      return !(rt && rt.archivedAt != null);       // un rack archivado no es candidato
+    });
+    const nombre = (n) => {
+      const rt = n && n.rackTypeByRackTypeId;
+      return (rt && rt.name != null) ? String(rt.name) : ('Rack ' + (n && n.rackTypeId));
+    };
+
+    const deEstacion = activos(input.stationRackTypes);
+    const delPN = activos(input.partNumberRackTypes);
+
+    // Las piezas que el PN tiene declaradas en OTROS racks: la referencia que hace
+    // capturable el dato faltante ("en T204-FL01 caben 4; ¿cuántas en T205-FL01?").
+    const alternativas = delPN.map((n) => ({
+      rackTypeId: Number(n.rackTypeId), rackTypeName: nombre(n),
+      partsPerRack: n.partsPerRack != null ? Number(n.partsPerRack) : null,
+    }));
+
+    if (!deEstacion.length) {
+      return { rackTypeId: null, rackTypeName: null, rackCount: null,
+               partsPerRack: null, yaExiste: false, sinRackEnEstacion: true, alternativas: alternativas };
+    }
+    // Si la estación ofrece varios racks se respeta el pedido; si no, el primero.
+    const pedido = input.rackTypeIdPreferido != null ? Number(input.rackTypeIdPreferido) : null;
+    const elegido = (pedido != null && deEstacion.find((n) => Number(n.rackTypeId) === pedido)) || deEstacion[0];
+    const rackTypeId = Number(elegido.rackTypeId);
+    const delPnParaEste = delPN.find((n) => Number(n.rackTypeId) === rackTypeId) || null;
+
+    return {
+      rackTypeId: rackTypeId,
+      rackTypeName: nombre(elegido),
+      rackCount: elegido.rackCount != null ? Number(elegido.rackCount) : 1,
+      partsPerRack: (delPnParaEste && delPnParaEste.partsPerRack != null)
+        ? Number(delPnParaEste.partsPerRack) : null,
+      yaExiste: !!delPnParaEste,     // decide CREATE vs UPDATE — no son intercambiables
+      sinRackEnEstacion: false,
+      opcionesEstacion: deEstacion.map((n) => ({
+        rackTypeId: Number(n.rackTypeId), rackTypeName: nombre(n),
+        rackCount: n.rackCount != null ? Number(n.rackCount) : 1,
+      })),
+      alternativas: alternativas,
+    };
+  }
+
+  // ── Diagnóstico de DATOS MAESTROS antes de programar ───────────────────────
+  // La fórmula es correcta, pero se alimenta de dos datos que en la práctica faltan:
+  //   · el tratamiento genérico de Planificación sin `TreatmentTime` cargado;
+  //   · el rack type sin piezas por rack → el sistema toma **1 pieza por carga**.
+  // El segundo no falla: CALCULA. Con 13 504 piezas a 1 por carga salen 13 504 lotes y la
+  // tarea pasa de 141 minutos a ~112 días — una duración irreal que entra al planificador
+  // y desacomoda todo lo que venga detrás. Un dato maestro faltante NO puede resolverse
+  // con un default silencioso: se nombra, se mide el efecto y se dice dónde se corrige.
+  const DURACION_IMPLAUSIBLE_MIN = 7 * 24 * 60;   // > 1 semana en una tina: revisar
+
+  function diagnoseSchedulingData(input) {
+    input = input || {};
+    const problemas = [];
+    const partCount = Number(input.partCount) || 0;
+    const ppr = input.partsPerRack;
+    const tt = input.treatmentTime;   // salida de pickTreatmentTime(), o null
+
+    if (!tt || tt.cycleTimeMinutes == null || tt.treatmentTimeMinutes == null) {
+      problemas.push({
+        codigo: 'SIN_TIEMPOS',
+        bloquea: true,
+        que: 'El tratamiento no tiene tiempos cargados (ciclo y total).',
+        efecto: 'Sin ellos no hay forma de calcular cuánto dura la tarea.',
+        donde: 'Tiempos de tratamiento (combo tratamiento · estación · parte).',
+      });
+    }
+
+    const rack = input.rack || null;   // salida de resolveRackForStation(), opcional
+    if (rack && rack.sinRackEnEstacion) {
+      problemas.push({
+        codigo: 'ESTACION_SIN_RACK', bloquea: true,
+        que: 'La estación destino no tiene ningún tipo de rack configurado.',
+        efecto: 'Sin rack no hay cuántas piezas entran por carga.',
+        donde: 'Tipos de rack de la estación.',
+      });
+    }
+
+    const sinRack = ppr == null || ppr === '' || !(Number(ppr) > 0);
+    if (sinRack && partCount > 1 && !(rack && rack.sinRackEnEstacion)) {
+      // Se mide el daño con los tiempos que haya; si no hay, igual se reporta el conteo.
+      const lotesReales = partCount;                  // 1 pieza por carga
+      // El matiz que importa al re-rutear: el dato puede estar BIEN para su línea y
+      // simplemente NO EXISTIR para la línea a la que vas. Eso no se corrige, se AGREGA.
+      const nuevoRack = !!(rack && !rack.yaExiste && rack.rackTypeId != null);
+      const det = { codigo: 'SIN_PIEZAS_POR_RACK', bloquea: true,
+        accion: nuevoRack ? 'AGREGAR' : 'CORREGIR',
+        rackTypeId: rack ? rack.rackTypeId : null,
+        rackTypeName: rack ? rack.rackTypeName : null,
+        alternativas: (rack && rack.alternativas) || [],
+        que: nuevoRack
+          ? `Este número de parte no tiene piezas por carga declaradas para ${rack.rackTypeName}, `
+            + 'que es el rack de la estación a la que lo vas a mandar.'
+          : 'El tipo de rack no tiene piezas por carga, así que se asume 1 pieza por carga.',
+        donde: nuevoRack
+          ? `Agregar ${rack.rackTypeName} a los tipos de rack del número de parte.`
+          : 'Piezas por rack del número de parte en ese tipo de rack.',
+        lotes: lotesReales };
+      if (tt && tt.cycleTimeMinutes != null && tt.treatmentTimeMinutes != null) {
+        const min = tt.treatmentTimeMinutes + (lotesReales - 1) * tt.cycleTimeMinutes;
+        det.minutos = min;
+        det.efecto = `Daría ${lotesReales} cargas de 1 pieza: ${Math.round(min)} min `
+                   + `(~${(min / 1440).toFixed(1)} días) para ${partCount} piezas.`;
+      } else {
+        det.efecto = `Daría ${lotesReales} cargas de 1 pieza en vez de las que caben en el rack.`;
+      }
+      problemas.push(det);
+    }
+
+    // Aun con datos completos, un total desbocado merece freno: es la señal de que algún
+    // dato maestro está mal aunque esté presente.
+    if (!problemas.length) {
+      const t = scheduleTaskTimes({
+        partCount: partCount,
+        partsPerBatch: input.partsPerBatch != null ? input.partsPerBatch : partsPerBatchFrom(ppr, input.rackCount),
+        cycleTimeMinutes: tt.cycleTimeMinutes,
+        treatmentTimeMinutes: tt.treatmentTimeMinutes,
+      });
+      if (t && t.totalTimeMinutes > DURACION_IMPLAUSIBLE_MIN) {
+        problemas.push({
+          codigo: 'DURACION_IMPLAUSIBLE', bloquea: false,
+          que: `La tarea duraría ${Math.round(t.totalTimeMinutes)} min (~${(t.totalTimeMinutes / 1440).toFixed(1)} días).`,
+          efecto: `Son ${t.batches} cargas. Revisa las piezas por rack y los tiempos antes de programar.`,
+          donde: 'Piezas por rack / tiempos de tratamiento.',
+          minutos: t.totalTimeMinutes, lotes: t.batches,
+        });
+      }
+    }
+
+    return { ok: !problemas.some((p) => p.bloquea), problemas: problemas };
+  }
+
+  // ── Corregir el dato maestro EN LA FUENTE ──────────────────────────────────
+  // Detectar el faltante y seguir de largo con un default sirve una vez; el dato sigue
+  // mal para el siguiente que programe. Estas dos funciones arman las escrituras que lo
+  // arreglan de raíz, con los payloads REALES capturados.
+
+  // Piezas por rack de un PN en un tipo de rack.
+  // OJO: son DOS mutations distintas y no son intercambiables — `SavePartNumberRackTypes`
+  // es insert-only y revienta con unique constraint en (pn, rackType), por eso
+  // `carga-masiva` ya usa la de update. Aquí se elige según exista o no el par.
+  //   crear    → CreatePartNumberPerPerRackType {partNumberId, partsPerRack, rackTypeId}
+  //   corregir → UpdatePartNumberPerPerRackType {partNumberId, partsPerRack, rackTypeId}
+  function planPartsPerRackFix(input) {
+    input = input || {};
+    const partNumberId = input.partNumberId == null ? null : Number(input.partNumberId);
+    const rackTypeId = input.rackTypeId == null ? null : Number(input.rackTypeId);
+    const partsPerRack = Number(input.partsPerRack);
+    if (partNumberId == null || rackTypeId == null) {
+      return { valid: false, error: 'Falta el número de parte o el tipo de rack.', op: null, variables: null };
+    }
+    if (!isFinite(partsPerRack) || partsPerRack <= 0 || !Number.isInteger(partsPerRack)) {
+      return { valid: false, error: 'Las piezas por carga deben ser un entero mayor que cero.', op: null, variables: null };
+    }
+    return {
+      valid: true, error: null,
+      op: input.yaExiste ? 'UpdatePartNumberPerPerRackType' : 'CreatePartNumberPerPerRackType',
+      variables: { partNumberId: partNumberId, partsPerRack: partsPerRack, rackTypeId: rackTypeId },
+    };
+  }
+
+  // Minutos → Interval, como los manda el front ({hours, minutes} en el payload capturado).
+  function minutesToInterval(min) {
+    const n = Number(min);
+    if (!isFinite(n) || n < 0) return null;
+    const total = Math.round(n * 60);            // a segundos, para no perder fracciones
+    const iv = { hours: Math.floor(total / 3600), minutes: Math.floor((total % 3600) / 60) };
+    const s = total % 60;
+    if (s) iv.seconds = s;
+    return iv;
+  }
+
+  // Tiempos de un tratamiento (en una estación, opcionalmente para un PN).
+  // CreateTreatmentTimesWithExpectedStationCostsUI, payload capturado:
+  //   {input:{treatmentTimesToCreate:[{treatmentId, stationId, processNodeOccurrence,
+  //                                    cycleTime:Interval, totalTime:Interval, timeType}]}}
+  function buildTreatmentTimeCreateInput(input) {
+    input = input || {};
+    const treatmentId = input.treatmentId == null ? null : Number(input.treatmentId);
+    const stationId = input.stationId == null ? null : Number(input.stationId);
+    const cycle = minutesToInterval(input.cycleTimeMinutes);
+    const total = minutesToInterval(input.totalTimeMinutes);
+    if (treatmentId == null || stationId == null || !cycle || !total) return null;
+    // Un ciclo mayor que el total describe una tarea imposible: se rechaza aquí y no en piso.
+    if (Number(input.cycleTimeMinutes) > Number(input.totalTimeMinutes)) return null;
+    const t = {
+      treatmentId: treatmentId,
+      stationId: stationId,
+      processNodeOccurrence: input.processNodeOccurrence != null ? input.processNodeOccurrence : null,
+      cycleTime: cycle,
+      totalTime: total,
+      timeType: input.timeType != null ? String(input.timeType) : 'BATCH',
+    };
+    if (input.partNumberId != null) t.partNumberId = Number(input.partNumberId);
+    return { input: { treatmentTimesToCreate: [t] } };
+  }
+
   // Payload de CreateManyScheduleTasks. Reproduce el capturado exactamente, incluidos los
   // tipos que sorprenden: `rackTypeIdLineage` es un STRING (no un array) y `rackIdLineage`
   // venía en null; el envoltorio es `{mnScheduleTask:[…]}` y lleva `scheduleIdFilter`.
@@ -744,6 +961,8 @@
     buildScheduleTaskUpdateInput, verifyScheduleTaskApplied,
     intervalToMinutes, pickTreatmentTime, scheduleTaskTimes, partsPerBatchFrom,
     buildScheduleTaskCreateInput, parseCreatedScheduleTasks,
+    diagnoseSchedulingData, resolveRackForStation, planPartsPerRackFix, minutesToInterval,
+    buildTreatmentTimeCreateInput,
     isoToLocalInput, localInputToIso,
     parseIsoParts, formatShortDateTime, formatScheduleCell,
   };

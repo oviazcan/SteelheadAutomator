@@ -725,3 +725,186 @@ test('parseCreatedScheduleTasks: respuesta vacía o rara → [] (no truena)', ()
   assert.deepEqual(Core.parseCreatedScheduleTasks({}), []);
   assert.deepEqual(Core.parseCreatedScheduleTasks(null), []);
 });
+
+// ══════════════════════════════════════════════════════════════════════════
+// Datos maestros faltantes — detectar el daño y corregirlo en la fuente
+// ══════════════════════════════════════════════════════════════════════════
+// El caso que reportó el operador: el tratamiento genérico de Planificación sin tiempos,
+// o el rack type sin piezas por carga. El segundo NO falla, CALCULA: asume 1 pieza por
+// carga y la duración se vuelve irreal. Ese es el modo de fallo peligroso, porque entra
+// al planificador con cara de dato bueno.
+
+const TT_OK = { cycleTimeMinutes: 12, treatmentTimeMinutes: 45 };
+
+test('SIN piezas por rack: se detecta y se MIDE el disparate', () => {
+  const d = Core.diagnoseSchedulingData({ partCount: 13504, partsPerRack: null, treatmentTime: TT_OK });
+  assert.equal(d.ok, false, 'debe bloquear: 1 pieza por carga no es un default aceptable');
+  const p = d.problemas.find((x) => x.codigo === 'SIN_PIEZAS_POR_RACK');
+  assert.ok(p);
+  assert.equal(p.lotes, 13504, 'a 1 pieza por carga, tantas cargas como piezas');
+  // 45 + 13503*12 = 162081 min ≈ 112.6 días — el número que hace obvio el problema
+  assert.equal(p.minutos, 45 + 13503 * 12);
+  assert.match(p.efecto, /días/);
+  assert.ok(p.donde, 'debe decir DÓNDE se corrige');
+});
+
+test('SIN tiempos de tratamiento: bloquea (no hay con qué calcular)', () => {
+  const d = Core.diagnoseSchedulingData({ partCount: 100, partsPerRack: 50, treatmentTime: null });
+  assert.equal(d.ok, false);
+  assert.equal(d.problemas[0].codigo, 'SIN_TIEMPOS');
+});
+
+test('con los datos completos no estorba', () => {
+  const d = Core.diagnoseSchedulingData({ partCount: 13504, partsPerRack: 1501, rackCount: 1, treatmentTime: TT_OK });
+  assert.equal(d.ok, true);
+  assert.deepEqual(d.problemas, []);
+});
+
+test('una pieza sola NO se reporta como rack faltante', () => {
+  // con partCount 1 el rack da igual: 1 carga de todos modos, no hay disparate que avisar
+  const d = Core.diagnoseSchedulingData({ partCount: 1, partsPerRack: null, treatmentTime: TT_OK });
+  assert.equal(d.problemas.some((p) => p.codigo === 'SIN_PIEZAS_POR_RACK'), false);
+});
+
+test('duración desbocada AVISA aunque los datos estén presentes', () => {
+  // datos completos pero absurdos: 10000 piezas de a 1 por carga "declarada"
+  const d = Core.diagnoseSchedulingData({ partCount: 10000, partsPerRack: 1, rackCount: 1, treatmentTime: TT_OK });
+  const p = d.problemas.find((x) => x.codigo === 'DURACION_IMPLAUSIBLE');
+  assert.ok(p, 'más de una semana en una tina merece freno');
+  assert.equal(p.bloquea, false, 'avisa, pero puede ser legítimo → no bloquea');
+  assert.equal(d.ok, true);
+});
+
+// ── Corregir el dato en la fuente ────────────────────────────────────────────
+test('planPartsPerRackFix elige CREATE o UPDATE — no son intercambiables', () => {
+  // SavePartNumberRackTypes es insert-only y revienta con unique constraint en (pn,rack):
+  // por eso la corrección de un par que YA existe tiene que ir por la de update.
+  const nuevo = Core.planPartsPerRackFix({ partNumberId: 3770957, rackTypeId: 3049, partsPerRack: 1 });
+  assert.equal(nuevo.op, 'CreatePartNumberPerPerRackType');
+  assert.deepEqual(nuevo.variables, { partNumberId: 3770957, partsPerRack: 1, rackTypeId: 3049 });
+
+  const existente = Core.planPartsPerRackFix({ partNumberId: 3770957, rackTypeId: 3049, partsPerRack: 2, yaExiste: true });
+  assert.equal(existente.op, 'UpdatePartNumberPerPerRackType');
+  assert.deepEqual(existente.variables, { partNumberId: 3770957, partsPerRack: 2, rackTypeId: 3049 });
+});
+
+test('planPartsPerRackFix rechaza valores que volverían a romper el cálculo', () => {
+  const base = { partNumberId: 1, rackTypeId: 2 };
+  assert.equal(Core.planPartsPerRackFix({ ...base, partsPerRack: 0 }).valid, false);
+  assert.equal(Core.planPartsPerRackFix({ ...base, partsPerRack: -3 }).valid, false);
+  assert.equal(Core.planPartsPerRackFix({ ...base, partsPerRack: 2.5 }).valid, false);
+  assert.equal(Core.planPartsPerRackFix({ ...base, partsPerRack: '' }).valid, false);
+  assert.equal(Core.planPartsPerRackFix({ partsPerRack: 5 }).valid, false);
+});
+
+test('minutesToInterval: el server habla Interval, no minutos', () => {
+  assert.deepEqual(Core.minutesToInterval(7), { hours: 0, minutes: 7 });   // el capturado
+  assert.deepEqual(Core.minutesToInterval(141), { hours: 2, minutes: 21 });
+  assert.deepEqual(Core.minutesToInterval(0), { hours: 0, minutes: 0 });
+  assert.deepEqual(Core.minutesToInterval(1.5), { hours: 0, minutes: 1, seconds: 30 });
+  assert.equal(Core.minutesToInterval(-1), null);
+});
+
+test('buildTreatmentTimeCreateInput reproduce el payload capturado', () => {
+  const out = Core.buildTreatmentTimeCreateInput({
+    treatmentId: 88795, stationId: 12098, cycleTimeMinutes: 7, totalTimeMinutes: 7, timeType: 'BATCH',
+  });
+  assert.deepEqual(out, { input: { treatmentTimesToCreate: [{
+    treatmentId: 88795, stationId: 12098, processNodeOccurrence: null,
+    cycleTime: { hours: 0, minutes: 7 }, totalTime: { hours: 0, minutes: 7 }, timeType: 'BATCH',
+  }] } });
+});
+
+test('buildTreatmentTimeCreateInput: un ciclo mayor que el total es imposible → null', () => {
+  assert.equal(Core.buildTreatmentTimeCreateInput({
+    treatmentId: 1, stationId: 2, cycleTimeMinutes: 30, totalTimeMinutes: 10 }), null);
+  assert.equal(Core.buildTreatmentTimeCreateInput({ treatmentId: 1, cycleTimeMinutes: 1, totalTimeMinutes: 2 }), null);
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// El rack depende de la ESTACIÓN: re-rutear cambia cuántas piezas caben
+// ══════════════════════════════════════════════════════════════════════════
+// Datos REALES (SchedulablePartLocations, scan 2026-07-07): el PN 3015610 tiene 4 piezas
+// por carga en T204-FL01 y 1 en T205-FL01. Mismo número de parte, distinta línea, distinta
+// carga. Por eso al re-rutear el dato de la línea nueva puede NO EXISTIR — y entonces no se
+// corrige el que hay (que está bien para SU línea): se AGREGA el que falta.
+const PN_RACKS_REAL = [
+  { partNumberId: 3015610, partsPerRack: 1, rackTypeId: 2706, rackTypeByRackTypeId: { id: 2706, name: 'T205-FL01', archivedAt: null } },
+  { partNumberId: 3015610, partsPerRack: 4, rackTypeId: 2705, rackTypeByRackTypeId: { id: 2705, name: 'T204-FL01', archivedAt: null } },
+];
+const estacionCon = (rackTypeId, name, rackCount = 1) => ([
+  { stationId: 1, rackCount: rackCount, rackTypeId: rackTypeId, rackTypeByRackTypeId: { id: rackTypeId, name: name, archivedAt: null } },
+]);
+
+test('resolveRackForStation: la línea que YA tiene el dato lo usa', () => {
+  const r = Core.resolveRackForStation({
+    stationRackTypes: estacionCon(2705, 'T204-FL01'), partNumberRackTypes: PN_RACKS_REAL });
+  assert.equal(r.rackTypeId, 2705);
+  assert.equal(r.partsPerRack, 4, 'T204-FL01 → 4 piezas por carga');
+  assert.equal(r.yaExiste, true, 'existe → la corrección sería UPDATE');
+});
+
+test('resolveRackForStation: la otra línea tiene OTRO valor, no el mismo', () => {
+  const r = Core.resolveRackForStation({
+    stationRackTypes: estacionCon(2706, 'T205-FL01'), partNumberRackTypes: PN_RACKS_REAL });
+  assert.equal(r.partsPerRack, 1, 'T205-FL01 → 1 pieza por carga, no 4');
+  assert.equal(r.yaExiste, true);
+});
+
+test('re-rutear a una línea SIN el dato → hay que AGREGAR, no corregir', () => {
+  // T114-FL01 (rack 2701, el de la station 12093 del payload real) no está ligado al PN
+  const r = Core.resolveRackForStation({
+    stationRackTypes: estacionCon(2701, 'T114-FL01'), partNumberRackTypes: PN_RACKS_REAL });
+  assert.equal(r.rackTypeId, 2701);
+  assert.equal(r.partsPerRack, null, 'no existe el par (PN, T114-FL01)');
+  assert.equal(r.yaExiste, false, 'debe ir por CREATE: el insert-only no puede pisar nada');
+  // y ofrece las otras líneas como referencia para capturar con criterio
+  assert.deepEqual(r.alternativas.map((a) => [a.rackTypeName, a.partsPerRack]).sort(),
+    [['T204-FL01', 4], ['T205-FL01', 1]]);
+});
+
+test('el diagnóstico DISTINGUE agregar de corregir, y nombra el rack', () => {
+  const rack = Core.resolveRackForStation({
+    stationRackTypes: estacionCon(2701, 'T114-FL01'), partNumberRackTypes: PN_RACKS_REAL });
+  const d = Core.diagnoseSchedulingData({ partCount: 13504, partsPerRack: rack.partsPerRack,
+    rack: rack, treatmentTime: TT_OK });
+  const p = d.problemas.find((x) => x.codigo === 'SIN_PIEZAS_POR_RACK');
+  assert.equal(p.accion, 'AGREGAR', 'el dato de T204/T205 está bien: falta el de T114');
+  assert.match(p.que, /T114-FL01/, 'debe nombrar el rack de la estación destino');
+  assert.equal(p.rackTypeId, 2701);
+  assert.equal(p.alternativas.length, 2, 'muestra lo que sí tiene como referencia');
+});
+
+test('planPartsPerRackFix se alimenta del resolve: agrega sin pisar lo existente', () => {
+  const rack = Core.resolveRackForStation({
+    stationRackTypes: estacionCon(2701, 'T114-FL01'), partNumberRackTypes: PN_RACKS_REAL });
+  const plan = Core.planPartsPerRackFix({ partNumberId: 3015610, rackTypeId: rack.rackTypeId,
+    partsPerRack: 1501, yaExiste: rack.yaExiste });
+  assert.equal(plan.op, 'CreatePartNumberPerPerRackType');
+  assert.deepEqual(plan.variables, { partNumberId: 3015610, partsPerRack: 1501, rackTypeId: 2701 });
+});
+
+test('resolveRackForStation: rack ARCHIVADO no es candidato', () => {
+  const r = Core.resolveRackForStation({
+    stationRackTypes: [{ rackCount: 1, rackTypeId: 9, rackTypeByRackTypeId: { id: 9, name: 'Viejo', archivedAt: '2025-01-01' } }],
+    partNumberRackTypes: PN_RACKS_REAL });
+  assert.equal(r.sinRackEnEstacion, true);
+});
+
+test('estación sin ningún rack configurado se reporta aparte', () => {
+  const rack = Core.resolveRackForStation({ stationRackTypes: [], partNumberRackTypes: PN_RACKS_REAL });
+  const d = Core.diagnoseSchedulingData({ partCount: 100, partsPerRack: null, rack: rack, treatmentTime: TT_OK });
+  assert.equal(d.problemas.some((p) => p.codigo === 'ESTACION_SIN_RACK'), true);
+  assert.equal(d.problemas.some((p) => p.codigo === 'SIN_PIEZAS_POR_RACK'), false,
+    'no culpa al PN de un rack que la estación no tiene');
+  assert.equal(d.ok, false);
+});
+
+test('la estación con varios racks respeta el pedido', () => {
+  const dos = estacionCon(2705, 'T204-FL01').concat(estacionCon(2706, 'T205-FL01'));
+  const r = Core.resolveRackForStation({ stationRackTypes: dos, partNumberRackTypes: PN_RACKS_REAL,
+    rackTypeIdPreferido: 2706 });
+  assert.equal(r.rackTypeId, 2706);
+  assert.equal(r.partsPerRack, 1);
+  assert.equal(r.opcionesEstacion.length, 2, 'la UI necesita ofrecer las dos');
+});
