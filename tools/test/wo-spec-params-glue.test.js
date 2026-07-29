@@ -300,3 +300,87 @@ test('el modo por NP está expuesto y cableado', () => {
   assert.equal(typeof G.resolvePartNumbers, 'function');
   assert.equal(typeof G.findWorkOrdersForPartNumbers, 'function');
 });
+// ── Fase 3: escaneo total ────────────────────────────────────────────────────
+
+test('runPool: respeta el límite de concurrencia', async () => {
+  let vivos = 0, pico = 0;
+  const items = Array.from({ length: 20 }, (_, i) => i);
+  await G.runPool(items, 3, async () => {
+    vivos++; pico = Math.max(pico, vivos);
+    await new Promise(r => setTimeout(r, 5));
+    vivos--;
+  });
+  assert.ok(pico <= 3, 'el pico de concurrencia fue ' + pico + ', esperaba <= 3');
+});
+
+test('runPool: procesa TODOS los elementos aunque alguno falle', async () => {
+  const hechos = [];
+  await G.runPool([1, 2, 3, 4, 5], 2, async (n) => {
+    if (n === 3) throw new Error('boom');
+    hechos.push(n);
+  });
+  assert.deepEqual(hechos.sort((a, b) => a - b), [1, 2, 4, 5]);
+});
+
+test('runPool: se detiene cuando shouldStop devuelve true', async () => {
+  const hechos = [];
+  let n = 0;
+  await G.runPool([1, 2, 3, 4, 5, 6, 7, 8], 1, async (x) => { hechos.push(x); n++; },
+                  () => n >= 3);
+  assert.ok(hechos.length <= 4, 'procesó ' + hechos.length + ', esperaba detenerse cerca de 3');
+});
+
+test('planScanChunks: trocea la lista en lotes del tamaño pedido', () => {
+  const ids = Array.from({ length: 250 }, (_, i) => i + 1);
+  const chunks = G.planScanChunks(ids, 100);
+  assert.equal(chunks.length, 3);
+  assert.equal(chunks[0].length, 100);
+  assert.equal(chunks[2].length, 50);
+  assert.deepEqual(chunks.flat(), ids, 'no puede perder ni duplicar órdenes');
+});
+
+test('planScanChunks: lista vacía da cero lotes', () => {
+  assert.deepEqual(G.planScanChunks([], 100), []);
+});
+
+test('mergeCheckpoint: reanuda saltando lo ya hecho', () => {
+  const todas = [10, 11, 12, 13, 14];
+  const ck = { done: [10, 12], hallazgos: [{ idInDomain: 10 }] };
+  const r = G.mergeCheckpoint(todas, ck);
+  assert.deepEqual(r.pendientes, [11, 13, 14]);
+  assert.equal(r.yaHechas, 2);
+  assert.equal(r.hallazgos.length, 1);
+});
+
+test('mergeCheckpoint: sin checkpoint procesa todo', () => {
+  const r = G.mergeCheckpoint([1, 2, 3], null);
+  assert.deepEqual(r.pendientes, [1, 2, 3]);
+  assert.equal(r.yaHechas, 0);
+});
+
+test('slimResult: guarda lo mínimo para aplicar, NO el crudo de 0.87 MB', () => {
+  const cls = Core.classifyWorkOrder(FIX);
+  const plan = Core.buildWritePlan(cls, { partNumberId: 3044551 });
+  const gordo = { idInDomain: 5769, partNumberId: 3044551, partNumberName: '80236-167-07',
+                  workOrderId: 1756468, tally: cls.tally, cells: cls.cells,
+                  anomalies: cls.anomalies, orphans: cls.orphans, plan };
+  const slim = G.slimResult(gordo);
+  assert.equal(slim.idInDomain, 5769);
+  assert.equal(slim.plan.parametersToAdd.length, 7);
+  assert.equal(slim.nAnomalias, 5);
+  assert.equal(slim.nForzadas, 1);
+  // lo pesado NO viaja
+  assert.equal(slim.cells, undefined, 'cells trae los nodos crudos: no debe guardarse');
+  assert.equal(slim.anomalies, undefined);
+  const bytes = JSON.stringify(slim).length;
+  assert.ok(bytes < 4000, 'el resultado slim pesa ' + bytes + ' bytes, esperaba < 4000');
+});
+
+test('slimResult: una orden sin nada que corregir queda mínima', () => {
+  const slim = G.slimResult({ idInDomain: 1, partNumberId: 2, partNumberName: 'X',
+    tally: { OK: 5, VACIO: 0, DIFIERE: 0, DUPLICADO: 0, AMBIGUO: 0, SIN_CATALOGO: 0 },
+    cells: [], anomalies: [], orphans: [],
+    plan: { archiveIds: [], parametersToAdd: [], touched: 0, skipped: [] } });
+  assert.equal(slim.tieneTrabajo, false);
+  assert.ok(JSON.stringify(slim).length < 400);
+});
