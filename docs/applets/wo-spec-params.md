@@ -1,6 +1,6 @@
 # `wo-spec-params` — Reaplicar Parámetros en Órdenes de Trabajo
 
-**Versión:** 0.1.0 (fase 1) · **Estado:** implementado en `workbench`, **sin deployar**, sin corrida de escritura real
+**Versión:** 0.1.0 (fase 1) · **Estado:** ✅ **VIVO en producción (config 1.10.1, tag `v1.10.1`) y VALIDADO END-TO-END por el operador el 2026-07-28**
 **Bundle:** 5ª acción de *Ajuste Masivo de Specs* (`spec-migrator`)
 **Diseño:** [`docs/superpowers/specs/2026-07-28-wo-spec-params-reapply-design.md`](../superpowers/specs/2026-07-28-wo-spec-params-reapply-design.md)
 **Plan:** [`docs/superpowers/plans/2026-07-28-wo-spec-params-fase1.md`](../superpowers/plans/2026-07-28-wo-spec-params-fase1.md)
@@ -153,9 +153,13 @@ guionizado, y hay que confirmar que la OT Centinela tenga una spec con un campo 
 | Núcleo puro | ✅ 34/34 contra fixture real |
 | Glue | ✅ 16/16 |
 | Suite completa | ✅ 83 archivos, 0 rojos |
-| Lectura contra el ERP | ✅ verificada en vivo (solo lecturas) |
-| **Corrida de escritura** | ❌ **pendiente** |
-| Deploy | ❌ no deployado |
+| Lectura contra el ERP | ✅ verificada en vivo |
+| **Corrida de escritura** | ✅ **VALIDADA por el operador 2026-07-28** |
+| Deploy | ✅ config 1.10.1, tag `v1.10.1` |
+
+**La prueba que hizo el operador es la buena:** desalineó parámetros a propósito en una OT y
+corrió el corrector. *"Funciona perfecto."* No es una lectura pasiva — provocó el defecto y
+verificó que el applet lo revierte, que es justo el ciclo que va a correr en piso.
 
 ### La corrida pendiente (invariantes de la OT 5769)
 
@@ -182,20 +186,32 @@ Las **5 anomalías deben seguir intactas**. Si desaparecieron, algo las archivó
 
 ## Pendientes
 
-1. **Corrida de escritura real** sobre la OT 5769 (bloquea el deploy).
-2. **Fase 2 — origen por Número de Parte**: das los NP corregidos y busca sus OTs. Es la que
+1. **Fase 2 — origen por Número de Parte**: das los NP corregidos y busca sus OTs. Es la que
    cierra el problema de raíz.
-3. **Fase 3 — escaneo de las 1000+ órdenes abiertas**: con 0.87 MB por consulta son ~1.3 GB, así
+2. **Fase 3 — escaneo de las 1000+ órdenes abiertas**: con 0.87 MB por consulta son ~1.3 GB, así
    que exige troceo, checkpoint reanudable en IndexedDB, monitor de memoria con guardrail al 88%
    (`host-cleanup-shared`) y pool de 3 — el `/graphql` se cuelga a ~40-45 peticiones en ráfaga,
    sin devolver 429, y tumba también la pantalla nativa.
-4. **Decidir qué hacer con las anomalías del nodo raíz** (ver la hipótesis de arriba).
-5. **Correr headless** las rutas de regeneración.
-6. Bundle Safari/iPad: evaluar si aplica.
+3. **Decidir qué hacer con las anomalías del nodo raíz** (ver la hipótesis de arriba).
+4. **Correr headless** las rutas de regeneración.
+5. Bundle Safari/iPad: evaluar si aplica.
 
 ## Bitácora
 
-### 0.1.0 — 2026-07-28 (implementación de la fase 1)
+### 0.1.0 — 2026-07-28 · VALIDADO EN VIVO
+
+**El operador desalineó parámetros a propósito en una OT, corrió el corrector y confirmó:
+"funciona perfecto".** Deployado en config 1.10.1 (tag `v1.10.1`), firma KMS verificada en vivo.
+
+**Nota del deploy:** salió con la otra sesión trabajando en `wo-schedule-button` — 261 líneas
+sin commitear que `deploy.sh` habría arrastrado con su `git add remote/` (el incidente del
+2026-06-24). Se resguardaron a un patch + `git stash`, se deployó solo lo de este applet
+(el commit tocó únicamente `config.json` y `config.sig`) y se restauraron íntegras.
+Su WIP **creció durante la operación** (de 3 a 5 archivos: agregó `RelatedSchedulingTreatments`),
+lo que confirma que la sesión estaba activa. Sus cambios eran adiciones sobre el merge, así que
+no hubo choque.
+
+### 0.1.0 — implementación de la fase 1
 
 Todo el diseño se verificó **en vivo contra el ERP antes de escribir código**, y eso cambió dos
 decisiones:
