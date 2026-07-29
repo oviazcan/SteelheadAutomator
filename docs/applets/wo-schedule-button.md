@@ -1,6 +1,6 @@
 # wo-schedule-button — Programación INLINE en la ficha de Orden de Trabajo
 
-**Versión:** 0.7.0 — **+ Fase 2a: programación INTENCIONAL desde la ficha** (cada 📅 de una tarea existente abre un modal que fija su hora y la marca intencional, con la escritura VERIFICADA releyendo el programa). Ver §"Fase 2a cableada". **Previo 0.6.0** — **+ auto-impresión INVISIBLE de JobTag (fallback del iframe del listado)** (VIVO 1.7.200, 2026-07-24). En la ficha, si la URL trae `?sa_print=jobtag&sa_dl=1` (la abre el botón 🏷️ del listado SOLO cuando el iframe falla/está bloqueado), `maybeAutoPrintFromParam` **auto-maneja** el modal nativo de etiquetas: `findPrintTrigger` (ancla `data-steelhead-component-id="WORK_ORDER_PAGE_HEADER_PRINT_JOB_TAGS_BUTTON"`, bilingüe/responsive-safe) → click → "Imprimir Regular" (espera dropdown poblado + `sleep(1000)` anti-blanco + `clickButtonRobust`) → **intercepta la respuesta de `GetPdfTemplateOutputV2`** para la share-URL (`patchFetch`, con fallback al `<object>` del preview) → **descarga** `WO<num>.pdf` + `window.close()` best-effort. `autoPrint(type,'download'|'self'|'newtab')`. **NO pone botones en la ficha** (decisión del usuario: el botón vive solo en Acciones del listado). El grueso del flujo vive **duplicado en `wo-listing-columns.driveLabel`** para el iframe (el padre maneja el iframe same-origin; la extensión no inyecta en iframes). Ver [`wo-label-pdf-buttons.md`](wo-label-pdf-buttons.md). Core `wo-schedule-core` **37/37**.
+**Versión:** 0.9.0 — **programar desde la ficha: fijar la hora de una tarea (2a), CREAR la que no existe (2b) y corregir el dato maestro en el acto; programación por tratamiento ANCLA**. VIVO config 1.11.0. Ver §"Fase 2a cableada", §"Fase 2b" y §"Correcciones del primer uso en vivo". **Previo 0.7.0** — **+ Fase 2a: programación INTENCIONAL desde la ficha** (cada 📅 de una tarea existente abre un modal que fija su hora y la marca intencional, con la escritura VERIFICADA releyendo el programa). Ver §"Fase 2a cableada". **Previo 0.6.0** — **+ auto-impresión INVISIBLE de JobTag (fallback del iframe del listado)** (VIVO 1.7.200, 2026-07-24). En la ficha, si la URL trae `?sa_print=jobtag&sa_dl=1` (la abre el botón 🏷️ del listado SOLO cuando el iframe falla/está bloqueado), `maybeAutoPrintFromParam` **auto-maneja** el modal nativo de etiquetas: `findPrintTrigger` (ancla `data-steelhead-component-id="WORK_ORDER_PAGE_HEADER_PRINT_JOB_TAGS_BUTTON"`, bilingüe/responsive-safe) → click → "Imprimir Regular" (espera dropdown poblado + `sleep(1000)` anti-blanco + `clickButtonRobust`) → **intercepta la respuesta de `GetPdfTemplateOutputV2`** para la share-URL (`patchFetch`, con fallback al `<object>` del preview) → **descarga** `WO<num>.pdf` + `window.close()` best-effort. `autoPrint(type,'download'|'self'|'newtab')`. **NO pone botones en la ficha** (decisión del usuario: el botón vive solo en Acciones del listado). El grueso del flujo vive **duplicado en `wo-listing-columns.driveLabel`** para el iframe (el padre maneja el iframe same-origin; la extensión no inyecta en iframes). Ver [`wo-label-pdf-buttons.md`](wo-label-pdf-buttons.md). Core `wo-schedule-core` **37/37**.
 **Previo 0.5.0:** **prioridad de carga #1** del readout de programación (prefetch en init + `wo-schedule-button` al FRENTE de `apps[]`). Readout como **texto que envuelve** + **un 📅 por tarea/estación**. F1 con `WorkOrderSchedule`.
 
 ## Prioridad de carga (v0.5.0)
@@ -42,7 +42,7 @@ Objetivo: cada **📅** clicable → modal dark-mode → programar/fijar **sin a
 | Mutación | Hash | Estado | Notas |
 |---|---|---|---|
 | **`UpdateManyScheduleTasks`** | `14c097944a…` | **payload CAPTURADO** (button:Update en la ficha) | Input chico (~245B): `{scheduledTasks:[{id, scheduleId, stationId, expectedStartTime, totalTimeMinutes, cycleTimeMinutes, treatmentTimeMinutes, isIntentional}]}`. Resp 98B `{mnUpdateScheduleTaskById}`. **UPDATE por id** (`…ById`) → NO crea; la tarea debe existir. `isIntentional:true` = STATIC-SCHEDULED. |
-| `CreateManyScheduleTasks` | `9039afe7…` | **payload PENDIENTE** (nunca capturado, vars vacías) | Para crear en OT sin tareas. El usuario proveerá el payload. |
+| `CreateManyScheduleTasks` | `9039afe7…` | ✅ **CAPTURADO 2026-07-28** (fixture `wo-schedule-create-task.json`) | Crear en OT sin tareas. Lo que faltaba era el fix del hash-scanner (degradar antes que descartar), no el ERP. |
 | `DeleteManyScheduleTasks` | `ecfa83fe…` | payload pendiente | Parte del reschedule. |
 | `UpdateManyStationTasks` | `de13ff5f…` | payload pendiente | Parte del reschedule. |
 
@@ -120,7 +120,7 @@ que hizo trivial la Fase 2a.
 
 ### Fasado propuesto
 - **Fase 2a — ✅ CABLEADA (2026-07-28, v0.7.0).** Ver §"Fase 2a cableada" abajo.
-- **Fase 2b (compleja, riesgo):** CREATE en OT sin tarea → mapear origen de `treatmentId`/`times`/`partSetUuid`, ensamblar elementos desde `SchedulablePartLocations`+`WorkOrder`, validar en vivo. Core `buildScheduleTaskCreateInput` pendiente (hasta mapear fuentes).
+- **Fase 2b — ✅ HECHA (2026-07-28, v0.8.0/0.9.0).** Payload capturado y reproducido byte a byte; los tres campos que faltaban quedaron resueltos (`partSetUuid` = UUID v4 del cliente, tiempos = `TreatmentTime` como Interval, `partsPerBatch`). UI cableada. Ver §"Fase 2b" y §"Correcciones del primer uso en vivo". **Sin corrida real contra producción todavía.**
 - **Fase 2c (destructiva):** reschedule (reacomoda todo) → modal de advertencia. Última.
 
 ### Rutas de regeneración (deuda)
@@ -237,7 +237,7 @@ cuyo campo *difiere* del contexto se **descarta**, no se aproxima: programar con
 estación desacomoda el piso. ⚠️ La muestra trae UN solo `TreatmentTime` (todo null), así que el
 desempate está implementado pero **no observado**.
 
-### Lo que falta para cablear la UI (y por qué no se cableó a ciegas)
+### ~~Lo que falta para cablear la UI~~ — RESUELTO el mismo día (queda como registro del razonamiento)
 Dos insumos no tienen todavía una consulta **ligera** que los dé desde la ficha:
 1. **los tiempos** — hoy solo se han visto dentro de `RelatedSchedulingInformation`, que son
    ~87 MB (la bitácora del auto-router ya lo documenta como el query más pesado del board), y de
@@ -246,7 +246,11 @@ Dos insumos no tienen todavía una consulta **ligera** que los dé desde la fich
    capturado (`rackCount=1` ⇒ 1501 = 1501), pero **un caso no distingue el producto de la
    identidad**.
 
-Por eso el motor quedó listo y verificado, pero el 📅 de «Sin programar» **sigue sin escribir**:
+> **Superado (v0.8.0):** el operador decidió que **captura quien programa**, porque está en piso y verifica el rack
+> físicamente — eso convirtió la captura manual en el mecanismo de verificación y desbloqueó el cableado. El 📅 de
+> «Sin programar» **ya escribe**. Se conserva el razonamiento porque explica por qué NO se cableó a ciegas.
+
+El motor quedó listo y verificado, y en su momento el 📅 de «Sin programar» **no escribía**:
 teclear un tiempo a mano entra al planificador igual de mal que calcularlo mal. El camino
 natural es `ScheduleInformationById` — copiar los tiempos de una tarea real del mismo
 treatment+estación y **fail-closed si no existe ninguna**, en vez de inventarlos.
