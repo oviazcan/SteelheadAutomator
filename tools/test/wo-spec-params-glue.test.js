@@ -53,9 +53,11 @@ test('analyzeWorkOrder: cruza las dos consultas y devuelve el plan, sin tocar la
   assert.equal(res.results.length, 1);
   const r = res.results[0];
   assert.equal(r.partNumberId, 3044551);
-  assert.equal(r.tally.DIFIERE, 2);
-  assert.equal(r.anomalies.length, 5);
-  assert.equal(r.plan.parametersToAdd.length, 7);
+  assert.equal(r.tally.DIFIERE, 1);
+  assert.equal(r.tally.DUPLICADO, 1);
+  assert.equal(r.anomalies.length, 0);          // v0.4.0: vivir en el nodo raíz ya no es anomalía
+  assert.equal(r.fueraDeInspeccion.length, 5);  // pero se reporta dónde viven
+  assert.equal(r.plan.parametersToAdd.length, 3);
   assert.deepEqual(calls[0], ['wo', 5769]);
 });
 
@@ -100,13 +102,12 @@ test('summarize: agrega los conteos de varias órdenes', () => {
   assert.equal(s.anomalias, 2);
 });
 
-test('summarize: sobre el fixture real, 1 forzada y 5 anomalías', () => {
+test('summarize: sobre el fixture real, 3 cambios y ninguna anomalía', () => {
   const cls = Core.classifyWorkOrder(FIX);
   const plan = Core.buildWritePlan(cls, { partNumberId: 3044551 });
   const s = G.summarize([Object.assign({}, cls, { plan })]);
-  assert.equal(s.forzadas, 1);
-  assert.equal(s.anomalias, 5);
-  assert.equal(s.aCorregir, 7);
+  assert.equal(s.anomalias, 0);
+  assert.equal(s.aCorregir, 3);
 });
 
 // ── Escritura ────────────────────────────────────────────────────────────────
@@ -172,10 +173,8 @@ test('buildCsv: una fila por casilla tocada, con forzada y ámbito', () => {
     cells: cls.cells, anomalies: cls.anomalies }]);
   const lines = csv.trim().split('\n');
   assert.match(lines[0], /orden/i);
-  assert.match(csv, /FORZADA/);
-  assert.match(csv, /ANOMALIA/);
-  // las 7 casillas que cambian + encabezado + 5 anomalías
-  assert.ok(lines.length >= 13, 'esperaba al menos 13 renglones, hay ' + lines.length);
+  // 3 casillas que cambian + encabezado
+  assert.ok(lines.length >= 4, 'esperaba al menos 4 renglones, hay ' + lines.length);
 });
 
 test('buildCsv: escapa comillas y comas de los nombres', () => {
@@ -366,9 +365,8 @@ test('slimResult: guarda lo mínimo para aplicar, NO el crudo de 0.87 MB', () =>
                   anomalies: cls.anomalies, orphans: cls.orphans, plan };
   const slim = G.slimResult(gordo);
   assert.equal(slim.idInDomain, 5769);
-  assert.equal(slim.plan.parametersToAdd.length, 7);
-  assert.equal(slim.nAnomalias, 5);
-  assert.equal(slim.nForzadas, 1);
+  assert.equal(slim.plan.parametersToAdd.length, 3);
+  assert.equal(slim.nAnomalias, 0);
   // lo pesado NO viaja
   assert.equal(slim.cells, undefined, 'cells trae los nodos crudos: no debe guardarse');
   assert.equal(slim.anomalies, undefined);

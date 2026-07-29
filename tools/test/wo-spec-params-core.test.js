@@ -176,63 +176,60 @@ test('findInspectionNode: sin ningún candidato tampoco adivina', () => {
   assert.deepEqual(r.candidates, []);
 });
 
-// Conteos VERIFICADOS contra el fixture antes de escribir el core. NO los ajustes.
-//   universo EXTERNA (solo el nodo 42513391): 6 casillas → 2 DIFIERE + 4 VACIO, 1 de ellas forzada
-//   universo PROCESO: el nodo 42513364 aporta 1 VACIO (campo 31018 de T201-LI)
-//   el nodo raíz 42513351 NO aporta casillas: sus 5 campos son de la spec externa → anomalías
+// Conteos VERIFICADOS contra el fixture. Recalculados en v0.4.0, cuando la cobertura pasó a
+// medirse por ORDEN: los campos externos que viven en el nodo raíz ya NO se vuelven a proponer.
+//   15630 Espesor            → DUPLICADO (está en el raíz y en el QA, y ninguno coincide con el NP)
+//   33579 Espesor Intermedio → DIFIERE   (en el QA, "0.5 - 1.0" vs "No aplica" del NP)
+//   15820/19445/22067/28479  → OK        (viven en el nodo raíz, que los declara: legítimo)
+//   31018                    → VACIO     (campo de proceso, nodo 42513364)
 test('classifyWorkOrder: sobre el fixture real de la OT 5769', () => {
   const { cells, tally } = Core.classifyWorkOrder(FIX);
-  assert.equal(tally.OK, 0);
-  assert.equal(tally.VACIO, 5);
-  assert.equal(tally.DIFIERE, 2);
-  assert.equal(tally.DUPLICADO, 0);
+  assert.equal(tally.OK, 4);
+  assert.equal(tally.VACIO, 1);
+  assert.equal(tally.DIFIERE, 1);
+  assert.equal(tally.DUPLICADO, 1);
   assert.equal(tally.AMBIGUO, 0);
   assert.equal(tally.SIN_CATALOGO, 0);
   assert.equal(cells.length, 7);
 });
 
-test('classifyWorkOrder: los 6 campos de la spec externa son casillas del nodo de inspección', () => {
+test('classifyWorkOrder: los 6 campos externos dan UNA casilla cada uno, vivan donde vivan', () => {
   const { cells } = Core.classifyWorkOrder(FIX);
   const ext = cells.filter(c => c.scope === 'EXTERNA');
-  assert.equal(ext.length, 6);
-  assert.ok(ext.every(c => c.recipeNodeId === 42513391));
+  assert.equal(ext.length, 6, 'una casilla por campo, no una por (campo × nodo)');
+  const porCampo = new Set(ext.map(c => c.specFieldId));
+  assert.equal(porCampo.size, 6, 'ningún campo debe aparecer dos veces');
 });
 
-test('classifyWorkOrder: el campo que el nodo no declara sale marcado como forzado', () => {
+test('classifyWorkOrder: un campo que ya vive en el nodo raíz sale OK, no VACIO', () => {
   const { cells } = Core.classifyWorkOrder(FIX);
-  const forced = cells.filter(c => c.forced);
-  assert.equal(forced.length, 1);
-  assert.equal(forced[0].specFieldId, 33579);        // Espesor (Intermedio)
-  assert.equal(forced[0].recipeNodeId, 42513391);
+  const adh = cells.find(c => c.specFieldId === 15820);
+  assert.equal(adh.status, 'OK');
+  assert.equal(adh.recipeNodeId, 42513351, 'la casilla vive donde está el parámetro');
 });
 
-test('classifyWorkOrder: el DIFIERE de Espesor archiva la fila vieja y escribe el id del catálogo', () => {
-  const { cells } = Core.classifyWorkOrder(FIX);
-  const c = cells.find(x => x.recipeNodeId === 42513391 && x.specFieldId === 15630);
-  assert.equal(c.status, 'DIFIERE');
-  assert.deepEqual(c.toArchiveIds, [26249942]);
-  assert.equal(c.toAddWriteId, 32594227);
-  assert.equal(c.pnwosId, 5063398);
+test('classifyWorkOrder: se reporta dónde viven los campos externos fuera del de inspección', () => {
+  const { fueraDeInspeccion } = Core.classifyWorkOrder(FIX);
+  assert.equal(fueraDeInspeccion.length, 5);
+  assert.ok(fueraDeInspeccion.every(f => f.recipeNodeId === 42513351));
 });
 
-test('classifyWorkOrder: la spec externa en el nodo raíz es ANOMALÍA, no casilla', () => {
-  const { cells, anomalies } = Core.classifyWorkOrder(FIX);
-  assert.equal(anomalies.length, 5);
-  assert.ok(anomalies.every(a => a.recipeNodeId === 42513351));
-  assert.deepEqual(anomalies.map(a => a.rowId).sort((x, y) => x - y),
-                   [22341384, 22341385, 22341386, 22341387, 22341388]);
-  assert.equal(cells.some(c => c.recipeNodeId === 42513351), false,
-               'ninguna casilla debe apuntar al nodo raíz');
+test('classifyWorkOrder: ya NO hay anomalías por vivir en el nodo raíz', () => {
+  const { anomalies } = Core.classifyWorkOrder(FIX);
+  assert.equal(anomalies.length, 0,
+    'el nodo raíz declara esos campos: tenerlos aplicados es legítimo');
 });
 
-test('classifyWorkOrder: sin nodo de inspección identificable, cero casillas de la spec externa', () => {
+test('classifyWorkOrder: sin nodo de inspección, lo que YA existe se sigue evaluando', () => {
   const wo = JSON.parse(JSON.stringify(FIX.workOrder));
   wo.recipeNodesByWorkOrderId.nodes = wo.recipeNodesByWorkOrderId.nodes
     .filter(n => n.type !== 'QUALITY_ASSURANCE_NODE');
   const r = Core.classifyWorkOrder({ workOrder: wo, partNumber: FIX.partNumber });
-  assert.equal(r.cells.filter(c => c.scope === 'EXTERNA').length, 0);
   assert.equal(r.inspectionNode.ambiguous, true);
-  assert.ok(r.cells.some(c => c.scope === 'PROCESO'), 'las de proceso siguen saliendo');
+  // los campos que viven en el nodo raíz siguen dando casilla
+  assert.ok(r.cells.some(c => c.scope === 'EXTERNA' && c.status === 'OK'));
+  // y los que faltan quedan sin dónde aplicarse, reportados
+  assert.ok(r.faltantesSinDestino.length > 0);
 });
 
 test('classifyWorkOrder: una casilla VACÍA solo agrega, no archiva', () => {
@@ -304,15 +301,23 @@ test('classifyWorkOrder: AMBIGUO no propone ninguna escritura', () => {
 test('buildWritePlan: arma el payload con la forma exacta de AddParams', () => {
   const cls = Core.classifyWorkOrder(FIX);
   const plan = Core.buildWritePlan(cls, { partNumberId: 3044551 });
-  // el nodo raíz NO entra: sus filas son anomalías, no casillas
-  assert.deepEqual(plan.archiveIds.slice().sort((a, b) => a - b), [26249942, 26249943]);
-  assert.equal(plan.parametersToAdd.length, 7);   // 5 vacías + 2 que difieren
-  assert.equal(plan.touched, 7);
-  const add = plan.parametersToAdd.find(a => a.specFieldId === 15630 && a.recipeNodeId === 42513391);
-  assert.deepEqual(add, {
-    specFieldId: 15630, specFieldParamId: 32594227, recipeNodeId: 42513391,
-    geometryTypeSpecFieldId: null, locationId: null, drivenBy: 5063398
-  });
+  // v0.4.0: solo se toca lo que de verdad hace falta — el duplicado de Espesor, el Intermedio
+  // que difiere, y el campo de proceso vacío. Lo que ya vive bien en el nodo raíz NO se toca.
+  assert.deepEqual(plan.archiveIds.slice().sort((a, b) => a - b),
+                   [22341384, 26249942, 26249943]);
+  assert.equal(plan.parametersToAdd.length, 3);
+  assert.equal(plan.touched, 3);
+  // El Espesor se reescribe DONDE YA ESTABA — corregir en su sitio es menos invasivo que
+  // moverlo entre nodos en órdenes que ya corren en piso. Si el operador decide que deben
+  // migrar al nodo de inspección, eso es una operación aparte (ver fueraDeInspeccion).
+  const add = plan.parametersToAdd.find(a => a.specFieldId === 15630);
+  assert.ok(add, 'el Espesor debe reescribirse');
+  assert.equal(add.specFieldParamId, 32594227, 'con el id del catálogo que señala el NP');
+  assert.equal(add.drivenBy, 5063398);
+  assert.equal(add.geometryTypeSpecFieldId, null);
+  assert.equal(add.locationId, null);
+  assert.ok([42513351, 42513391].includes(add.recipeNodeId),
+    'se escribe en alguno de los nodos donde el campo ya vivía');
 });
 
 test('buildWritePlan: Espesor (Intermedio) escribe "No aplica", que es lo que dice el NP', () => {
@@ -352,14 +357,118 @@ test('buildWritePlan: sin partNumberId no arma nada (fail-safe)', () => {
   assert.equal(plan.archiveIds.length, 0);
 });
 
-test('buildWritePlan: NUNCA propone escribir sobre una anomalía', () => {
+test('buildWritePlan: NUNCA propone escribir un campo que ya existe en otro nodo', () => {
   const cls = Core.classifyWorkOrder(FIX);
   const plan = Core.buildWritePlan(cls, { partNumberId: 3044551 });
-  const anomalyRowIds = new Set(cls.anomalies.map(a => a.rowId));
-  for (const id of plan.archiveIds) {
-    assert.equal(anomalyRowIds.has(id), false, 'la fila ' + id + ' es una anomalía y no se toca');
+  // los 4 campos que viven bien en el nodo raíz no aparecen en ninguna escritura
+  const escritos = new Set(plan.parametersToAdd.map(a => a.specFieldId));
+  for (const campo of [15820, 19445, 22067, 28479]) {
+    assert.equal(escritos.has(campo), false,
+      'el campo ' + campo + ' ya existe en el nodo raíz: proponerlo sería duplicarlo');
   }
-  for (const a of plan.parametersToAdd) {
-    assert.notEqual(a.recipeNodeId, 42513351, 'no se escribe en el nodo raíz');
-  }
+});
+
+// ── v0.4.0: la cobertura se mide por ORDEN, no por nodo ──────────────────────
+// Bug encontrado en la corrida real del 2026-07-29 (4436 órdenes): el applet proponía
+// ~5 cambios por orden cuando en realidad faltaba UNO. Causa: los campos de la spec externa
+// pueden vivir repartidos entre varios nodos que los DECLARAN —el nodo raíz y el de
+// inspección declaran los mismos campos— y yo solo miraba el de inspección, así que proponía
+// duplicar en el QA lo que ya existía en el PROCESS. De 9551 cambios, ~7660 eran duplicados.
+
+// Fixture mínimo con el reparto REAL de la OT 16339, verificado en vivo.
+const REPARTIDA = {
+  workOrder: {
+    id: 1927678, idInDomain: 16339, name: '',
+    partNumberWorkOrderSpecsByWorkOrderId: { nodes: [{
+      id: 900, archivedAt: null, partNumberSpecByPartNumberSpecId: { id: 77 },
+      specBySpecId: { id: 14344, name: '40004-014-01 (Estaño)', revisionNumber: 1,
+        specFieldSpecsBySpecId: { nodes: [
+          { id: 106115, archivedAt: null, specFieldId: 15630, isGeneric: false,
+            specFieldParamsBySpecFieldSpecId: { nodes: [{ id: 32594227, name: '5 - 10 µm' }] },
+            specFieldBySpecFieldId: { id: 15630, name: 'Espesor', type: 'NUMBER' } },
+          { id: 282984, archivedAt: null, specFieldId: 33579, isGeneric: false,
+            specFieldParamsBySpecFieldSpecId: { nodes: [{ id: 32596235, name: 'No aplica' }] },
+            specFieldBySpecFieldId: { id: 33579, name: 'Espesor (Intermedio)', type: 'NUMBER' } },
+          { id: 106116, archivedAt: null, specFieldId: 15820, isGeneric: false,
+            specFieldParamsBySpecFieldSpecId: { nodes: [{ id: 15663320, name: 'Sí o No' }] },
+            specFieldBySpecFieldId: { id: 15820, name: 'Adherencia', type: 'BOOLEAN' } },
+        ] } } }] },
+    recipeNodesByWorkOrderId: { nodes: [
+      // el nodo raíz DECLARA Adherencia y la tiene aplicada — legítimo, no anomalía
+      { id: 47237739, name: 'T204 (DEC)-CU/BR-VARIOS', type: 'PROCESS', recipeInd: 0,
+        recipeNodeSpecFieldsByRecipeNodeId: { nodes: [
+          { id: 1, specFieldId: 15820, specFieldBySpecFieldId: { id: 15820, name: 'Adherencia' } } ] },
+        partNumberRecipeNodeSpecFieldParamsByRecipeNodeId: { nodes: [
+          { id: 5001, archivedAt: null, specFieldId: 15820, recipeNodeId: 47237739,
+            partNumberWorkOrderSpecByDrivenBy: { id: 900 },
+            specFieldParamBySpecFieldParamId: { id: 8801, name: 'Sí o No',
+              specFieldParamByDerivedFromId: { id: 15663320 },
+              specFieldSpecBySpecFieldSpecId: { id: 106116 } } } ] } },
+      // el de inspección declara los 3 pero solo tiene Espesor
+      { id: 47237754, name: 'T204-IC00-001 Inspeccionando y Empacando', type: 'QUALITY_ASSURANCE_NODE', recipeInd: 40,
+        recipeNodeSpecFieldsByRecipeNodeId: { nodes: [
+          { id: 2, specFieldId: 15630, specFieldBySpecFieldId: { id: 15630, name: 'Espesor' } },
+          { id: 3, specFieldId: 15820, specFieldBySpecFieldId: { id: 15820, name: 'Adherencia' } } ] },
+        partNumberRecipeNodeSpecFieldParamsByRecipeNodeId: { nodes: [
+          { id: 5002, archivedAt: null, specFieldId: 15630, recipeNodeId: 47237754,
+            partNumberWorkOrderSpecByDrivenBy: { id: 900 },
+            specFieldParamBySpecFieldParamId: { id: 8802, name: '5 - 10 µm',
+              specFieldParamByDerivedFromId: { id: 32594227 },
+              specFieldSpecBySpecFieldSpecId: { id: 106115 } } } ] } },
+    ] }
+  },
+  partNumber: { id: 3017555, name: '80247-572-20',
+    partNumberSpecFieldParamsByPartNumberId: { nodes: [] } }
+};
+
+test('v0.4.0: un campo cubierto en OTRO nodo NO se vuelve a proponer', () => {
+  const { cells, tally } = Core.classifyWorkOrder(REPARTIDA);
+  const adh = cells.filter(c => c.specFieldId === 15820);
+  assert.equal(adh.length, 1, 'Adherencia debe dar UNA casilla, no una por nodo');
+  assert.equal(adh[0].status, 'OK', 'ya está aplicada en el nodo raíz: no hay nada que hacer');
+  assert.equal(tally.VACIO, 1, 'solo Espesor (Intermedio) está realmente vacío');
+});
+
+test('v0.4.0: solo se propone lo que falta EN TODA la orden', () => {
+  const { cells } = Core.classifyWorkOrder(REPARTIDA);
+  const vacias = cells.filter(c => c.status === 'VACIO');
+  assert.equal(vacias.length, 1);
+  assert.equal(vacias[0].specFieldId, 33579, 'el único faltante es Espesor (Intermedio)');
+  assert.equal(vacias[0].recipeNodeId, 47237754, 'se aplica en el nodo de inspección');
+  assert.equal(vacias[0].forced, true, 'el nodo no lo declara: va forzado');
+});
+
+test('v0.4.0: un parámetro en un nodo que SÍ declara el campo no es anomalía', () => {
+  const { anomalies } = Core.classifyWorkOrder(REPARTIDA);
+  assert.equal(anomalies.length, 0,
+    'el nodo raíz declara Adherencia, así que tenerla aplicada es legítimo');
+});
+
+test('v0.4.0: se reporta qué campos viven fuera del nodo de inspección', () => {
+  const r = Core.classifyWorkOrder(REPARTIDA);
+  assert.equal(r.fueraDeInspeccion.length, 1);
+  assert.equal(r.fueraDeInspeccion[0].specFieldId, 15820);
+  assert.equal(r.fueraDeInspeccion[0].recipeNodeId, 47237739);
+});
+
+test('v0.4.0: un campo externo aplicado donde el nodo no lo declara TAMPOCO se duplica', () => {
+  // Que un nodo no declare el campo es justo lo que significa "forzado", y forzar es algo que
+  // este applet hace a propósito. Así que un forzado preexistente cuenta como cubierto: no es
+  // anomalía ni se vuelve a proponer.
+  const wo = JSON.parse(JSON.stringify(REPARTIDA.workOrder));
+  wo.recipeNodesByWorkOrderId.nodes[0].recipeNodeSpecFieldsByRecipeNodeId.nodes = [];
+  const r = Core.classifyWorkOrder({ workOrder: wo, partNumber: REPARTIDA.partNumber });
+  assert.equal(r.anomalies.length, 0);
+  const adh = r.cells.filter(c => c.specFieldId === 15820);
+  assert.equal(adh.length, 1);
+  assert.equal(adh[0].status, 'OK', 'sigue cubierta: no hay nada que escribir');
+});
+
+test('v0.4.0: el plan de la orden repartida propone UN solo cambio', () => {
+  const cls = Core.classifyWorkOrder(REPARTIDA);
+  const plan = Core.buildWritePlan(cls, { partNumberId: 3017555 });
+  assert.equal(plan.touched, 1, 'esperaba 1 cambio, no 3');
+  assert.equal(plan.archiveIds.length, 0, 'nada que archivar: no se pisa lo que ya existe');
+  assert.equal(plan.parametersToAdd.length, 1);
+  assert.equal(plan.parametersToAdd[0].specFieldId, 33579);
 });

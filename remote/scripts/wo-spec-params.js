@@ -6,7 +6,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '0.3.0';
+  const VERSION = '0.4.0';
   const PANEL_ID = 'sa-wo-spec-params-panel';
   const STYLE_ID = 'sa-wo-spec-params-style';
   const FAB_ID = 'sa-wo-spec-params-fab';
@@ -167,6 +167,7 @@
       workOrderId: r.workOrderId,
       tieneTrabajo,
       nAnomalias: (r.anomalies || []).length,
+      nFueraDeInspeccion: (r.fueraDeInspeccion || []).length,
       nForzadas: (r.cells || []).filter(c => c && c.forced).length,
       nOmitidas: (plan.skipped || []).length
     };
@@ -385,6 +386,8 @@
           cells: cls.cells,
           orphans: cls.orphans,
           anomalies: cls.anomalies,
+          fueraDeInspeccion: cls.fueraDeInspeccion || [],
+          faltantesSinDestino: cls.faltantesSinDestino || [],
           externalSpec: cls.externalSpec
             ? { specName: cls.externalSpec.specName, nCampos: cls.externalSpec.fieldIds.size }
             : null,
@@ -402,7 +405,7 @@
 
   function summarize(results) {
     const s = { ordenes: 0, casillas: 0, aCorregir: 0, omitidas: 0, aArchivar: 0, aAgregar: 0,
-                forzadas: 0, anomalias: 0 };
+                forzadas: 0, anomalias: 0, fueraDeInspeccion: 0 };
     for (const r of (results || [])) {
       if (!r || !r.tally) continue;
       s.ordenes++;
@@ -415,6 +418,7 @@
       s.aAgregar += (r.plan && r.plan.parametersToAdd ? r.plan.parametersToAdd.length : 0);
       s.forzadas += (r.cells || []).filter(c => c && c.forced).length;
       s.anomalias += (r.anomalies || []).length;
+      s.fueraDeInspeccion += (r.fueraDeInspeccion || []).length;
     }
     return s;
   }
