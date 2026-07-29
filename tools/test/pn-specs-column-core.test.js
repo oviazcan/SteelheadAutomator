@@ -241,3 +241,193 @@ test('formatCellText: spec sin numéricos → "—" ; nada → "—"', () => {
   assert.strictEqual(Core.formatCellText({ specs: [] }), '—');
   assert.strictEqual(Core.formatCellText(null), '—');
 });
+
+// ════════════════════════════════════════════════════════════════════════════
+// COLUMNAS ADICIONALES (metal base · línea · rack types · unidades)
+// ════════════════════════════════════════════════════════════════════════════
+// FIXTURE REAL capturado en vivo el 2026-07-29 del PN 2300153 "51004727AA"
+// (GetPartNumber, hash 5efd689d…, HTTP 200, response de 5.84 MB destilado a lo
+// que consume el core). Datos verbatim: metal "Cobre"; línea = dim 349 valor 154
+// "T107-LI Plata Colgado Cx (60.0)"; departamento = dim 586 valor 182 "Producción";
+// racks T102-RA02→18 y T107-FL01→54; 5 factores de unidad; 1 spec activa (14342)
+// con 6 params y 2 params HUÉRFANOS de la spec 16165 ARCHIVADA.
+const REAL = {
+  data: {
+    partNumberById: {
+      id: 2300153,
+      name: '51004727AA',
+      customInputs: { DatosAdicionalesNP: { BaseMetal: 'Cobre', QuoteIBMS: '61292', EstacionIBMS: '4134-1' } },
+      acctPnDimensionValueSelectionsByPartNumberId: { nodes: [
+        { id: 25703, dimensionId: 349, dimensionCustomValueId: 154, __typename: 'AcctPnDimensionValueSelection' },
+        { id: 25704, dimensionId: 586, dimensionCustomValueId: 182, __typename: 'AcctPnDimensionValueSelection' },
+      ]},
+      // OJO: el orden que devuelve el server NO es alfabético (T107 llega después de
+      // T102 aquí, pero no hay garantía) → extractRackTypes ordena.
+      partNumberRackTypesByPartNumberId: { nodes: [
+        { id: 77051, partsPerRack: 18, partNumberId: 2300153, rackTypeByRackTypeId: { id: 2681, name: 'T102-RA02', unitByPartCountDisplayUnitId: null, __typename: 'RackType' }, __typename: 'PartNumberRackType' },
+        { id: 177401, partsPerRack: 54, partNumberId: 2300153, rackTypeByRackTypeId: { id: 2694, name: 'T107-FL01', unitByPartCountDisplayUnitId: null, __typename: 'RackType' }, __typename: 'PartNumberRackType' },
+      ]},
+      inventoryItemByPartNumberId: { id: 870948, inventoryItemUnitConversionsByInventoryItemId: { nodes: [
+        { id: 1, factor: 0.376,        unitByUnitId: { id: 3969, name: 'KGM Kilogramo',            mustBeInteger: false, __typename: 'Unit' } },
+        { id: 2, factor: 1.162,        unitByUnitId: { id: 3971, name: 'DMK Decímetro Cuadrado',   mustBeInteger: false, __typename: 'Unit' } },
+        { id: 3, factor: 0.82893712,   unitByUnitId: { id: 3970, name: 'LBR Libra',               mustBeInteger: false, __typename: 'Unit' } },
+        { id: 4, factor: 120.58,       unitByUnitId: { id: 3972, name: 'CMK Centímetro Cuadrado', mustBeInteger: false, __typename: 'Unit' } },
+        { id: 5, factor: 0.1297911062, unitByUnitId: { id: 3973, name: 'FTK Pie Cuadrado',        mustBeInteger: false, __typename: 'Unit' } },
+      ]}},
+      partNumberSpecsByPartNumberId: { nodes: [
+        { archivedAt: null, specBySpecId: { id: 14342, name: 'ABD01030 (Plata Semibrillante)', domainId: 344, idInDomain: 21, revisionNumber: 1 } },
+        { archivedAt: '2025-12-08T14:49:02.557+00:00', specBySpecId: { id: 14868, name: 'T107-LI', domainId: 344, idInDomain: 30, revisionNumber: 1 } },
+        { archivedAt: '2026-05-22T13:15:20.004+00:00', specBySpecId: { id: 16165, name: 'Inspección Recibo', domainId: 344, idInDomain: 40, revisionNumber: 1 } },
+        { archivedAt: '2026-06-18T01:50:38.353+00:00', specBySpecId: { id: 20407, name: 'ASTM B700 (Plata)', domainId: 344, idInDomain: 55, revisionNumber: 1 } },
+      ]},
+      partNumberSpecFieldParamsByPartNumberId: { nodes: [
+        node(null, sfParam('Apariencia Homogénea - Semibrillante', 'BOOLEAN', { valLabel: 'Sí o No', specId: 14342, specName: 'ABD01030 (Plata Semibrillante)' })),
+        node(null, sfParam('Adherencia', 'BOOLEAN', { valLabel: 'Sí o No', specId: 14342, specName: 'ABD01030 (Plata Semibrillante)' })),
+        node(null, sfParam('Primeras Piezas', 'DROPDOWN', { valLabel: 'Sí o No', specId: 14342, specName: 'ABD01030 (Plata Semibrillante)' })),
+        // huérfanos ACTIVOS de una spec ARCHIVADA (16165) → no deben resucitarla
+        node(null, sfParam('Condiciones Adecuadas del Material Recibido', 'BOOLEAN', { valLabel: 'Sí o No', specId: 16165, specName: 'Inspección Recibo' })),
+        node(null, sfParam('Requiere notificar al cliente', 'DROPDOWN', { valLabel: 'Sí o No', specId: 16165, specName: 'Inspección Recibo' })),
+        node(null, sfParam('Instrumento de Medición', 'DROPDOWN', { valLabel: 'Elección', specId: 14342, specName: 'ABD01030 (Plata Semibrillante)' })),
+        node(null, sfParam('Espesor', 'NUMBER', { valLabel: '2 - 5 µm', min: 2, max: 5, unit: UM, specId: 14342, specName: 'ABD01030 (Plata Semibrillante)' })),
+      ]},
+    },
+    // Catálogo de dimensiones contables: viaja en el MISMO response, a nivel raíz.
+    allAcctDimensions: { nodes: [
+      { id: 349, name: 'Línea', type: 'CUSTOM', acctDimensionCustomValuesByDimensionId: { nodes: [
+        { id: 154, value: 'T107-LI Plata Colgado Cx (60.0)', __typename: 'AcctDimensionCustomValue' },
+        { id: 150, value: 'T101-LI Pre Limpieza (4.0)', __typename: 'AcctDimensionCustomValue' },
+        { id: 153, value: 'T205-LI Plata y Estaño (16.3)', __typename: 'AcctDimensionCustomValue' },
+      ]}},
+      { id: 586, name: 'Departamento', type: 'CUSTOM', acctDimensionCustomValuesByDimensionId: { nodes: [
+        { id: 182, value: 'Producción', __typename: 'AcctDimensionCustomValue' },
+        { id: 151, value: 'Ingeniería de Procesos', __typename: 'AcctDimensionCustomValue' },
+      ]}},
+    ]},
+  },
+};
+
+test('metal base: sale de customInputs.DatosAdicionalesNP.BaseMetal', () => {
+  assert.strictEqual(Core.extractMetalBase(REAL), 'Cobre');
+  assert.strictEqual(Core.extractMetalBase(REAL.data.partNumberById), 'Cobre', 'acepta el partNumberById directo');
+  assert.strictEqual(Core.extractMetalBase({ partNumberById: { customInputs: {} } }), '', 'sin grupo → vacío, no "undefined"');
+  assert.strictEqual(Core.extractMetalBase({ partNumberById: { customInputs: { DatosAdicionalesNP: { BaseMetal: '  Acero  ' } } } }), 'Acero', 'trim');
+  assert.strictEqual(Core.extractMetalBase(null), '');
+});
+
+test('línea: cruza la selección (dim 349) contra allAcctDimensions del MISMO response', () => {
+  assert.strictEqual(Core.extractLinea(REAL), 'T107-LI Plata Colgado Cx (60.0)');
+  // el id se puede parametrizar desde config.steelhead.domain.dimensionIds
+  assert.strictEqual(Core.extractDimensionValue(REAL, 586), 'Producción', 'mismo mecanismo para Departamento');
+});
+
+test('línea: vacío (NO inventa) cuando el NP no la tiene seleccionada o falta el catálogo', () => {
+  const sinLinea = JSON.parse(JSON.stringify(REAL));
+  sinLinea.data.partNumberById.acctPnDimensionValueSelectionsByPartNumberId.nodes =
+    sinLinea.data.partNumberById.acctPnDimensionValueSelectionsByPartNumberId.nodes.filter((s) => s.dimensionId !== 349);
+  assert.strictEqual(Core.extractLinea(sinLinea), '', 'PN sin línea → vacío (caso real: PN 3631582)');
+
+  const sinCatalogo = JSON.parse(JSON.stringify(REAL));
+  delete sinCatalogo.data.allAcctDimensions;
+  assert.strictEqual(Core.extractLinea(sinCatalogo), '', 'sin catálogo no se adivina el label a partir del id');
+
+  const idDesconocido = JSON.parse(JSON.stringify(REAL));
+  idDesconocido.data.partNumberById.acctPnDimensionValueSelectionsByPartNumberId.nodes[0].dimensionCustomValueId = 999999;
+  assert.strictEqual(Core.extractLinea(idDesconocido), '', 'valor fuera del catálogo → vacío');
+});
+
+test('línea: si el ID del config no está en el catálogo, cae al nombre ES+EN (solo AMPLÍA)', () => {
+  const renumerado = JSON.parse(JSON.stringify(REAL));
+  renumerado.data.allAcctDimensions.nodes[0].id = 777;               // el dominio renumeró la dim
+  renumerado.data.partNumberById.acctPnDimensionValueSelectionsByPartNumberId.nodes[0].dimensionId = 777;
+  assert.strictEqual(Core.extractLinea(renumerado), 'T107-LI Plata Colgado Cx (60.0)', 'match por nombre "Línea"');
+
+  const enIngles = JSON.parse(JSON.stringify(renumerado));
+  enIngles.data.allAcctDimensions.nodes[0].name = 'Line';
+  assert.strictEqual(Core.extractLinea(enIngles), 'T107-LI Plata Colgado Cx (60.0)', 'UI en inglés: "Line"');
+
+  const otraDim = JSON.parse(JSON.stringify(renumerado));
+  otraDim.data.allAcctDimensions.nodes[0].name = 'Centro de Costos';
+  assert.strictEqual(Core.extractLinea(otraDim), '', 'no matchea por nombre → NO agarra otra dimensión');
+});
+
+test('rack types: nombre + piezas por carga, ordenados y sin duplicados', () => {
+  const racks = Core.extractRackTypes(REAL);
+  assert.deepStrictEqual(racks, [
+    { rackTypeId: 2681, name: 'T102-RA02', partsPerRack: 18, unit: '' },
+    { rackTypeId: 2694, name: 'T107-FL01', partsPerRack: 54, unit: '' },
+  ]);
+  assert.strictEqual(Core.formatRackTypesText(racks), 'T102-RA02: 18 · T107-FL01: 54');
+  assert.strictEqual(Core.formatRackTypesText([]), '—');
+  assert.deepStrictEqual(Core.extractRackTypes({ partNumberById: {} }), [], 'sin racks → []');
+});
+
+test('rack types: partsPerRack null se marca "?" (no se inventa 0 ni 1)', () => {
+  const r = Core.extractRackTypes({ partNumberById: { partNumberRackTypesByPartNumberId: { nodes: [
+    { partsPerRack: null, rackTypeByRackTypeId: { id: 9, name: 'T900-XX01' } },
+  ]}}});
+  assert.strictEqual(r[0].partsPerRack, null);
+  assert.strictEqual(Core.formatRackTypesText(r), 'T900-XX01: ?',
+    'un dato faltante NO puede leerse como "1 pieza por carga" (ese supuesto multiplica duraciones por miles — ver wo-schedule-button)');
+});
+
+test('rack types: si el rack type trae unidad de conteo, se muestra', () => {
+  const r = Core.extractRackTypes({ partNumberById: { partNumberRackTypesByPartNumberId: { nodes: [
+    { partsPerRack: 12, rackTypeByRackTypeId: { id: 7, name: 'T300-BA01', unitByPartCountDisplayUnitId: { name: 'KGM Kilogramo' } } },
+  ]}}});
+  assert.strictEqual(r[0].unit, 'KGM');
+  assert.strictEqual(Core.formatRackTypesText(r), 'T300-BA01: 12 KGM');
+});
+
+test('unidades: TODOS los factores registrados, con su código y sin perder precisión', () => {
+  const units = Core.extractUnitFactors(REAL);
+  assert.strictEqual(units.length, 5, 'los 5 registrados, ninguno filtrado');
+  assert.deepStrictEqual(units.map((u) => u.code), ['CMK', 'DMK', 'FTK', 'KGM', 'LBR'], 'orden estable por código');
+  const byCode = {}; units.forEach((u) => { byCode[u.code] = u; });
+  assert.strictEqual(byCode.KGM.factor, 0.376);
+  assert.strictEqual(byCode.KGM.name, 'KGM Kilogramo');
+  assert.strictEqual(byCode.KGM.unitId, 3969);
+  assert.strictEqual(Core.formatUnitFactorsText(units),
+    'CMK: 120.58 · DMK: 1.162 · FTK: 0.1297911062 · KGM: 0.376 · LBR: 0.82893712');
+  assert.strictEqual(Core.formatUnitFactorsText([]), '—');
+});
+
+test('unidades: fmtFactor limpia el ruido binario SIN truncar el dato maestro', () => {
+  // valor real que devolvió el server para LBR del PN 3631582
+  assert.strictEqual(Core.fmtFactor(6.3933979999999995), '6.393398');
+  assert.strictEqual(Core.fmtFactor(0.1297911062), '0.1297911062', '10 significativos: NO se recorta');
+  assert.strictEqual(Core.fmtNum(0.1297911062), '0.129791', 'fmtNum sigue en 6 sig (no se cambió el default)');
+  assert.strictEqual(Core.fmtFactor(120.58), '120.58');
+  assert.strictEqual(Core.fmtFactor(null), '');
+});
+
+test('unidades: sin item de inventario → [] (fail-safe, no truena)', () => {
+  assert.deepStrictEqual(Core.extractUnitFactors({ partNumberById: { inventoryItemByPartNumberId: null } }), []);
+  assert.deepStrictEqual(Core.extractUnitFactors({}), []);
+  assert.deepStrictEqual(Core.extractUnitFactors(null), []);
+});
+
+test('extractPnRow: una pasada, todas las columnas, sobre el fixture REAL', () => {
+  const row = Core.extractPnRow(REAL, { lineaDimId: 349 });
+  assert.strictEqual(row.metal, 'Cobre');
+  assert.strictEqual(row.linea, 'T107-LI Plata Colgado Cx (60.0)');
+  assert.strictEqual(row.rackTypes.length, 2);
+  assert.strictEqual(row.units.length, 5);
+  // specs: solo la ACTIVA (14342) y solo su param con valor numérico (Espesor)
+  assert.strictEqual(row.specs.length, 1, 'las 3 specs archivadas quedan fuera');
+  assert.strictEqual(row.specs[0].specName, 'ABD01030 (Plata Semibrillante)');
+  assert.strictEqual(row.totalNumericParams, 1, '"Sí o No"/"Elección" no cuentan');
+  assert.deepStrictEqual(row.specs[0].numericParams, [{ name: 'Espesor', value: '2 - 5 µm' }]);
+});
+
+test('extractPnRow: los params HUÉRFANOS de la spec archivada 16165 no la resucitan', () => {
+  const row = Core.extractPnRow(REAL, { lineaDimId: 349 });
+  const names = row.specs.map((s) => s.specName);
+  assert.ok(!names.includes('Inspección Recibo'),
+    'tiene 2 params ACTIVOS pero su partNumberSpec está archivada (bug 0.1.1)');
+});
+
+test('extractPnRow: response vacío → fila vacía sin excepciones', () => {
+  const row = Core.extractPnRow({}, {});
+  assert.deepStrictEqual(row, { specs: [], totalNumericParams: 0, metal: '', linea: '', rackTypes: [], units: [] });
+  assert.doesNotThrow(() => Core.extractPnRow(null, null));
+});
