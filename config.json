@@ -1,6 +1,6 @@
 {
-  "version": "1.10.0",
-  "lastUpdated": "2026-07-28T22:11",
+  "version": "1.10.1",
+  "lastUpdated": "2026-07-28T22:45",
   "extensionVersion": "1.7.1",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -82,6 +82,8 @@
         "CreateNewPartGroup": "7ee30dd45af56f280ac45423349bb03b23ba6be7fb70aba6fe8ecfae819d54e4",
         "UpdateManyScheduleTasks": "14c097944aca8f0f4d47f3bac5d6c8b2a35d3b2adec3adb72bda66a24b2d6e7b",
         "CreateManyScheduleTasks": "9039afe7fe853a54fc1c31ad0d51e91dccd24b37c2698d786dc58bd1835c46c9",
+        "ArchivePartNumberRecipeNodeSpecFieldParams": "7d33b66bb244910a9065c631630bceb15f01ca282ac208b16fecf85df36937a4",
+        "AddParamsToPartNumberRecipeNodeSpecFieldParam": "8e8b0ab50c0404a01985ec894d0c91d3eab4159c6360f923b9920b8e344aaef0",
         "CreatePartNumberPerPerRackType": "8d4440278e2d30c4e66a7ce647c7a4594967d6e490bb909b0f8903c76e6dbc63",
         "CreateTreatmentTimesWithExpectedStationCostsUI": "57c6367a05e6b225f96c0d3f4fab69155010dffc80f92ce6d063961b05ecb8bc"
       },
@@ -204,7 +206,8 @@
         "GetWorkOrderPartsTransfers": "da4e8740973139bb23f3f0d37a0ea83a05b6d67cdab2c1bea1e154dff37aa284",
         "PurchaseOrders": "32f823d324b6b91e78fe43c93ab82042b931797f5592d088c4f1563051210d84",
         "SearchBills": "e50ba3ee7d2e694476d5180abdd978fa21f5147251c02d4cef051973b408bd8a",
-        "FindPartGroupQuery": "85121b64ebe7c614a0c3de7a730c45488b0ca45ea6731ff8c88efafb0667774c"
+        "FindPartGroupQuery": "85121b64ebe7c614a0c3de7a730c45488b0ca45ea6731ff8c88efafb0667774c",
+        "GetPartNumberWorkOrderSpecsInfo": "0d77c6496b506be62b92c1d821b2e0ec115838cb404ef3ab1cffe2270ddeb827"
       }
     },
     "domain": {
@@ -674,10 +677,10 @@
       ],
       "scripts": [
         "scripts/steelhead-api.js",
-        "scripts/auto-router-engine.js",
-        "scripts/auto-router-api.js",
         "scripts/wo-schedule-core.js",
-        "scripts/wo-schedule-button.js"
+        "scripts/wo-schedule-button.js",
+        "scripts/auto-router-engine.js",
+        "scripts/auto-router-api.js"
       ],
       "requiredPermissions": [
         "READ_WORK_ORDER"
@@ -1050,7 +1053,9 @@
         "scripts/steelhead-api.js",
         "scripts/host-cleanup-shared.js",
         "scripts/spec-migrator-normalize.js",
-        "scripts/spec-migrator.js"
+        "scripts/spec-migrator.js",
+        "scripts/wo-spec-params-core.js",
+        "scripts/wo-spec-params.js"
       ],
       "requiredPermissions": [
         "READ_SPECS",
@@ -1093,6 +1098,15 @@
           "handler": "message",
           "message": "validate-duplicate-params",
           "fn": "SpecMigrator.runDuplicateParamsValidator"
+        },
+        {
+          "id": "reapply-wo-params",
+          "label": "Reaplicar Params en OTs",
+          "sublabel": "Alinea las specs de las órdenes con su Número de Parte",
+          "icon": "🔧",
+          "handler": "message",
+          "message": "reapply-wo-params",
+          "fn": "WoSpecParams.openFromPopup"
         }
       ]
     },
@@ -2759,6 +2773,21 @@
       "description": "CREA tareas de programación donde no hay (la que dispara el Save del Schedule Board al programar una orden sin tarea). Payload REAL capturado 2026-07-28 → fixture tools/test/fixtures/wo-schedule-create-task.json. Forma: {scheduledTasks:{mnScheduleTask:[{scheduleId,treatmentId,stationId,expectedStartTime,totalTimeMinutes,cycleTimeMinutes,treatmentTimeMinutes,isIntentional:false,status:'UNSCHEDULED',scheduleTaskElementsByScheduleTaskId:{nodes:[{partSetUuid (UUID v4 del CLIENTE),recipeNodeId,partNumberId,rackIdLineage,rackTypeIdLineage (STRING, no array),partCount,partsPerBatch,relatedPartTransferAccounts:[{id,partCount}]}]}}]}, scheduleIdFilter:{equalTo:scheduleId}}. totalTimeMinutes NO se manda tal cual: total = treatmentTime + (ceil(partCount/partsPerBatch)-1)*cycleTime (validado contra 4 tareas reales). Los tiempos salen de TreatmentTime (cycleTime/totalTime como Interval de Postgres) con overrides por especificidad. A diferencia de UpdateManyScheduleTasks, la respuesta SÍ devuelve la tarea creada.",
       "usedBy": "wo-schedule-button"
     },
+    "GetPartNumberWorkOrderSpecsInfo": {
+      "type": "query",
+      "description": "Specs de una OT + sus nodos de receta con los parámetros aplicados. Vars {partNumberId,workOrderId} (ambos ids GLOBALES, no idInDomain). PESADA: ~0.87 MB por (OT × NP) — destilar y descartar el crudo. La spec EXTERNA (del cliente) es la única con partNumberSpecByPartNumberSpecId",
+      "usedBy": "wo-spec-params"
+    },
+    "ArchivePartNumberRecipeNodeSpecFieldParams": {
+      "type": "mutation",
+      "description": "Archivar filas de PartNumberRecipeNodeSpecFieldParam por id. Acepta lote: {partNumberRecipeNodeSpecFieldParamIds:[Int],archivedAt:ISO}",
+      "usedBy": "wo-spec-params"
+    },
+    "AddParamsToPartNumberRecipeNodeSpecFieldParam": {
+      "type": "mutation",
+      "description": "Aplicar parámetros a los nodos de receta de una OT. input.parametersToAdd[]={specFieldId,specFieldParamId,recipeNodeId,geometryTypeSpecFieldId:null,locationId:null,drivenBy}. drivenBy=id del PartNumberWorkOrderSpec. CRÍTICO: specFieldParamId es el id del CATÁLOGO de la spec — el server CLONA y el registro queda con otro id, encadenado por derivedFromId",
+      "usedBy": "wo-spec-params"
+    },
     "CreatePartNumberPerPerRackType": {
       "type": "mutation",
       "description": "LIGA un tipo de rack a un PN con sus piezas por carga. Input: {partNumberId, partsPerRack, rackTypeId} (mismo shape que la de update; el typo 'PerPer' es del API real). Es el ALTA — si el par (pn,rackType) ya existe hay que usar UpdatePartNumberPerPerRackType, porque el insert dispara unique constraint. Corrige el dato maestro que, faltando, hace que el planificador asuma 1 pieza por carga y dispare la duración de la tarea.",
@@ -2865,6 +2894,8 @@
     "scripts/wo-listing-columns.js": "7f3e11886246b828ceefb89a974670265ec3507d48465822cb15e1599c63583e",
     "scripts/wo-mover.js": "e924dfd9fb5d82ed65ab75151adcdc32cd4a94e950b8fcc2add9a9a65c78aefd",
     "scripts/wo-schedule-button.js": "5ab32387c2eddf8c338d96368dee036c97ac71e3cd3afa1bbf6abebcf4300c76",
-    "scripts/wo-schedule-core.js": "13950d255ac6fbd2d854bf9244361832ff49b2cdd67cd1403e76178d8f698361"
+    "scripts/wo-schedule-core.js": "13950d255ac6fbd2d854bf9244361832ff49b2cdd67cd1403e76178d8f698361",
+    "scripts/wo-spec-params-core.js": "0ad2319cdae9d3a335e1d27c3094dfd8d0f34032c2cc3d9ec26fba824c7a703d",
+    "scripts/wo-spec-params.js": "02fc9a2feb60a69b81546090b7e3d33bf192ff7e07e803720468e281576f4818"
   }
 }
