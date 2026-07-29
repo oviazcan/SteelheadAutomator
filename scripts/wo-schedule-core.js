@@ -581,6 +581,103 @@
     return p * (isFinite(r) && r > 0 ? r : 1);
   }
 
+  // ── Qué se puede programar: los tratamientos ANCLA ─────────────────────────
+  // Corrección del operador (2026-07-28) sobre la v1 del modal, que ofrecía TODAS las tinas:
+  // **no se programa tina por tina**. Solo son programables los nodos cuyo tratamiento está
+  // asociado a una estación CON CALENDARIO de planificación — en la práctica los "Listo para
+  // procesar" / "Listo para niquelar" y las estaciones satélite. Se programa **la orden
+  // completa** contemplando el o los tratamientos ancla, y una misma orden puede tener varios
+  // porque puede correr en distintas líneas.
+  //
+  // El marcador es el GRUPO DE TRATAMIENTO "Planificación" (2344) — el mismo que el
+  // auto-ruteador ya usa para saber cuáles son las stations "-LI" de selección de línea.
+  // Se confirma con datos: los del grupo 2344 son `T110 (PLA)-CU-VARIOS`, `T202 …`, `T206 …`
+  // (nivel línea), mientras que `TR-PRM-001 Antitarnish Manual` cae en otro grupo.
+  // El árbol de la receta NO trae el grupo → hace falta `RelatedSchedulingTreatments`.
+  const PLANNING_TREATMENT_GROUP_ID = 2344;
+
+  // treatmentGroupById: { [treatmentId]: treatmentGroupId } (de RelatedSchedulingTreatments)
+  function parseTreatmentGroups(data) {
+    const nodes = (data && data.allTreatments && data.allTreatments.nodes) || [];
+    const out = {};
+    nodes.forEach(function (n) {
+      if (!n || n.id == null) return;
+      const g = n.treatmentGroupByTreatmentGroupId;
+      out[n.id] = { groupId: (g && g.id != null) ? g.id : null, name: n.name != null ? String(n.name) : '' };
+    });
+    return out;
+  }
+
+  // El código de línea que abre el nombre de una estación o tratamiento: "T109-EN00-001 …"
+  // y "T109 (NBR)-FE/AC-GRANEL" dan los dos "T109".
+  function lineCodeOf(name) {
+    const m = String(name || '').trim().match(/^([A-Z]\d{3})/i);
+    return m ? m[1].toUpperCase() : null;
+  }
+
+  // Nodos programables de la orden = los que anclan una línea. Devuelve uno por ancla,
+  // con su estación efectiva y su código de línea (que es lo que decide el rack).
+  function pickAnchorSteps(recipeNodes, treatmentGroups, activeRouteByNode) {
+    const grupos = treatmentGroups || {};
+    const rutas = activeRouteByNode || {};
+    const out = [];
+    const vistos = new Set();
+    (recipeNodes || []).forEach(function (n) {
+      if (!n || n.treatmentId == null) return;
+      const info = grupos[n.treatmentId];
+      if (!info || info.groupId !== PLANNING_TREATMENT_GROUP_ID) return;   // no es ancla
+      const stationId = (rutas[n.id] != null) ? rutas[n.id]
+                      : (n.defaultStation ? n.defaultStation.id : null);
+      if (stationId == null) return;                                       // sin dónde correr
+      const key = n.treatmentId + '|' + stationId;
+      if (vistos.has(key)) return;
+      vistos.add(key);
+      const stationName = (rutas[n.id] != null && n.routedStationName)
+        ? n.routedStationName
+        : (n.defaultStation ? n.defaultStation.name : '');
+      out.push({
+        recipeNodeId: n.id, name: n.name, treatmentId: n.treatmentId,
+        treatmentName: info.name, stationId: stationId, stationName: stationName,
+        // La línea sale del tratamiento ancla ("T110 (PLA)-CU-VARIOS") y, si no,
+        // de la estación: las dos la traen al frente del nombre.
+        lineCode: lineCodeOf(info.name) || lineCodeOf(stationName),
+      });
+    });
+    return out;
+  }
+
+  // Rack que corresponde a la línea que se va a programar. El operador lo dijo con el caso
+  // real: programando en T109 el modal ofrecía `T111-RA01` — el primer rack ligado al PN,
+  // que es de OTRA línea. El default correcto es el rack cuyo nombre abre con la línea del
+  // ancla; si el PN ya tiene piezas declaradas ahí, mejor, pero la línea manda sobre "el
+  // primero que tenga".
+  function pickRackForLine(rackTypes, pnRacks, lineCode) {
+    const cat = (rackTypes || []).filter(function (r) { return r && r.id != null; });
+    const delPn = (pnRacks || []).filter(function (p) { return p && p.rackTypeId != null; });
+    const pprDe = function (rackTypeId) {
+      const p = delPn.find(function (x) { return Number(x.rackTypeId) === Number(rackTypeId); });
+      return (p && p.partsPerRack != null) ? Number(p.partsPerRack) : null;
+    };
+    const arma = function (r) {
+      return { rackTypeId: Number(r.id), rackTypeName: String(r.name || ('Rack ' + r.id)),
+               partsPerRack: pprDe(r.id), yaExiste: pprDe(r.id) != null };
+    };
+    if (lineCode) {
+      const deLinea = cat.filter(function (r) { return lineCodeOf(r.name) === lineCode; });
+      if (deLinea.length) {
+        // Entre los de la línea, primero el que ya tenga piezas declaradas para el PN.
+        const conDato = deLinea.find(function (r) { return pprDe(r.id) != null; });
+        return arma(conDato || deLinea[0]);
+      }
+    }
+    // Sin línea o sin rack de esa línea: lo que el PN ya use, y si no, el primero del catálogo.
+    if (delPn.length) {
+      const r = cat.find(function (x) { return Number(x.id) === Number(delPn[0].rackTypeId); });
+      if (r) return arma(r);
+    }
+    return cat.length ? arma(cat[0]) : null;
+  }
+
   // ── El rack depende de la ESTACIÓN, no del PN ──────────────────────────────
   // Las piezas por carga viven en el par (PN, tipo de rack), y cada línea usa el suyo. En
   // datos reales el PN 3015610 tiene **4** piezas en `T204-FL01` y **1** en `T205-FL01`:
@@ -962,6 +1059,7 @@
     intervalToMinutes, pickTreatmentTime, scheduleTaskTimes, partsPerBatchFrom,
     buildScheduleTaskCreateInput, parseCreatedScheduleTasks,
     diagnoseSchedulingData, resolveRackForStation, planPartsPerRackFix, minutesToInterval,
+    PLANNING_TREATMENT_GROUP_ID, parseTreatmentGroups, pickAnchorSteps, pickRackForLine, lineCodeOf,
     buildTreatmentTimeCreateInput,
     isoToLocalInput, localInputToIso,
     parseIsoParts, formatShortDateTime, formatScheduleCell,

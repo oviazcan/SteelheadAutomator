@@ -1,6 +1,6 @@
 {
-  "version": "1.10.1",
-  "lastUpdated": "2026-07-28T22:45",
+  "version": "1.11.0",
+  "lastUpdated": "2026-07-28T22:48",
   "extensionVersion": "1.7.1",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -207,7 +207,8 @@
         "PurchaseOrders": "32f823d324b6b91e78fe43c93ab82042b931797f5592d088c4f1563051210d84",
         "SearchBills": "e50ba3ee7d2e694476d5180abdd978fa21f5147251c02d4cef051973b408bd8a",
         "FindPartGroupQuery": "85121b64ebe7c614a0c3de7a730c45488b0ca45ea6731ff8c88efafb0667774c",
-        "GetPartNumberWorkOrderSpecsInfo": "0d77c6496b506be62b92c1d821b2e0ec115838cb404ef3ab1cffe2270ddeb827"
+        "GetPartNumberWorkOrderSpecsInfo": "0d77c6496b506be62b92c1d821b2e0ec115838cb404ef3ab1cffe2270ddeb827",
+        "RelatedSchedulingTreatments": "b4ea3a2c6a41bf508d7b837f153a902c5e7c5ff0bb62c41366e5df95a31e3889"
       }
     },
     "domain": {
@@ -2797,6 +2798,11 @@
       "type": "mutation",
       "description": "Carga los TIEMPOS de un tratamiento (payload real capturado). Input: {input:{treatmentTimesToCreate:[{treatmentId, stationId, processNodeOccurrence, cycleTime:Interval{hours,minutes}, totalTime:Interval, timeType:'BATCH', partNumberId?}]}}. Los tiempos son Interval de Postgres, NO minutos. Devuelve el treatment_time creado con su id. Sin este dato el tratamiento (típicamente el genérico de Planificación) no permite calcular la duración de una tarea.",
       "usedBy": "wo-schedule-button"
+    },
+    "RelatedSchedulingTreatments": {
+      "type": "query",
+      "description": "Dado {treatmentIds:[...]} devuelve allTreatments.nodes[].{id,name,treatmentGroupByTreatmentGroupId.id}. Sirve para saber QUÉ tratamientos son de PLANIFICACIÓN (grupo 2344) — los únicos programables, porque su estación tiene calendario ('Listo para procesar', satélites). El árbol de la receta NO trae el grupo, por eso hace falta esta consulta. Confirmado con datos: 2344 = T110/T202/T206 (nivel línea); las tinas normales caen en otros grupos.",
+      "usedBy": "wo-schedule-button"
     }
   },
   "scripts": [
@@ -2893,8 +2899,8 @@
     "scripts/wo-deadline-changer.js": "169d0dc0c60030398a108ea73747848071159b7d4664305ad66833a0fe67265b",
     "scripts/wo-listing-columns.js": "7f3e11886246b828ceefb89a974670265ec3507d48465822cb15e1599c63583e",
     "scripts/wo-mover.js": "e924dfd9fb5d82ed65ab75151adcdc32cd4a94e950b8fcc2add9a9a65c78aefd",
-    "scripts/wo-schedule-button.js": "5ab32387c2eddf8c338d96368dee036c97ac71e3cd3afa1bbf6abebcf4300c76",
-    "scripts/wo-schedule-core.js": "13950d255ac6fbd2d854bf9244361832ff49b2cdd67cd1403e76178d8f698361",
+    "scripts/wo-schedule-button.js": "cd1b7a6f51d86a0d25e208f2bb85fe18654153b0ba5ab183081c6c6e223e331c",
+    "scripts/wo-schedule-core.js": "e36c4e61b973298c95a0094508101760f1d9f54548fdcb865be6646844de78b1",
     "scripts/wo-spec-params-core.js": "0ad2319cdae9d3a335e1d27c3094dfd8d0f34032c2cc3d9ec26fba824c7a703d",
     "scripts/wo-spec-params.js": "02fc9a2feb60a69b81546090b7e3d33bf192ff7e07e803720468e281576f4818"
   }
