@@ -1,7 +1,7 @@
 # Reaplicar Parámetros a las Specs de Órdenes de Trabajo
 
 **Fecha:** 2026-07-28
-**Estado:** diseño aprobado, pendiente de verificación en vivo (§8) antes de implementar escrituras
+**Estado:** diseño aprobado · verificación en vivo §8 HECHA (solo lecturas) · listo para implementar fase 1
 **Applet destino:** nueva acción del bundle `spec-migrator` ("Ajuste Masivo de Specs")
 
 ---
@@ -158,24 +158,67 @@ Se agrupan los activos por `specFieldParamBySpecFieldParamId.specFieldSpecBySpec
 
 ### 5.2 Equivalencia — cascada que solo puede absolver
 
-Cada escalón puede declarar `OK`; **ninguno puede declarar `DIFIERE`**. Solo agotar
-los tres lo hace.
+**Verificado en vivo contra la OT 5769 (§8).** Resultado: 136 `OK`, 13 `VACÍO`,
+2 `DIFIERE`, 0 ambiguos — y los 2 que difieren son exactamente el caso de negocio.
 
-1. `aplicado.specFieldParam.derivedFromId === deseado.id`
-2. `aplicado.specFieldParam.id === deseado.id`
-3. Identidad de valor: `name`, `minimumValue`, `maximumValue`, `targetValue`, `unitId`
-   idénticos
+Cada escalón puede declarar `OK`; **ninguno puede declarar `DIFIERE`**. Solo agotarlos
+lo hace.
 
-El sesgo es deliberado. Un falso `OK` deja una casilla sin corregir — se detecta en la
-siguiente corrida. Un falso `DIFIERE` **cambia el criterio de calidad de una orden en
-piso**. Los costos no son simétricos, y la cascada se inclina hacia el barato.
+1. **Raíz de catálogo**: `raiz(aplicado) === raiz(deseado)`, donde
+   `raiz(x) = x.specFieldParamByDerivedFromId?.id ?? x.id`.
+   Ambos lados se normalizan al id del catálogo del que descienden.
+2. **Id directo**: `aplicado.id === deseado.id`
+3. **Identidad de valor**: `name` normalizado (espacios colapsados, sin distinguir
+   mayúsculas) + `minimumValue` + `maximumValue` + `targetValue` + `unitId`.
+   Cuando el deseado viene del catálogo solo hay `name` disponible — y eso basta,
+   porque esa vía solo se usa cuando el catálogo ofrece **una sola** opción.
 
-### 5.3 Qué id se manda al agregar
+**El escalón 3 es el caballo de batalla, no el 1.** Medido: de 136 aciertos, **132 se
+resolvieron por identidad y solo 4 por linaje**. La razón es que el catálogo de una
+spec también evoluciona: un parámetro aplicado a la OT puede descender de una versión
+del catálogo que ya fue reemplazada (visto: la OT deriva de `17890459` mientras el
+catálogo vigente ofrece `17854613`, ambos llamados "Sí o No"). Un diseño que confiara
+solo en el linaje habría marcado **134 falsos `DIFIERE`** y reescrito casi toda la
+orden.
 
-El flujo nativo mandó el id del **catálogo de la spec** (`12533622`), no el del NP.
-Si el ERP no resuelve el NP por su cuenta, hay que traducir NP → catálogo casando por
-`specFieldSpecId` + identidad de valor antes de escribir. **Pendiente de verificación
-(§8.2).**
+El sesgo de la cascada es deliberado. Un falso `OK` deja una casilla sin corregir — se
+detecta en la siguiente corrida. Un falso `DIFIERE` **cambia el criterio de calidad de
+una orden en piso**. Los costos no son simétricos, y la cascada se inclina hacia el
+barato.
+
+### 5.3 Qué id se manda al agregar — resuelto
+
+**Se manda el id del CATÁLOGO**, no el del NP ni el del clon.
+
+Prueba: la fila `26249942` de la OT 5769 fue creada a mano durante la captura del
+scan; el `AddParams` mandó `specFieldParamId: 12533622` (catálogo) y el registro quedó
+con `specFieldParamId: 34924257` y `derivedFromId: 12533622`. El ERP clona y conserva
+el origen.
+
+Por lo tanto:
+
+```
+idParaEscribir = deseadoDelNP.specFieldParamByDerivedFromId?.id ?? deseadoDelNP.id
+idParaComparar = raiz(deseadoDelNP)            // el mismo valor
+```
+
+Caso real verificado (campo `Espesor`, `specFieldSpec 106115`):
+
+```
+NP vigente : sfp 33666976  df 32594227  "5 - 10 µm"  → se escribe 32594227
+OT actual  : sfp 34924257  df 12533622  "5 - 8 µm"   → se archiva la fila 26249942
+catálogo   : 12533622 "5 - 8 µm"  ·  32594227 "5 - 10 µm"
+```
+
+### 5.4 El NP puede tener varios parámetros activos por campo
+
+Verificado: el NP `80236-167-07` tiene **cuatro** filas para `Espesor`, tres
+archivadas y una activa. El filtro por `archivedAt` basta en ese caso.
+
+Pero si aparecieran **dos o más activas** para el mismo `specFieldSpecId`, el deseado
+sería indeterminado. **No se adivina**: esa casilla se marca `AMBIGUO` y se reporta
+sugiriendo correr antes el validador de parámetros duplicados
+(`spec-migrator` → *Validar params duplicados*), que existe justo para eso.
 
 ---
 
@@ -240,28 +283,54 @@ tráfico y de parseo. Ese modo nace troceado y reanudable o no funciona.
 
 ---
 
-## 8. Verificación en vivo — OBLIGATORIA antes de implementar escrituras
+## 8. Verificación en vivo — HECHA (2026-07-28, solo lecturas)
 
-El scan **no incluye** un `GetPartNumber` con parámetros: sus muestras salieron
-vacías, que es justo el caso que arregló `hash-scanner` 0.6.24 (el backup de recarga
-guardaba las operaciones `known` sin muestras). Por eso lo siguiente es hipótesis
-razonada, no dato.
+El scan no incluía un `GetPartNumber` con parámetros (sus muestras salieron vacías —
+el caso que arregló `hash-scanner` 0.6.24), así que se verificó contra el ERP en vivo
+sobre la OT 5769 / NP 3044551 `80236-167-07`. **Ninguna escritura.**
 
-### 8.1 La cadena de linaje
-`GetPartNumber(3044551)` → ¿existe un parámetro activo con `id 28818108`? ¿su
-`specFieldSpecId` es `106115`?
-- **Si sí** → confirmada la cadena `catálogo → clon del NP → clon de la OT`, y el
-  escalón 1 de §5.2 es el bueno.
-- **Si no** → el escalón 1 nunca acierta y la comparación se apoya en el escalón 3
-  (identidad de valor). El diseño sigue en pie, más frágil.
+### 8.1 La cadena de linaje — CONFIRMADA, pero insuficiente por sí sola
+El parámetro `28818108` existe en el NP, sobre el `specFieldSpec 106115`. La cadena
+`catálogo → clon del NP → clon de la OT` es real.
 
-### 8.2 Qué id acepta `AddParams`
-Aplicar una casilla vacía en una OT de prueba mandando el id del catálogo y verificar
-qué parámetro quedó. Determina si hace falta la traducción de §5.3.
+**Hallazgo que corrigió el diseño:** el linaje de un salto solo explica **4 de 136**
+aciertos. El catálogo de una spec evoluciona, así que un parámetro aplicado puede
+descender de una versión ya reemplazada — la OT deriva de `17890459` mientras el
+catálogo vigente ofrece `17854613`, ambos "Sí o No". Con solo linaje, el prototipo
+marcó **134 falsos `DIFIERE`**; con identidad de valor, 2. Ver §5.2.
 
-### 8.3 Corrida de prueba
-Una sola OT, dry-run → aplicar → releer → confirmar que las casillas quedaron como el
-preview prometió.
+### 8.2 Qué id acepta `AddParams` — RESUELTO
+El id del **catálogo**. Ver la prueba en §5.3.
+
+### 8.3 Resultado del cruce completo (prototipo sobre datos reales)
+
+```
+OT 5769 · NP 80236-167-07
+OK 136 · VACÍO 13 · DIFIERE 2 · DUPLICADO 0 · AMBIGUO 0 · SIN_CATÁLOGO 0
+aciertos por escalón:  linaje 4 · id directo 0 · identidad 132
+fuente del deseado:    NP 11 · catálogo 140
+```
+
+Los 13 vacíos coinciden con el conteo independiente hecho sobre el scan. Los 2 que
+difieren son el caso de negocio íntegro:
+
+```
+Inspeccionando y Empacando · Espesor              · OT "5 - 8 µm"     · NP "5 - 10 µm"
+Inspeccionando y Empacando · Espesor (Intermedio) · OT "0.5 - 1.0 µm" · NP "No aplica"
+```
+
+**Nota:** ambas filas fueron creadas a mano por el operador durante la captura del
+scan, y en las dos se eligió el valor que el NP ya había dejado atrás. Es evidencia
+directa de que el llenado manual es propenso a error — el argumento del applet.
+
+**Observación de alcance:** solo **11 de 151** casillas se resuelven desde el NP. Las
+otras 140 salen del catálogo, porque 5 de las 7 specs de la OT son de proceso/línea y
+el NP no las toca. El NP manda donde tiene voz; en el resto decide el catálogo cuando
+es unívoco.
+
+### 8.4 Pendiente — corrida de escritura
+Una sola OT: dry-run → aplicar → releer → confirmar que quedó como el preview
+prometió. Se hace en la fase 1, con el applet ya construido.
 
 ---
 
