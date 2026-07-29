@@ -250,3 +250,43 @@ Por eso el motor quedó listo y verificado, pero el 📅 de «Sin programar» **
 teclear un tiempo a mano entra al planificador igual de mal que calcularlo mal. El camino
 natural es `ScheduleInformationById` — copiar los tiempos de una tarea real del mismo
 treatment+estación y **fail-closed si no existe ninguna**, en vez de inventarlos.
+
+
+## Datos maestros faltantes: detectar el daño y corregirlo en la fuente (2026-07-28)
+
+Planteado por el operador: los dos huecos reales del piso son **el tratamiento genérico de
+Planificación sin tiempos** y **el tipo de rack sin piezas por carga**. El segundo es el
+peligroso porque **no falla: calcula**. Sin `partsPerRack` el planificador asume **1 pieza por
+carga**, así que 13 504 piezas se vuelven 13 504 cargas y la tarea pasa de **141 minutos a
+~112 días** — una duración irreal que entra al programa con cara de dato bueno y desacomoda
+todo lo que venga detrás.
+
+**Un dato maestro faltante no se resuelve con un default silencioso.** `diagnoseSchedulingData`
+lo nombra, **mide el efecto** (cargas y días concretos, no un "revisa la configuración") y dice
+dónde se corrige. `SIN_TIEMPOS` y `SIN_PIEZAS_POR_RACK` **bloquean**; `DURACION_IMPLAUSIBLE`
+(> 1 semana en una tina) solo advierte, porque puede ser legítimo.
+
+### Corregirlo resultó barato: las tres escrituras ya existían
+
+| Corrección | Mutación | Estado |
+|---|---|---|
+| Piezas por carga (alta) | `CreatePartNumberPerPerRackType` | payload real capturado `{partNumberId, partsPerRack, rackTypeId}` |
+| Piezas por carga (corrección) | `UpdatePartNumberPerPerRackType` | **ya en config y en uso por `carga-masiva`** |
+| Tiempos de tratamiento | `CreateTreatmentTimesWithExpectedStationCostsUI` | payload real capturado |
+
+Las dos de rack **no son intercambiables**: `SavePartNumberRackTypes` es insert-only y dispara
+unique constraint en `(pn, rackType)` — por eso existe la de update, y por eso
+`planPartsPerRackFix` elige según el par exista o no. Los tiempos viajan como **Interval de
+Postgres** (`{hours, minutes}`), no como minutos: `minutesToInterval` hace la conversión y
+`buildTreatmentTimeCreateInput` **rechaza un ciclo mayor que el total** (tarea imposible) antes
+de que llegue al ERP.
+
+La lectura para detectar el faltante también estaba: `CreateEditPartsPerRackTypeQuery`
+(`{partNumberId}` → `allRackTypes[].partsPerRackDefault`) y `CreateEditTreatmentTimesDialogQuery`
+(ya usada por `process-deep-audit`).
+
+**Rutas de regeneración:** `partNumberRackType` cuelga del **PN Centinela 3770957** — que es
+justamente el PN de los payloads capturados, así que el flujo ya está confirmado sobre el
+centinela. `treatmentTimes` no tiene objeto centinela (es un catálogo global), así que **su
+único candado es el abort**; no cambiar de estrategia sin repensarlo. La deuda del trinquete
+**bajó de 60 a 59**.

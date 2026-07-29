@@ -725,3 +725,98 @@ test('parseCreatedScheduleTasks: respuesta vacía o rara → [] (no truena)', ()
   assert.deepEqual(Core.parseCreatedScheduleTasks({}), []);
   assert.deepEqual(Core.parseCreatedScheduleTasks(null), []);
 });
+
+// ══════════════════════════════════════════════════════════════════════════
+// Datos maestros faltantes — detectar el daño y corregirlo en la fuente
+// ══════════════════════════════════════════════════════════════════════════
+// El caso que reportó el operador: el tratamiento genérico de Planificación sin tiempos,
+// o el rack type sin piezas por carga. El segundo NO falla, CALCULA: asume 1 pieza por
+// carga y la duración se vuelve irreal. Ese es el modo de fallo peligroso, porque entra
+// al planificador con cara de dato bueno.
+
+const TT_OK = { cycleTimeMinutes: 12, treatmentTimeMinutes: 45 };
+
+test('SIN piezas por rack: se detecta y se MIDE el disparate', () => {
+  const d = Core.diagnoseSchedulingData({ partCount: 13504, partsPerRack: null, treatmentTime: TT_OK });
+  assert.equal(d.ok, false, 'debe bloquear: 1 pieza por carga no es un default aceptable');
+  const p = d.problemas.find((x) => x.codigo === 'SIN_PIEZAS_POR_RACK');
+  assert.ok(p);
+  assert.equal(p.lotes, 13504, 'a 1 pieza por carga, tantas cargas como piezas');
+  // 45 + 13503*12 = 162081 min ≈ 112.6 días — el número que hace obvio el problema
+  assert.equal(p.minutos, 45 + 13503 * 12);
+  assert.match(p.efecto, /días/);
+  assert.ok(p.donde, 'debe decir DÓNDE se corrige');
+});
+
+test('SIN tiempos de tratamiento: bloquea (no hay con qué calcular)', () => {
+  const d = Core.diagnoseSchedulingData({ partCount: 100, partsPerRack: 50, treatmentTime: null });
+  assert.equal(d.ok, false);
+  assert.equal(d.problemas[0].codigo, 'SIN_TIEMPOS');
+});
+
+test('con los datos completos no estorba', () => {
+  const d = Core.diagnoseSchedulingData({ partCount: 13504, partsPerRack: 1501, rackCount: 1, treatmentTime: TT_OK });
+  assert.equal(d.ok, true);
+  assert.deepEqual(d.problemas, []);
+});
+
+test('una pieza sola NO se reporta como rack faltante', () => {
+  // con partCount 1 el rack da igual: 1 carga de todos modos, no hay disparate que avisar
+  const d = Core.diagnoseSchedulingData({ partCount: 1, partsPerRack: null, treatmentTime: TT_OK });
+  assert.equal(d.problemas.some((p) => p.codigo === 'SIN_PIEZAS_POR_RACK'), false);
+});
+
+test('duración desbocada AVISA aunque los datos estén presentes', () => {
+  // datos completos pero absurdos: 10000 piezas de a 1 por carga "declarada"
+  const d = Core.diagnoseSchedulingData({ partCount: 10000, partsPerRack: 1, rackCount: 1, treatmentTime: TT_OK });
+  const p = d.problemas.find((x) => x.codigo === 'DURACION_IMPLAUSIBLE');
+  assert.ok(p, 'más de una semana en una tina merece freno');
+  assert.equal(p.bloquea, false, 'avisa, pero puede ser legítimo → no bloquea');
+  assert.equal(d.ok, true);
+});
+
+// ── Corregir el dato en la fuente ────────────────────────────────────────────
+test('planPartsPerRackFix elige CREATE o UPDATE — no son intercambiables', () => {
+  // SavePartNumberRackTypes es insert-only y revienta con unique constraint en (pn,rack):
+  // por eso la corrección de un par que YA existe tiene que ir por la de update.
+  const nuevo = Core.planPartsPerRackFix({ partNumberId: 3770957, rackTypeId: 3049, partsPerRack: 1 });
+  assert.equal(nuevo.op, 'CreatePartNumberPerPerRackType');
+  assert.deepEqual(nuevo.variables, { partNumberId: 3770957, partsPerRack: 1, rackTypeId: 3049 });
+
+  const existente = Core.planPartsPerRackFix({ partNumberId: 3770957, rackTypeId: 3049, partsPerRack: 2, yaExiste: true });
+  assert.equal(existente.op, 'UpdatePartNumberPerPerRackType');
+  assert.deepEqual(existente.variables, { partNumberId: 3770957, partsPerRack: 2, rackTypeId: 3049 });
+});
+
+test('planPartsPerRackFix rechaza valores que volverían a romper el cálculo', () => {
+  const base = { partNumberId: 1, rackTypeId: 2 };
+  assert.equal(Core.planPartsPerRackFix({ ...base, partsPerRack: 0 }).valid, false);
+  assert.equal(Core.planPartsPerRackFix({ ...base, partsPerRack: -3 }).valid, false);
+  assert.equal(Core.planPartsPerRackFix({ ...base, partsPerRack: 2.5 }).valid, false);
+  assert.equal(Core.planPartsPerRackFix({ ...base, partsPerRack: '' }).valid, false);
+  assert.equal(Core.planPartsPerRackFix({ partsPerRack: 5 }).valid, false);
+});
+
+test('minutesToInterval: el server habla Interval, no minutos', () => {
+  assert.deepEqual(Core.minutesToInterval(7), { hours: 0, minutes: 7 });   // el capturado
+  assert.deepEqual(Core.minutesToInterval(141), { hours: 2, minutes: 21 });
+  assert.deepEqual(Core.minutesToInterval(0), { hours: 0, minutes: 0 });
+  assert.deepEqual(Core.minutesToInterval(1.5), { hours: 0, minutes: 1, seconds: 30 });
+  assert.equal(Core.minutesToInterval(-1), null);
+});
+
+test('buildTreatmentTimeCreateInput reproduce el payload capturado', () => {
+  const out = Core.buildTreatmentTimeCreateInput({
+    treatmentId: 88795, stationId: 12098, cycleTimeMinutes: 7, totalTimeMinutes: 7, timeType: 'BATCH',
+  });
+  assert.deepEqual(out, { input: { treatmentTimesToCreate: [{
+    treatmentId: 88795, stationId: 12098, processNodeOccurrence: null,
+    cycleTime: { hours: 0, minutes: 7 }, totalTime: { hours: 0, minutes: 7 }, timeType: 'BATCH',
+  }] } });
+});
+
+test('buildTreatmentTimeCreateInput: un ciclo mayor que el total es imposible → null', () => {
+  assert.equal(Core.buildTreatmentTimeCreateInput({
+    treatmentId: 1, stationId: 2, cycleTimeMinutes: 30, totalTimeMinutes: 10 }), null);
+  assert.equal(Core.buildTreatmentTimeCreateInput({ treatmentId: 1, cycleTimeMinutes: 1, totalTimeMinutes: 2 }), null);
+});

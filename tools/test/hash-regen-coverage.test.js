@@ -8,7 +8,7 @@
 // pero nada la verificaba, así que la deuda entraba en silencio: CreateUpdateDeleteRoutes
 // —LA mutation del auto-ruteador— vivió sin ruta desde su fase 1 hasta 2026-07-27.
 //
-// La foto al 2026-07-27 es de 60 hashes huérfanos de 188: las QUERIES están casi
+// La foto al 2026-07-28 es de 59 hashes huérfanos: las QUERIES están casi
 // resueltas (110/119) y el hueco son las MUTATIONS (18/69), porque cada una necesita su
 // entidad centinela con captura-y-aborta — trabajo caro por op, no algo que se salde de
 // una sentada. Por eso el invariante global es un TRINQUETE: no exige cero, exige que la
@@ -36,7 +36,7 @@ function opsCubiertas() {
 
 // Línea base del trinquete: hashes sin ruta al 2026-07-27. Si BAJA, actualízala en el
 // mismo commit que salda la deuda — así el número solo puede ir hacia abajo.
-const HUERFANAS_BASE = 60;
+const HUERFANAS_BASE = 59;
 
 test('las ops del ruteo por grupos tienen ruta de regeneración', () => {
   const cubiertas = opsCubiertas();
