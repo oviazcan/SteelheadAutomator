@@ -482,31 +482,90 @@ git commit -m "feat(wo-spec-params): equivalencia en cascada — ningún escaló
 
 **Interfaces:**
 - Consumes: todo lo anterior
-- Produces: `classifyWorkOrder({workOrder, partNumber}) -> {cells:[Cell], tally:{OK,VACIO,DIFIERE,DUPLICADO,AMBIGUO,SIN_CATALOGO}, orphans:[Orphan]}`
-  - `Cell = {recipeNodeId, recipeNodeName, specFieldId, fieldName, specName, status, via, desired, appliedRows, toArchiveIds:[number], toAddWriteId:number|null, pnwosId, reason}`
+- Produces:
+  - `findExternalSpec(workOrder) -> {pnwosId, specId, specName, fieldIds:Set, bySpecFieldId:Map} | null`
+  - `findInspectionNode(workOrder, externalSpec) -> {node} | {ambiguous:true, candidates:[id], reason}`
+  - `classifyWorkOrder({workOrder, partNumber}) -> {cells, tally, orphans, anomalies, externalSpec, inspectionNode}`
+  - `Cell = {recipeNodeId, recipeNodeName, specFieldId, fieldName, specName, status, via, desired, appliedRows, toArchiveIds:[number], toAddWriteId:number|null, pnwosId, reason, forced:boolean, scope:'EXTERNA'|'PROCESO'}`
+  - `Anomaly = {recipeNodeId, recipeNodeName, recipeNodeType, specFieldId, fieldName, rowId, paramName}`
   - `Orphan = {recipeNodeId, recipeNodeName, specFieldId, fieldName, rowId, paramName}`
 
-**Las huérfanas.** El universo de casillas sale de `recipeNodeSpecFields` — lo que el nodo *declara*. Pero puede haber filas aplicadas de un campo que el nodo **no** declara. Ese caso apareció al construir el fixture, y es real: cuando aplicas un parámetro de un campo nuevo, el ERP declara el campo en el nodo, así que un snapshot tomado entre ambos momentos las muestra descolgadas.
+**Lee §3 del spec antes de esta tarea.** El modelo tiene **dos universos**, no uno:
 
-**No generan casilla y no se tocan** — tocarlas sería escribir sobre algo que el modelo de la orden ya no reconoce. Pero **sí se reportan**: son parámetros vivos que nadie está mirando, y el operador debe saber que existen.
+1. **Spec externa** (la única con `partNumberSpecByPartNumberSpecId != null`) — **todos** sus campos vivos son casillas, pero **solo del nodo de inspección de la línea**. Los que ese nodo no declara se **fuerzan** (`forced: true`). En cualquier **otro** nodo, un parámetro de la spec externa es una **anomalía**: se reporta y **no se toca** — corregirla perpetuaría un error de datos, y archivarla es una decisión que este applet no tiene autorizada.
+2. **Specs de proceso** — el universo es `recipeNodeSpecFields` de cada nodo, como se venía haciendo.
+
+**El nodo de inspección se identifica por tipo, no por nombre**: es el `QUALITY_ASSURANCE_NODE` que toca la spec externa. Hay **tres** nodos de ese tipo en la OT 5769 (`Inspeccionando Recibo`, `T201-IC00-001 Inspeccionando y Empacando`, `Inspeccionando Calidad Embarques`), así que el tipo por sí solo no alcanza. Si los candidatos no son **exactamente uno** → no se fuerza nada en esa orden y se reporta para revisión manual. Nunca se adivina: forzar en el nodo equivocado mete criterios de calidad del cliente en una etapa que no le toca.
+
+**Huérfanas:** en un nodo de proceso, filas aplicadas a un campo que ese nodo no declara. No generan casilla, no se tocan, se reportan.
 
 - [ ] **Step 1: Escribe el test que falla**
 
 ```js
+test('findExternalSpec: la externa es la única con partNumberSpecByPartNumberSpecId', () => {
+  const ext = Core.findExternalSpec(FIX.workOrder);
+  assert.equal(ext.pnwosId, 5063398);
+  assert.equal(ext.specName, '40004-014-01 (Estaño)');
+  assert.deepEqual([...ext.fieldIds].sort((a, b) => a - b),
+                   [15630, 15820, 19445, 22067, 28479, 33579]);
+});
+
+test('findInspectionNode: el QA que toca la spec externa', () => {
+  const ext = Core.findExternalSpec(FIX.workOrder);
+  const r = Core.findInspectionNode(FIX.workOrder, ext);
+  assert.equal(r.node.id, 42513391);
+  assert.equal(r.node.type, 'QUALITY_ASSURANCE_NODE');
+});
+
+test('findInspectionNode: con dos candidatos NO adivina', () => {
+  const wo = JSON.parse(JSON.stringify(FIX.workOrder));
+  const gemelo = JSON.parse(JSON.stringify(
+    wo.recipeNodesByWorkOrderId.nodes.find(n => n.id === 42513391)));
+  gemelo.id = 99999; gemelo.name = 'Otro Inspeccionando';
+  wo.recipeNodesByWorkOrderId.nodes.push(gemelo);
+  const r = Core.findInspectionNode(wo, Core.findExternalSpec(wo));
+  assert.equal(r.ambiguous, true);
+  assert.deepEqual(r.candidates.sort((a, b) => a - b), [42513391, 99999]);
+});
+
+test('findInspectionNode: sin ningún candidato tampoco adivina', () => {
+  const wo = JSON.parse(JSON.stringify(FIX.workOrder));
+  wo.recipeNodesByWorkOrderId.nodes = wo.recipeNodesByWorkOrderId.nodes
+    .filter(n => n.type !== 'QUALITY_ASSURANCE_NODE');
+  const r = Core.findInspectionNode(wo, Core.findExternalSpec(wo));
+  assert.equal(r.ambiguous, true);
+  assert.deepEqual(r.candidates, []);
+});
+
 // Conteos VERIFICADOS contra el fixture antes de escribir el plan. Si no cuadran, el core está
-// mal — no toques estos números.
-//   nodo 42513351: 6 campos... 1 DIFIERE (Espesor 5-8 vs 5-10) + 4 OK
-//   nodo 42513364: 1 campo sin parámetro → 1 VACIO
-//   nodo 42513391: 6 campos, 2 con parámetro que difiere del NP, 4 vacíos
+// mal — NO toques estos números.
+//   universo EXTERNA (solo el nodo 42513391): 6 casillas → 2 DIFIERE + 4 VACIO, 1 de ellas forzada
+//   universo PROCESO: el nodo 42513364 aporta 1 VACIO (campo 31018 de T201-LI)
+//   el nodo raíz 42513351 NO aporta casillas: sus 5 campos son de la spec externa → anomalías
 test('classifyWorkOrder: sobre el fixture real de la OT 5769', () => {
   const { cells, tally } = Core.classifyWorkOrder(FIX);
-  assert.equal(tally.OK, 4);
+  assert.equal(tally.OK, 0);
   assert.equal(tally.VACIO, 5);
-  assert.equal(tally.DIFIERE, 3);
+  assert.equal(tally.DIFIERE, 2);
   assert.equal(tally.DUPLICADO, 0);
   assert.equal(tally.AMBIGUO, 0);
   assert.equal(tally.SIN_CATALOGO, 0);
-  assert.equal(cells.length, 12);
+  assert.equal(cells.length, 7);
+});
+
+test('classifyWorkOrder: los 6 campos de la spec externa son casillas del nodo de inspección', () => {
+  const { cells } = Core.classifyWorkOrder(FIX);
+  const ext = cells.filter(c => c.scope === 'EXTERNA');
+  assert.equal(ext.length, 6);
+  assert.ok(ext.every(c => c.recipeNodeId === 42513391));
+});
+
+test('classifyWorkOrder: el campo que el nodo no declara sale marcado como forzado', () => {
+  const { cells } = Core.classifyWorkOrder(FIX);
+  const forced = cells.filter(c => c.forced);
+  assert.equal(forced.length, 1);
+  assert.equal(forced[0].specFieldId, 33579);        // Espesor (Intermedio)
+  assert.equal(forced[0].recipeNodeId, 42513391);
 });
 
 test('classifyWorkOrder: el DIFIERE de Espesor archiva la fila vieja y escribe el id del catálogo', () => {
@@ -518,32 +577,32 @@ test('classifyWorkOrder: el DIFIERE de Espesor archiva la fila vieja y escribe e
   assert.equal(c.pnwosId, 5063398);
 });
 
-test('classifyWorkOrder: el mismo campo en otro nodo también difiere, con su propia fila', () => {
-  const { cells } = Core.classifyWorkOrder(FIX);
-  const c = cells.find(x => x.recipeNodeId === 42513351 && x.specFieldId === 15630);
-  assert.equal(c.status, 'DIFIERE');
-  assert.deepEqual(c.toArchiveIds, [22341384]);
-  assert.equal(c.toAddWriteId, 32594227);
+test('classifyWorkOrder: la spec externa en el nodo raíz es ANOMALÍA, no casilla', () => {
+  const { cells, anomalies } = Core.classifyWorkOrder(FIX);
+  assert.equal(anomalies.length, 5);
+  assert.ok(anomalies.every(a => a.recipeNodeId === 42513351));
+  assert.deepEqual(anomalies.map(a => a.rowId).sort((x, y) => x - y),
+                   [22341384, 22341385, 22341386, 22341387, 22341388]);
+  // y ninguna casilla toca ese nodo
+  assert.equal(cells.some(c => c.recipeNodeId === 42513351), false);
 });
 
-test('classifyWorkOrder: una fila aplicada a un campo que el nodo NO declara es huérfana y se ignora', () => {
+test('classifyWorkOrder: sin nodo de inspección identificable, cero casillas de la spec externa', () => {
   const wo = JSON.parse(JSON.stringify(FIX.workOrder));
-  const node = wo.recipeNodesByWorkOrderId.nodes.find(n => n.id === 42513391);
-  // quitamos la declaración del campo 33579 pero dejamos su fila aplicada
-  node.recipeNodeSpecFieldsByRecipeNodeId.nodes =
-    node.recipeNodeSpecFieldsByRecipeNodeId.nodes.filter(f => f.specFieldId !== 33579);
-  const { cells, tally, orphans } = Core.classifyWorkOrder({ workOrder: wo, partNumber: FIX.partNumber });
-  assert.equal(cells.length, 11);          // una casilla menos
-  assert.equal(tally.DIFIERE, 2);          // el DIFIERE de Espesor (Intermedio) desaparece
-  assert.equal(orphans.length, 1);         // pero se REPORTA
-  assert.equal(orphans[0].specFieldId, 33579);
-  assert.equal(orphans[0].rowId, 26249943);
+  wo.recipeNodesByWorkOrderId.nodes = wo.recipeNodesByWorkOrderId.nodes
+    .filter(n => n.type !== 'QUALITY_ASSURANCE_NODE');
+  const r = Core.classifyWorkOrder({ workOrder: wo, partNumber: FIX.partNumber });
+  assert.equal(r.cells.filter(c => c.scope === 'EXTERNA').length, 0);
+  assert.equal(r.inspectionNode.ambiguous, true);
+  // las de proceso siguen saliendo
+  assert.ok(r.cells.some(c => c.scope === 'PROCESO'));
 });
 
 test('classifyWorkOrder: una casilla VACÍA solo agrega, no archiva', () => {
   const { cells } = Core.classifyWorkOrder(FIX);
   const c = cells.find(x => x.recipeNodeId === 42513364);
   assert.equal(c.status, 'VACIO');
+  assert.equal(c.scope, 'PROCESO');
   assert.deepEqual(c.toArchiveIds, []);
   assert.ok(c.toAddWriteId > 0);
 });
@@ -595,125 +654,222 @@ Expected: FAIL — `Core.classifyWorkOrder is not a function`.
 - [ ] **Step 3: Escribe la implementación**
 
 ```js
-  // Clasifica TODAS las casillas de una OT. El universo sale de recipeNodeSpecFields — la única
-  // fuente que dice qué DEBERÍA estar lleno; lo aplicado solo dice qué hay.
+  // La spec EXTERNA es la del cliente, la que llega por el Número de Parte. Se distingue por
+  // estructura: es la única cuyo PartNumberWorkOrderSpec apunta a un partNumberSpec. Las demás
+  // son de proceso/línea. Devuelve null si la OT no tiene ninguna.
+  function findExternalSpec(workOrder) {
+    const specs = (workOrder
+      && workOrder.partNumberWorkOrderSpecsByWorkOrderId
+      && workOrder.partNumberWorkOrderSpecsByWorkOrderId.nodes) || [];
+    for (const s of specs) {
+      if (!s || s.archivedAt) continue;
+      if (!s.partNumberSpecByPartNumberSpecId) continue;
+      const spec = s.specBySpecId;
+      if (!spec) continue;
+      const fieldIds = new Set();
+      const bySpecFieldId = new Map();
+      for (const f of ((spec.specFieldSpecsBySpecId && spec.specFieldSpecsBySpecId.nodes) || [])) {
+        if (!f || f.archivedAt || f.specFieldId == null) continue;
+        fieldIds.add(f.specFieldId);
+        bySpecFieldId.set(f.specFieldId, f);
+      }
+      return { pnwosId: s.id, specId: spec.id, specName: spec.name || '', fieldIds, bySpecFieldId };
+    }
+    return null;
+  }
+
+  // El nodo donde vive la spec externa: un QUALITY_ASSURANCE_NODE. Pero hay VARIOS por orden
+  // (recibo, línea, embarques), así que el tipo no basta: el bueno es el único que TOCA la spec
+  // externa — la declara o ya tiene parámetros suyos aplicados.
+  //
+  // Si no es exactamente uno NO se adivina: forzar en el nodo equivocado mete criterios de
+  // calidad del cliente en una etapa que no le corresponde.
+  function findInspectionNode(workOrder, externalSpec) {
+    const nodes = (workOrder && workOrder.recipeNodesByWorkOrderId
+      && workOrder.recipeNodesByWorkOrderId.nodes) || [];
+    if (!externalSpec) return { ambiguous: true, candidates: [], reason: 'la orden no tiene especificación externa' };
+    const candidates = [];
+    for (const n of nodes) {
+      if (!n || n.type !== 'QUALITY_ASSURANCE_NODE') continue;
+      let touches = false;
+      for (const f of ((n.recipeNodeSpecFieldsByRecipeNodeId && n.recipeNodeSpecFieldsByRecipeNodeId.nodes) || [])) {
+        if (f && externalSpec.fieldIds.has(f.specFieldId)) { touches = true; break; }
+      }
+      if (!touches) {
+        for (const a of ((n.partNumberRecipeNodeSpecFieldParamsByRecipeNodeId
+          && n.partNumberRecipeNodeSpecFieldParamsByRecipeNodeId.nodes) || [])) {
+          if (a && !a.archivedAt && externalSpec.fieldIds.has(a.specFieldId)) { touches = true; break; }
+        }
+      }
+      if (touches) candidates.push(n);
+    }
+    if (candidates.length === 1) return { node: candidates[0] };
+    return {
+      ambiguous: true,
+      candidates: candidates.map(n => n.id),
+      reason: candidates.length === 0
+        ? 'ningún nodo de inspección toca la especificación externa'
+        : 'hay ' + candidates.length + ' nodos de inspección que tocan la especificación externa'
+    };
+  }
+
+  // Clasifica TODAS las casillas de una OT. Hay DOS universos (ver spec §3.1):
+  //   · la spec EXTERNA: todos sus campos vivos, SOLO en el nodo de inspección de la línea,
+  //     forzando los que ese nodo no declare;
+  //   · las specs de PROCESO: lo que cada nodo declara en recipeNodeSpecFields.
+  // Los parámetros de la spec externa en cualquier otro nodo son ANOMALÍAS: se reportan y no se
+  // tocan.
   function classifyWorkOrder(input) {
     const workOrder = input && input.workOrder;
     const partNumber = input && input.partNumber;
     const cells = [];
     const orphans = [];
+    const anomalies = [];
     const tally = { OK: 0, VACIO: 0, DIFIERE: 0, DUPLICADO: 0, AMBIGUO: 0, SIN_CATALOGO: 0 };
-    if (!workOrder) return { cells, tally, orphans };
+    if (!workOrder) return { cells, tally, orphans, anomalies, externalSpec: null, inspectionNode: null };
+
+    const externalSpec = findExternalSpec(workOrder);
+    const inspectionNode = findInspectionNode(workOrder, externalSpec);
+    const targetId = (inspectionNode && inspectionNode.node) ? inspectionNode.node.id : null;
+    const extFields = externalSpec ? externalSpec.fieldIds : new Set();
 
     const catalogIndex = buildCatalogIndex(workOrder);
     const pnIndex = buildPartNumberIndex(partNumber);
     const nodes = (workOrder.recipeNodesByWorkOrderId && workOrder.recipeNodesByWorkOrderId.nodes) || [];
 
-    for (const node of nodes) {
-      if (!node) continue;
+    // ── Universo EXTERNA: los campos de la spec del cliente, en el nodo de inspección ─────────
+    if (externalSpec && targetId != null) {
+      const target = inspectionNode.node;
+      const declared = new Set(((target.recipeNodeSpecFieldsByRecipeNodeId
+        && target.recipeNodeSpecFieldsByRecipeNodeId.nodes) || [])
+        .map(f => f && f.specFieldId).filter(x => x != null));
       const appliedByField = new Map();
-      const applied = (node.partNumberRecipeNodeSpecFieldParamsByRecipeNodeId
-        && node.partNumberRecipeNodeSpecFieldParamsByRecipeNodeId.nodes) || [];
-      for (const a of applied) {
+      for (const a of ((target.partNumberRecipeNodeSpecFieldParamsByRecipeNodeId
+        && target.partNumberRecipeNodeSpecFieldParamsByRecipeNodeId.nodes) || [])) {
         if (!a || a.archivedAt) continue;
         if (!appliedByField.has(a.specFieldId)) appliedByField.set(a.specFieldId, []);
         appliedByField.get(a.specFieldId).push(a);
       }
-      const fields = (node.recipeNodeSpecFieldsByRecipeNodeId
-        && node.recipeNodeSpecFieldsByRecipeNodeId.nodes) || [];
+      for (const specFieldId of externalSpec.fieldIds) {
+        const f = externalSpec.bySpecFieldId.get(specFieldId);
+        const cell = buildCell({
+          node: target, specFieldId,
+          fieldName: (f.specFieldBySpecFieldId && f.specFieldBySpecFieldId.name) || '',
+          rows: appliedByField.get(specFieldId) || [],
+          desired: resolveDesired(specFieldId, catalogIndex, pnIndex),
+          scope: 'EXTERNA', forced: !declared.has(specFieldId), tally
+        });
+        cells.push(cell);
+      }
+    }
 
-      // Filas aplicadas a un campo que el nodo NO declara: no son casillas, así que no se tocan.
-      // Se reportan porque son parámetros vivos fuera del modelo de la orden.
-      const declared = new Set(fields.map(f => f && f.specFieldId).filter(x => x != null));
+    // ── Universo PROCESO + anomalías + huérfanas ─────────────────────────────────────────────
+    for (const node of nodes) {
+      if (!node) continue;
+      const appliedByField = new Map();
+      for (const a of ((node.partNumberRecipeNodeSpecFieldParamsByRecipeNodeId
+        && node.partNumberRecipeNodeSpecFieldParamsByRecipeNodeId.nodes) || [])) {
+        if (!a || a.archivedAt) continue;
+        if (!appliedByField.has(a.specFieldId)) appliedByField.set(a.specFieldId, []);
+        appliedByField.get(a.specFieldId).push(a);
+      }
+
+      // Parámetros de la spec externa fuera del nodo de inspección: error de datos, no casilla.
+      if (node.id !== targetId) {
+        for (const [fieldId, rows] of appliedByField) {
+          if (!extFields.has(fieldId)) continue;
+          for (const r of rows) {
+            const sfp = r.specFieldParamBySpecFieldParamId || {};
+            anomalies.push({
+              recipeNodeId: node.id, recipeNodeName: node.name || '', recipeNodeType: node.type || '',
+              specFieldId: fieldId,
+              fieldName: (r.specFieldBySpecFieldId && r.specFieldBySpecFieldId.name) || '',
+              rowId: r.id, paramName: sfp.name || ''
+            });
+          }
+        }
+      }
+
+      // Casillas de proceso: lo que el nodo declara, MENOS los campos de la spec externa
+      // (esos ya se trataron arriba, y solo en el nodo de inspección).
+      const fields = ((node.recipeNodeSpecFieldsByRecipeNodeId
+        && node.recipeNodeSpecFieldsByRecipeNodeId.nodes) || [])
+        .filter(f => f && f.specFieldId != null && !extFields.has(f.specFieldId));
+      const declared = new Set(fields.map(f => f.specFieldId));
+
       for (const [fieldId, rows] of appliedByField) {
-        if (declared.has(fieldId)) continue;
+        if (extFields.has(fieldId) || declared.has(fieldId)) continue;
         for (const r of rows) {
           const sfp = r.specFieldParamBySpecFieldParamId || {};
           orphans.push({
-            recipeNodeId: node.id,
-            recipeNodeName: node.name || '',
-            specFieldId: fieldId,
+            recipeNodeId: node.id, recipeNodeName: node.name || '', specFieldId: fieldId,
             fieldName: (r.specFieldBySpecFieldId && r.specFieldBySpecFieldId.name) || '',
-            rowId: r.id,
-            paramName: sfp.name || ''
+            rowId: r.id, paramName: sfp.name || ''
           });
         }
       }
 
       for (const f of fields) {
-        if (!f || f.specFieldId == null) continue;
-        const rows = appliedByField.get(f.specFieldId) || [];
-        const desired = resolveDesired(f.specFieldId, catalogIndex, pnIndex);
-        const base = {
-          recipeNodeId: node.id,
-          recipeNodeName: node.name || '',
-          specFieldId: f.specFieldId,
-          fieldName: (f.specFieldBySpecFieldId && f.specFieldBySpecFieldId.name) || desired.fieldName || '',
-          specName: desired.specName || '',
-          via: desired.via,
-          desired,
-          appliedRows: rows,
-          toArchiveIds: [],
-          toAddWriteId: null,
-          pnwosId: desired.pnwosId || null,
-          reason: desired.reason || ''
-        };
-
-        if (desired.via === 'SIN_CATALOGO' || desired.via === 'AMBIGUO') {
-          base.status = desired.via;
-          tally[desired.via]++;
-          cells.push(base);
-          continue;
-        }
-
-        if (rows.length === 0) {
-          base.status = 'VACIO';
-          base.toAddWriteId = desired.writeId;
-          tally.VACIO++;
-          cells.push(base);
-          continue;
-        }
-
-        const matches = rows.filter(r => isEquivalent(r.specFieldParamBySpecFieldParamId, desired).ok);
-
-        if (rows.length > 1) {
-          base.status = 'DUPLICADO';
-          if (matches.length > 0) {
-            // conserva la primera equivalente, archiva todas las demás
-            const keep = matches[0].id;
-            base.toArchiveIds = rows.filter(r => r.id !== keep).map(r => r.id);
-          } else {
-            // ninguna sirve: archiva todas y escribe la deseada
-            base.toArchiveIds = rows.map(r => r.id);
-            base.toAddWriteId = desired.writeId;
-          }
-          tally.DUPLICADO++;
-          cells.push(base);
-          continue;
-        }
-
-        if (matches.length === 1) {
-          base.status = 'OK';
-          tally.OK++;
-        } else {
-          base.status = 'DIFIERE';
-          base.toArchiveIds = [rows[0].id];
-          base.toAddWriteId = desired.writeId;
-          tally.DIFIERE++;
-        }
-        cells.push(base);
+        cells.push(buildCell({
+          node, specFieldId: f.specFieldId,
+          fieldName: (f.specFieldBySpecFieldId && f.specFieldBySpecFieldId.name) || '',
+          rows: appliedByField.get(f.specFieldId) || [],
+          desired: resolveDesired(f.specFieldId, catalogIndex, pnIndex),
+          scope: 'PROCESO', forced: false, tally
+        }));
       }
     }
-    return { cells, tally, orphans };
+    return { cells, tally, orphans, anomalies, externalSpec, inspectionNode };
+  }
+
+  // Decide el estado de UNA casilla y qué escrituras propone. Muta `tally`.
+  function buildCell(o) {
+    const { node, specFieldId, fieldName, rows, desired, scope, forced, tally } = o;
+    const cell = {
+      recipeNodeId: node.id, recipeNodeName: node.name || '',
+      specFieldId, fieldName: fieldName || desired.fieldName || '',
+      specName: desired.specName || '',
+      via: desired.via, desired, appliedRows: rows,
+      toArchiveIds: [], toAddWriteId: null,
+      pnwosId: desired.pnwosId || null, reason: desired.reason || '',
+      forced: !!forced, scope
+    };
+
+    if (desired.via === 'SIN_CATALOGO' || desired.via === 'AMBIGUO') {
+      cell.status = desired.via; tally[desired.via]++; return cell;
+    }
+    if (rows.length === 0) {
+      cell.status = 'VACIO'; cell.toAddWriteId = desired.writeId; tally.VACIO++; return cell;
+    }
+    const matches = rows.filter(r => isEquivalent(r.specFieldParamBySpecFieldParamId, desired).ok);
+    if (rows.length > 1) {
+      cell.status = 'DUPLICADO';
+      if (matches.length > 0) {
+        const keep = matches[0].id;
+        cell.toArchiveIds = rows.filter(r => r.id !== keep).map(r => r.id);
+      } else {
+        cell.toArchiveIds = rows.map(r => r.id);
+        cell.toAddWriteId = desired.writeId;
+      }
+      tally.DUPLICADO++; return cell;
+    }
+    if (matches.length === 1) { cell.status = 'OK'; tally.OK++; return cell; }
+    cell.status = 'DIFIERE';
+    cell.toArchiveIds = [rows[0].id];
+    cell.toAddWriteId = desired.writeId;
+    tally.DIFIERE++;
+    return cell;
   }
 ```
 
-Agrégala al export.
+Agrega al export: `findExternalSpec`, `findInspectionNode`, `classifyWorkOrder`.
+
+
 
 - [ ] **Step 4: Corre el test y confirma que pasa**
 
 Run: `node --test tools/test/wo-spec-params-core.test.js`
-Expected: PASS, 21 tests.
+Expected: PASS, 26 tests.
 
 Si los conteos del primer test no cuadran, **no ajustes el test para que pase** — imprime `cells` y averigua por qué el core discrepa del cruce verificado en vivo (spec §8.3). El fixture es dato real; si el core no lo reproduce, el core está mal.
 
@@ -745,10 +901,10 @@ El payload sale exactamente con la forma verificada en el scan (spec §2.2).
 test('buildWritePlan: arma el payload con la forma exacta de AddParams', () => {
   const cls = Core.classifyWorkOrder(FIX);
   const plan = Core.buildWritePlan(cls, { partNumberId: 3044551 });
-  assert.deepEqual(plan.archiveIds.slice().sort((a, b) => a - b),
-                   [22341384, 26249942, 26249943]);
-  assert.equal(plan.parametersToAdd.length, 8);   // 5 vacías + 3 que difieren
-  assert.equal(plan.touched, 8);
+  // el nodo raíz NO entra: sus filas son anomalías, no casillas
+  assert.deepEqual(plan.archiveIds.slice().sort((a, b) => a - b), [26249942, 26249943]);
+  assert.equal(plan.parametersToAdd.length, 7);   // 5 vacías + 2 que difieren
+  assert.equal(plan.touched, 7);
   const add = plan.parametersToAdd.find(a => a.specFieldId === 15630 && a.recipeNodeId === 42513391);
   assert.deepEqual(add, {
     specFieldId: 15630, specFieldParamId: 32594227, recipeNodeId: 42513391,
@@ -839,7 +995,7 @@ Agrégala al export.
 - [ ] **Step 4: Corre el test y confirma que pasa**
 
 Run: `node --test tools/test/wo-spec-params-core.test.js`
-Expected: PASS, 27 tests.
+Expected: PASS, 32 tests.
 
 - [ ] **Step 5: Corre la suite completa**
 
@@ -995,6 +1151,7 @@ global.window = {};
 require(path.join(__dirname, '..', '..', 'remote', 'scripts', 'wo-spec-params-core.js'));
 require(path.join(__dirname, '..', '..', 'remote', 'scripts', 'wo-spec-params.js'));
 const G = global.window.WoSpecParams;
+const Core = global.window.WoSpecParamsCore;
 const FIX = JSON.parse(fs.readFileSync(
   path.join(__dirname, 'fixtures', 'wo-spec-params-5769.json'), 'utf8'));
 
@@ -1207,8 +1364,10 @@ git commit -m "feat(wo-spec-params): orquestación por OT con dependencias inyec
 test('summarize: agrega los conteos de varias órdenes', () => {
   const s = G.summarize([
     { tally: { OK: 5, VACIO: 4, DIFIERE: 2, DUPLICADO: 0, AMBIGUO: 1, SIN_CATALOGO: 0 },
+      cells: [{ forced: true }, { forced: false }], anomalies: [{}, {}],
       plan: { archiveIds: [1, 2], parametersToAdd: [{}, {}, {}], touched: 6, skipped: [{}] } },
     { tally: { OK: 1, VACIO: 0, DIFIERE: 1, DUPLICADO: 0, AMBIGUO: 0, SIN_CATALOGO: 2 },
+      cells: [{ forced: true }], anomalies: [],
       plan: { archiveIds: [3], parametersToAdd: [{}], touched: 1, skipped: [{}, {}] } },
   ]);
   assert.equal(s.casillas, 16);
@@ -1216,6 +1375,17 @@ test('summarize: agrega los conteos de varias órdenes', () => {
   assert.equal(s.omitidas, 3);
   assert.equal(s.aArchivar, 3);
   assert.equal(s.aAgregar, 4);
+  assert.equal(s.forzadas, 2);
+  assert.equal(s.anomalias, 2);
+});
+
+test('summarize: sobre el fixture real, 1 forzada y 5 anomalías', () => {
+  const cls = Core.classifyWorkOrder(FIX);
+  const plan = Core.buildWritePlan(cls, { partNumberId: 3044551 });
+  const s = G.summarize([{ ...cls, plan }]);
+  assert.equal(s.forzadas, 1);
+  assert.equal(s.anomalias, 5);
+  assert.equal(s.aCorregir, 7);
 });
 
 test('applyPlan: archiva ANTES de agregar y respeta el orden', async () => {
@@ -1262,7 +1432,8 @@ Expected: FAIL — `G.summarize is not a function`.
 
 ```js
   function summarize(results) {
-    const s = { ordenes: 0, casillas: 0, aCorregir: 0, omitidas: 0, aArchivar: 0, aAgregar: 0 };
+    const s = { ordenes: 0, casillas: 0, aCorregir: 0, omitidas: 0, aArchivar: 0, aAgregar: 0,
+                forzadas: 0, anomalias: 0 };
     for (const r of (results || [])) {
       if (!r || !r.tally) continue;
       s.ordenes++;
@@ -1273,6 +1444,8 @@ Expected: FAIL — `G.summarize is not a function`.
       s.omitidas += (r.plan && r.plan.skipped ? r.plan.skipped.length : 0);
       s.aArchivar += (r.plan && r.plan.archiveIds ? r.plan.archiveIds.length : 0);
       s.aAgregar += (r.plan && r.plan.parametersToAdd ? r.plan.parametersToAdd.length : 0);
+      s.forzadas += (r.cells || []).filter(c => c && c.forced).length;
+      s.anomalias += (r.anomalies || []).length;
     }
     return s;
   }
@@ -1328,7 +1501,7 @@ Expórtalas en `window.WoSpecParams`.
 - [ ] **Step 4: Corre el test y confirma que pasa**
 
 Run: `node --test tools/test/wo-spec-params-glue.test.js`
-Expected: PASS, 10 tests.
+Expected: PASS, 12 tests.
 
 - [ ] **Step 5: Escribe el panel**
 
@@ -1339,8 +1512,10 @@ Agrega a `wo-spec-params.js` la UI. Requisitos concretos:
 3. Título: `🔧 Reaplicar parámetros · OT <n>`.
 4. Fase 1 — captura: en modo `'pegar'`, un `<textarea>` (`#141a23`, texto claro) con el rótulo *"Pega los números de orden, uno por renglón"* y un botón `Analizar` verde `#13a36f`.
 5. Fase 2 — preview **obligatorio**: tabla con una fila por casilla que cambie, columnas *Orden · Nodo · Campo · Tiene · Quedará · Origen*. Usa `textContent` en cada celda. Encima, el resumen de `summarize()` en palabras: *"N órdenes · N casillas · **N por corregir** · N omitidas"*. Las omitidas (`AMBIGUO`/`SIN_CATALOGO`) van en una sección aparte, en ámbar `#e0a341`, con su `reason` — son las que el operador tiene que resolver a mano.
+5b. **Las forzadas se marcan aparte** (`cell.forced`): distintivo visible en su fila —una etiqueta `FORZADA`— y su propio conteo en el resumen. Cada forzada es **una declaración que falta en la configuración del proceso**, y esa lista es justamente el pendiente del operador; si se mezclan con las normales, esa señal se pierde.
+5c. **Las anomalías van en su propia sección**, en ámbar, con el texto: *"Estos parámetros de la especificación externa viven en un nodo que no es el de inspección. No se van a tocar."* Una fila por anomalía con nodo, tipo de nodo, campo y parámetro. Si `inspectionNode.ambiguous`, un aviso rojo `#e05c5c`: *"No pude identificar el nodo de inspección de la línea: &lt;reason&gt;. No se aplicará ningún campo de la especificación externa en esta orden."*
 6. Botón `Aplicar` **deshabilitado si `aCorregir === 0`**, con el conteo en la etiqueta: `Aplicar (N cambios)`. Botón `Cancelar` que cierra sin escribir.
-7. Al aplicar: barra de avance por orden, y al terminar un resumen con `archived`/`added`/`errors` y un botón `Descargar reporte` que baja un CSV con una fila por casilla tocada (orden, nodo, campo, id archivado, id escrito, origen).
+7. Al aplicar: barra de avance por orden, y al terminar un resumen con `archived`/`added`/`errors` y un botón `Descargar reporte` que baja un CSV con una fila por casilla tocada (orden, nodo, campo, id archivado, id escrito, origen, **forzada**, **ámbito**) más las secciones de omitidas y anomalías. La columna *forzada* es la lista de trabajo del operador para completar las declaraciones pendientes.
 8. `closePanel()` que quita el nodo y libera los listeners.
 
 - [ ] **Step 6: Corre la suite completa**
@@ -1516,26 +1691,46 @@ git commit -m "docs(wo-spec-params): bitácora y registro en el índice"
 
 - [ ] **Step 1: Dry-run sobre la OT 5769**
 
-Abre `/Domains/344/WorkOrders/5769`, dispara el panel y **compara el preview contra esto**, que es el cruce verificado el 2026-07-28:
+Abre `/Domains/344/WorkOrders/5769`, dispara el panel y **verifica estos invariantes**, todos
+observados en vivo el 2026-07-28:
+
+| Qué | Valor esperado |
+|---|---|
+| Especificación externa | `40004-014-01 (Estaño)`, **6 campos** |
+| Nodo de inspección | `T201-IC00-001 Inspeccionando y Empacando` (`42513391`) |
+| Anomalías | **5**, todas en el nodo raíz `42513351` (`T201 (DEC)-…-CU-VARIOS`) |
+| Casillas que difieren | **2**, ambas en el nodo de inspección |
+
+Los dos que difieren:
 
 ```
-OK 136 · VACÍO 13 · DIFIERE 2 · DUPLICADO 0 · AMBIGUO 0 · SIN_CATÁLOGO 0
-los 2 que difieren, ambos en el nodo "T201-IC00-001 Inspeccionando y Empacando":
-  Espesor              OT "5 - 8 µm"     → NP "5 - 10 µm"   (escribe 32594227, archiva 26249942)
-  Espesor (Intermedio) OT "0.5 - 1.0 µm" → NP "No aplica"   (escribe 32596235, archiva 26249943)
+Espesor              OT "5 - 8 µm"     → NP "5 - 10 µm"   (escribe 32594227, archiva 26249942)
+Espesor (Intermedio) OT "0.5 - 1.0 µm" → NP "No aplica"   (escribe 32596235, archiva 26249943)
 ```
 
-Si el preview **no** reproduce esos números, para. El core discrepa de la realidad y hay que averiguar por qué antes de escribir nada.
+**Ninguna casilla debe apuntar al nodo raíz `42513351`.** Si alguna lo hace, el applet está por
+perpetuar el error de datos que el operador reportó — para y revisa `findInspectionNode`.
+
+Si el conteo total de casillas no coincide con lo que da el core sobre la orden completa, no
+ajustes nada a ojo: exporta el análisis y compáralo campo por campo. El fixture cubre 4 nodos de
+los 52, así que los totales de la orden completa serán mayores — lo que **no** puede cambiar son
+los invariantes de la tabla de arriba.
 
 - [ ] **Step 2: Aplica sobre esa única orden**
 
-Confirma en el panel. Anota lo que reporte: archivados, agregados, errores.
+Confirma en el panel. Anota lo que reporte: archivados, agregados, forzados, errores.
 
 - [ ] **Step 3: Relee y verifica que el ERP quedó como el preview prometió**
 
-Vuelve a analizar la misma orden. Esperado: `DIFIERE 0`, `VACÍO 0`, y las casillas antes vacías ahora con su parámetro.
+Vuelve a analizar la misma orden. Esperado: `DIFIERE 0` y `VACÍO 0` en el nodo de inspección, con
+los 6 campos de la especificación externa aplicados ahí.
 
-**No confíes en que la mutación no lanzó excepción.** Verifica releyendo — la lección del `wo-schedule-button` 0.7.0 es que el ERP puede responder `{clientMutationId: null}` sin confirmar nada, y un `await` sin error no prueba que se escribió.
+**No confíes en que la mutación no lanzó excepción.** Verifica releyendo — la lección del
+`wo-schedule-button` 0.7.0 es que el ERP puede responder `{clientMutationId: null}` sin confirmar
+nada, y un `await` sin error no prueba que se escribió.
+
+Las **5 anomalías del nodo raíz deben seguir intactas**: el applet no las toca. Si desaparecieron,
+algo las archivó y eso no estaba autorizado.
 
 - [ ] **Step 4: Registra el resultado en la bitácora**
 

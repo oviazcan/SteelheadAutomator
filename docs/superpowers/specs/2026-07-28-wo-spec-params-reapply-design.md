@@ -117,8 +117,77 @@ Regla heredada de `bulk-upload` 1.4.38 (§"SpecField agrupa, no SpecFieldParam")
 agrupa por campo, nunca por parámetro — el modelo de datos deja eso ambiguo porque
 cada fila apunta a un `specFieldParamId`, pero la regla de negocio no lo es.
 
-El universo de casillas de una OT sale de `recipeNodeSpecFieldsByRecipeNodeId`, no de
-lo aplicado: es la única fuente que dice qué **debería** estar lleno.
+### 3.1 Dos universos, no uno (corrección del operador, 2026-07-28)
+
+Las specs de una OT **no son todas iguales** y no se tratan igual. La OT 5769 trae 7, y
+la diferencia es estructural:
+
+| | Señal | Ejemplo | Universo de casillas |
+|---|---|---|---|
+| **Externa** (del cliente, vía el NP) | `partNumberSpecByPartNumberSpecId != null` | `40004-014-01 (Estaño)` | **todos** sus campos vivos, en **un solo nodo** |
+| **De proceso / línea** | ese campo es `null` | `T201-LI (25.0)`, `Inspección Recibo` | lo que cada nodo declara en `recipeNodeSpecFields` |
+
+Solo **una** de las 7 specs de la OT 5769 es externa. El marcador es idioma-independiente
+y no depende de nombres.
+
+**Los campos de la spec externa van completos en el nodo de Inspección y Empaque de la
+línea, y en ningún otro.** Eso incluye los campos que ese nodo todavía **no declara**:
+se **fuerzan** (§3.3). El operador tiene pendiente completar esas declaraciones en la
+configuración del proceso; mientras tanto, forzar es la salida.
+
+### 3.2 El nodo destino: por tipo, no por nombre
+
+El nodo es un **`QUALITY_ASSURANCE_NODE`**. Pero hay **tres** en la OT 5769
+—`Inspeccionando Recibo` (índice 3), `T201-IC00-001 Inspeccionando y Empacando` (40) e
+`Inspeccionando Calidad Embarques` (47)— así que el tipo por sí solo no basta.
+
+La señal que los separa: **es el único nodo de QA que toca la spec externa** (la declara
+o ya tiene parámetros suyos aplicados). Los otros dos trabajan sobre specs de proceso.
+
+```
+candidatos = nodos QUALITY_ASSURANCE_NODE cuyos campos declarados o aplicados
+             intersecten los campos de la spec externa
+exactamente 1 → ese es el destino
+0 ó más de 1  → NO se fuerza nada en esa orden; se reporta para revisión manual
+```
+
+Nunca se adivina. Forzar en el nodo equivocado mete criterios de calidad del cliente en
+una etapa que no le corresponde.
+
+### 3.3 Forzar
+
+Aplicar un campo de la spec externa al nodo destino **aunque el nodo no lo declare** en
+`recipeNodeSpecFields`. Va **activado por omisión**, pero el preview y el reporte los
+marcan **aparte** de las casillas normales: cada forzado es una declaración que falta en
+la configuración del proceso, y esa lista es justamente el pendiente del operador.
+
+Caso real: la fila `26249943` (`Espesor (Intermedio)`) que el operador creó a mano en la
+OT 5769 es exactamente un forzado — el nodo no declaraba ese campo.
+
+### 3.4 Anomalías: la spec externa donde no debe estar
+
+Si un nodo que **no** es el destino tiene parámetros de la spec externa aplicados, eso es
+un **error de datos**, no una casilla que corregir.
+
+Medido en la OT 5769: el nodo raíz `42513351` (`PROCESS`,
+`T201 (DEC)-T201 (EST)-CU-VARIOS`) tiene **5 filas** de la spec externa
+—`Espesor`, `Adherencia`, `Apariencia Homogénea`, `Primeras Piezas`,
+`Instrumento de Medición`—. Según el operador, **el nodo raíz no debería tenerlas**.
+
+**Se reportan y NO se tocan.** Ni se corrigen (corregirlas perpetuaría el error) ni se
+archivan (limpiarlas es una decisión de dominio aparte, y este applet no la tiene
+autorizada).
+
+> **Verificado 2026-07-28:** el operador recordaba que "un applet de aplicación masiva de
+> specs" ya corregía esto. **No existe tal applet.** Ningún script del repo toca
+> `PartNumberRecipeNodeSpecFieldParam` — `bulk-upload`, `spec-migrator` y
+> `spec-params-bulk` trabajan sobre `partNumberSpecFieldParams`, que son los parámetros
+> del **NP**, no los de la **OT**. Son tablas distintas. Nadie está limpiando esas filas.
+> Decidir qué hacer con ellas es un pendiente abierto.
+
+El universo de casillas nunca sale de lo aplicado: sale de lo que **debería** estar lleno
+— los campos de la spec externa para el nodo destino, y `recipeNodeSpecFields` para todo
+lo demás.
 
 ---
 
@@ -156,14 +225,17 @@ Se agrupan los activos por `specFieldParamBySpecFieldParamId.specFieldSpecBySpec
 | `AMBIGUO` | La cascada §4 no resolvió | reportar, no tocar |
 | `SIN_CATÁLOGO` | El campo no existe en ninguna spec viva de la OT | reportar, no tocar |
 
-Y un caso que no es casilla: **huérfanas**. Filas aplicadas a un campo que el nodo **no declara**
-en `recipeNodeSpecFields`. Apareció al construir el fixture de los golden tests, y es real: al
-aplicar un parámetro de un campo nuevo el ERP declara el campo en el nodo, así que un snapshot
-tomado entre ambos momentos las muestra descolgadas.
+Cada casilla lleva además la marca **`forzada`** (`true` si el nodo destino no declara ese campo
+— §3.3), que no cambia la acción pero sí cómo se muestra y se reporta.
 
-Como el universo de casillas sale de lo que el nodo *declara*, una huérfana no genera casilla y
-**no se toca** — escribir sobre algo que el modelo de la orden ya no reconoce es peor que
-dejarlo. Pero **sí se reporta**: es un parámetro vivo que nadie está mirando.
+Y dos cosas que **no** son casillas:
+
+- **Anomalías** (§3.4): parámetros de la spec externa en un nodo que no es el destino. Se
+  reportan, no se tocan.
+- **Huérfanas**: en un nodo de proceso, filas aplicadas a un campo que ese nodo no declara.
+  Como su universo sí sale de `recipeNodeSpecFields`, no generan casilla y no se tocan —
+  escribir sobre algo que el modelo de la orden ya no reconoce es peor que dejarlo. Se reportan:
+  son parámetros vivos que nadie está mirando.
 
 ### 5.2 Equivalencia — cascada que solo puede absolver
 

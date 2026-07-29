@@ -1,5 +1,5 @@
 {
- "_comment": "Fixture REAL. OT 5769 (id 1756468) / NP 3044551 \"80236-167-07\", dominio 344, capturado 2026-07-28. La OT viene de scan_results_2026-07-28_201655 (GetPartNumberWorkOrderSpecsInfo), recortada a 4 nodos y 9 campos. Las filas 26249942/26249943 del nodo 42513391 y los 13 params del NP se verificaron EN VIVO contra el ERP. Cubre OK-por-identidad, OK-por-linaje, VACIO y DIFIERE. El campo 33579 del nodo 42513391 se declara aqui porque en vivo el ERP lo declaro al aplicarle un parametro (el snapshot del scan es anterior a ese momento). Ver docs/superpowers/specs/2026-07-28-wo-spec-params-reapply-design.md",
+ "_comment": "Fixture REAL. OT 5769 (id 1756468) / NP 3044551 \"80236-167-07\", dominio 344, capturado 2026-07-28. La OT viene de scan_results_2026-07-28_201655 (GetPartNumberWorkOrderSpecsInfo), recortada a 4 nodos y 9 campos. Las filas 26249942/26249943 del nodo 42513391 y los 13 params del NP se verificaron EN VIVO contra el ERP. La spec EXTERNA es la unica con partNumberSpecByPartNumberSpecId (pnwos 5063398, \"40004-014-01 (Estano)\"), 6 campos vivos. El nodo 42513391 es QUALITY_ASSURANCE_NODE y NO declara el campo 33579: ese es el caso FORZADO. El nodo raiz 42513351 (PROCESS) trae 5 params de la spec externa que NO deberia tener: son las ANOMALIAS. Ver docs/superpowers/specs/2026-07-28-wo-spec-params-reapply-design.md",
  "workOrder": {
   "id": 1756468,
   "idInDomain": 5769,
@@ -140,6 +140,9 @@
         }
        ]
       }
+     },
+     "partNumberSpecByPartNumberSpecId": {
+      "id": 1151818
      }
     },
     {
@@ -173,7 +176,8 @@
         }
        ]
       }
-     }
+     },
+     "partNumberSpecByPartNumberSpecId": null
     },
     {
      "id": 5063400,
@@ -206,7 +210,8 @@
         }
        ]
       }
-     }
+     },
+     "partNumberSpecByPartNumberSpecId": null
     },
     {
      "id": 5063402,
@@ -239,7 +244,8 @@
         }
        ]
       }
-     }
+     },
+     "partNumberSpecByPartNumberSpecId": null
     }
    ]
   },
@@ -547,14 +553,6 @@
         "specFieldBySpecFieldId": {
          "id": 28479,
          "name": "Instrumento de Medición"
-        }
-       },
-       {
-        "id": 999001,
-        "specFieldId": 33579,
-        "specFieldBySpecFieldId": {
-         "id": 33579,
-         "name": "Espesor (Intermedio)"
         }
        }
       ]
