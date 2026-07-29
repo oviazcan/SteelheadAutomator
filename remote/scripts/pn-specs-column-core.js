@@ -71,7 +71,27 @@
   }
 
   // Factor de unidad: mismo formateo pero con 10 significativos (ver fmtNum).
+  // Se conserva para el `title` (valor exacto al hover); lo que se PINTA es fmtQty3.
   function fmtFactor(n) { return fmtNum(n, 10); }
+
+  // Cantidad legible en la celda: SIEMPRE 3 decimales, miles con coma y punto decimal
+  // (formato pedido por el operador para poder comparar columnas de un vistazo).
+  // Implementado a mano y no con Intl para que el test no dependa del locale del runner.
+  //
+  // GUARDA: un factor chico distinto de cero que redondee a "0.000" se leería como CERO
+  // —y cero significaría "esta unidad no aplica"—, así que en ese caso se muestra
+  // "<0.001". Perder precisión es aceptable; mentir sobre la existencia del dato no.
+  function fmtQty3(n) {
+    if (n == null || n === '') return '';
+    const num = Number(n);
+    if (!isFinite(num)) return String(n);
+    if (num !== 0 && Math.abs(num) < 0.0005) return (num < 0 ? '>-0.001' : '<0.001');
+    const neg = num < 0;
+    const s = Math.abs(num).toFixed(3);
+    const parts = s.split('.');
+    const withThousands = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+    return (neg ? '-' : '') + withThousands + '.' + parts[1];
+  }
 
   // Rango legible de un parámetro numérico a partir de min/max/target + unidad.
   //   target        → "= t u"      (objetivo puntual)
@@ -360,8 +380,31 @@
     return out;
   }
 
+  // Descripción del NP (`descriptionMarkdown`, p. ej. "CONECTOR"). En la práctica el
+  // dominio la usa como texto plano, pero el campo ADMITE markdown, así que se limpian
+  // los marcadores más comunes antes de pintarla como texto: si alguien escribe
+  // "**CONECTOR**", la celda no debe mostrar los asteriscos.
+  function extractDescription(input) {
+    const pn = pnRoot(input);
+    const raw = pn && pn.descriptionMarkdown;
+    if (raw == null) return '';
+    return String(raw)
+      .replace(/`+/g, '')                       // code spans
+      .replace(/^\s{0,3}#{1,6}\s+/gm, '')       // encabezados
+      .replace(/^\s{0,3}>\s?/gm, '')            // citas
+      .replace(/\*\*([^*]+)\*\*/g, '$1')        // negritas
+      .replace(/(^|\W)[*_]([^*_\n]+)[*_](?=\W|$)/g, '$1$2')   // énfasis
+      .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')  // links → solo el texto
+      .replace(/\s*\n+\s*/g, ' · ')             // multilínea → una sola línea
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+  }
+
   // Extracción única por NP: un solo recorrido del response para TODAS las columnas.
   // `opts.lineaDimId` viene de config.steelhead.domain.dimensionIds.linea.
+  // NOTA: `linea` se sigue extrayendo aunque desde 0.3.1 NO se pinta (la tabla nativa ya
+  // trae esa columna y el operador la quitó por duplicada). Es barata y ya está probada;
+  // queda disponible por si vuelve a pedirse.
   function extractPnRow(input, opts) {
     const o = opts || {};
     const specs = extractSpecsWithNumericParams(input);
@@ -369,30 +412,45 @@
       specs: specs.specs,
       totalNumericParams: specs.totalNumericParams,
       metal: extractMetalBase(input),
+      descripcion: extractDescription(input),
       linea: extractLinea(input, o.lineaDimId),
       rackTypes: extractRackTypes(input),
       units: extractUnitFactors(input),
     };
   }
 
+  // Etiqueta compacta de un rack type: "T102-RA02 (18 pz)" — nombre, espacio, y entre
+  // paréntesis cantidad + unidad. Formato pedido para angostar la columna.
+  function formatRackChip(r) {
+    if (!r) return '';
+    const qty = r.partsPerRack == null ? '?' : fmtNum(r.partsPerRack);
+    return r.name + ' (' + qty + ' ' + (r.unit || 'pz') + ')';
+  }
+
+  // Línea de "descripción · metal" que se inyecta BAJO el nombre del NP (celda nativa).
+  // '' si no hay ninguno de los dos → el glue no inyecta nada.
+  function formatNameInfo(row) {
+    const parts = [];
+    if (row && row.descripcion) parts.push(row.descripcion);
+    if (row && row.metal) parts.push(row.metal);
+    return parts.join(' · ');
+  }
+
   // Contratos de texto plano (celda / tooltip / tests).
-  //   "T102-RA02: 18 · T107-FL01: 54"   → cantidad = piezas por carga
+  //   "T102-RA02 (18 pz) · T107-FL01 (54 pz)"   → cantidad = piezas por carga
   function formatRackTypesText(racks) {
     const list = racks || [];
     if (!list.length) return '—';
-    return list.map(function (r) {
-      const qty = r.partsPerRack == null ? '?' : fmtNum(r.partsPerRack);
-      const u = r.unit ? ' ' + r.unit : '';
-      return r.name + ': ' + qty + u;
-    }).join(' · ');
+    return list.map(formatRackChip).join(' · ');
   }
 
-  //   "CMK: 120.58 · KGM: 0.376"   → factor = unidades por PIEZA
+  //   "CMK 120.580 · KGM 0.376"   → factor = unidades por PIEZA (el "/pz" va en el
+  //   ENCABEZADO de la columna, no en cada renglón: se repetía 5 veces por celda).
   function formatUnitFactorsText(units) {
     const list = units || [];
     if (!list.length) return '—';
     return list.map(function (u) {
-      return (u.code || u.name) + ': ' + (u.factor == null ? '?' : fmtFactor(u.factor));
+      return (u.code || u.name) + ' ' + (u.factor == null ? '?' : fmtQty3(u.factor));
     }).join(' · ');
   }
 
@@ -406,17 +464,21 @@
     unitSymbol,
     fmtNum,
     fmtFactor,
+    fmtQty3,
     formatRange,
     extractSpecsWithNumericParams,
     formatCellText,
     specUrl,
     extractMetalBase,
+    extractDescription,
     buildAcctDimensionCatalog,
     extractDimensionValue,
     extractLinea,
     extractRackTypes,
     extractUnitFactors,
     extractPnRow,
+    formatRackChip,
+    formatNameInfo,
     formatRackTypesText,
     formatUnitFactorsText,
   };

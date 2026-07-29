@@ -356,7 +356,7 @@ test('rack types: nombre + piezas por carga, ordenados y sin duplicados', () => 
     { rackTypeId: 2681, name: 'T102-RA02', partsPerRack: 18, unit: '' },
     { rackTypeId: 2694, name: 'T107-FL01', partsPerRack: 54, unit: '' },
   ]);
-  assert.strictEqual(Core.formatRackTypesText(racks), 'T102-RA02: 18 · T107-FL01: 54');
+  assert.strictEqual(Core.formatRackTypesText(racks), 'T102-RA02 (18 pz) · T107-FL01 (54 pz)');
   assert.strictEqual(Core.formatRackTypesText([]), '—');
   assert.deepStrictEqual(Core.extractRackTypes({ partNumberById: {} }), [], 'sin racks → []');
 });
@@ -366,7 +366,7 @@ test('rack types: partsPerRack null se marca "?" (no se inventa 0 ni 1)', () => 
     { partsPerRack: null, rackTypeByRackTypeId: { id: 9, name: 'T900-XX01' } },
   ]}}});
   assert.strictEqual(r[0].partsPerRack, null);
-  assert.strictEqual(Core.formatRackTypesText(r), 'T900-XX01: ?',
+  assert.strictEqual(Core.formatRackTypesText(r), 'T900-XX01 (? pz)',
     'un dato faltante NO puede leerse como "1 pieza por carga" (ese supuesto multiplica duraciones por miles — ver wo-schedule-button)');
 });
 
@@ -375,7 +375,7 @@ test('rack types: si el rack type trae unidad de conteo, se muestra', () => {
     { partsPerRack: 12, rackTypeByRackTypeId: { id: 7, name: 'T300-BA01', unitByPartCountDisplayUnitId: { name: 'KGM Kilogramo' } } },
   ]}}});
   assert.strictEqual(r[0].unit, 'KGM');
-  assert.strictEqual(Core.formatRackTypesText(r), 'T300-BA01: 12 KGM');
+  assert.strictEqual(Core.formatRackTypesText(r), 'T300-BA01 (12 KGM)');
 });
 
 test('unidades: TODOS los factores registrados, con su código y sin perder precisión', () => {
@@ -386,8 +386,10 @@ test('unidades: TODOS los factores registrados, con su código y sin perder prec
   assert.strictEqual(byCode.KGM.factor, 0.376);
   assert.strictEqual(byCode.KGM.name, 'KGM Kilogramo');
   assert.strictEqual(byCode.KGM.unitId, 3969);
+  // El TEXTO de celda usa 3 decimales (0.3.1); el valor exacto vive en fmtFactor/el hover.
   assert.strictEqual(Core.formatUnitFactorsText(units),
-    'CMK: 120.58 · DMK: 1.162 · FTK: 0.1297911062 · KGM: 0.376 · LBR: 0.82893712');
+    'CMK 120.580 · DMK 1.162 · FTK 0.130 · KGM 0.376 · LBR 0.829');
+  assert.strictEqual(Core.fmtFactor(byCode.FTK.factor), '0.1297911062', 'el dato NO se pierde');
   assert.strictEqual(Core.formatUnitFactorsText([]), '—');
 });
 
@@ -428,6 +430,85 @@ test('extractPnRow: los params HUÉRFANOS de la spec archivada 16165 no la resuc
 
 test('extractPnRow: response vacío → fila vacía sin excepciones', () => {
   const row = Core.extractPnRow({}, {});
-  assert.deepStrictEqual(row, { specs: [], totalNumericParams: 0, metal: '', linea: '', rackTypes: [], units: [] });
+  assert.deepStrictEqual(row, { specs: [], totalNumericParams: 0, metal: '', descripcion: '', linea: '', rackTypes: [], units: [] });
   assert.doesNotThrow(() => Core.extractPnRow(null, null));
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// v0.3.1 — formato compacto (el ancho es el recurso escaso)
+// ════════════════════════════════════════════════════════════════════════════
+
+test('fmtQty3: 3 decimales, miles con coma, decimal con punto', () => {
+  assert.strictEqual(Core.fmtQty3(0.376), '0.376');
+  assert.strictEqual(Core.fmtQty3(120.58), '120.580', 'rellena a 3 para que los puntos queden en columna');
+  assert.strictEqual(Core.fmtQty3(0.82893712), '0.829');
+  assert.strictEqual(Core.fmtQty3(0.1297911062), '0.130');
+  assert.strictEqual(Core.fmtQty3(1234.5678), '1,234.568', 'miles con coma');
+  assert.strictEqual(Core.fmtQty3(1234567), '1,234,567.000');
+  assert.strictEqual(Core.fmtQty3(0), '0.000');
+  assert.strictEqual(Core.fmtQty3(-1234.5), '-1,234.500');
+  assert.strictEqual(Core.fmtQty3(null), '');
+  assert.strictEqual(Core.fmtQty3(''), '');
+});
+
+test('fmtQty3: un factor chico NO se muestra como cero', () => {
+  // "0.000" se leería como "esta unidad no aplica" y sería mentira sobre el dato.
+  assert.strictEqual(Core.fmtQty3(0.0004), '<0.001');
+  assert.strictEqual(Core.fmtQty3(0.0000001), '<0.001');
+  assert.strictEqual(Core.fmtQty3(-0.0004), '>-0.001');
+  assert.strictEqual(Core.fmtQty3(0.0005), '0.001', 'el umbral redondea normal, no cae al literal');
+  assert.strictEqual(Core.fmtQty3(0), '0.000', 'un cero REAL sí se muestra como cero');
+});
+
+test('fmtFactor sigue dando el valor exacto (es lo que va en el hover)', () => {
+  assert.strictEqual(Core.fmtFactor(0.1297911062), '0.1297911062');
+  assert.strictEqual(Core.fmtQty3(0.1297911062), '0.130', 'lo que se PINTA son 3 decimales');
+});
+
+test('formatRackChip: "nombre (cantidad unidad)"', () => {
+  assert.strictEqual(Core.formatRackChip({ name: 'T102-RA02', partsPerRack: 18, unit: '' }), 'T102-RA02 (18 pz)');
+  assert.strictEqual(Core.formatRackChip({ name: 'T300-BA01', partsPerRack: 12, unit: 'KGM' }), 'T300-BA01 (12 KGM)');
+  assert.strictEqual(Core.formatRackChip({ name: 'T900-XX01', partsPerRack: null, unit: '' }), 'T900-XX01 (? pz)',
+    'sin dato sigue siendo "?", nunca 1');
+  assert.strictEqual(Core.formatRackChip(null), '');
+});
+
+test('formatRackTypesText / formatUnitFactorsText usan el formato nuevo', () => {
+  const row = Core.extractPnRow(REAL, { lineaDimId: 349 });
+  assert.strictEqual(Core.formatRackTypesText(row.rackTypes), 'T102-RA02 (18 pz) · T107-FL01 (54 pz)');
+  assert.strictEqual(Core.formatUnitFactorsText(row.units),
+    'CMK 120.580 · DMK 1.162 · FTK 0.130 · KGM 0.376 · LBR 0.829',
+    'sin "/pz" por renglón: ese sufijo vive en el encabezado de la columna');
+});
+
+test('descripción: se toma de descriptionMarkdown y se limpia el markdown', () => {
+  assert.strictEqual(Core.extractDescription({ partNumberById: { descriptionMarkdown: 'CONECTOR' } }), 'CONECTOR');
+  assert.strictEqual(Core.extractDescription({ partNumberById: { descriptionMarkdown: '**CONECTOR**' } }), 'CONECTOR',
+    'el campo admite markdown: los asteriscos no se pintan');
+  assert.strictEqual(Core.extractDescription({ partNumberById: { descriptionMarkdown: '## Título\nsegunda línea' } }), 'Título · segunda línea',
+    'multilínea se aplana: la celda del nombre es de un renglón');
+  assert.strictEqual(Core.extractDescription({ partNumberById: { descriptionMarkdown: 'ver [ficha](http://x/y)' } }), 'ver ficha');
+  assert.strictEqual(Core.extractDescription({ partNumberById: { descriptionMarkdown: '  BASE  ' } }), 'BASE');
+  assert.strictEqual(Core.extractDescription({ partNumberById: { descriptionMarkdown: null } }), '');
+  assert.strictEqual(Core.extractDescription({}), '');
+  assert.strictEqual(Core.extractDescription(null), '');
+});
+
+test('formatNameInfo: "descripción · metal", y vacío si no hay ninguno', () => {
+  assert.strictEqual(Core.formatNameInfo({ descripcion: 'CONECTOR', metal: 'Cobre' }), 'CONECTOR · Cobre');
+  assert.strictEqual(Core.formatNameInfo({ descripcion: 'CONECTOR', metal: '' }), 'CONECTOR');
+  assert.strictEqual(Core.formatNameInfo({ descripcion: '', metal: 'Cobre' }), 'Cobre');
+  assert.strictEqual(Core.formatNameInfo({ descripcion: '', metal: '' }), '',
+    'vacío ⇒ el glue no inyecta nada en la celda nativa');
+  assert.strictEqual(Core.formatNameInfo(null), '');
+});
+
+test('extractPnRow incluye la descripción; la línea se sigue extrayendo aunque ya no se pinte', () => {
+  const conDesc = JSON.parse(JSON.stringify(REAL));
+  conDesc.data.partNumberById.descriptionMarkdown = 'CONECTOR';
+  const row = Core.extractPnRow(conDesc, { lineaDimId: 349 });
+  assert.strictEqual(row.descripcion, 'CONECTOR');
+  assert.strictEqual(Core.formatNameInfo(row), 'CONECTOR · Cobre');
+  assert.strictEqual(row.linea, 'T107-LI Plata Colgado Cx (60.0)',
+    'la columna se retiró por duplicada con la nativa, pero la extracción queda disponible');
 });

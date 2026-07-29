@@ -236,3 +236,71 @@ confirmar los valores contra un NP conocido, la paginación (el observer re-inye
 de la tabla. Lo verificado hasta aquí es la **extracción** (30/30 golden, fixture real) y el
 **posicionamiento DOM** (simulacro sobre la tabla real de 50 filas); falta el applet completo
 corriendo de punta a punta.
+
+### Safari/iPad — bundle v0.6.7 (2026-07-29)
+
+Rebuild sin altas (`safari-bundle-scan.py`: 0 integrables). `pn-specs-column` ya estaba en la
+lista blanca desde v0.5.3, así que bastó reconstruir para que el artefacto tomara las 5 columnas
+— verificado en `main-bundle.js`: `extractPnRow` ×3, `extractUnitFactors` ×3, `fmtFactor` ×4,
+`sa-pncol-metal` ×2 (antes: 0 de cada uno). Es **FAB-only**: el `autoInject:true` pone la barra
+de toggles en el header de `/PartNumbers`, no necesita lanzador de popup.
+
+El mismo rebuild saldó el pendiente de `wo-schedule-button` **0.9.0** (`pickAnchorSteps` ×3,
+también ausente antes). `node --check` OK, `build-safari.test.js` 10/10, suite 83/83.
+Artefacto: **1 579 883 bytes** (antes 1 548 318). Ojo con el número que imprime
+`build-safari.sh` — son **caracteres**, no bytes.
+
+**Falta recompilar en Xcode** (el bundle es estático). Los `Resources/` del proyecto ya están
+sincronizados con `bridge.js`, `popup.js`, `popup.html`, `main-bundle.js` y `manifest.json` 0.6.7.
+
+## v0.3.1 (2026-07-29) — angostar lo que 0.3.0 ensanchó
+
+Cinco correcciones del operador tras ver 0.3.0 en pantalla. El hilo común: **el ancho es el
+recurso escaso**. La tabla nativa ya trae 20 columnas, así que cada columna propia se paga con
+scroll horizontal — y 0.3.0 agregó cuatro.
+
+**1. Fuera la columna de Línea.** *«ya vi que se repite»*: la nativa está en la posición 11 y
+dice lo mismo. Se retira la columna; `extractLinea` se queda en el core (probada, barata) por si
+vuelve a pedirse, y `dropRetiredKeys()` borra la key huérfana `sa_pn_linea_col_enabled` en el
+init — si no, un flag de una columna que ya no existe seguiría contando en `anyOn()` y dispararía
+consultas sin pintar nada.
+
+**2. Descripción + metal base dentro de la celda del NOMBRE, no como columna.** Idea del
+operador, y es la que más ancho ahorra: aprovecha una celda que ya existe. Verificado en vivo
+antes de escribirlo, porque enriquecer una celda **nativa** no es lo mismo que agregar una
+propia: React la pinta como `<td><div class="css-…"><a>…</a></div></td>` y nuestro `<div>` va
+como hermano de ese div. Queda `51004727AA ⏎ CONECTOR · Cobre`.
+
+> **`syncNameInfo` es idempotente por contrato** (`data-sa-txt` guarda el texto ya pintado y no
+> se toca el DOM si no cambió). Sin eso, cada sync mutaría la celda → el MutationObserver
+> dispararía otro sync → bucle. El riesgo es mayor que con las columnas propias justamente
+> porque el subárbol lo comparte React.
+
+`descriptionMarkdown` puede traer markdown, así que `extractDescription` lo limpia (negritas,
+encabezados, links, multilínea → un renglón): si alguien escribe `**CONECTOR**`, la celda no
+debe mostrar los asteriscos.
+
+**3. Specs acotada.** `max-width` 340 → 230 px con `width` fijo. La causa real del desborde eran
+los chips en `white-space:nowrap`, que **forzaban** el ancho; ahora envuelven
+(`overflow-wrap:anywhere`).
+
+**4. Rack types compactos**: `T102-RA02 (18 pz)` en un renglón, en vez de nombre y cantidad en
+extremos opuestos de la celda.
+
+**5. Unidades legibles de un vistazo**: el `/pz` se movió al **encabezado** (`Unidades /pz`) — se
+repetía 5 veces por celda —, y los factores van a **3 decimales, miles con coma y punto decimal**,
+alineados a la derecha con cifras tabulares para que los puntos queden en columna.
+
+> **Guarda contra el falso cero.** Redondear a 3 convierte un factor chico en `0.000`, que se
+> lee como *«esta unidad no aplica»*. `fmtQty3` devuelve `<0.001` en ese caso: perder precisión
+> es aceptable, mentir sobre la existencia del dato no. El valor exacto (10 significativos) sigue
+> disponible en el `title` de cada renglón.
+
+**Resultado medido en la tabla real:** las 3 columnas propias suman **340 px** (150 + 96 + 94) —
+lo que antes ocupaba la de specs sola. Core **38/38**.
+
+### Safari/iPad — bundle v0.6.8
+
+Rebuild sin altas. Verificado en el artefacto: `fmtQty3` ×5, `sa-pncol-nameinfo` ×3,
+`formatRackChip` ×3 y `sa-pncol-linea` **×0** (la columna retirada no viaja). 1 587 695 bytes;
+`node --check` OK, build-safari 10/10. `Resources/` sincronizado; **falta recompilar en Xcode**.

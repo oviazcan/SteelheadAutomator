@@ -1,23 +1,24 @@
 // Datos del NP en el dashboard de Números de Parte — glue DOM.
-// En /PartNumbers agrega, AL INICIO de la tabla, hasta 5 columnas con toggles
-// persistentes en el header, y enriquece cada NP visible con:
-//   🧪 Especificaciones  specs + parámetros con valor numérico (nombre + valor)
-//   ⚗️ Metal base        customInputs.DatosAdicionalesNP.BaseMetal
-//   🏭 Línea             dimensión contable 349 (cruzada contra el catálogo del response)
-//   🧺 Rack Types        cada rack type con sus piezas por carga
-//   📐 Unidades          TODOS los factores de unidad registrados (unidades / pieza)
+// En /PartNumbers enriquece cada NP visible, con toggles persistentes en el header:
+//   🧪 Especificaciones  COLUMNA: specs + parámetros con valor numérico
+//   🧺 Rack Types        COLUMNA: "T102-RA02 (18 pz)" por cada rack
+//   📐 Unidades /pz      COLUMNA: TODOS los factores registrados, 3 decimales
+//   📝 Desc+Metal        NO es columna: descripción y metal base BAJO el nombre del NP,
+//                        dentro de su celda nativa (ver syncNameInfo)
 // La decisión pura vive en PnSpecsColumnCore; aquí solo va el DOM, el fetch y el
 // memory-hardening.
 //
-// UN SOLO query por NP para las 5 columnas: `AllPartNumbers` (el del dashboard) no
-// trae nada de esto (verificado 2026-07-08) y `GetPartNumber` lo trae TODO junto
-// (verificado en vivo 2026-07-29, hash 5efd689d…). El response pesa ~5.8 MB, así que
-// el enriquecimiento es OPT-IN por columna y con memory-hardening completo: de ese
-// response se guardan ~2 KB por NP y el resto se descarta.
+// UN SOLO query por NP para todo: `AllPartNumbers` (el del dashboard) no trae nada de
+// esto (verificado 2026-07-08) y `GetPartNumber` lo trae TODO junto (verificado en vivo
+// 2026-07-29, hash 5efd689d…). El response pesa ~5.8 MB, así que el enriquecimiento es
+// OPT-IN por toggle y con memory-hardening completo: de ese response se guardan ~2 KB
+// por NP y el resto se descarta.
 //
-// Las columnas van AL INICIO (regla del operador: la tabla nativa tiene 20 columnas y
-// Línea/Departamento/Material caen en la posición 10-12, fuera de vista sin scroll
-// horizontal). Patrón moveToFront tomado de wo-listing-columns, ya validado en piso.
+// EL ANCHO ES EL RECURSO ESCASO. La tabla nativa ya trae 20 columnas, así que cada
+// columna propia se paga con scroll horizontal. Las nuestras van AL INICIO (lo que
+// importa cae en las posiciones 10-12 de la nativa, fuera de vista), son solo TRES, y
+// lo que cabe dentro de una celda que ya existe —descripción y metal— no se convierte
+// en columna. Patrón moveToFront tomado de wo-listing-columns, validado en piso.
 //
 // Auto-inyectado (autoInject:true). Singleton en window.__saPnSpecs* para sobrevivir
 // la RE-INYECCIÓN del IIFE (background.js re-evalúa scripts en cada acción del popup).
@@ -29,15 +30,26 @@ const PnSpecsColumn = (() => {
   const cfg = () => window.REMOTE_CONFIG;
 
   // La key de Specs es la ORIGINAL: quien ya tenía la columna encendida la conserva.
-  // Las 4 nuevas nacen APAGADAS a propósito — encender una dispara 1 GetPartNumber de
+  // Las demás nacen APAGADAS a propósito — encender una dispara 1 GetPartNumber de
   // ~5.8 MB por NP visible (~50/página), y eso no se le impone a nadie por un deploy.
+  //
+  // Ancho: la tabla nativa ya tiene 20 columnas, así que cada columna propia se paga con
+  // scroll horizontal. Por eso (0.3.1) NO hay columna de Línea —la nativa ya la trae y
+  // el operador la vio duplicada— y el metal base + la descripción NO son columna: se
+  // inyectan BAJO el nombre, dentro de la celda nativa que ya existe.
   const COLS = [
     { key: 'specs', cls: 'sa-pnspec-cell', label: 'Especificaciones', store: 'sa_pn_specs_col_enabled', icon: '🧪', short: 'Specs',    tip: 'Specs del NP y sus parámetros con valor numérico.' },
-    { key: 'metal', cls: 'sa-pncol-metal', label: 'Metal base',       store: 'sa_pn_metal_col_enabled', icon: '⚗️', short: 'Metal',    tip: 'Metal base capturado en Datos Adicionales del NP.' },
-    { key: 'linea', cls: 'sa-pncol-linea', label: 'Línea',            store: 'sa_pn_linea_col_enabled', icon: '🏭', short: 'Línea',    tip: 'Línea del NP (dimensión contable). La tabla nativa ya la trae, pero hasta la columna 11.' },
-    { key: 'racks', cls: 'sa-pncol-racks', label: 'Rack Types',       store: 'sa_pn_racks_col_enabled', icon: '🧺', short: 'Racks',    tip: 'Rack types del NP con sus piezas por carga.' },
-    { key: 'units', cls: 'sa-pncol-units', label: 'Unidades',         store: 'sa_pn_units_col_enabled', icon: '📐', short: 'Unidades', tip: 'Todos los factores de unidad registrados (unidades por pieza).' },
+    { key: 'racks', cls: 'sa-pncol-racks', label: 'Rack Types',       store: 'sa_pn_racks_col_enabled', icon: '🧺', short: 'Racks',    tip: 'Rack types del NP: nombre y, entre paréntesis, piezas por carga.' },
+    { key: 'units', cls: 'sa-pncol-units', label: 'Unidades /pz',     store: 'sa_pn_units_col_enabled', icon: '📐', short: 'Unidades', tip: 'Todos los factores de unidad registrados, en unidades por pieza (3 decimales; el valor exacto está en el hover).' },
   ];
+  // Enriquecimiento de la celda NATIVA del nombre (descripción + metal base). No es una
+  // columna, pero se enciende igual que ellas y comparte la misma consulta. Conserva la
+  // key del viejo toggle de Metal para no perderle el estado a quien ya lo tenía puesto.
+  const NAME_INFO = { key: 'nameinfo', cls: 'sa-pncol-nameinfo', store: 'sa_pn_metal_col_enabled', icon: '📝', short: 'Desc+Metal', tip: 'Descripción y metal base bajo el nombre del NP, dentro de su misma celda (no agrega columna).' };
+  const TOGGLES = COLS.concat([NAME_INFO]);
+  // Key huérfana de la columna de Línea (0.3.0), retirada en 0.3.1.
+  const RETIRED_KEYS = ['sa_pn_linea_col_enabled'];
+
   const ALL_CLS = COLS.map((c) => c.cls);
   const NOT_OURS = ALL_CLS.map((c) => ':not(.' + c + ')').join('');
 
@@ -49,8 +61,9 @@ const PnSpecsColumn = (() => {
   // ── Estado persistente / singleton ─────────────────────────────────────────
   function getFlag(k) { try { return localStorage.getItem(k) === '1'; } catch (_) { return false; } }
   function setFlag(k, v) { try { localStorage.setItem(k, v ? '1' : '0'); } catch (_) {} }
-  function isOn(key) { const c = COLS.find((x) => x.key === key); return !!c && getFlag(c.store); }
-  function anyOn() { return COLS.some((c) => getFlag(c.store)); }
+  function isOn(key) { const c = TOGGLES.find((x) => x.key === key); return !!c && getFlag(c.store); }
+  function anyOn() { return TOGGLES.some((c) => getFlag(c.store)); }
+  function dropRetiredKeys() { RETIRED_KEYS.forEach(function (k) { try { localStorage.removeItem(k); } catch (_) {} }); }
   function onIndex() { return Core().isPartNumbersIndexPath(location.pathname); }
   function lineaDimId() {
     const v = cfg() && cfg().steelhead && cfg().steelhead.domain
@@ -73,7 +86,7 @@ const PnSpecsColumn = (() => {
   //    integran a la tabla clara de SH con un separador punteado sutil) ─────────
   function injectStyles() {
     const prev = document.getElementById('sa-pnspec-style');
-    if (prev && prev.getAttribute('data-sa-v') === '2') return;
+    if (prev && prev.getAttribute('data-sa-v') === '3') return;
     if (prev) prev.remove();   // reemplaza el <style> de versiones anteriores
     const css = [
       // Barra de toggles en el header (UI nuestra → dark-mode; delgada para no abultar)
@@ -97,27 +110,40 @@ const PnSpecsColumn = (() => {
       'td.' + ALL_CLS.join(',td.') + '{border-left:1px dashed #c7ccd1 !important;vertical-align:middle;}',
       // Borde derecho punteado en la ÚLTIMA de nuestras columnas → frontera clara.
       'th.sa-pncol-edge,td.sa-pncol-edge{border-right:1px dashed #c7ccd1 !important;}',
-      'td.sa-pnspec-cell{min-width:180px;max-width:340px;}',
-      'td.sa-pncol-metal{min-width:80px;max-width:140px;}',
-      'td.sa-pncol-linea{min-width:120px;max-width:230px;}',
-      'td.sa-pncol-racks{min-width:110px;max-width:220px;}',
-      'td.sa-pncol-units{min-width:110px;max-width:200px;}',
+      // Anchos acotados (0.3.1): la columna de specs se desbordaba. Ahora tiene tope duro
+      // y el contenido ENVUELVE en vez de estirar la columna (los chips eran `nowrap`,
+      // que es justo lo que forzaba el ancho).
+      'td.sa-pnspec-cell{min-width:150px;max-width:230px;width:230px;}',
+      'td.sa-pncol-racks{min-width:96px;max-width:150px;}',
+      'td.sa-pncol-units{min-width:92px;max-width:130px;}',
       '.sa-pnspec-spec{margin:0 0 4px 0;}',
       '.sa-pnspec-spec:last-child{margin-bottom:0;}',
-      '.sa-pnspec-spec-name{font-weight:700;color:#0d6b49;display:block;font-size:12px;}',
+      '.sa-pnspec-spec-name{font-weight:700;color:#0d6b49;display:block;font-size:12px;',
+      'overflow-wrap:anywhere;}',
       // Link a la spec en el azul de link de Steelhead (rgb(9,105,218)) para que se
       // note clicable. Sin subrayar por default (como los links nativos) + hover.
       'a.sa-pnspec-spec-name{color:#0969da;cursor:pointer;text-decoration:none;}',
       'a.sa-pnspec-spec-name:hover{text-decoration:underline;}',
       '.sa-pnspec-param{display:inline-block;background:#eef6f2;border:1px solid #cfe6db;color:#14503a;',
-      'border-radius:6px;padding:1px 6px;margin:2px 4px 0 0;font-size:11px;white-space:nowrap;}',
-      // Filas de "clave: valor" de racks y unidades (una por línea, alineadas).
-      '.sa-pncol-kv{display:flex;justify-content:space-between;gap:8px;font-size:11px;line-height:1.5;',
-      'color:#3a4a58;white-space:nowrap;}',
+      'border-radius:6px;padding:1px 6px;margin:2px 4px 0 0;font-size:11px;',
+      'white-space:normal;overflow-wrap:anywhere;}',
+      // Rack type compacto: "T102-RA02 (18 pz)" en un renglón.
+      '.sa-pncol-rack{font-size:11px;line-height:1.5;color:#3a4a58;overflow-wrap:anywhere;}',
+      '.sa-pncol-rack b{font-weight:600;color:#14503a;font-variant-numeric:tabular-nums;}',
+      // Unidades: código a la izquierda, valor pegado a la DERECHA con cifras tabulares
+      // para que los puntos decimales queden en columna y se comparen de un vistazo.
+      // El "/pz" vive en el ENCABEZADO, no en cada renglón.
+      '.sa-pncol-kv{display:flex;justify-content:space-between;align-items:baseline;gap:6px;',
+      'font-size:11px;line-height:1.5;color:#3a4a58;white-space:nowrap;}',
       '.sa-pncol-kv + .sa-pncol-kv{border-top:1px dotted #e1e5ea;}',
-      '.sa-pncol-kv b{font-weight:600;color:#14503a;font-variant-numeric:tabular-nums;}',
-      '.sa-pncol-kv i{font-style:normal;color:#5a6b7a;}',
+      '.sa-pncol-kv b{font-weight:600;color:#14503a;font-variant-numeric:tabular-nums;',
+      'text-align:right;flex:1 1 auto;}',
       '.sa-pncol-plain{font-size:12px;color:#3a4a58;}',
+      // Línea "descripción · metal" inyectada DENTRO de la celda nativa del nombre.
+      // Discreta: no debe competir con el nombre del NP, que es el dato principal.
+      '.sa-pncol-nameinfo{font-size:11px;line-height:1.35;color:#5a6b7a;margin-top:2px;',
+      'overflow-wrap:anywhere;}',
+      '.sa-pncol-nameinfo b{font-weight:600;color:#14503a;}',
       '.sa-pnspec-muted{color:#8a97a5;font-style:italic;font-size:12px;}',
       '.sa-pnspec-err{color:#b04a3a;font-size:12px;}',
       // Toast (dark-mode)
@@ -190,14 +216,14 @@ const PnSpecsColumn = (() => {
       anchor.bar.insertBefore(bar, anchor.before);
     }
     // El contador vive dentro del toggle de Specs, así que ese va primero.
-    COLS.forEach(function (col) {
+    TOGGLES.forEach(function (col) {
       if (!document.getElementById('sa-pnspec-toggle-' + col.key)) bar.appendChild(buildToggle(col));
     });
     refreshToggleUI();
   }
 
   function refreshToggleUI() {
-    COLS.forEach(function (col) {
+    TOGGLES.forEach(function (col) {
       const t = document.getElementById('sa-pnspec-toggle-' + col.key);
       if (t) t.classList.toggle('on', getFlag(col.store));
     });
@@ -209,8 +235,9 @@ const PnSpecsColumn = (() => {
     const c = document.getElementById('sa-pnspec-count');
     if (!c) return;
     if (!anyOn()) { c.textContent = ''; return; }
+    // Cualquier marca nuestra sirve: las celdas de columna Y la línea del nombre.
     const ids = new Set();
-    document.querySelectorAll('td[data-sa-pnid]').forEach(function (td) { ids.add(Number(td.getAttribute('data-sa-pnid'))); });
+    document.querySelectorAll('[data-sa-pnid]').forEach(function (el) { ids.add(Number(el.getAttribute('data-sa-pnid'))); });
     if (!ids.size) { c.textContent = ''; return; }
     let done = 0;
     ids.forEach(function (id) { if (cache().has(id) || errored().has(id)) done++; });
@@ -262,6 +289,49 @@ const PnSpecsColumn = (() => {
     moveToFront(headRow);
   }
 
+  // ── Enriquecimiento de la celda NATIVA del nombre ───────────────────────────
+  // No es una columna: se cuelga un <div> propio al final del <td> que ya contiene el
+  // link del NP (React lo pinta como <td><div class="css-…"><a>…</a></div></td>; nuestro
+  // nodo va como hermano de ese div). Verificado en vivo sobre la tabla real.
+  // IDEMPOTENTE POR CONTRATO: solo escribe si el texto cambió. Sin eso, cada sync mutaría
+  // la celda, el MutationObserver dispararía otro sync y el applet entraría en bucle
+  // — y aquí el riesgo es peor que con las columnas propias, porque estamos mutando un
+  // subárbol que React también toca.
+  function nameCellOf(tr) {
+    const link = tr.querySelector('td a[href*="/PartNumbers/"]');
+    return link ? link.closest('td') : null;
+  }
+
+  function syncNameInfo(tr, pnId, row) {
+    const cell = nameCellOf(tr);
+    if (!cell) return;
+    const existing = cell.querySelector(':scope > .' + NAME_INFO.cls);
+    if (!getFlag(NAME_INFO.store)) { if (existing) existing.remove(); return; }
+    if (pnId == null) return;
+    let box = existing;
+    if (!box) {
+      box = document.createElement('div');
+      box.className = NAME_INFO.cls;
+      box.setAttribute('data-sa-pnid', String(pnId));
+      cell.appendChild(box);
+    }
+    if (!row) {                       // aún cargando
+      if (box.textContent !== '⏳') box.textContent = '⏳';
+      return;
+    }
+    const desc = row.descripcion || '';
+    const metal = row.metal || '';
+    // El texto que DEBE quedar, para comparar antes de tocar el DOM.
+    const want = Core().formatNameInfo(row);
+    if (box.getAttribute('data-sa-txt') === want) return;   // ya está: no muta
+    box.setAttribute('data-sa-txt', want);
+    box.textContent = '';
+    if (!want) { box.remove(); return; }   // sin descripción ni metal → no ensuciar la celda
+    if (desc) box.appendChild(document.createTextNode(desc));
+    if (desc && metal) box.appendChild(document.createTextNode(' · '));
+    if (metal) { const b = document.createElement('b'); b.textContent = metal; box.appendChild(b); }
+  }
+
   function ensureBodyCells(table) {
     const rows = table.querySelectorAll('tbody tr');
     const toFetch = [];
@@ -270,6 +340,7 @@ const PnSpecsColumn = (() => {
       const pnId = link ? Core().parsePartNumberId(link.getAttribute('href') || link.href) : null;
       const cached = pnId ? cache().get(pnId) : null;
       if (pnId && !cached && !errored().has(pnId)) toFetch.push(pnId);
+      syncNameInfo(tr, pnId, cached);
 
       COLS.forEach(function (col) {
         let td = tr.querySelector(':scope > .' + col.cls);
@@ -308,26 +379,11 @@ const PnSpecsColumn = (() => {
   function muted(td, text) {
     const m = document.createElement('span'); m.className = 'sa-pnspec-muted'; m.textContent = text; td.appendChild(m);
   }
-  function plain(td, text) {
-    const s = document.createElement('span'); s.className = 'sa-pncol-plain'; s.textContent = text; td.appendChild(s);
-  }
-  // Fila "clave ····· valor": el valor va en <b> con cifras tabulares para que las
-  // cantidades queden alineadas entre renglones.
-  function kvRow(td, key, value, suffix) {
-    const row = document.createElement('div'); row.className = 'sa-pncol-kv';
-    const k = document.createElement('span'); k.textContent = key;
-    const v = document.createElement('b'); v.textContent = value;
-    row.appendChild(k); row.appendChild(v);
-    if (suffix) { const i = document.createElement('i'); i.textContent = ' ' + suffix; row.appendChild(i); }
-    td.appendChild(row);
-  }
 
   function renderCell(colKey, td, row) {
     td.setAttribute('data-sa-state', 'done');
     td.textContent = '';
     if (colKey === 'specs') return renderSpecs(td, row);
-    if (colKey === 'metal') return row.metal ? plain(td, row.metal) : muted(td, 'sin metal');
-    if (colKey === 'linea') return row.linea ? plain(td, row.linea) : muted(td, 'sin línea');
     if (colKey === 'racks') return renderRacks(td, row.rackTypes);
     if (colKey === 'units') return renderUnits(td, row.units);
   }
@@ -358,6 +414,7 @@ const PnSpecsColumn = (() => {
     });
   }
 
+  // "T102-RA02 (18 pz)" — un renglón por rack. Formato compacto para angostar la columna.
   function renderRacks(td, racks) {
     const list = racks || [];
     if (!list.length) { muted(td, 'sin racks'); return; }
@@ -365,22 +422,29 @@ const PnSpecsColumn = (() => {
       // partsPerRack ausente se muestra "?" — NO se asume 1 (ese supuesto silencioso
       // es el que dispara las duraciones absurdas en wo-schedule-button).
       const qty = r.partsPerRack == null ? '?' : Core().fmtNum(r.partsPerRack);
-      kvRow(td, r.name, qty, r.unit || 'pz');
+      const div = document.createElement('div'); div.className = 'sa-pncol-rack';
+      div.appendChild(document.createTextNode(r.name + ' ('));
+      const b = document.createElement('b'); b.textContent = qty; div.appendChild(b);
+      div.appendChild(document.createTextNode(' ' + (r.unit || 'pz') + ')'));
+      td.appendChild(div);
     });
   }
 
+  // Código a la izquierda, factor a la derecha con 3 decimales y miles con coma. El
+  // "/pz" está en el encabezado de la columna. El valor EXACTO (10 significativos) vive
+  // en el `title`: los 3 decimales son para leer de un vistazo, no para perder el dato.
   function renderUnits(td, units) {
     const list = units || [];
     if (!list.length) { muted(td, 'sin unidades'); return; }
     list.forEach(function (u) {
-      const f = u.factor == null ? '?' : Core().fmtFactor(u.factor);
+      const shown = u.factor == null ? '?' : Core().fmtQty3(u.factor);
+      const exact = u.factor == null ? '?' : Core().fmtFactor(u.factor);
       const row = document.createElement('div'); row.className = 'sa-pncol-kv';
+      row.title = u.name + ' — ' + exact + ' por pieza';   // label y valor exacto al hover
       const k = document.createElement('span');
       k.textContent = u.code || u.name;
-      k.title = u.name + ' — ' + f + ' por pieza';   // label completo al hover
-      const v = document.createElement('b'); v.textContent = f;
-      const i = document.createElement('i'); i.textContent = ' /pz';
-      row.appendChild(k); row.appendChild(v); row.appendChild(i);
+      const v = document.createElement('b'); v.textContent = shown;
+      row.appendChild(k); row.appendChild(v);
       td.appendChild(row);
     });
   }
@@ -392,8 +456,10 @@ const PnSpecsColumn = (() => {
     td.appendChild(e);
   }
 
+  // Sin argumento quita TODO lo nuestro, incluida la línea inyectada en la celda nativa
+  // del nombre (si se quedara, el operador no tendría cómo borrarla).
   function removeColumn(clsList) {
-    (clsList || ALL_CLS).forEach(function (cls) {
+    (clsList || ALL_CLS.concat([NAME_INFO.cls])).forEach(function (cls) {
       document.querySelectorAll('.' + cls).forEach(function (el) { el.remove(); });
     });
   }
@@ -440,6 +506,13 @@ const PnSpecsColumn = (() => {
       const col = COLS.find(function (c) { return td.classList.contains(c.cls); });
       if (!col) return;
       if (isError) renderError(td); else renderCell(col.key, td, result);
+    });
+    // La línea del nombre vive en una celda NATIVA: se actualiza por su propia vía.
+    document.querySelectorAll('.' + NAME_INFO.cls + '[data-sa-pnid="' + pnId + '"]').forEach(function (box) {
+      const tr = box.closest('tr');
+      if (!tr) return;
+      if (isError) { box.setAttribute('data-sa-txt', '⚠️'); box.textContent = '⚠️'; }
+      else syncNameInfo(tr, pnId, result);
     });
     updateCount();
   }
@@ -558,18 +631,20 @@ const PnSpecsColumn = (() => {
     refreshToggleUI();
   }
 
-  // Enciende/apaga UNA columna. `key` omitido = 'specs' (compatibilidad con el popup).
+  // Enciende/apaga UNA columna (o la línea del nombre). `key` omitido = 'specs'
+  // (compatibilidad con la acción del popup, que no cambió).
   function toggle(key) {
-    const col = COLS.find(function (c) { return c.key === key; }) || COLS[0];
+    const col = TOGGLES.find(function (c) { return c.key === key; }) || TOGGLES[0];
     const next = !getFlag(col.store);
     setFlag(col.store, next);
     refreshToggleUI();
+    const nombre = col.label || col.short;
     if (next) {
-      toast(col.icon + ' ' + col.label + ': ACTIVADA — cargando datos de los NP visibles…');
+      toast(col.icon + ' ' + nombre + ': ACTIVADA — cargando datos de los NP visibles…');
       activate();
     } else {
-      toast(col.icon + ' ' + col.label + ': DESACTIVADA');
-      // Solo se van las celdas de ESA columna; si no queda ninguna, se libera todo.
+      toast(col.icon + ' ' + nombre + ': DESACTIVADA');
+      // Solo se va lo de ESE toggle; si no queda ninguno, se libera todo.
       removeColumn([col.cls]);
       if (!anyOn()) deactivate(); else syncColumn();
     }
@@ -609,6 +684,7 @@ const PnSpecsColumn = (() => {
   function init() {
     if (window.__saPnSpecsInit) return;
     window.__saPnSpecsInit = true;
+    dropRetiredKeys();   // la columna de Línea se retiró: su flag ya no debe pesar en anyOn()
     installUrlChangeListener();
     if (onIndex()) {
       ensureToggle();
@@ -619,14 +695,15 @@ const PnSpecsColumn = (() => {
   }
 
   return {
-    init, toggleFromPopup, toggle, COLS,
+    init, toggleFromPopup, toggle, COLS, TOGGLES,
     _getState: function () {
       const p = pool();
       const on = {};
-      COLS.forEach(function (c) { on[c.key] = getFlag(c.store); });
+      TOGGLES.forEach(function (c) { on[c.key] = getFlag(c.store); });
       return {
         on: on, anyOn: anyOn(), onIndex: onIndex(),
         cells: document.querySelectorAll('td[data-sa-pnid]').length,
+        nameInfo: document.querySelectorAll('.' + NAME_INFO.cls).length,
         done: document.querySelectorAll('td[data-sa-state="done"]').length,
         cached: cache().size, errored: errored().size, queue: p.queue.length, inFlight: p.inFlight,
       };
