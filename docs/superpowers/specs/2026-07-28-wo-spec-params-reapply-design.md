@@ -178,12 +178,32 @@ Medido en la OT 5769: el nodo raíz `42513351` (`PROCESS`,
 archivan (limpiarlas es una decisión de dominio aparte, y este applet no la tiene
 autorizada).
 
-> **Verificado 2026-07-28:** el operador recordaba que "un applet de aplicación masiva de
-> specs" ya corregía esto. **No existe tal applet.** Ningún script del repo toca
-> `PartNumberRecipeNodeSpecFieldParam` — `bulk-upload`, `spec-migrator` y
-> `spec-params-bulk` trabajan sobre `partNumberSpecFieldParams`, que son los parámetros
-> del **NP**, no los de la **OT**. Son tablas distintas. Nadie está limpiando esas filas.
-> Decidir qué hacer con ellas es un pendiente abierto.
+> **Verificado 2026-07-28.** El applet que el operador recordaba **existe, pero opera
+> sobre el NP**: `bulk-upload` STEP 6b (regla 1.4.38) deduplica dejando **una sola fila
+> viva por SpecField, con `processNodeId: null`** — el "vacío sin nodo de proceso". Ningún
+> script del repo toca `PartNumberRecipeNodeSpecFieldParam`, que es la tabla de la **OT**.
+> Son tablas distintas, así que **nadie está limpiando las filas del nodo raíz**. Decidir
+> qué hacer con ellas sigue siendo un pendiente abierto.
+
+#### Hipótesis: las anomalías no son accidentes, son sistemáticas
+
+En el **NP** un parámetro vive **sin nodo de proceso** (`processNodeId: null`) — es la regla
+que `bulk-upload` mantiene, y `AddParamsToPartNumber` la exige (`knownOperations`: *pasar el
+processId real choca con exclusion constraint*). En la **OT**, en cambio, cada parámetro
+**tiene** que colgar de un `recipeNodeId`.
+
+Eso obliga a Steelhead a elegir un nodo al generar la orden, y **el candidato natural para un
+parámetro sin nodo es el nodo raíz** — que es exactamente donde aparecen las 5 anomalías de la
+OT 5769.
+
+Si la hipótesis es correcta, **toda** OT generada de un NP con parámetros `processNodeId: null`
+va a traer lo mismo: no es basura ocasional sino el comportamiento por omisión del ERP. Y
+entonces limpiar la OT trata el síntoma — el arreglo de fondo sería asignarle a esos parámetros
+del NP el nodo de proceso que les toca.
+
+**Sin confirmar.** Se verifica contando anomalías en varias OTs de NPs distintos: si aparecen
+en casi todas y siempre en la raíz, es sistemático. La fase 1 ya deja ese conteo listo, así que
+la evidencia llega sola con las primeras corridas.
 
 El universo de casillas nunca sale de lo aplicado: sale de lo que **debería** estar lleno
 — los campos de la spec externa para el nodo destino, y `recipeNodeSpecFields` para todo
