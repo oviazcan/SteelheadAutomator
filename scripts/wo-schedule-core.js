@@ -492,6 +492,158 @@
     };
   }
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // Fase 2b — CREAR una tarea donde no hay (CreateManyScheduleTasks)
+  // ══════════════════════════════════════════════════════════════════════════
+  // Payload real capturado el 2026-07-28 (fixture `wo-schedule-create-task.json`). Nada
+  // de aquí es deducción: la forma, los tipos raros y la fórmula salen de tráfico.
+
+  // Los tiempos viajan como `Interval` de Postgres, no como número.
+  function intervalToMinutes(iv) {
+    if (iv == null) return null;
+    if (typeof iv === 'number') return iv;
+    if (typeof iv !== 'object') return null;
+    const n = (v) => Number(v) || 0;
+    return n(iv.years) * 525600 + n(iv.months) * 43200 + n(iv.days) * 1440
+         + n(iv.hours) * 60 + n(iv.minutes) + n(iv.seconds) / 60;
+  }
+
+  // `possibleTreatmentTimesByRecipeNodeDefaultTreatment` es una LISTA de overrides: sus
+  // `partNumberId`/`stationId`/`processNodeId`/`processNodeOccurrence` son nullable y null
+  // = "aplica a todos". Gana el que matchea el contexto siendo MÁS específico (más campos
+  // fijados). Un candidato con un campo distinto al contexto queda descartado, no elegido
+  // "por aproximación": programar con el tiempo de otra estación desacomoda el piso.
+  //
+  // ⚠️ La muestra capturada trae UN solo TreatmentTime (todo null), así que el desempate
+  // entre overrides está implementado pero NO observado. Por eso la UI muestra los tiempos
+  // antes de crear en vez de aplicarlos en silencio.
+  const TT_KEYS = ['partNumberId', 'stationId', 'processNodeId', 'processNodeOccurrence'];
+  function pickTreatmentTime(times, ctx) {
+    ctx = ctx || {};
+    let mejor = null, mejorPuntaje = -1;
+    for (const t of times || []) {
+      if (!t) continue;
+      let puntaje = 0, sirve = true;
+      for (const k of TT_KEYS) {
+        const v = t[k];
+        if (v == null) continue;              // null = comodín
+        if (ctx[k] == null || String(ctx[k]) !== String(v)) { sirve = false; break; }
+        puntaje++;
+      }
+      if (!sirve || puntaje <= mejorPuntaje) continue;
+      mejor = t; mejorPuntaje = puntaje;
+    }
+    if (!mejor) return null;
+    return {
+      cycleTimeMinutes: intervalToMinutes(mejor.cycleTime),
+      treatmentTimeMinutes: intervalToMinutes(mejor.totalTime),   // ojo: `totalTime`, no `treatmentTime`
+      timeType: mejor.timeType != null ? String(mejor.timeType) : null,
+    };
+  }
+
+  // Cuántos lotes salen y cuánto dura la tarea completa.
+  // FÓRMULA VALIDADA contra 4 tareas reales independientes:
+  //   lotes = ceil(partCount / partsPerBatch)
+  //   total = treatmentTime + (lotes - 1) * cycleTime
+  //   · 13504 pzas / 1501 = 9 lotes → 45 + 8×12 = 141 ✓ (el CREATE capturado)
+  //   ·  9000 pzas / 1686 = 6 lotes → 50 + 5×50 = 300 ✓
+  //   ·     1 pza  /  120 = 1 lote  → 66 + 0     =  66 ✓
+  //   ·    12 pzas /   49 = 1 lote  → 30 + 0     =  30 ✓
+  function scheduleTaskTimes(input) {
+    input = input || {};
+    // `Number(null)` es 0 y `Number('')` también: sin este guard, un tiempo AUSENTE se
+    // colaba como cero y producía una tarea de duración inventada en vez de un rechazo.
+    const num = (v) => (v == null || v === '' || isNaN(Number(v)) ? null : Number(v));
+    const partCount = num(input.partCount);
+    const partsPerBatch = num(input.partsPerBatch);
+    const cycle = num(input.cycleTimeMinutes);
+    const treatment = num(input.treatmentTimeMinutes);
+    if (partCount == null || partCount <= 0) return null;
+    if (partsPerBatch == null || partsPerBatch <= 0) return null;
+    if (cycle == null || treatment == null) return null;
+    if (!isFinite(cycle) || !isFinite(treatment)) return null;
+    const batches = Math.ceil(partCount / partsPerBatch);
+    return {
+      batches: batches,
+      cycleTimeMinutes: cycle,
+      treatmentTimeMinutes: treatment,
+      totalTimeMinutes: treatment + (batches - 1) * cycle,
+    };
+  }
+
+  // Piezas por lote = piezas por rack × racks que caben en la estación.
+  // ⚠️ HIPÓTESIS: cuadra con el caso capturado (rackCount 1 ⇒ partsPerBatch = partsPerRack
+  // = 1501) pero un solo caso no distingue el producto de la identidad. Se expone aparte
+  // y la UI lo deja EDITABLE justamente por eso.
+  function partsPerBatchFrom(partsPerRack, rackCount) {
+    const p = Number(partsPerRack), r = Number(rackCount);
+    if (!isFinite(p) || p <= 0) return null;
+    return p * (isFinite(r) && r > 0 ? r : 1);
+  }
+
+  // Payload de CreateManyScheduleTasks. Reproduce el capturado exactamente, incluidos los
+  // tipos que sorprenden: `rackTypeIdLineage` es un STRING (no un array) y `rackIdLineage`
+  // venía en null; el envoltorio es `{mnScheduleTask:[…]}` y lleva `scheduleIdFilter`.
+  // El `partSetUuid` (UUID v4 del cliente) entra COMO PARÁMETRO para que el núcleo no
+  // dependa de una fuente de aleatoriedad y el test pueda fijarlo.
+  function buildScheduleTaskCreateInput(input) {
+    input = input || {};
+    const req = ['scheduleId', 'treatmentId', 'stationId', 'expectedStartTime',
+                 'recipeNodeId', 'partNumberId', 'partSetUuid'];
+    for (const k of req) if (input[k] == null || input[k] === '') return null;
+    const t = scheduleTaskTimes(input);
+    if (!t) return null;
+    const cuentas = (input.relatedPartTransferAccounts || [])
+      .filter((a) => a && a.id != null)
+      .map((a) => ({ id: Number(a.id), partCount: Number(a.partCount) || 0 }));
+    if (!cuentas.length) return null;   // sin cuenta no hay material que programar
+    return {
+      scheduledTasks: {
+        mnScheduleTask: [{
+          scheduleId: Number(input.scheduleId),
+          treatmentId: Number(input.treatmentId),
+          stationId: Number(input.stationId),
+          expectedStartTime: String(input.expectedStartTime),
+          totalTimeMinutes: t.totalTimeMinutes,
+          cycleTimeMinutes: t.cycleTimeMinutes,
+          treatmentTimeMinutes: t.treatmentTimeMinutes,
+          isIntentional: !!input.isIntentional,
+          status: 'UNSCHEDULED',
+          scheduleTaskElementsByScheduleTaskId: {
+            nodes: [{
+              partSetUuid: String(input.partSetUuid),
+              recipeNodeId: Number(input.recipeNodeId),
+              partNumberId: Number(input.partNumberId),
+              rackIdLineage: input.rackIdLineage != null ? String(input.rackIdLineage) : null,
+              rackTypeIdLineage: input.rackTypeIdLineage != null ? String(input.rackTypeIdLineage) : null,
+              partCount: Number(input.partCount),
+              partsPerBatch: Number(input.partsPerBatch),
+              relatedPartTransferAccounts: cuentas,
+            }],
+          },
+        }],
+      },
+      scheduleIdFilter: { equalTo: Number(input.scheduleId) },
+    };
+  }
+
+  // A diferencia del UPDATE, el CREATE SÍ devuelve la tarea creada
+  // (`createManyScheduledTasks[] = {id, status, cycleTimeMinutes, totalTimeMinutes, …}`),
+  // así que aquí la respuesta sirve como confirmación de primera mano.
+  function parseCreatedScheduleTasks(data) {
+    const arr = (data && (data.createManyScheduledTasks || data.createManyScheduleTasks)) || [];
+    return (Array.isArray(arr) ? arr : []).filter(Boolean).map((t) => ({
+      taskId: t.id != null ? t.id : null,
+      stationId: t.stationId != null ? t.stationId : null,
+      status: t.status != null ? String(t.status) : '',
+      expectedStartTime: t.expectedStartTime != null ? t.expectedStartTime : null,
+      totalTimeMinutes: t.totalTimeMinutes != null ? t.totalTimeMinutes : null,
+      cycleTimeMinutes: t.cycleTimeMinutes != null ? t.cycleTimeMinutes : null,
+      treatmentTimeMinutes: t.treatmentTimeMinutes != null ? t.treatmentTimeMinutes : null,
+      isIntentional: !!t.isIntentional,
+    }));
+  }
+
   // Verificación post-escritura. `UpdateManyScheduleTasks` responde
   // `{mnUpdateScheduleTaskById:{clientMutationId:null}}` — o sea, NO confirma nada de
   // lo que se pidió. Es el mismo modo de fallo que costó el fix "load-before-save" del
@@ -590,6 +742,8 @@
     buildBoardScheduleIndex, resolveBoardScheduleForWO,
     formatScheduleTaskLine, scheduleStatusLabel, formatBoardScheduleCell,
     buildScheduleTaskUpdateInput, verifyScheduleTaskApplied,
+    intervalToMinutes, pickTreatmentTime, scheduleTaskTimes, partsPerBatchFrom,
+    buildScheduleTaskCreateInput, parseCreatedScheduleTasks,
     isoToLocalInput, localInputToIso,
     parseIsoParts, formatShortDateTime, formatScheduleCell,
   };
