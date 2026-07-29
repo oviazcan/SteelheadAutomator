@@ -1,6 +1,6 @@
 # `wo-spec-params` — Reaplicar Parámetros en Órdenes de Trabajo
 
-**Versión:** 0.1.0 (fase 1) · **Estado:** ✅ **VIVO en producción (config 1.10.1, tag `v1.10.1`) y VALIDADO END-TO-END por el operador el 2026-07-28**
+**Versión:** 0.2.0 (fases 1 y 2) · **Estado:** ✅ **VIVO (config 1.11.1, tag `v1.11.1`)** · fase 1 **VALIDADA END-TO-END** por el operador el 2026-07-28; fase 2 sin corrida real
 **Bundle:** 5ª acción de *Ajuste Masivo de Specs* (`spec-migrator`)
 **Diseño:** [`docs/superpowers/specs/2026-07-28-wo-spec-params-reapply-design.md`](../superpowers/specs/2026-07-28-wo-spec-params-reapply-design.md)
 **Plan:** [`docs/superpowers/plans/2026-07-28-wo-spec-params-fase1.md`](../superpowers/plans/2026-07-28-wo-spec-params-fase1.md)
@@ -184,10 +184,41 @@ sin confirmar nada.
 
 Las **5 anomalías deben seguir intactas**. Si desaparecieron, algo las archivó sin autorización.
 
+## Fase 2 — origen por Número de Parte (0.2.0)
+
+Pegas los NP que corregiste —**nombres o ids**— y el applet encuentra sus órdenes abiertas.
+Es la vía principal: los NP corregidos **son** los que tienen órdenes desalineadas.
+
+### Tres hallazgos verificados en vivo, y los tres cambiaron el diseño
+
+**1. `searchQuery` NO busca por Número de Parte.** Cero resultados para un NP que sí tiene
+órdenes. Mismo patrón que la lección de `po-listing-filters` con proveedores. La vía es
+**`partNumberIdFilter: [ids]`** — acepta lista con semántica OR (2 NP → 7 órdenes) y **no
+aparecía en el sample del scan**: se descubrió probando.
+
+**2. Los nombres parecidos se ignoran EN SILENCIO.** `partNumberIdsFilter`, `partNumberFilter`
+y `partNumberIds` devuelven **4284 órdenes —el dominio entero— en vez de 4**. Un typo ahí no
+falla ruidosamente: procesa todo. Por eso hay un test que fija el nombre bueno **dentro del
+cuerpo** de `workOrdersForPartNumber` (acotado ahí porque `partNumberIds` es también el nombre
+legítimo de una estructura interna).
+
+**3. Los nombres de NP NO son únicos.** `80236-167-07` resuelve a **nueve NP activos**, de los
+que solo dos tienen órdenes (4 y 1). `SearchPartNumbers` ni siquiera expone el cliente para
+distinguirlos.
+
+**La salida es segura sin preguntar:** un nombre se expande a **todos** sus homónimos exactos,
+porque **cada orden se compara contra el NP que ella misma tiene asociado**, nunca contra "el
+que pegaste". Expandir solo amplía cobertura; no puede corregir una orden contra el NP
+equivocado. El panel informa a cuántos NP resolvió cada nombre y cuántos venían sin órdenes.
+
+### Dimensionamiento corregido
+El dominio tiene **4284 órdenes activas**, no las 1000+ estimadas. A 0.87 MB por (OT × NP), el
+escaneo total serían **~3.7 GB** — otro argumento para que la fase 2 sea el camino principal y
+la 3 el último recurso.
+
 ## Pendientes
 
-1. **Fase 2 — origen por Número de Parte**: das los NP corregidos y busca sus OTs. Es la que
-   cierra el problema de raíz.
+1. **Corrida real de la fase 2** (la 1 ya está validada).
 2. **Fase 3 — escaneo de las 1000+ órdenes abiertas**: con 0.87 MB por consulta son ~1.3 GB, así
    que exige troceo, checkpoint reanudable en IndexedDB, monitor de memoria con guardrail al 88%
    (`host-cleanup-shared`) y pool de 3 — el `/graphql` se cuelga a ~40-45 peticiones en ráfaga,
