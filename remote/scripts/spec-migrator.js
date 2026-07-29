@@ -2941,7 +2941,9 @@ const SpecMigrator = (() => {
   function dupRenderTable(myRunId, scannedCount, fetchErrors) {
     const groups = dupState.groups;
     const uniquePNs = new Set(groups.map(g => g.pnId)).size;
-    const losersCount = groups.reduce((s, g) => s + (g.params.length - 1), 0);
+    const efectos = groups.map(g => dupGroupEffect(g, dupState.decisions.get(g.key)));
+    const losersCount = efectos.reduce((s, e) => s + e.archive, 0);
+    const reponeCount = efectos.reduce((s, e) => s + e.repone, 0);
     const autoCount = groups.filter(g => g.autoDecidable).length;
     const manualCount = groups.length - autoCount;
 
@@ -2975,6 +2977,7 @@ const SpecMigrator = (() => {
     stats.appendChild(mk('Auto-decidibles', autoCount));
     stats.appendChild(mk('Manuales', manualCount));
     stats.appendChild(mk('Params a archivar', losersCount));
+    if (reponeCount) stats.appendChild(mk('A reponer sin nodo', reponeCount));
     if (fetchErrors.length) stats.appendChild(mk('Errores fetch', fetchErrors.length));
     body.appendChild(stats);
 
@@ -3158,17 +3161,46 @@ const SpecMigrator = (() => {
     });
   }
 
+  // 2026-07-29: una sola fuente para "qué va a hacer este grupo". El contador usaba
+  // (params.length - 1) y el apply usaba releasePlan.archiveIds: con los grupos de nodo
+  // forzado (UNA fila) el contador daba 0 mientras el apply archivaba 1. El botón decía
+  // "4 params a archivar" cuando iban ~25884 archivados + ~25884 reposiciones.
+  // Un contador que no cuenta lo que el botón hace es peor que no tener contador.
+  function dupGroupEffect(g, dec) {
+    const out = { archive: 0, repone: 0, ambiguo: false };
+    if (!dec || dec.ignored) return out;
+    const rp = g.releasePlan || { action: 'ok', archiveIds: [], insertParamId: null };
+    if (rp.action === 'ambiguous') { out.ambiguo = true; return out; }
+    if (rp.action === 'rewrite' || rp.action === 'archive-only') {
+      const ya = new Set(rp.archiveIds || []);
+      out.archive += (rp.archiveIds || []).length;
+      if (rp.action === 'rewrite' && rp.insertParamId != null) out.repone += 1;
+      for (const p of g.params) {
+        if (p.rowId === dec.winnerRowId || ya.has(p.rowId)) continue;
+        out.archive += 1;
+      }
+      return out;
+    }
+    out.archive += Math.max(0, g.params.length - 1);
+    return out;
+  }
+
   function dupUpdateFooter() {
     const ftr = dupState.panelEl?.querySelector('[data-ctrl=dup-foot-stats]');
     if (!ftr) return;
-    let toArchive = 0, ignored = 0;
+    let toArchive = 0, toRepone = 0, ignored = 0, ambiguos = 0;
     for (const g of dupState.groups) {
       const dec = dupState.decisions.get(g.key);
       if (!dec) continue;
       if (dec.ignored) { ignored++; continue; }
-      toArchive += (g.params.length - 1);
+      const e = dupGroupEffect(g, dec);
+      if (e.ambiguo) { ambiguos++; continue; }
+      toArchive += e.archive;
+      toRepone += e.repone;
     }
-    ftr.textContent = `${toArchive} params a archivar — ${ignored} grupos ignorados`;
+    ftr.textContent = `${toArchive} a archivar · ${toRepone} a reponer sin nodo`
+      + (ambiguos ? ` · ${ambiguos} ambiguos NO se tocan` : '')
+      + ` — ${ignored} grupos ignorados`;
   }
 
   // 0.4.3: winner auto = NULL más reciente. Aplica a grupos autoDecidable
@@ -3230,6 +3262,16 @@ const SpecMigrator = (() => {
       alert('No hay nada que archivar (todos los grupos están ignorados o solo tienen 1 param).');
       return;
     }
+
+    // Confirmación con los números REALES de lo que se va a escribir. Va aquí, contra las
+    // listas ya armadas, no contra un contador paralelo que pueda desfasarse.
+    const nPNs = new Set([...tasks.map(t => t.group.pnId), ...releases.map(r => r.group.pnId)]).size;
+    const msg = 'Se van a ESCRIBIR ' + (tasks.length + releases.length) + ' cambios en '
+      + nPNs + ' Números de Parte:\n\n'
+      + '  · ' + tasks.length + ' parámetros a archivar\n'
+      + '  · ' + releases.length + ' a reponer sin nodo (filas NUEVAS)\n\n'
+      + 'Archivar es reversible con el rowId del XLSX; reponer crea filas.\n\n¿Continuar?';
+    if (!confirm(msg)) return;
 
     dupSetBody(`<div class="dup-progress">
       Archivando ${tasks.length} params (concurrencia 3)…
