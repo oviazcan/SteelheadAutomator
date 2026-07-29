@@ -1,6 +1,6 @@
 # `wo-spec-params` — Reaplicar Parámetros en Órdenes de Trabajo
 
-**Versión:** 0.2.0 (fases 1 y 2) · **Estado:** ✅ **VIVO (config 1.11.1, tag `v1.11.1`)** · fase 1 **VALIDADA END-TO-END** por el operador el 2026-07-28; fase 2 sin corrida real
+**Versión:** 0.3.0 (las tres fases) · **Estado:** ✅ **VIVO (config 1.11.2, tag `v1.11.2`)** · fase 1 **VALIDADA END-TO-END** por el operador el 2026-07-28; fases 2 y 3 sin corrida real
 **Bundle:** 5ª acción de *Ajuste Masivo de Specs* (`spec-migrator`)
 **Diseño:** [`docs/superpowers/specs/2026-07-28-wo-spec-params-reapply-design.md`](../superpowers/specs/2026-07-28-wo-spec-params-reapply-design.md)
 **Plan:** [`docs/superpowers/plans/2026-07-28-wo-spec-params-fase1.md`](../superpowers/plans/2026-07-28-wo-spec-params-fase1.md)
@@ -216,14 +216,41 @@ El dominio tiene **4284 órdenes activas**, no las 1000+ estimadas. A 0.87 MB po
 escaneo total serían **~3.7 GB** — otro argumento para que la fase 2 sea el camino principal y
 la 3 el último recurso.
 
+## Fase 3 — escaneo del dominio completo (0.3.0)
+
+Recorre **las 4284 órdenes abiertas**. A ~0.87 MB por lectura son unos **40 minutos**, así que
+nació con el checklist de memory-hardening completo, no como parche.
+
+### EJE A — memoria propia
+- **`slimResult`** guarda ~2 KB por orden en vez del resultado con los nodos crudos. En 4284
+  órdenes esa diferencia **es** el OOM. Hay un test que falla si el slim pasa de 4 KB.
+- **`workOrder = null`** tras clasificar, para soltar los 0.87 MB antes de la siguiente vuelta.
+- **Caché de Números de Parte** durante el escaneo (muchas órdenes comparten NP) y `clear()` al
+  terminar.
+- **`closePanel` suelta todo**: detiene el escaneo, para el monitor y vacía la caché.
+
+### EJE B — memoria del host
+- **`stopDatadogSessionReplay()`** al arrancar la corrida, no al cargar el applet.
+- **`createMemMonitor`** con lectura visible en el panel. **`onGuardrail` al 88% DETIENE**,
+  guarda el avance y pide recargar — checkpoint antes que crash.
+- **`makePeriodicDrain(50)`** al cierre de cada orden + `apolloCacheDrain()` al final.
+
+### Reanudación
+Checkpoint en **IndexedDB** al cierre de cada lote de 100 (localStorage no aguanta una corrida
+así — misma razón por la que `bulk-upload` migró `sa_load_history`). Al reabrir ofrece
+**reanudar** o **empezar de cero**, y el botón **Detener** corta sin perder lo andado.
+
+### Concurrencia
+Pool de **3**, con el tope clavado en el código: el `/graphql` se cuelga alrededor de las 40-45
+peticiones en ráfaga —sin devolver 429, sin recuperarse al recargar— y tumba también la
+pantalla nativa, porque el límite es por sesión y no por pestaña.
+
+**Las escrituras van en serie.** La lectura tolera pool; escribir no.
+
 ## Pendientes
 
-1. **Corrida real de la fase 2** (la 1 ya está validada).
-2. **Fase 3 — escaneo de las 1000+ órdenes abiertas**: con 0.87 MB por consulta son ~1.3 GB, así
-   que exige troceo, checkpoint reanudable en IndexedDB, monitor de memoria con guardrail al 88%
-   (`host-cleanup-shared`) y pool de 3 — el `/graphql` se cuelga a ~40-45 peticiones en ráfaga,
-   sin devolver 429, y tumba también la pantalla nativa.
-3. **Decidir qué hacer con las anomalías del nodo raíz** (ver la hipótesis de arriba).
+1. **Corridas reales de las fases 2 y 3** (la 1 ya está validada).
+2. **Decidir qué hacer con las anomalías del nodo raíz** (ver la hipótesis de arriba).
 4. **Correr headless** las rutas de regeneración.
 5. Bundle Safari/iPad: evaluar si aplica.
 
