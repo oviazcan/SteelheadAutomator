@@ -290,3 +290,34 @@ justamente el PN de los payloads capturados, así que el flujo ya está confirma
 centinela. `treatmentTimes` no tiene objeto centinela (es un catálogo global), así que **su
 único candado es el abort**; no cambiar de estrategia sin repensarlo. La deuda del trinquete
 **bajó de 60 a 59**.
+
+
+### Las piezas por carga son POR LÍNEA — al re-rutear hay que AGREGAR, no corregir
+
+Precisión del operador, confirmada en datos reales (`SchedulablePartLocations`, scan
+2026-07-07): el PN **3015610** tiene **4** piezas por carga en `T204-FL01` y **1** en
+`T205-FL01`. Mismo número de parte, distinta línea, distinta carga — porque el dato vive en el
+par **(PN, tipo de rack)** y cada línea usa el suyo.
+
+**Consecuencia para el ruteo:** cuando una orden se manda a otra línea, el rack de la estación
+destino puede **no estar ligado** al PN. Entonces el dato no está *mal*: **no existe**. Y el
+arreglo no es corregir el que hay —que probablemente es correcto para SU línea— sino **agregar
+el de la línea nueva**. Confundir los dos casos pisaría un dato bueno.
+
+`resolveRackForStation(stationRackTypes, partNumberRackTypes)` resuelve el rack **de la estación
+destino** y devuelve `yaExiste`, que es lo que elige la mutación:
+
+| Caso | Acción | Mutación |
+|---|---|---|
+| El PN ya tiene ese rack | **CORREGIR** | `UpdatePartNumberPerPerRackType` |
+| El PN no tiene ese rack (línea nueva) | **AGREGAR** | `CreatePartNumberPerPerRackType` |
+| La estación no tiene rack configurado | ninguna — se reporta aparte (`ESTACION_SIN_RACK`) | — |
+
+No son intercambiables: el alta es insert-only y revienta con unique constraint en
+`(pn, rackType)`.
+
+Además devuelve **`alternativas`**: las piezas que el PN sí tiene declaradas en otros racks. Eso
+es lo que hace capturable el dato faltante con criterio — *"en T204-FL01 caben 4 y en T205-FL01
+cabe 1; ¿cuántas en T114-FL01?"* — en vez de pedir un número al aire. Y si la estación ofrece
+varios racks, `opcionesEstacion` los expone para que la UI deje elegir. Los racks **archivados**
+nunca son candidatos.
