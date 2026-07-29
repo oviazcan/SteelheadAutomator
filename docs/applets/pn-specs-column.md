@@ -1,16 +1,21 @@
-# pn-specs-column — Specs + parámetros numéricos en el dashboard de Números de Parte
+# pn-specs-column — Datos del NP (specs, metal, línea, racks, unidades) en el dashboard de Números de Parte
 
-**Versión:** 0.2.0 — **DEPLOYADO**. Core 17/17 golden + validado con datos reales. **0.2.0** cambia el criterio de "numérico" (de `type===NUMBER` a "el valor trae dígitos") + spec como **link** (ver §0.2.0). **0.1.2** estilo (encabezado nativo, separador punteado, toggle delgado). **0.1.1** 2 bugs del run real (§Fixes 0.1.1). **0.1.0** deploy inicial.
+**Versión:** 0.3.0 — Core **30/30** golden (13 nuevos contra **fixture REAL** del PN 2300153 capturado en vivo). **0.3.0** 4 columnas nuevas + todas AL INICIO (ver §0.3.0). **0.2.1** fix del toggle que no se montaba. **0.2.0** criterio "el valor trae dígitos" + spec como link. **0.1.2** estilo. **0.1.1** 2 bugs del run real.
 **Categoría:** Números de Parte · **autoInject:true** · ruta: `/PartNumbers` (index, NO la ficha `/PartNumbers/:id`)
 
 ## Qué hace
 
-En el dashboard `https://app.gosteelhead.com/PartNumbers`, agrega una **columna "Specs / Params num."** a la tabla y, con un **toggle persistente en el header** (junto a "NUEVO NÚMERO DE PARTE"), enriquece cada NP visible con:
+En el dashboard `https://app.gosteelhead.com/PartNumbers` agrega, **al INICIO de la tabla**, hasta **5 columnas** con un **toggle por columna** en el header (junto a "NUEVO NÚMERO DE PARTE"). Todas se alimentan de **una sola** consulta `GetPartNumber` por NP visible:
 
-- las **specs asociadas** al NP (`E27550 (Plata)`, …), y
-- bajo cada una, sus **parámetros NUMÉRICOS** (`specField.type === 'NUMBER'`) con **nombre + rango + unidad** (ej. `Espesor 1.27–3.5 µm`).
+| Columna | Contenido |
+|---|---|
+| 🧪 **Especificaciones** | specs activas (cada una **link** a su ficha) y sus **parámetros con valor numérico** (`Espesor: 2 - 5 µm`) |
+| ⚗️ **Metal base** | `customInputs.DatosAdicionalesNP.BaseMetal` (`Cobre`) — la columna nativa `Material` es otra cosa |
+| 🏭 **Línea** | dimensión contable 349 (`T107-LI Plata Colgado Cx (60.0)`); la nativa existe pero cae en la columna 11 |
+| 🧺 **Rack Types** | cada rack type con sus **piezas por carga** (`T102-RA02: 18 pz`) |
+| 📐 **Unidades** | **todos** los factores registrados, en unidades por pieza (`KGM: 0.376 /pz`) |
 
-Excluye BOOLEAN / DROPDOWN / TEXT (el usuario pidió explícitamente **numéricos**) y los parámetros/specs **archivados**.
+El criterio de "numérico" (desde 0.2.0) es que el **valor** traiga dígitos, no el `specField.type`. Excluye parámetros y specs **archivados**. Todas las columnas arrancan **APAGADAS** (ver §0.3.0: el response pesa 5.84 MB).
 
 ## Decisión de diseño (respuesta a la pregunta original del usuario)
 
@@ -53,12 +58,12 @@ Los params vienen **DUPLICADOS**: en el PN de referencia (44068-205-01), 5 archi
 
 | Archivo | Rol |
 |---|---|
-| `remote/scripts/pn-specs-column-core.js` | Motor puro (sin DOM/red): `isPartNumbersIndexPath`, `parsePartNumberId`, `unitSymbol`, `fmtNum`, `formatRange`, `extractSpecsWithNumericParams`, `formatCellText`. Dual node/browser. |
-| `remote/scripts/pn-specs-column.js` | Glue DOM: toggle persistente, columna en la MUI table, MutationObserver, pool de `GetPartNumber`, memory-hardening. |
-| `tools/test/pn-specs-column-core.test.js` | 14 golden tests. |
+| `remote/scripts/pn-specs-column-core.js` | Motor puro (sin DOM/red): ruta/ids (`isPartNumbersIndexPath`, `parsePartNumberId`), formato (`unitSymbol`, `fmtNum`, `fmtFactor`, `formatRange`, `formatCellText`, `formatRackTypesText`, `formatUnitFactorsText`) y extracción (`extractSpecsWithNumericParams`, `extractMetalBase`, `buildAcctDimensionCatalog`, `extractDimensionValue`, `extractLinea`, `extractRackTypes`, `extractUnitFactors`, `extractPnRow`). Dual node/browser. |
+| `remote/scripts/pn-specs-column.js` | Glue DOM: barra de 5 toggles persistentes, columnas al inicio (`moveToFront`), MutationObserver, pool de `GetPartNumber`, memory-hardening. |
+| `tools/test/pn-specs-column-core.test.js` | 30 golden tests (13 sobre fixture real del PN 2300153). |
 
-- **Toggle persistente**: `localStorage['sa_pn_specs_col_enabled']` = `'1'`/`'0'`, **default OFF** (no sorprender con 50 queries pesados). Toggle DOM en el header + acción de popup (`PnSpecsColumn.toggleFromPopup`).
-- **Columna**: `<th>` + `<td>` por fila insertados **antes de la última columna** (Acciones). Marcados `.sa-pnspec-cell` para idempotencia. `partNumberId` sale del `<a href="/PartNumbers/:id">` de la celda Nombre.
+- **Toggles persistentes** (uno por columna, todos **default OFF** — no sorprender con 50 queries de 5.8 MB): `sa_pn_specs_col_enabled` (la original, se respeta el valor previo), `sa_pn_metal_col_enabled`, `sa_pn_linea_col_enabled`, `sa_pn_racks_col_enabled`, `sa_pn_units_col_enabled`. La acción del popup (`PnSpecsColumn.toggleFromPopup`) sigue apuntando a Specs; las demás solo tienen toggle en el header.
+- **Columnas**: `<th>` + `<td>` por fila, **siempre al INICIO** en el orden canónico de `COLS`, reposicionadas en cada sync con `moveToFront` (idempotente). `partNumberId` sale del `<a href="/PartNumbers/:id">` de la celda Nombre y se marca en `data-sa-pnid` de cada celda nuestra.
 - **React/MUI**: la tabla es `MuiTable-root` controlada por React. Un `MutationObserver` (debounce 160ms) re-inyecta la columna al paginar/ordenar/filtrar. **Validado en vivo:** insertar `<td>` extra al final de cada `<tr>` **sobrevive** el render de React (50/50 celdas persisten).
 - **Estilo**: toggle/toast en **dark-mode** (UI nuestra, regla de diseño); la columna se integra a la tabla clara de SH pero **marcada con acento verde** (`border-left:3px #13a36f`) para señalar que es enriquecimiento de la extensión. Render con `textContent` (no innerHTML de datos → no XSS con nombres de spec).
 
@@ -66,7 +71,7 @@ Los params vienen **DUPLICADOS**: en el PN de referencia (44068-205-01), 5 archi
 
 Importa `host-cleanup-shared.js`. Aplica porque el toggle ON dispara ~50 `GetPartNumber` pesados por página y se re-dispara al paginar.
 
-**EJE A (propia):** cache **slim** por `partNumberId` (`window.__saPnSpecsCache` Map → solo `{specs, total}`, no el response de 504 campos); cache se limpia al **navegar fuera** del index; teardown de columna/observer/pool al desactivar.
+**EJE A (propia):** cache **slim** por `partNumberId` (`window.__saPnSpecsCache` Map → `{specs, total, metal, linea, rackTypes, units}` ≈ 2 KB, **no** el response de **5.84 MB** — medido en vivo, ver §0.3.0); cache se limpia al **navegar fuera** del index; teardown de columnas/observer/pool al desactivar.
 **EJE B (host):** `stopDatadogSessionReplay()` al primer fetch real; `createMemMonitor` con guardrail @88% → vacía la cola de enriquecimiento + toast (checkpoint > crash); `makePeriodicDrain(25)` (Apollo) al final de cada worker; pool con `MAX_CONC=4` + `MIN_GAP_MS=130` (~7 req/s) + retry `[0,800,2500]` solo en transitorios.
 
 ## Estado de validación (2026-07-08)
@@ -139,3 +144,95 @@ Estuvo oculto por timing hasta que se aceleró el loader el mismo día (ver
 [`../architecture/applet-load-gating.md`](../architecture/applet-load-gating.md)).
 
 **Fix:** `ensureToggle()` siempre que la ruta aplique; el trabajo pesado detrás de `isEnabled()`.
+
+## v0.3.0 (2026-07-29) — 4 columnas nuevas y todas AL INICIO
+
+Pedido del operador: mover Specs a la izquierda y agregar **metal base**, **línea**,
+**rack types con su cantidad** y **todos los factores de unidad registrados**.
+
+### Por qué a la izquierda (el pedido dentro del pedido)
+
+La tabla nativa de `/PartNumbers` tiene **20 columnas** y ya trae `Línea`, `Departamento`,
+`Material` y `Dimensions` — pero en las **posiciones 10-12**, fuera de vista sin scroll
+horizontal (verificado en vivo: el header nativo es *Nombre · In Stock · Accounting ID/Name ·
+Group · Customer · Default Process · Price/Part · Material · Geometry Type · Dimensions ·
+**Línea** · Departamento · Source Operation · Cut Stock? · GL Account · Labels · OEMs · Notas
+Adicionales · Acciones*). Por eso duplicar `Línea` no es redundante: la nuestra la trae al
+frente, junto al resto del bloque. La nativa `Material` **no** es el metal base (es el material
+de inventario, vacío en los NP revisados); el metal base solo vive en `customInputs`.
+
+Patrón `moveToFront` copiado de `wo-listing-columns` (ya validado en piso). Verificado sobre la
+tabla real: las 5 celdas quedan en los índices 0-4 del `thead` y de las **50 filas** (0
+desalineadas), heredan la className MUI, `moveToFront` es **idempotente** (re-correrlo no mueve
+nada → el MutationObserver no entra en bucle con sus propias mutaciones) y **recupera** cuando
+se simula que React las flota al final (20-24 → 0-4).
+
+### Un solo query para las 5 columnas — verificado en vivo, no supuesto
+
+Todo sale del **mismo** `GetPartNumber` que ya se pagaba (hash `5efd689d…`, HTTP 200, PN 2300153
+"51004727AA", 2026-07-29):
+
+| Columna | Ruta en el response |
+|---|---|
+| ⚗️ Metal base | `partNumberById.customInputs.DatosAdicionalesNP.BaseMetal` → `"Cobre"` |
+| 🏭 Línea | selección `{dimensionId:349, dimensionCustomValueId:154}` cruzada contra `allAcctDimensions` → `"T107-LI Plata Colgado Cx (60.0)"` |
+| 🧺 Rack Types | `partNumberRackTypesByPartNumberId.nodes[] {partsPerRack, rackTypeByRackTypeId{name}}` → `T102-RA02: 18`, `T107-FL01: 54` |
+| 📐 Unidades | `inventoryItemByPartNumberId.inventoryItemUnitConversionsByInventoryItemId.nodes[] {factor, unitByUnitId{name}}` → 5 factores |
+
+**Hallazgo: el `GetDimension` extra de `load-calculator-modal` no hace falta.** El catálogo de
+dimensiones contables viaja **en el mismo response**, a nivel raíz (`allAcctDimensions`, con los
+**30** valores de la dim 349 y 19 de la 586 — verificado). Lo que la selección **NO** trae es el
+objeto anidado `acctDimensionCustomValueByDimensionCustomValueId`: ese shape existe en
+`searchPartNumbers` (de donde lo lee `pn-lifecycle-core`) pero **no** en `GetPartNumber`, que
+solo da el id. Confundir los dos shapes es lo que empuja a pedir un query de más.
+
+**`partNumberRackTypes` no tiene `archivedAt`** — las llaves del nodo son
+`nodeId/id/partsPerRack/rackTypeByRackTypeId/partNumberId`. No se filtra por archivado porque no
+existe tal estado ahí.
+
+**`factor` = unidades de esa unidad por PIEZA** (el mismo número que el operador captura como
+"X / Part"; ver `unit-autoconvert-core`). Comprobado con los datos: KGM `0.376` × 2.20462 =
+`0.828937` = LBR; CMK `120.58` × 0.00107639 = `0.129791` = FTK.
+
+### El response pesa 5.84 MB — el dato que cambia las decisiones
+
+Medido en vivo (PN 2300153). La bitácora anterior decía "pesado, 504 campos", que subestima el
+problema: **50 filas × 5.84 MB ≈ 290 MB** de responses transitorios por página. De ahí que:
+
+- las 4 columnas nuevas nazcan **APAGADAS**. Encenderlas por default habría convertido un deploy
+  de config en 50 consultas de 5.8 MB para todo el que entre a `/PartNumbers`, sin pedirlo;
+- `extractPnRow` destile el response **una sola vez** a ~2 KB (`{specs, metal, linea, rackTypes,
+  units}`) y suelte el crudo — el cache slim ya existía, ahora guarda las 5 columnas;
+- el pool siga en 4 con `MIN_GAP_MS` 130 y el guardrail de memoria al 88% intacto.
+
+La key de Specs (`sa_pn_specs_col_enabled`) **no cambió**: quien la tenía encendida la conserva.
+
+### Precisión de los factores (`fmtFactor`)
+
+`fmtNum` redondea a 6 significativos, y eso convertía `0.1297911062` en `0.129791`: aceptable
+para un rango de spec, **no** para un dato maestro que el operador puede querer copiar. Se agregó
+`fmtFactor` = `fmtNum(n, 10)`, que además limpia el ruido de float binario del server
+(`6.3933979999999995` → `6.393398`). El default de `fmtNum` quedó igual (los tests viejos lo fijan).
+
+### Otras decisiones
+
+- **Un toggle por columna** (5 en una barra dark-mode en el header), no un maestro: el ancho es
+  el recurso escaso y el operador necesita apagar lo que no usa sin perder el enriquecimiento.
+  El contador `done/total` vive en el de Specs y ahora cuenta **NPs**, no celdas (una consulta
+  alimenta las 5 columnas).
+- **`partsPerRack` ausente se muestra `?`, nunca 1.** Asumir "1 pieza por carga" en silencio es
+  exactamente lo que en `wo-schedule-button` convierte 141 minutos en ~112 días. Hay un test que
+  lo fija.
+- **Línea: ID primero, nombre después.** Se usa `config.steelhead.domain.dimensionIds.linea`
+  (349); si ese id no aparece en el catálogo, se cae a buscar la dimensión por nombre **ES+EN**
+  (`/^(línea|line)$/i`). El texto solo **AMPLÍA** el match, nunca lo reduce — jerarquía de
+  anclaje del repo. Si no matchea nada, la celda queda vacía: **no agarra otra dimensión**.
+- Sin links a rack types ni a unidades: no se verificó la URL de esas fichas y no se inventan.
+
+### Pendiente de validación en vivo
+
+El operador debe: recargar la extensión → `/PartNumbers` → encender los 4 toggles nuevos y
+confirmar los valores contra un NP conocido, la paginación (el observer re-inyecta) y el ancho
+de la tabla. Lo verificado hasta aquí es la **extracción** (30/30 golden, fixture real) y el
+**posicionamiento DOM** (simulacro sobre la tabla real de 50 filas); falta el applet completo
+corriendo de punta a punta.
