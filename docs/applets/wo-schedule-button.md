@@ -352,3 +352,48 @@ próxima vez que alguien programe ese PN en esa línea, el dato ya está.
 - El modal asume **rackCount = 1**; cuando la estación declare varios racks hay que leer
   `stationTreatmentRackTypes` de esa estación (hoy solo se ha visto dentro de
   `RelatedSchedulingInformation`, que son ~87 MB).
+
+
+## Correcciones del primer uso en vivo (2026-07-28, v0.9.0)
+
+Cuatro cosas del feedback con captura sobre la OT 16154. La primera no era un ajuste: era el
+**modelo de dominio mal entendido**.
+
+### 1. No se programa tina por tina — se programa por tratamiento ANCLA
+La v1 ofrecía en un select **todas** las tinas de la receta (en la captura: *"T109 Recibo de
+Orden · T109-EN00-001 Carga de Barril"*, que no es programable). El operador lo corrigió: solo
+son programables los nodos cuyo tratamiento corre en una **estación con calendario de
+planificación** — los *"Listo para procesar" / "Listo para niquelar"* y las **estaciones
+satélite**. Y no se programa un paso: se programa **la orden completa** contemplando el o los
+tratamientos ancla, porque **una misma orden puede correr en varias líneas**.
+
+El marcador es el **grupo de tratamiento «Planificación» (2344)**, el mismo que el auto-ruteador
+ya usa para las stations `-LI`. Confirmado con datos: en ese grupo caen `T110 (PLA)-CU-VARIOS`,
+`T202 (PLA)-CU-VARIOS`, `T206 (EST)-BI-BIMETALES`; una tina normal como
+`TR-PRM-001 Antitarnish Manual` cae en otro. **El árbol de la receta NO trae el grupo**, así que
+se pide con `RelatedSchedulingTreatments({treatmentIds})` — una query chica.
+
+El modal ya no tiene select de pasos: lista los **anclas encontrados con checkbox** (todos
+marcados), y **crea una tarea por ancla**. Si la orden no tiene ninguno, lo dice y no deja seguir
+en vez de ofrecer una tina cualquiera.
+
+### 2. El rack default sigue a la LÍNEA, no al PN
+Programando en **T109** el modal ofrecía **`T111-RA01`**. Causa: precargaba `pnRacks[0]`, o sea
+*el primer rack que el PN tuviera ligado* — que puede ser de otra línea. `pickRackForLine` ahora
+elige el rack cuyo nombre abre con el código de línea del ancla (`T109-RA01`), prefiriendo entre
+los de esa línea el que ya tenga piezas declaradas. Al cambiar de ancla, el rack se reevalúa.
+
+### 3. Contraste
+Solo el `datetime-local` tenía estilo oscuro; los `select` e `input` salían con el blanco nativo
+del navegador. Ahora **todos** los campos son oscuros (`#141a23` / `#dfe5ec`), con foco verde.
+
+### 4. 🔀 antes del 📅
+*"En ocasiones primero tengo que rutear a otra línea antes de programar."* El readout lleva ahora
+un **🔀 delante del 📅** — ese es el orden real del trabajo. Abre el panel de pistas, cuya primera
+fila es **«📋 Toda la orden»**, que es el equivalente a rutear la orden completa. Va una sola vez
+por readout, no uno por tarea.
+
+**Respuesta a la duda del operador** («no estoy seguro si por default va a tomar el modo orden
+completa»): el panel de pistas **siempre** trae la pista global «Toda la orden» como primera fila,
+y todas las pistas arrancan en «— pendiente —», así que nada se mueve hasta elegir una línea. No
+hay riesgo de que rutee un grupo por accidente.
