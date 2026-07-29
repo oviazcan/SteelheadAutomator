@@ -172,6 +172,16 @@
       ],
       "_estrategia": "capture-abort",
       "_nota": "OT Centinela 11677. Mutation de wo-schedule-button Fase 2a (fijar la hora de una tarea y marcarla intencional). Disparador: boton 📅 del header (svg[data-testid=CalendarMonthIcon] dentro de button[aria-label='View Schedule'], VERIFICADO EN VIVO 2026-07-28) -> modal con FullCalendar de las tareas de la OT -> clic en el evento -> boton 'Update' del formulario (breadcrumb button:Update del scan 2026-07-23 sobre la OT 14983). CAPTURA-Y-ABORTA -> no se mueve ninguna tarea. BLOQUEADO POR DATOS: la OT Centinela 11677 NO tiene tareas programadas (calendario vacio, verificado en vivo), asi que hoy el ciclo NO corre: el load lo detecta y devuelve name:'' (fail-closed limpio) en vez de clicar a ciegas. Para habilitarlo, programar la OT Centinela en el tablero (una tarea, estacion cualquiera, fecha lejana). Lo UNICO no verificado de la ruta es el DOM del formulario del evento; su boton se ancla por texto EN+ES. usedBy: wo-schedule-button."
+    },
+    "scheduleTaskCreate": {
+      "id": "schedule-board-454",
+      "screenPath": "/Schedules/454/ScheduleBoard",
+      "marker": "(board — el candado es el abort, no un objeto Centinela)",
+      "_para": [
+        "CreateManyScheduleTasks"
+      ],
+      "_estrategia": "capture-abort",
+      "_nota": "Se dispara al GUARDAR el Schedule Board tras programar una orden que no tenia tarea (breadcrumb button:Save, scan 2026-07-28). CAPTURA-Y-ABORTA: la op se marca en sink.abortOps ANTES de tocar Guardar, asi que el request se registra y se aborta -> no se crea ninguna tarea. OJO: aqui NO hay objeto Centinela que sirva de segundo candado (el board es global), asi que el UNICO candado es el abort -> no cambiar la estrategia sin repensarlo. PENDIENTE de correr headless: programar desde el board implica arrastrar una orden al calendario, que es DOM de FullCalendar (.fc-event) y no esta guionizado. Alternativa mas simple cuando la OT Centinela 11677 (ya desarchivada) este sin tarea: programarla desde su propia ficha. usedBy: wo-schedule-button."
     }
   },
   "_dominio": "TLC/344 (Toluca — los centinelas viven aquí; 344 es TLC, NO MTY. MTY es otro dominio sin datos aún)"

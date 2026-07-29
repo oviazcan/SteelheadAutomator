@@ -203,3 +203,50 @@ más, el applet sí va al bundle y en iOS simplemente esa función no opera.
 
 Recordatorio: el bundle es **estático** (Apple 2.5.2 prohíbe código remoto) — editar
 `remote/scripts` NO llega al iPad hasta correr `tools/build-safari.sh` y **recompilar en Xcode**.
+
+
+## Fase 2b — payload CAPTURADO y motor listo (2026-07-28)
+
+El scan del 2026-07-28 20:19 **sí trajo el payload** de `CreateManyScheduleTasks`
+(`count=2`, `vars=1`) — el fix del hash-scanner de ese día era lo que faltaba, no el ERP.
+Fixture: [`tools/test/fixtures/wo-schedule-create-task.json`](../../tools/test/fixtures/wo-schedule-create-task.json).
+`WoScheduleCore.buildScheduleTaskCreateInput` **reproduce ese payload byte a byte** (test golden).
+
+### Lo que la evidencia corrigió respecto a lo que estaba escrito aquí
+| Creencia previa | Realidad capturada |
+|---|---|
+| `rackTypeIdLineage` es un array | es un **STRING** (`"2701"`), y `rackIdLineage` venía **null** |
+| `partSetUuid` "¿generado en cliente?" | **UUID v4 del cliente**, confirmado |
+| los `times` "sin mapear" | `TreatmentTime.cycleTime` / **`totalTime`** (no `treatmentTime`), como **Interval de Postgres** |
+| `recipeNodeId` sin fuente | lo trae `SchedulablePartLocations` directo |
+
+### La fórmula de la duración (lo único que se calcula, no se copia)
+```
+lotes = ceil(partCount / partsPerBatch)
+totalTimeMinutes = treatmentTimeMinutes + (lotes - 1) × cycleTimeMinutes
+```
+**Validada contra 4 tareas reales independientes:** 13504/1501→9 lotes→45+8×12=**141** (el CREATE
+capturado); 9000/1686→6→50+5×50=**300**; 1/120→1→**66**; 12/49→1→**30**.
+
+### `TreatmentTime` es un sistema de OVERRIDES
+`possibleTreatmentTimesByRecipeNodeDefaultTreatment` es una **lista**: `partNumberId`,
+`stationId`, `processNodeId` y `processNodeOccurrence` son nullable y **null = comodín**. Gana el
+que matchea el contexto siendo **más específico**. Eso explica por qué el mismo `treatmentId`
+en la misma estación aparece con tiempos distintos según la tarea — depende del PN. Un candidato
+cuyo campo *difiere* del contexto se **descarta**, no se aproxima: programar con el tiempo de otra
+estación desacomoda el piso. ⚠️ La muestra trae UN solo `TreatmentTime` (todo null), así que el
+desempate está implementado pero **no observado**.
+
+### Lo que falta para cablear la UI (y por qué no se cableó a ciegas)
+Dos insumos no tienen todavía una consulta **ligera** que los dé desde la ficha:
+1. **los tiempos** — hoy solo se han visto dentro de `RelatedSchedulingInformation`, que son
+   ~87 MB (la bitácora del auto-router ya lo documenta como el query más pesado del board), y de
+   `ScheduleInformationById(scheduleId)`, que los trae **ya resueltos por tarea existente**;
+2. **`partsPerBatch`** — la hipótesis `partsPerRack × rackCount` cuadra con el único caso
+   capturado (`rackCount=1` ⇒ 1501 = 1501), pero **un caso no distingue el producto de la
+   identidad**.
+
+Por eso el motor quedó listo y verificado, pero el 📅 de «Sin programar» **sigue sin escribir**:
+teclear un tiempo a mano entra al planificador igual de mal que calcularlo mal. El camino
+natural es `ScheduleInformationById` — copiar los tiempos de una tarea real del mismo
+treatment+estación y **fail-closed si no existe ninguna**, en vez de inventarlos.

@@ -580,3 +580,148 @@ test('verifyScheduleTaskApplied: tarea que desapareció no es un éxito', () => 
   assert.equal(r.ok, false);
   assert.match(r.reasons[0], /ya no aparece/i);
 });
+
+// ══════════════════════════════════════════════════════════════════════════
+// Fase 2b — CREAR una tarea donde no hay
+// ══════════════════════════════════════════════════════════════════════════
+// Todo esto sale del payload REAL capturado el 2026-07-28 (Schedule Board 454,
+// programar una orden sin tarea). El fixture es la evidencia; estos tests son el
+// candado que impide que el ensamblado se aleje de ella.
+const FX = require('./fixtures/wo-schedule-create-task.json');
+
+test('buildScheduleTaskCreateInput reproduce el payload REAL byte a byte', () => {
+  const real = FX.variables;
+  const t = real.scheduledTasks.mnScheduleTask[0];
+  const n = t.scheduleTaskElementsByScheduleTaskId.nodes[0];
+  const out = Core.buildScheduleTaskCreateInput({
+    scheduleId: t.scheduleId, treatmentId: t.treatmentId, stationId: t.stationId,
+    expectedStartTime: t.expectedStartTime,
+    cycleTimeMinutes: t.cycleTimeMinutes, treatmentTimeMinutes: t.treatmentTimeMinutes,
+    isIntentional: t.isIntentional,
+    partSetUuid: n.partSetUuid, recipeNodeId: n.recipeNodeId, partNumberId: n.partNumberId,
+    rackIdLineage: n.rackIdLineage, rackTypeIdLineage: n.rackTypeIdLineage,
+    partCount: n.partCount, partsPerBatch: n.partsPerBatch,
+    relatedPartTransferAccounts: n.relatedPartTransferAccounts,
+  });
+  assert.deepEqual(out, real);
+});
+
+test('los tipos que sorprenden se respetan: rackTypeIdLineage es STRING', () => {
+  const n = FX.variables.scheduledTasks.mnScheduleTask[0].scheduleTaskElementsByScheduleTaskId.nodes[0];
+  assert.equal(typeof n.rackTypeIdLineage, 'string', 'el capturado es string, no array ni número');
+  assert.equal(n.rackIdLineage, null);
+  // y el ensamblado no lo "arregla" a número
+  const out = Core.buildScheduleTaskCreateInput({
+    scheduleId: 1, treatmentId: 2, stationId: 3, expectedStartTime: 'x',
+    cycleTimeMinutes: 1, treatmentTimeMinutes: 1, partCount: 1, partsPerBatch: 1,
+    partSetUuid: 'u', recipeNodeId: 4, partNumberId: 5, rackTypeIdLineage: 2701,
+    relatedPartTransferAccounts: [{ id: 9, partCount: 1 }],
+  });
+  assert.strictEqual(out.scheduledTasks.mnScheduleTask[0]
+    .scheduleTaskElementsByScheduleTaskId.nodes[0].rackTypeIdLineage, '2701');
+});
+
+// La fórmula del total es lo único que el applet CALCULA en vez de copiar, así que se
+// fija contra las 4 tareas reales que la validaron. Si alguien la "simplifica", truena.
+test('scheduleTaskTimes: total = tratamiento + (lotes-1) × ciclo — 4 casos reales', () => {
+  const casos = [
+    { partCount: 13504, partsPerBatch: 1501, treatmentTimeMinutes: 45, cycleTimeMinutes: 12, batches: 9, total: 141 },
+    { partCount: 9000,  partsPerBatch: 1686, treatmentTimeMinutes: 50, cycleTimeMinutes: 50, batches: 6, total: 300 },
+    { partCount: 1,     partsPerBatch: 120,  treatmentTimeMinutes: 66, cycleTimeMinutes: 60, batches: 1, total: 66 },
+    { partCount: 12,    partsPerBatch: 49,   treatmentTimeMinutes: 30, cycleTimeMinutes: 30, batches: 1, total: 30 },
+  ];
+  for (const c of casos) {
+    const r = Core.scheduleTaskTimes(c);
+    assert.equal(r.batches, c.batches, `lotes mal para ${c.partCount}/${c.partsPerBatch}`);
+    assert.equal(r.totalTimeMinutes, c.total, `total mal para ${c.partCount}/${c.partsPerBatch}`);
+  }
+});
+
+test('scheduleTaskTimes: un lote exacto NO cobra ciclo de más', () => {
+  // 100/100 = 1 lote justo: el borde donde un ceil mal puesto agrega un ciclo fantasma
+  assert.equal(Core.scheduleTaskTimes({ partCount: 100, partsPerBatch: 100,
+    treatmentTimeMinutes: 30, cycleTimeMinutes: 10 }).totalTimeMinutes, 30);
+  // 101/100 = 2 lotes
+  assert.equal(Core.scheduleTaskTimes({ partCount: 101, partsPerBatch: 100,
+    treatmentTimeMinutes: 30, cycleTimeMinutes: 10 }).totalTimeMinutes, 40);
+});
+
+test('scheduleTaskTimes: datos inservibles → null (no una tarea de 0 minutos)', () => {
+  assert.equal(Core.scheduleTaskTimes({ partCount: 0, partsPerBatch: 10, treatmentTimeMinutes: 1, cycleTimeMinutes: 1 }), null);
+  assert.equal(Core.scheduleTaskTimes({ partCount: 10, partsPerBatch: 0, treatmentTimeMinutes: 1, cycleTimeMinutes: 1 }), null);
+  assert.equal(Core.scheduleTaskTimes({ partCount: 10, partsPerBatch: 5, treatmentTimeMinutes: null, cycleTimeMinutes: 1 }), null);
+});
+
+test('intervalToMinutes: los tiempos viajan como Interval de Postgres', () => {
+  const iv = FX._treatmentTimeEjemplo.nodo.cycleTime;
+  assert.equal(Core.intervalToMinutes(iv), 20);
+  assert.equal(Core.intervalToMinutes(FX._treatmentTimeEjemplo.nodo.totalTime), 30);
+  assert.equal(Core.intervalToMinutes({ hours: 2, minutes: 5 }), 125);
+  assert.equal(Core.intervalToMinutes({ days: 1 }), 1440);
+  assert.equal(Core.intervalToMinutes({ minutes: 1, seconds: 30 }), 1.5);
+  assert.equal(Core.intervalToMinutes(null), null);
+});
+
+// El TreatmentTime aplicable es un override por especificidad: null = comodín.
+// Elegir el equivocado programa con el tiempo de otra estación → desacomoda el piso.
+test('pickTreatmentTime: gana el más específico que MATCHEE el contexto', () => {
+  const times = [
+    { cycleTime: { minutes: 20 }, totalTime: { minutes: 30 }, timeType: 'BATCH',
+      partNumberId: null, stationId: null },
+    { cycleTime: { minutes: 12 }, totalTime: { minutes: 45 }, timeType: 'BATCH',
+      partNumberId: 3027539, stationId: null },
+    { cycleTime: { minutes: 99 }, totalTime: { minutes: 99 }, timeType: 'BATCH',
+      partNumberId: null, stationId: 99999 },
+  ];
+  const r = Core.pickTreatmentTime(times, { partNumberId: 3027539, stationId: 12093 });
+  assert.equal(r.cycleTimeMinutes, 12, 'debe ganar el override del PN, no el comodín');
+  assert.equal(r.treatmentTimeMinutes, 45, 'treatmentTimeMinutes sale de totalTime');
+});
+
+test('pickTreatmentTime: un override de OTRA estación se descarta, no se aproxima', () => {
+  const times = [{ cycleTime: { minutes: 99 }, totalTime: { minutes: 99 }, stationId: 99999 }];
+  assert.equal(Core.pickTreatmentTime(times, { stationId: 12093 }), null);
+  assert.equal(Core.pickTreatmentTime([], { stationId: 1 }), null);
+});
+
+test('pickTreatmentTime: el comodín aplica cuando no hay override', () => {
+  const r = Core.pickTreatmentTime([FX._treatmentTimeEjemplo.nodo], { partNumberId: 1, stationId: 2 });
+  assert.equal(r.cycleTimeMinutes, 20);
+  assert.equal(r.treatmentTimeMinutes, 30);
+  assert.equal(r.timeType, 'BATCH');
+});
+
+test('buildScheduleTaskCreateInput: sin cuenta de piezas NO arma payload', () => {
+  const base = {
+    scheduleId: 454, treatmentId: 99431, stationId: 12093, expectedStartTime: 'x',
+    cycleTimeMinutes: 12, treatmentTimeMinutes: 45, partCount: 10, partsPerBatch: 5,
+    partSetUuid: 'u', recipeNodeId: 1, partNumberId: 2,
+  };
+  assert.equal(Core.buildScheduleTaskCreateInput({ ...base, relatedPartTransferAccounts: [] }), null);
+  // y sin los campos obligatorios tampoco
+  assert.equal(Core.buildScheduleTaskCreateInput({ ...base, stationId: null,
+    relatedPartTransferAccounts: [{ id: 1, partCount: 10 }] }), null);
+});
+
+test('partsPerBatchFrom: piezas por rack × racks de la estación', () => {
+  assert.equal(Core.partsPerBatchFrom(1501, 1), 1501);   // el caso capturado
+  assert.equal(Core.partsPerBatchFrom(120, 4), 480);
+  assert.equal(Core.partsPerBatchFrom(50, null), 50);    // sin rackCount → 1 rack
+  assert.equal(Core.partsPerBatchFrom(0, 3), null);
+});
+
+// El CREATE sí devuelve la tarea creada — a diferencia del UPDATE, que no confirma nada.
+test('parseCreatedScheduleTasks lee la confirmación real del servidor', () => {
+  const r = Core.parseCreatedScheduleTasks(FX.respuesta);
+  assert.equal(r.length, 1);
+  assert.equal(r[0].taskId, 88629);
+  assert.equal(r[0].stationId, 12093);
+  assert.equal(r[0].status, 'QUEUED');
+  assert.equal(r[0].totalTimeMinutes, 141);
+  assert.equal(r[0].cycleTimeMinutes, 12);
+});
+
+test('parseCreatedScheduleTasks: respuesta vacía o rara → [] (no truena)', () => {
+  assert.deepEqual(Core.parseCreatedScheduleTasks({}), []);
+  assert.deepEqual(Core.parseCreatedScheduleTasks(null), []);
+});

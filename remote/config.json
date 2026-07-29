@@ -80,7 +80,8 @@
         "UpdateProcessNodePartNumberOptInOut": "4556e5710f068e129fadc74cbce1f9a5e7cc42113f4e8e1808976b4e4f4cd2a6",
         "CreateProcessNodePartNumberOptInout": "f6fe26e4494c8c91d076975a8d7e89ed2f90a487d05f8bc021c2e296f3d6124f",
         "CreateNewPartGroup": "7ee30dd45af56f280ac45423349bb03b23ba6be7fb70aba6fe8ecfae819d54e4",
-        "UpdateManyScheduleTasks": "14c097944aca8f0f4d47f3bac5d6c8b2a35d3b2adec3adb72bda66a24b2d6e7b"
+        "UpdateManyScheduleTasks": "14c097944aca8f0f4d47f3bac5d6c8b2a35d3b2adec3adb72bda66a24b2d6e7b",
+        "CreateManyScheduleTasks": "9039afe7fe853a54fc1c31ad0d51e91dccd24b37c2698d786dc58bd1835c46c9"
       },
       "queries": {
         "AllStations": "834516258e392dcd9c666c2349992e3f6744aaf536cb127cb8c9eb4347f883f7",
@@ -2747,6 +2748,11 @@
     "UpdateManyScheduleTasks": {
       "type": "mutation",
       "description": "Fija la hora de tareas de programación YA EXISTENTES y las marca intencionales (STATIC-SCHEDULED: el planificador deja de moverlas al reacomodar). Variables: {scheduledTasks:[{id, scheduleId, stationId, expectedStartTime (ISO UTC), totalTimeMinutes, cycleTimeMinutes, treatmentTimeMinutes, isIntentional}]}. Es UPDATE-POR-ID: NO crea tareas (para eso CreateManyScheduleTasks) y NO recorre las demás (eso es el reschedule del board: Create+Update+Delete+UpdateManyStationTasks). Gotcha: la respuesta es {mnUpdateScheduleTaskById:{clientMutationId:null}} — NO confirma nada de lo pedido, así que hay que RELEER WorkOrderSchedule y comparar.",
+      "usedBy": "wo-schedule-button"
+    },
+    "CreateManyScheduleTasks": {
+      "type": "mutation",
+      "description": "CREA tareas de programación donde no hay (la que dispara el Save del Schedule Board al programar una orden sin tarea). Payload REAL capturado 2026-07-28 → fixture tools/test/fixtures/wo-schedule-create-task.json. Forma: {scheduledTasks:{mnScheduleTask:[{scheduleId,treatmentId,stationId,expectedStartTime,totalTimeMinutes,cycleTimeMinutes,treatmentTimeMinutes,isIntentional:false,status:'UNSCHEDULED',scheduleTaskElementsByScheduleTaskId:{nodes:[{partSetUuid (UUID v4 del CLIENTE),recipeNodeId,partNumberId,rackIdLineage,rackTypeIdLineage (STRING, no array),partCount,partsPerBatch,relatedPartTransferAccounts:[{id,partCount}]}]}}]}, scheduleIdFilter:{equalTo:scheduleId}}. totalTimeMinutes NO se manda tal cual: total = treatmentTime + (ceil(partCount/partsPerBatch)-1)*cycleTime (validado contra 4 tareas reales). Los tiempos salen de TreatmentTime (cycleTime/totalTime como Interval de Postgres) con overrides por especificidad. A diferencia de UpdateManyScheduleTasks, la respuesta SÍ devuelve la tarea creada.",
       "usedBy": "wo-schedule-button"
     }
   },

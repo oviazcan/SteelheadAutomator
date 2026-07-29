@@ -1,0 +1,189 @@
+{
+  "_origen": "scan_results_2026-07-28_201943.json — CreateManyScheduleTasks capturado en vivo desde el Schedule Board 454 (programar una orden sin tarea). Es el payload REAL, no una deducción.",
+  "hash": "9039afe7fe853a54fc1c31ad0d51e91dccd24b37c2698d786dc58bd1835c46c9",
+  "variables": {
+    "scheduledTasks": {
+      "mnScheduleTask": [
+        {
+          "scheduleId": 454,
+          "treatmentId": 99431,
+          "stationId": 12093,
+          "expectedStartTime": "2026-07-29T02:18:45.475Z",
+          "totalTimeMinutes": 141,
+          "cycleTimeMinutes": 12,
+          "treatmentTimeMinutes": 45,
+          "isIntentional": false,
+          "status": "UNSCHEDULED",
+          "scheduleTaskElementsByScheduleTaskId": {
+            "nodes": [
+              {
+                "partSetUuid": "bd7db626-4804-4c58-87de-4d7a90a8090d",
+                "recipeNodeId": 46713766,
+                "partNumberId": 3027539,
+                "rackIdLineage": null,
+                "rackTypeIdLineage": "2701",
+                "partCount": 13504,
+                "partsPerBatch": 1501,
+                "relatedPartTransferAccounts": [
+                  {
+                    "id": 44812098,
+                    "partCount": 13504
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "scheduleIdFilter": {
+      "equalTo": 454
+    }
+  },
+  "respuesta": {
+    "createManyScheduledTasks": [
+      {
+        "nodeId": "WyJzY2hlZHVsZV90YXNrcyIsODg2Mjld",
+        "id": 88629,
+        "isIntentional": false,
+        "cycleTimeMinutes": 12,
+        "totalTimeMinutes": 141,
+        "treatmentTimeMinutes": 45,
+        "expectedStartTime": "2026-07-29T02:18:45.475+00:00",
+        "stationId": 12093,
+        "status": "QUEUED",
+        "createdAt": "2026-07-29T02:18:48.892257+00:00",
+        "scheduleTaskElementsByScheduleTaskId": {
+          "nodes": [
+            {
+              "nodeId": "WyJzY2hlZHVsZV90YXNrX2VsZW1lbnRzIiw5NjA0Ml0=",
+              "id": 96042,
+              "createdAt": "2026-07-29T02:18:48.892257+00:00",
+              "partSetUuid": "bd7db626-4804-4c58-87de-4d7a90a8090d",
+              "partNumberByPartNumberId": {
+                "nodeId": "WyJwYXJ0X251bWJlcnMiLDMwMjc1Mzld",
+                "id": 3027539,
+                "name": "2007655-064",
+                "__typename": "PartNumber"
+              },
+              "associatedPartsTransferAccounts": {
+                "nodes": [
+                  {
+                    "nodeId": "WyJwYXJ0c190cmFuc2Zlcl9hY2NvdW50cyIsNDQ4MTIwOThd",
+                    "id": 44812098,
+                    "partNumberId": 3027539,
+                    "workOrderId": 1908503,
+                    "partGroupId": null,
+                    "productionBatchId": null,
+                    "recipeNodeByRecipeNodeId": {
+                      "nodeId": "WyJyZWNpcGVfbm9kZXMiLDQ2NzEzNzY0XQ==",
+                      "recipeInd": 9,
+                      "name": "T114 Listo para Enracar",
+                      "id": 46713764,
+                      "derivedFrom": 184640,
+                      "processNodeOccurrence": 1,
+                      "__typename": "RecipeNode"
+                    },
+                    "partCount": 13504,
+                    "qualityHoldByQualityHoldId": null,
+                    "associatedScheduleTaskElements": {
+                      "nodes": [
+                        {
+                          "nodeId": "WyJzY2hlZHVsZV90YXNrX2VsZW1lbnRzIiw5NjA0Ml0=",
+                          "id": 96042,
+                          "recipeNodeId": 46713766,
+                          "partSetUuid": "bd7db626-4804-4c58-87de-4d7a90a8090d",
+                          "scheduleTaskByScheduleTaskId": {
+                            "nodeId": "WyJzY2hlZHVsZV90YXNrcyIsODg2Mjld",
+                            "id": 88629,
+                            "stationByStationId": {
+                              "nodeId": "WyJzdGF0aW9ucyIsMTIwOTNd",
+                              "id": 12093,
+                              "name": "T114-LI Fosfato de Manganeso (7.1)",
+                              "__typename": "Station"
+                            },
+                            "__typename": "ScheduleTask"
+                          },
+                          "__typename": "ScheduleTaskElement"
+                        }
+                      ],
+                      "__typename": "ScheduleTaskElementsConnection"
+                    },
+                    "__typename": "PartsTransferAccount"
+                  }
+                ],
+                "__typename": "PartsTransferAccountsConnection"
+              },
+              "partCount": 13504,
+              "partsPerBatch": 1501,
+              "recipeNodeId": 46713766,
+              "partNumberId": 3027539,
+              "rackTypesByRackTypeIdLineage": [
+                {
+                  "nodeId": "WyJyYWNrX3R5cGVzIiwyNzAxXQ==",
+                  "id": 2701,
+                  "name": "T114-FL01",
+                  "ancestryLevel": 0,
+                  "__typename": "RackType"
+                }
+              ],
+              "racksByRackIdLineage": [],
+              "__typename": "ScheduleTaskElement"
+            }
+          ],
+          "__typename": "ScheduleTaskElementsConnection"
+        },
+        "__typename": "ScheduleTask"
+      }
+    ]
+  },
+  "_treatmentTimeEjemplo": {
+    "_ruta": "RelatedSchedulingInformation.allWorkOrders.nodes[].incompleteRecipeNodesByWorkOrderId.nodes[].possibleTreatmentTimesByRecipeNodeDefaultTreatment.nodes[]",
+    "nodo": {
+      "nodeId": "WyJ0cmVhdG1lbnRfdGltZXMiLDEyMjU0MF0=",
+      "partNumberId": null,
+      "stationId": null,
+      "processNodeId": null,
+      "processNodeOccurrence": null,
+      "cycleTime": {
+        "years": 0,
+        "months": 0,
+        "days": 0,
+        "hours": 0,
+        "minutes": 20,
+        "seconds": 0,
+        "__typename": "Interval"
+      },
+      "totalTime": {
+        "years": 0,
+        "months": 0,
+        "days": 0,
+        "hours": 0,
+        "minutes": 30,
+        "seconds": 0,
+        "__typename": "Interval"
+      },
+      "timeType": "BATCH",
+      "__typename": "TreatmentTime"
+    }
+  },
+  "_stationRackType": {
+    "_ruta": "RelatedSchedulingInformation.allStations.nodes[].stationTreatmentRackTypesByStationId.nodes[]",
+    "nodo": {
+      "nodeId": "WyJzdGF0aW9uX3RyZWF0bWVudF9yYWNrX3R5cGVzIiwyNTdd",
+      "stationId": 12093,
+      "treatmentGroupId": null,
+      "rackCount": 1,
+      "treatmentId": null,
+      "rackTypeId": 2701,
+      "rackTypeByRackTypeId": {
+        "nodeId": "WyJyYWNrX3R5cGVzIiwyNzAxXQ==",
+        "archivedAt": null,
+        "id": 2701,
+        "name": "T114-FL01",
+        "__typename": "RackType"
+      },
+      "__typename": "StationTreatmentRackType"
+    }
+  }
+}
