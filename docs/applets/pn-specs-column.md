@@ -1,6 +1,6 @@
 # pn-specs-column — Datos del NP (specs, metal, línea, racks, unidades) en el dashboard de Números de Parte
 
-**Versión:** 0.3.0 — Core **30/30** golden (13 nuevos contra **fixture REAL** del PN 2300153 capturado en vivo). **0.3.0** 4 columnas nuevas + todas AL INICIO (ver §0.3.0). **0.2.1** fix del toggle que no se montaba. **0.2.0** criterio "el valor trae dígitos" + spec como link. **0.1.2** estilo. **0.1.1** 2 bugs del run real.
+**Versión:** 0.3.2 — **VIVO; salió en config 1.11.7 (tag `v1.11.7`) y el config vivo sigue avanzando con deploys de otros applets. VALIDADO EN VIVO por el operador** («ya quedó», 2026-07-29, con el contador marcando `50/50`). Core **42/42** golden (25 nuevos contra **fixture REAL** del PN 2300153 capturado en vivo). **0.3.2** Specs al final de la barra, racks en 2 renglones, unidades en el orden del ERP, nombre del NP realzado + fix del `<style>` que se recreaba en cada sync. **0.3.1** angostar (fuera Línea; desc+metal dentro de la celda del nombre). **0.3.0** columnas nuevas + todas AL INICIO. **0.2.1** fix del toggle que no se montaba. **0.2.0** criterio "el valor trae dígitos" + spec como link. **0.1.2** estilo. **0.1.1** 2 bugs del run real.
 **Categoría:** Números de Parte · **autoInject:true** · ruta: `/PartNumbers` (index, NO la ficha `/PartNumbers/:id`)
 
 ## Qué hace
@@ -80,7 +80,7 @@ Importa `host-cleanup-shared.js`. Aplica porque el toggle ON dispara ~50 `GetPar
 - ✅ **Hash `GetPartNumber`**: el de config (`8e3fdb52…`) **ROTÓ** (HTTP 400 "Must provide a query string"). Capturado el nuevo del front: **`5efd689d…`** (HTTP 200 verificado). Actualizado en `config.json`.
 - ✅ **DOM en vivo**: `findHeaderAnchor` encuentra el ancla; columna inyectada (th + 50 td con pnId); **sobrevive el render de React**.
 - ✅ **Deploy**: config 1.7.85 en vivo; `pn-specs-column-core.js` + `pn-specs-column.js` servidos **byte-exact** (sha256 verificado vs `main:remote/`); hash `GetPartNumber` nuevo y app presentes en el config servido.
-- ⏳ **Pendiente (run real integrado)**: el intento de correr el applet completo desde una tab automatizada se topó con el **throttling de Chrome en tabs sin foco** (los `fetch` a `/graphql` y a gh-pages se congelan en background) — NO es un problema del applet; las piezas (fetch `GetPartNumber` 200 + extract + DOM) se validaron por separado. **Validación final la hace el usuario en foreground**: recargar la extensión (`chrome://extensions` → reload) → `/PartNumbers` → activar el toggle **🧪 Specs num.** en el header → confirmar chips (ej. `E27550 (Plata): Espesor 1.27–3.5 µm`), paginación (observer re-inyecta) y el contador `done/total`.
+- ✅ **Run real integrado — CERRADO el 2026-07-29** (quedó abierto desde el 2026-07-08). El operador corrió el applet completo en foreground con las columnas encendidas y el contador marcó **`50/50`** con el medidor de memoria en `338MB / 4192MB (8%)`. Lo que bloqueaba la verificación no era el applet sino el **throttling de Chrome en tabs sin foco**: desde una pestaña automatizada los `fetch` a `/graphql` se congelan (`document.hidden === true` ⇒ `inFlight` se queda clavado). **Regla para futuras validaciones de este applet: el ciclo con red se comprueba en foreground; desde automatización solo se verifica extracción y DOM** (inyectando el row al cache y forzando un sync síncrono con dos `toggle()` seguidos).
 
 ## Fixes 0.1.1 (primer run real del usuario, 2026-07-08)
 
@@ -115,15 +115,23 @@ A pedido del usuario, la columna se integra al look nativo en vez de destacar en
 - **Toggle**: más delgado — `padding 2px 8px`, switch `26×14`, font 11px, sin el border-left grueso.
 - La señal "esto es de la extensión" queda en los **chips verdes** de los parámetros y en el toggle dark-mode.
 
-## Pendientes / Fase 2
+## Pendientes (reconciliados 2026-07-29)
 
-- **Deploy** (`tools/deploy.sh` con `--check pn-specs-column`). El toggle default OFF hace el deploy seguro (nadie ve queries extra sin activar).
-- Run real integrado (validar observer en paginación + guardrail de memoria con captura del mem monitor).
-- El hash de `GetPartNumber` rotó → probablemente afecta **otros applets** (bulk-upload, spec-migrator, auditor…). Conviene correr el skill `steelhead-hash-validator` / hash-scanner y registrar en `docs/api/hash-validation-log.md`.
-- Fase 2 posible: tooltip on-hover con TODOS los params (incl. booleanos) además de la columna numérica; recordar la última posición de scroll; incluir specs desde `partNumberSpecsByPartNumberId` aunque no tengan numéricos (ya se muestran con "sin params num.").
+**Abiertos de verdad:**
+- **Recompilar en Xcode** para que el bundle **v0.6.9** llegue al iPad. Es lo único que falta del lado Safari: el artefacto ya está construido, verificado y copiado a `Resources/`.
+- **Observer en paginación y guardrail de memoria**: el run real cubrió la carga inicial (`50/50`), pero nadie ha capturado el mem monitor disparando el guardrail al 88% ni ha paginado con las 4 columnas encendidas.
 
-## Safari/iPad (2026-07-09)
-Integrado al bundle Safari/iPad (`safari/bundle.json` **v0.5.3**, `safari-bundle-sync`). Es **FAB-only**: `autoInject:true` pone el toggle en el header de `/PartNumbers` (control en página, no requiere lanzador de popup). Sin bloqueadores iOS (read-only, sin descarga/clipboard). Rebuild `tools/build-safari.sh` (build-safari test 10/10). **Requiere recompilar en Xcode** para que llegue al iPad (el bundle es estático).
+**Cerrados (no volver a abrirlos):**
+- ~~Deploy~~ — vive en producción desde config 1.7.85; hoy en **1.11.7**.
+- ~~Run real integrado~~ — cerrado por el operador (ver §Estado de validación).
+- ~~Rotación del hash `GetPartNumber`~~ — se atendió en su momento y **hoy sigue vigente**: `5efd689d…` respondió HTTP 200 en las pruebas en vivo del 2026-07-29.
+
+**Ideas, no compromisos:** tooltip on-hover con TODOS los params (incluidos los cualitativos); recordar la posición de scroll.
+
+## Safari/iPad
+En el bundle desde **v0.5.3** (2026-07-09). Es **FAB-only**: `autoInject:true` pone la barra de toggles en el header de `/PartNumbers`, no requiere lanzador de popup. Sin bloqueadores iOS (read-only, sin descarga ni clipboard).
+
+Al día en **v0.6.9** (2026-07-29). Rebuilds de esta tanda: **0.6.7** trajo 0.3.0 (y saldó de paso `wo-schedule-button` 0.9.0), **0.6.8** trajo 0.3.1, **0.6.9** trajo 0.3.2. Ninguno agregó applets — el scanner dio 0 integrables las tres veces. **Falta recompilar en Xcode** (el bundle es estático).
 
 ## v0.2.1 (2026-07-27) — el toggle no se montaba si arrancaba apagado
 
@@ -229,13 +237,12 @@ para un rango de spec, **no** para un dato maestro que el operador puede querer 
   anclaje del repo. Si no matchea nada, la celda queda vacía: **no agarra otra dimensión**.
 - Sin links a rack types ni a unidades: no se verificó la URL de esas fichas y no se inventan.
 
-### Pendiente de validación en vivo
+### Validación
 
-El operador debe: recargar la extensión → `/PartNumbers` → encender los 4 toggles nuevos y
-confirmar los valores contra un NP conocido, la paginación (el observer re-inyecta) y el ancho
-de la tabla. Lo verificado hasta aquí es la **extracción** (30/30 golden, fixture real) y el
-**posicionamiento DOM** (simulacro sobre la tabla real de 50 filas); falta el applet completo
-corriendo de punta a punta.
+Al momento de escribir 0.3.0 quedaba pendiente el run integrado; **se cerró el mismo día** tras
+las iteraciones 0.3.1 y 0.3.2 (ver §Estado de validación). Lo verificado en el momento del deploy
+fue la **extracción** (golden con fixture real) y el **posicionamiento DOM** (simulacro sobre la
+tabla real de 50 filas).
 
 ### Safari/iPad — bundle v0.6.7 (2026-07-29)
 
