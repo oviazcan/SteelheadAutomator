@@ -220,3 +220,73 @@ test('el applet de OTs usa parametersToAdd, NUNCA paramsToApply', () => {
   assert.ok(bloque.includes('parametersToAdd'), 'la mutation de OT usa parametersToAdd');
   assert.equal(bloque.includes('paramsToApply'), false, 'ese es el shape del NP, no el de OT');
 });
+
+// ── Atomicidad por grupo (2026-07-29) ───────────────────────────────────────
+// El incidente de GRUPO COLLADO fue de 52 parámetros porque el apply archivaba TODO y luego
+// reponía TODO: cuando la reposición falló en bloque, quedaron 52 huecos. Si cada grupo se
+// archiva y se repone junto, un fallo deja UN hueco, no cincuenta y dos.
+
+test('planApplyUnits: cada unidad lleva su archivado Y su reposición juntos', () => {
+  const grupos = [
+    { key: 'a', pnId: 1, fieldId: 10, params: [{ rowId: 100 }],
+      releasePlan: { action: 'rewrite', archiveIds: [100], insertParamId: 900 } },
+    { key: 'b', pnId: 2, fieldId: 20, params: [{ rowId: 200 }],
+      releasePlan: { action: 'rewrite', archiveIds: [200], insertParamId: 901 } },
+  ];
+  const dec = new Map([['a', { winnerRowId: null }], ['b', { winnerRowId: null }]]);
+  const u = SMN.planApplyUnits(grupos, k => dec.get(k));
+  assert.equal(u.length, 2);
+  assert.deepEqual(u[0].archive, [100]);
+  assert.equal(u[0].repone.specFieldParamId, 900);
+  assert.equal(u[0].pnId, 1);
+});
+
+test('planApplyUnits: archive-only no lleva reposición', () => {
+  const grupos = [{ key: 'a', pnId: 1, fieldId: 10, params: [{ rowId: 100 }, { rowId: 101 }],
+    releasePlan: { action: 'archive-only', archiveIds: [100], insertParamId: null } }];
+  const u = SMN.planApplyUnits(grupos, () => ({ winnerRowId: 101 }));
+  assert.equal(u[0].repone, null);
+  assert.deepEqual(u[0].archive, [100]);
+});
+
+test('planApplyUnits: ambiguo NO genera unidad — no se toca', () => {
+  const grupos = [{ key: 'a', pnId: 1, fieldId: 10, params: [{ rowId: 100 }],
+    releasePlan: { action: 'ambiguous', archiveIds: [], insertParamId: null } }];
+  assert.equal(SMN.planApplyUnits(grupos, () => ({ winnerRowId: null })).length, 0);
+});
+
+test('planApplyUnits: un grupo ignorado NO genera unidad', () => {
+  const grupos = [{ key: 'a', pnId: 1, fieldId: 10, params: [{ rowId: 100 }],
+    releasePlan: { action: 'rewrite', archiveIds: [100], insertParamId: 900 } }];
+  assert.equal(SMN.planApplyUnits(grupos, () => ({ ignored: true })).length, 0);
+});
+
+test('planApplyUnits: duplicado clásico archiva los perdedores sin reponer', () => {
+  const grupos = [{ key: 'a', pnId: 1, fieldId: 10,
+    params: [{ rowId: 100 }, { rowId: 101 }, { rowId: 102 }],
+    releasePlan: { action: 'ok', archiveIds: [], insertParamId: null } }];
+  const u = SMN.planApplyUnits(grupos, () => ({ winnerRowId: 101 }));
+  assert.deepEqual(u[0].archive.sort((a, b) => a - b), [100, 102]);
+  assert.equal(u[0].repone, null);
+});
+
+// ── Salud del ERP: frenar antes de tumbarlo ─────────────────────────────────
+// Medido el 2026-07-29: tras un día de escaneos, una consulta trivial tardó 24 s y varias
+// veces el /graphql dejó de responder. Insistir en ese estado es lo que deja trabajo a medias.
+
+test('erpHealth: con respuestas rápidas mantiene el ritmo', () => {
+  const h = SMN.erpHealth([300, 250, 400, 320]);
+  assert.equal(h.degradado, false);
+  assert.equal(h.pausaMs, 0);
+});
+
+test('erpHealth: si las respuestas se disparan, manda pausar', () => {
+  const h = SMN.erpHealth([300, 2000, 9000, 15000]);
+  assert.equal(h.degradado, true);
+  assert.ok(h.pausaMs >= 1000, 'debe pedir una pausa real');
+});
+
+test('erpHealth: sin muestras suficientes no opina', () => {
+  assert.equal(SMN.erpHealth([500]).degradado, false);
+  assert.equal(SMN.erpHealth([]).degradado, false);
+});

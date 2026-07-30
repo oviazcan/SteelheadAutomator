@@ -3223,124 +3223,96 @@ const SpecMigrator = (() => {
     const myRunId = ++dupState.runId;
     void parentRunId;
 
-    const tasks = [];
-    // 2026-07-29: además de archivar sobrantes, LIBERAR el nodo forzado. Un param del NP con
-    // processNodeId hace que Steelhead lo materialice en ESE nodo al crear la OT (el raíz),
-    // en vez de dejarlo caer en el nodo que declara el specField. Liberar = archivar la fila
-    // forzada y reponer la misma con processNodeId:null. Hasta hoy el apply solo archivaba,
-    // así que estos casos se detectaban pero no se corregían.
-    const releases = [];
-    for (const g of dupState.groups) {
-      const dec = dupState.decisions.get(g.key);
-      if (!dec || dec.ignored) continue;
+    // ── Apply ATÓMICO por unidad (2026-07-29) ────────────────────────────────────
+    // Antes: archivar TODO y luego reponer TODO. Cuando la reposición falló en bloque
+    // (shape equivocado), quedaron 52 parámetros archivados sin reponer. Ahora cada unidad
+    // archiva y repone JUNTO: un fallo deja UN hueco, no cincuenta y dos. El radio de daño
+    // deja de crecer con el tamaño de la corrida.
+    const SMNu = (typeof window !== 'undefined' && window.SpecMigratorNormalize) || null;
+    const units = SMNu
+      ? SMNu.planApplyUnits(dupState.groups, (k) => dupState.decisions.get(k))
+      : [];
 
-      const rp = g.releasePlan || { action: 'ok', archiveIds: [], insertParamId: null };
-      if (rp.action === 'rewrite' || rp.action === 'archive-only') {
-        const yaArchivadas = new Set(rp.archiveIds || []);
-        for (const id of (rp.archiveIds || [])) {
-          tasks.push({ group: g, paramRowId: id, sfpName: '(nodo forzado)', esLiberacion: true });
-        }
-        if (rp.action === 'rewrite' && rp.insertParamId != null) {
-          // isGeneric: el shape de GetPartNumber NO lo expone a este nivel. Se manda false y
-          // se verificó en vivo (2026-07-29) que el ERP acepta la reposición igual, incluso en
-          // campos marcados Generic: YES como "Primeras Piezas" — HTTP 200.
-          releases.push({ group: g, specFieldId: g.fieldId, specFieldParamId: rp.insertParamId,
-                          isGeneric: false });
-        }
-        // el resto de sobrantes del grupo, si los hubiera
-        for (const p of g.params) {
-          if (p.rowId === dec.winnerRowId || yaArchivadas.has(p.rowId)) continue;
-          tasks.push({ group: g, paramRowId: p.rowId, sfpName: p.sfpName });
-        }
-        continue;
-      }
-      if (rp.action === 'ambiguous') continue;   // valores distintos: no se decide solo
-
-      for (const p of g.params) {
-        if (p.rowId === dec.winnerRowId) continue;
-        tasks.push({ group: g, paramRowId: p.rowId, sfpName: p.sfpName });
-      }
-    }
-
-    if (!tasks.length && !releases.length) {
-      alert('No hay nada que archivar (todos los grupos están ignorados o solo tienen 1 param).');
+    if (!units.length) {
+      alert('No hay nada que aplicar (todos los grupos están ignorados o ya cumplen la regla).');
       return;
     }
 
-    // Confirmación con los números REALES de lo que se va a escribir. Va aquí, contra las
-    // listas ya armadas, no contra un contador paralelo que pueda desfasarse.
-    const nPNs = new Set([...tasks.map(t => t.group.pnId), ...releases.map(r => r.group.pnId)]).size;
-    const msg = 'Se van a ESCRIBIR ' + (tasks.length + releases.length) + ' cambios en '
-      + nPNs + ' Números de Parte:\n\n'
-      + '  · ' + tasks.length + ' parámetros a archivar\n'
-      + '  · ' + releases.length + ' a reponer sin nodo (filas NUEVAS)\n\n'
-      + 'Archivar es reversible con el rowId del XLSX; reponer crea filas.\n\n¿Continuar?';
-    if (!confirm(msg)) return;
+    const nArch = units.reduce((a, u) => a + u.archive.length, 0);
+    const nRep = units.filter(u => u.repone).length;
+    const nPNs = new Set(units.map(u => u.pnId)).size;
+    if (!confirm('Se van a ESCRIBIR cambios en ' + nPNs + ' Números de Parte:\n\n'
+      + '  · ' + nArch + ' parámetros a archivar\n'
+      + '  · ' + nRep + ' a reponer sin nodo (filas NUEVAS)\n\n'
+      + 'Cada campo se archiva y se repone JUNTO, así que una interrupción deja como mucho '
+      + 'un hueco.\n\n¿Continuar?')) return;
 
     dupSetBody(`<div class="dup-progress">
-      Archivando ${tasks.length} params (concurrencia 3)…
-      <div data-ctrl="prog-msg">0/${tasks.length}</div>
+      Aplicando ${units.length} campos (archivar + reponer juntos)…
+      <div data-ctrl="prog-msg">0/${units.length}</div>
       <div class="dup-bar"><div data-ctrl="prog-bar" style="width:0%"></div></div>
+      <div data-ctrl="prog-erp" style="font-size:11px;color:#9ca3af;margin-top:6px"></div>
     </div>`);
-    dupSetFooter(`<button class="dup-btn dup-btn-danger" data-act="dup-stop">Cancelar</button>`);
+    dupSetFooter(`<button class="dup-btn dup-btn-danger" data-act="dup-stop">Detener</button>`);
     dupState.panelEl.querySelector('[data-act=dup-stop]')?.addEventListener('click', () => {
       dupState.runId++;
-      dupClosePanel();
     });
     const pm = dupState.panelEl.querySelector('[data-ctrl=prog-msg]');
     const pb = dupState.panelEl.querySelector('[data-ctrl=prog-bar]');
+    const pe = dupState.panelEl.querySelector('[data-ctrl=prog-erp]');
 
     const okRows = [];
     const errRows = [];
-    let processed = 0;
+    let repuestos = 0, procesadas = 0;
+    const tiempos = [];
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-    await dupRunPool(tasks, async (t) => {
-      if (dupState.runId !== myRunId) return;
+    // EN SERIE y a ritmo adaptativo: son escrituras, y el /graphql se degrada por sesión.
+    for (const u of units) {
+      if (dupState.runId !== myRunId) break;
+      const t0 = Date.now();
       try {
-        await dupWithRetry(
-          () => api().query('UpdatePartNumberSpecParam',
-            { id: t.paramRowId, archivedAt: new Date().toISOString() },
-            'UpdatePartNumberSpecParam'),
-          `archiveParam ${t.paramRowId}`
-        );
-        okRows.push({ group: t.group, paramRowId: t.paramRowId, sfpName: t.sfpName });
+        for (const rowId of u.archive) {
+          await dupWithRetry(
+            () => api().query('UpdatePartNumberSpecParam',
+              { id: rowId, archivedAt: new Date().toISOString() }, 'UpdatePartNumberSpecParam'),
+            `archivar ${rowId}`);
+          okRows.push({ group: { pnId: u.pnId }, paramRowId: rowId, sfpName: '' });
+        }
+        if (u.repone) {
+          const st = await addSingleParamToPN(
+            u.pnId, Number(u.repone.specFieldId), Number(u.repone.specFieldParamId), false);
+          if (st !== 'ok' && st !== 'conflict' && st !== 'duplicate') {
+            throw new Error('reponer devolvió: ' + st);
+          }
+          repuestos++;
+        }
       } catch (e) {
-        errRows.push({ group: t.group, paramRowId: t.paramRowId, sfpName: t.sfpName, error: e?.message || String(e) });
+        errRows.push({ group: { pnId: u.pnId }, paramRowId: u.archive.join(','),
+                       sfpName: '', error: e?.message || String(e) });
       }
-      processed++;
-      if (pm) pm.textContent = `${processed}/${tasks.length} (${okRows.length} OK, ${errRows.length} err)`;
-      if (pb) pb.style.width = `${(processed / tasks.length) * 100}%`;
-    }, 3);
+      tiempos.push(Date.now() - t0);
+      if (tiempos.length > 12) tiempos.shift();
+      procesadas++;
+      if (pm) pm.textContent = `${procesadas}/${units.length} (${repuestos} repuestos, ${errRows.length} err)`;
+      if (pb) pb.style.width = `${(procesadas / units.length) * 100}%`;
 
-    log(`[SPM-dup] Fix aplicado: ${okRows.length} OK, ${errRows.length} errores`);
+      // Freno adaptativo: si el ERP empieza a sufrir, bajar el ritmo en vez de tumbarlo.
+      const salud = SMNu ? SMNu.erpHealth(tiempos) : { degradado: false, pausaMs: 0 };
+      if (salud.degradado) {
+        if (pe) pe.textContent = `⏸ el ERP va lento (~${Math.round(salud.medianaMs)} ms). `
+          + `Pausa de ${Math.round(salud.pausaMs / 1000)} s para no saturarlo…`;
+        await sleep(salud.pausaMs);
+        if (pe) pe.textContent = '';
+      }
+    }
+
+    log(`[SPM-dup] Fix aplicado: ${okRows.length} archivados, ${repuestos} repuestos, ${errRows.length} errores`);
 
     const body = dupState.panelEl.querySelector('.dup-body');
     body.innerHTML = '';
     const sum = document.createElement('div');
-    sum.className = okRows.length && !errRows.length ? 'dup-success' : 'dup-error';
-    // Reponer, SIN nodo, los params liberados. Va DESPUÉS del archivado: si se insertara
-    // antes, chocaría con el constraint de 1 fila viva por specFieldId.
-    let repuestos = 0;
-    for (const r of releases) {
-      if (dupState.runId !== myRunId) break;
-      try {
-        // Se reusa addSingleParamToPN, que YA existía y estaba probada. Mi versión inventó el
-        // shape: copié `parametersToAdd` de AddParamsToPartNumberRecipeNodeSpecFieldParam (la
-        // mutation de la OT) cuando AddParamsToPartNumber (la del NP) usa `paramsToApply`.
-        // Nombres casi iguales, tipos distintos → HTTP 400 en las 52 reposiciones del
-        // 2026-07-29, que archivó sin reponer. Misma trampa que los shapes del auto-router.
-        const st = await addSingleParamToPN(
-          r.group.pnId, Number(r.specFieldId), Number(r.specFieldParamId), !!r.isGeneric);
-        if (st !== 'ok' && st !== 'conflict' && st !== 'duplicate') {
-          throw new Error('addSingleParamToPN devolvió: ' + st);
-        }
-        repuestos++;
-      } catch (e) {
-        errRows.push({ group: r.group, paramRowId: '(reposición)', sfpName: '(sin nodo)',
-                       error: e?.message || String(e) });
-      }
-    }
-
+    sum.className = errRows.length ? 'dup-error' : 'dup-success';
     sum.textContent = `Resultado: ${okRows.length} archivados, ${repuestos} repuestos sin nodo, ${errRows.length} errores. Reversible vía UpdatePartNumberSpecParam con archivedAt:null (usa los rowId del XLSX).`;
     body.appendChild(sum);
 
