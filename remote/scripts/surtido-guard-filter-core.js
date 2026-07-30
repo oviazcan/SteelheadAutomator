@@ -169,6 +169,36 @@
     return out.sort();
   }
 
+  // Líneas del board desde `WorkOrderSchedule`, que devuelve el schedule COMPLETO del dominio
+  // (no solo el de la WO consultada) con `stationByStationId.name` en cada tarea.
+  //
+  // Por qué hace falta (bug reportado 2026-07-30): sin esto el catálogo dependía de las tarjetas
+  // MONTADAS, y el board virtualiza — de 142 órdenes monta ~8. Resultado: el dropdown arrancaba
+  // con 3 líneas y **crecía conforme filtrabas**, porque esconder tarjetas hace que virtuoso monte
+  // otras y aparezcan líneas nuevas. El operador veía el catálogo descubrirse por accidente.
+  //
+  // Devuelve SOLO las líneas, sin conteos, y es deliberado: esta query cubre el dominio entero,
+  // así que sus números NO son los de este workboard. Un conteo inflado en el dropdown es peor
+  // que ningún conteo — es el dato con el que se decide.
+  function linesFromBoardSchedule(input) {
+    const root = (input && input.allSchedules) ? input
+               : (input && input.data && input.data.allSchedules) ? input.data
+               : null;
+    const seen = {};
+    const out = [];
+    for (const sch of asNodes(root && root.allSchedules)) {
+      for (const task of asNodes(sch && sch.validScheduleTasks)) {
+        if (!task) continue;
+        const st = task.stationByStationId || {};
+        const code = lineCodeFromStationText(st.name);
+        if (!code || seen[code]) continue;
+        seen[code] = true;
+        out.push(code);
+      }
+    }
+    return out.sort();
+  }
+
   const MAX_MOUNTED_DEFAULT = 200;
 
   // ¿Esta tarjeta se ve con el filtro puesto?
@@ -238,7 +268,7 @@
   const api = {
     LINE_CODE_RE, MAX_MOUNTED_DEFAULT,
     lineCodeFromStationText, linesFromScheduledRows,
-    buildStationLineIndex, buildLineCounts, mergeLineCatalog, accumulateSeenLines,
+    buildStationLineIndex, buildLineCounts, mergeLineCatalog, accumulateSeenLines, linesFromBoardSchedule,
     cardVisibleUnderFilter, planFilter
   };
   if (typeof window !== 'undefined') window.SurtidoGuardFilterCore = api;

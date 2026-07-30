@@ -350,3 +350,47 @@ test('accumulateSeenLines: entradas basura no truenan', () => {
   assert.deepStrictEqual(Core.accumulateSeenLines(null, null), []);
   assert.deepStrictEqual(Core.accumulateSeenLines(['T204'], [null, { lines: null }, 5]), ['T204']);
 });
+
+// ── linesFromBoardSchedule ───────────────────────────────────────────────
+// Bug del operador (2026-07-30): el dropdown arrancaba con 3 líneas y CRECÍA al ir filtrando,
+// porque el catálogo salía de las tarjetas montadas y el board virtualiza (142 órdenes, ~8
+// montadas). La API del schedule del dominio da el catálogo completo de una.
+const BOARD_SCHED = {
+  allSchedules: { nodes: [{ id: 454, validScheduleTasks: { nodes: [
+    { stationId: 1, stationByStationId: { id: 1, name: 'T101-LI Desengrase' } },
+    { stationId: 2, stationByStationId: { id: 2, name: 'T204-LI Plata y Estaño s/Cobre Colgado (16.1)' } },
+    { stationId: 3, stationByStationId: { id: 3, name: 'T101-LI Desengrase' } },
+    { stationId: 4, stationByStationId: { id: 4, name: 'Proquipa.N1.A1' } },
+    { stationId: 5, stationByStationId: { id: 5, name: 'T102-CE01 Célula' } }
+  ] } }] }
+};
+
+test('linesFromBoardSchedule: catálogo COMPLETO del dominio, dedup y ordenado', () => {
+  assert.deepStrictEqual(Core.linesFromBoardSchedule(BOARD_SCHED), ['T101', 'T102', 'T204']);
+});
+
+test('linesFromBoardSchedule: una ubicación de almacén NO entra como línea', () => {
+  const r = Core.linesFromBoardSchedule(BOARD_SCHED);
+  assert.ok(!r.includes('PROQUIPA'), 'Proquipa.N1.A1 es dónde está PARADA, no una línea destino');
+});
+
+test('linesFromBoardSchedule: acepta el response con o sin envoltura .data', () => {
+  assert.deepStrictEqual(Core.linesFromBoardSchedule({ data: BOARD_SCHED }), ['T101', 'T102', 'T204']);
+});
+
+test('linesFromBoardSchedule: shape inesperado → [] (fail-safe, no truena)', () => {
+  assert.deepStrictEqual(Core.linesFromBoardSchedule(null), []);
+  assert.deepStrictEqual(Core.linesFromBoardSchedule({}), []);
+  assert.deepStrictEqual(Core.linesFromBoardSchedule({ allSchedules: { nodes: [null] } }), []);
+});
+
+test('linesFromBoardSchedule: tarea sin estación no truena', () => {
+  const d = { allSchedules: { nodes: [{ validScheduleTasks: { nodes: [{ stationId: 9 }] } }] } };
+  assert.deepStrictEqual(Core.linesFromBoardSchedule(d), []);
+});
+
+test('mergeLineCatalog: las líneas de la API-schedule entran SIN número (no son de este board)', () => {
+  const r = Core.mergeLineCatalog({ byLine: {} }, ['T101', 'T102', 'T204']);
+  assert.deepStrictEqual(r.lines, ['T101', 'T102', 'T204']);
+  assert.deepStrictEqual(r.byLine, {}, 'sin conteos: esa query cubre el dominio, no el workboard');
+});

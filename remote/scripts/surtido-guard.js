@@ -50,6 +50,7 @@ const SurtidoGuard = (() => {
   let lineCounts = null;       // { byLine, lines, scheduledOrders, unknownStationIds }
   let lastScheduleData = null; // último GetRelatedScheduleData.data (para recontar líneas)
   let seenLines = [];          // líneas vistas en ESTE board (ACUMULATIVO — ver accumulateSeenLines)
+  let boardLines = [];         // líneas del board según la API (COMPLETO, no depende de lo montado)
 
   function isWorkboardPage() { return WB_PATH_RE.test(location.pathname); }
   function isEnabled() { return isEnforcementEnabled(); }
@@ -362,6 +363,44 @@ const SurtidoGuard = (() => {
     }
   }
 
+  // Catálogo COMPLETO de líneas del board, desde la API. UNA vez por carga.
+  //
+  // Por qué no basta con el DOM (bug reportado 2026-07-30): el board virtualiza — de 142 órdenes
+  // monta ~8 — así que el dropdown arrancaba con 3 líneas y CRECÍA conforme el operador filtraba,
+  // porque esconder tarjetas hace que virtuoso monte otras. El catálogo se descubría por accidente.
+  //
+  // `WorkOrderSchedule` devuelve el schedule COMPLETO del dominio (no solo el de la WO que se le
+  // pasa), con el nombre de la estación en cada tarea. Cuesta 2 llamadas —hay que resolver el
+  // workOrderId GLOBAL primero— y su respuesta pesa ~4.6MB, así que se **destila de inmediato** a
+  // una lista de códigos y el crudo se descarta sin guardarse en ningún lado.
+  function ensureBoardLineCatalog() {
+    if (window.__saSurtidoGuardBoardAsked) return;
+    const link = document.querySelector(CARD_LINK_SEL);
+    if (!link) return;                       // aún no hay tarjetas montadas: se reintenta luego
+    const item = link.closest('[data-item-index]');
+    const woHref = item && item.querySelector('a[href*="/WorkOrders/"]');
+    const m = woHref && (woHref.getAttribute('href') || '').match(/\/WorkOrders\/(\d+)/);
+    const domainMatch = location.pathname.match(/\/Domains\/(\d+)/);
+    if (!m || !domainMatch) return;
+    window.__saSurtidoGuardBoardAsked = true;   // se latchea SOLO cuando de verdad se va a pedir
+    const woIdInDomain = parseInt(m[1], 10);
+    const domainId = parseInt(domainMatch[1], 10);
+    const api = window.SteelheadAPI;
+    if (!api || typeof api.query !== 'function') return;
+    api.query('WorkOrder', { idInDomain: woIdInDomain }, 'WorkOrder').then((data) => {
+      const wo = data && data.workOrderByIdInDomain;
+      if (!wo || wo.id == null) return null;
+      return api.query('WorkOrderSchedule', { domainId: domainId, workOrderId: wo.id }, 'WorkOrderSchedule');
+    }).then((raw) => {
+      const core = FilterCore();
+      if (!core || !raw) return;
+      boardLines = core.linesFromBoardSchedule(raw);   // destila…
+      raw = null;                                      // …y suelta los ~4.6MB
+      console.log('[SA] SurtidoGuard: líneas del board (API) =', boardLines.join(', ') || '(ninguna)');
+      scheduleDecorate();
+    }).catch(() => {});
+  }
+
   // Si el front NO pidió AllStations, lo pedimos UNA vez (catálogo, ~775 estaciones).
   // Una sola llamada por carga de board: el /graphql de la sesión se cuelga con ráfagas.
   function ensureStationCatalog() {
@@ -452,7 +491,8 @@ const SurtidoGuard = (() => {
     // reportado en vivo 2026-07-30). Se limpia en el teardown, no antes.
     const cards = readMountedCards();
     seenLines = FilterCore().accumulateSeenLines(seenLines, cards);
-    const catalog = FilterCore().mergeLineCatalog(lineCounts, seenLines);
+    // boardLines (API, completo) PRIMERO; seenLines solo agrega lo que la API no haya visto.
+    const catalog = FilterCore().mergeLineCatalog(lineCounts, boardLines.concat(seenLines));
     const lines = catalog.lines;
     const sel = box.querySelector('#sa-sg-filter-sel');
     const wanted = ['', ...lines.map((c) => c + ':' + (catalog.byLine[c] != null ? catalog.byLine[c] : ''))].join('|');
@@ -513,6 +553,7 @@ const SurtidoGuard = (() => {
       try { decorateCards(); } catch (_) {}
       // El filtro va en su PROPIO try/catch: es comodidad, no puede tumbar el naranja ni el
       // candado si algo del DOM cambia bajo sus pies.
+      try { ensureBoardLineCatalog(); } catch (_) {}
       try { applyFilter(); renderFilterBox(); } catch (_) {}
     });
   }
@@ -585,6 +626,8 @@ const SurtidoGuard = (() => {
     lineCounts = null;
     lastScheduleData = null;
     seenLines = [];
+    boardLines = [];
+    window.__saSurtidoGuardBoardAsked = false;
     document.querySelectorAll('[data-sa-sg-filtered]').forEach((el) => {
       delete el.dataset.saSgFiltered;
       el.style.display = ''; el.style.opacity = ''; el.style.filter = '';
@@ -618,6 +661,7 @@ const SurtidoGuard = (() => {
       line: getSelectedLine(),
       lineCounts: lineCounts,
       seenLines: seenLines,
+      boardLines: boardLines,
       mountedCards: (() => { try { return readMountedCards().map((c) => c.lines); } catch (_) { return null; } })(),
       plan: (() => { try { return currentPlan(readMountedCards()); } catch (_) { return null; } })()
     })
