@@ -529,6 +529,22 @@ test('avanzarCursor: sin completados conserva el cursor', () => {
   assert.equal(SMN.avanzarCursor(null, []), null);
 });
 
+test('REGRESIÓN: detener a media corrida no puede borrar el avance', () => {
+  // El bug: al detener, repairOneCustomer regresa sin errores (solo se interrumpió), así que
+  // pnFallidos venía vacío, el `else` ponía parciales=null y el cliente entraba a `done`.
+  // Resultado: marcado como completo sin serlo Y sin cursor, así que al reanudar arrancaba
+  // desde el primer NP. En un cliente de 17 716 eso es no avanzar nunca.
+  // El glue distingue el corte; aquí se fija que el cursor guardado SIGA sirviendo.
+  const todos = pnsDesc(17716, 20000);
+  const trasCorte = { hastaId: 15000, fallidos: [] };   // lo que persistió antes de detener
+  const t = SMN.planCustomerChunk(todos, trasCorte);
+  assert.ok(t.yaHechos > 4900, 'lo revisado antes del corte no se repite');
+  assert.ok(t.pendientes.every(p => p.id < 15000));
+  // Y sin cursor —el estado que producía el bug— se repetiría TODO:
+  assert.equal(SMN.planCustomerChunk(todos, { hastaId: null, fallidos: [] }).pendientes.length,
+    todos.length, 'sin cursor no hay avance que aprovechar');
+});
+
 test('avanzarCursor: usa completados REALES, no el índice del bucle', () => {
   // Con pool 3 hay NPs en vuelo al guardar. Si el cursor se tomara del índice, esos quedarían
   // dados por hechos y su daño no se repararía nunca. Repetirlos no cuesta: reponer un
