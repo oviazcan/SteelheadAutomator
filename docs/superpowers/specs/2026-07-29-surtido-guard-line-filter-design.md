@@ -72,11 +72,68 @@ allSchedules.nodes[].validScheduleTasks.nodes[].{ stationId, treatmentId,
 | Para qué | Fuente | Por qué esa y no la otra |
 |---|---|---|
 | **Catálogo del dropdown** (qué líneas hay en el board, cuántas órdenes cada una) | `GetRelatedScheduleData` (ya interceptado) + `AllStations` (hash `834516258e…`, ya en config) para `stationId → name` | Es **completo**: cubre las N órdenes del step aunque el board tenga 8 tarjetas montadas. Un dropdown construido del DOM nacería incompleto y crecería al scrollear — y no podrías elegir una línea cuya tarjeta no se ha montado. |
-| **Match por tarjeta** (¿esta tarjeta es T204?) | Texto de la tarjeta, sección `Tareas Programadas:` / `Scheduled tasks:` → `lineCodeOf()` | El nombre `T204-…` **no se traduce**. Y evita el puente frágil `workOrderId` **global** (lo que da la API) ↔ `idInDomain` **visible** (lo que trae la tarjeta), que es un desajuste ya documentado en el repo. |
+| **Match por tarjeta** (¿esta tarjeta es T204?) | **Celda de estación de la tabla `Tareas Programadas:`** de la tarjeta (ver §1.1) → código de línea | El nombre `T204-…` **no se traduce**. Y evita el puente frágil `workOrderId` **global** (lo que da la API) ↔ `idInDomain` **visible** (lo que trae la tarjeta), que es un desajuste ya documentado en el repo. |
 
 `AllStations` es un catálogo de ~775 estaciones: **una** llamada por carga de board, cacheada en
 memoria, y solo para poner nombres bonitos y conteos. Si falla, el filtro sigue operando con los
 códigos de línea que saca del DOM (degrada, no se apaga).
+
+### 1.1 Anclaje medido sobre el HTML real de la tarjeta (2026-07-29)
+
+Wrapper capturado del board **"Preparación de Surtido Almacén 5 (Blanca)"**
+(`/Domains/344/Workboards/6234`), tarjeta de la WO 15246. Estructura relevante:
+
+```
+div[border-bottom, overflow:hidden]              ← RAÍZ de la tarjeta (lo que se esconde)
+└ div[background: green]                          ← capa de color de SH (NO es nuestra)
+  └ div[background: rgb(255,255,255), transform]  ← cuerpo blanco (lo que se tinta naranja)
+    └ … div.css-iyrxkt[flex: 1 1 0%]              ← contenedor de contenido
+      ├ "Proceso: T300 (LES)-T204 (PLA)-CU/BR-VARIOS (16.1) | Estación: Proquipa.N1.A1"
+      ├ "Tratamientos: Current (Preparando Surtido en Almacén) : TR-PRM-004 …"
+      ├ span[data-steelhead-component-id="WORKBOARD_PAGE_WORKBOARD_CARD_SALES_ORDER_LINK"]
+      │   + a[href="/Domains/344/WorkOrders/15246"]  ("WO: #15246")
+      ├ div.css-14ok7g3  "Tareas Programadas:"       ← label (bilingüe)
+      └ table.MuiTable-root                          ← LA FUENTE DE LA LÍNEA DESTINO
+          tr > td[0] "T204 (PLA)-CU/BR-VARIOS"                          ← tratamiento
+               td[1] "at T204-LI Plata y Estaño s/Cobre Colgado (16.1)" ← ESTACIÓN
+               td[2] "24/7/2026 - 5:00:00 p.m."                         ← fecha
+```
+
+**Cinco hallazgos que cambian el diseño:**
+
+1. **La línea destino vive en una `<table>`, no en texto suelto.** Se lee por **posición de
+   celda** (`td[1]`), que es estructural y no depende del idioma.
+
+2. **TRAMPA con consecuencia física — no usar `textContent` de la tarjeta.** El bloque de arriba
+   dice `Proceso: **T300** (LES)-T204 (PLA)-…`. Un `lineCodeOf` sobre el texto de la tarjeta
+   agarraría **`T300`** (el proceso completo) en vez de `T204` (la línea destino) ⇒ filtrar por
+   T300 y **surtir material para la línea equivocada**. El anclaje a `td[1]` de la tabla es
+   obligatorio, no una preferencia de estilo.
+
+3. **Es una tabla ⇒ N filas ⇒ una orden puede ir a VARIAS líneas.** El filtro compara contra un
+   **Set** de códigos por tarjeta (`T204` ∈ {T204, T205} → visible). Consistente con
+   `wo-schedule-button` 0.9.0 ("una misma orden puede correr en varias líneas").
+
+4. **`lineCodeOf` no sirve tal cual** en la celda de estación: ancla al inicio
+   (`/^([A-Z]\d{3})/`) y la celda empieza con `at `. Se agrega al core
+   `lineCodeFromStationText()` con `\b([A-Z]\d{3})\b` (sin anclar) — seguro **porque el ámbito es
+   una sola celda** que solo contiene el nombre de la estación. `lineCodeOf` se sigue usando
+   anclado sobre `td[0]` (el tratamiento **sí** empieza con el código).
+   - **Precedencia:** manda la **estación** (`td[1]`) porque es a donde físicamente va el
+     material; el **tratamiento** (`td[0]`) es respaldo si la estación no revela código. Una
+     discrepancia entre ambos se registra en debug, no se adivina.
+   - El `at ` es literal **inglés dentro de una UI en español** (mezcla ya conocida en SH). No se
+     depende de él: se ignora por completo al no anclar el regex.
+
+5. **La raíz de la tarjeta NO tiene `data-item-index` ni `data-index`.** El
+   `closest('[data-item-index], [data-index]')` que `decorateCards` usa hoy devuelve **null** y
+   cae siempre a su fallback — o sea, el naranja se pinta en el contenedor de contenido, no en el
+   cuerpo blanco. **Bug latente aparte**, se anota en la bitácora (no se toca en esta versión).
+   Para el filtro implica que la raíz se localiza subiendo desde el cuerpo blanco, no por atributo.
+
+**Confirmación del filtro nativo (§Problema), con evidencia DOM:** `Estación: Proquipa.N1.A1` es
+una **ubicación de almacén** — dónde está *parada*. Nada que ver con `T204-LI`. Los dos filtros
+miran campos distintos de la misma tarjeta.
 
 ### 2. Fail-safe: el árbitro cruzado
 
@@ -143,26 +200,41 @@ Salvaguarda que **no** cambia ese comportamiento pero evita que el vacío mienta
 
 Decisión del operador: **esconder de verdad** (el board se acorta, se deja de scrollear).
 
-**El riesgo que hay que medir, no suponer:** el step usa listas **virtualizadas**
-(`[data-item-index]`). `display:none` sobre un hijo virtualizado puede dejar huecos o encimar
-tarjetas, porque el contenedor calcula alturas y posiciones. Si al medirlo se rompe el layout,
-se cae a **atenuar** (`opacity:.25` + `grayscale`), que es lo que `schedule-batch-highlighter`
-eligió por esta misma razón. El resto del diseño no cambia — solo el efecto visual.
+**El riesgo que hay que medir, no suponer:** si el step usa listas **virtualizadas**,
+`display:none` sobre un hijo puede dejar huecos o encimar tarjetas, porque el contenedor calcula
+alturas y posiciones. Si al medirlo se rompe el layout, se cae a **atenuar** (`opacity:.25` +
+`grayscale`), que es lo que `schedule-batch-highlighter` eligió por esta misma razón. El resto
+del diseño no cambia — solo el efecto visual.
+
+**Evidencia parcial (2026-07-29):** el comentario del applet afirma "DOM virtualizado", pero el
+HTML real **no lo respalda**: la raíz de la tarjeta no trae `data-item-index`/`data-index` ni
+`position:absolute` con `top`/`height` inline — las marcas que react-window/react-virtualized
+siempre dejan. El `transform: translate(0,0); transition: 400ms` es el **swipe** de la tarjeta,
+no posicionamiento virtual. Hipótesis de trabajo: **no hay virtualización real** y esconder es
+viable. **Sin confirmar** — falta medir el contenedor padre (§Paso 0).
 
 ## Paso 0 (bloqueante): inspección en vivo del board
 
-Regla dura del repo: **no se escriben selectores sin el wrapper HTML real**. Una sola pasada
-sobre el board resuelve todo lo que falta:
+Regla dura del repo: **no se escriben selectores sin el wrapper HTML real**.
 
-1. **Wrapper completo de una tarjeta** con `Tareas Programadas:` — para leer el nombre de la
-   estación (¿en qué nodo vive, hay atributo estable, cómo se separa de tratamiento y fecha?).
-2. **¿Es virtualización real?** Contenedor, `data-item-index`, si las alturas son inline.
-3. **Qué pasa al ocultar** una tarjeta con `display:none` (huecos / encimadas / nada).
-4. **Dónde anclar el box** en el header, y dónde queda el filtro nativo de estación (para no
-   pegarlos y que se confundan).
+- [x] **1. Wrapper completo de una tarjeta** con `Tareas Programadas:` — **HECHO** (§1.1, HTML
+      provisto por el operador). Resolvió el anclaje y destapó la trampa del `Proceso:`.
+- [ ] **2. ¿Es virtualización real?** Contenedor padre del listado: cuántos hijos monta vs total
+      del step, si hay `overflow:auto` + `scrollHeight` >> `clientHeight`, si los hijos llevan
+      posición/altura inline. (Hipótesis: **no** lo es — §5.)
+- [ ] **3. Qué pasa al ocultar** una tarjeta con `display:none` en su raíz: huecos, encimadas o
+      nada. Se mide poniendo y quitando la propiedad, sin deploy.
+- [ ] **4. Dónde anclar el box** en el header, y **dónde queda el filtro nativo de estación**
+      (para no pegarlos y que se confundan — §Problema).
 
 Se hace **leyendo DOM, sin disparar queries** — el `/graphql` de la sesión se cuelga con ráfagas
 (~40-45 requests, sin 429, no se recupera al recargar).
+
+> **Lección del arnés (2026-07-29):** la inspección por automatización de Chrome **exige la
+> pestaña visible**. Con `document.hidden === true` Chrome throttlea `setTimeout` a ~1/minuto, así
+> que cualquier polling con `sleep` revienta el timeout de 45 s de `Runtime.evaluate` sin que la
+> página tenga nada malo. Corolario: en pestaña oculta, sondear con **llamadas separadas e
+> instantáneas**, nunca con un loop que espera dentro del `evaluate`.
 
 ## Plan de validación en vivo
 
