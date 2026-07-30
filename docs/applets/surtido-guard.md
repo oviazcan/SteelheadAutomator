@@ -382,10 +382,17 @@ pendiente ("alerta cuando el set sale vacío en un board de surtido"), que deja 
 - **Filtro: `mountedCount` cuenta headers además de tarjetas** (9 vs 6 en el board medido). Solo
   alimenta la guarda del tope de 200, así que el efecto es dispararla un poco antes —conservador,
   no incorrecto—. Afinarlo si alguna vez la guarda se activa de más.
-- **Validación en vivo del bloqueo real** (arriba). Riesgo a vigilar: **falsos positivos** (bloquear una
-  programada) → el operador apaga el toggle y se reporta.
-- **HTML fino de la tarjeta**: el marcado verde usa heurística (sube desde "Tareas Programadas:" hasta un
-  ancestro con "Proceso:" + "WO:"); capturar el `outerHTML` de una tarjeta del step para un selector exacto
-  y, si se quiere, el 🔒 en no programadas.
-- **Confirmar** que el drag silencioso efectivamente commitea por `CreateManyPartsTransfersChecked`
-  (**confirmado en vivo 2026-07-22**).
+- **Validar en vivo el indicador de carga (1.11.32).** Es lo único de la capa 6 sin ver en piso: al
+  recargar el board debe aparecer el anillo con «buscando líneas…» un par de segundos y luego el
+  dropdown completo. Los otros tres fixes de catálogo ya los confirmó el operador.
+- **Riesgo permanente a vigilar en el candado: falsos positivos** (bloquear una programada) → el
+  operador apaga el toggle y se reporta. Hoy tiene un disparador concreto identificado: el
+  pendiente 🔴 de arriba.
+
+> **Cerrados (ya no son pendientes — se dejan anotados para que no vuelvan a la lista):**
+> **Validación en vivo del bloqueo** — hecha 2026-07-22, confirmada por el operador (sin falsos
+> positivos prog/no-prog). · **Drag silencioso commitea por `CreateManyPartsTransfersChecked`** —
+> confirmado en vivo 2026-07-22. · **HTML fino de la tarjeta** — capturado y documentado el
+> 2026-07-29 (§1.1 del spec del filtro y §Capa 6): el ancla es
+> `[data-item-index]` → `table.MuiTable-root`, y el marcado ya **no es verde** sino naranja desde
+> 0.2.0, así que la redacción vieja de ese pendiente había quedado obsoleta.
