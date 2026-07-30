@@ -86,6 +86,20 @@ Eso **baja la prioridad** (no cierra) de tres filas de abajo: `unit-autoconvert 
 Sigue siendo deuda porque depender de que un vendor NO traduzca es frágil — pero ya no son
 sospechosas de estar fallando en piso, y el orden de ataque cambia.
 
+## 🟡 Alta 2026-07-30 — `surtido-guard` 0.3.0 (filtro por línea destino)
+
+| Ancla | archivo | ES (verificado en vivo) | EN (HIPÓTESIS, sin verificar) | Riesgo si falla |
+|---|---|---|---|---|
+| Barra del header del Workboard | `surtido-guard.js` `HEADER_BTN_RE` | `NUEVA TARJETA`, `ESCANEAR ETIQUETA` | `NEW CARD`, `SCAN JOB TAG` | **El box del filtro no se monta** — falla VISIBLE (el operador no ve el control), no silenciosa |
+
+**Deuda aceptable y acotada**, por dos razones: (1) es un ancla de **UI de entrada**, no de un
+gate de seguridad — si no matchea, el operador nota de inmediato que el filtro no está; (2) el
+regex prueba **cuatro** textos (dos botones × dos idiomas), así que basta con que uno pegue.
+**El resto del filtro es idioma-independiente**: la línea destino sale de la POSICIÓN de la celda
+(`td[1]`) y de códigos `T204`/`T300` que no se traducen.
+
+Una sola observación del Workboard en inglés cierra esta entrada.
+
 ## ⚠️ Regla dura: NO adivinar traducciones
 
 El CLAUDE.md prohíbe inventar la traducción del otro locale. Para hardenizar cada gate hace

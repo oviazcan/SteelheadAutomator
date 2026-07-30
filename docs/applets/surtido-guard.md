@@ -1,9 +1,13 @@
 # Applet `surtido-guard` — Candado de Surtido Programado
 
-> Versión: **0.3.0** — ✅ **DEPLOYADO y VALIDADO END-TO-END EN VIVO** (2026-07-30): config
-> **1.11.24**, tag `v1.11.24`, firma KMS verificada en vivo. Bundle Safari **0.6.13** construido y
-> sincronizado a `Resources/` — **falta recompilar en Xcode**. Core **44/44** + 4 de aislamiento
-> + 5 de contrato de config.
+> Versión: **0.3.0** — ✅ **DEPLOYADO** (2026-07-30): config **1.11.26**, tag `v1.11.26`, firma
+> KMS verificada en vivo. Bundle Safari **0.6.14** construido y sincronizado a `Resources/` —
+> **falta recompilar en Xcode**. Core **49/49** + 4 de aislamiento + 5 de contrato de config.
+>
+> **Validado end-to-end en vivo con la 1.11.24**; el **fix del dropdown acumulativo (1.11.26)
+> quedó SIN validar en vivo** — la pestaña de pruebas se cerró antes. Riesgo bajo (5 tests de
+> regresión, incluido el caso exacto reportado), pero **es lo primero que hay que ver** en la
+> próxima sesión.
 >
 > **Run real en `/Domains/344/Workboards/6234`:** el box se pinta en el header, el dropdown ofrece
 > `Todas` + `T300`, y al filtrar por `T300` queda **1 visible · 5 sin programar ocultas** — la
@@ -138,6 +142,25 @@ mentir justo en el dato con el que el operador decide. En el board real el dropd
 
 **Lección:** un applet puede tener el núcleo impecable y ser inservible porque su *entrada* depende
 de un dato opcional. El fallback no fue relajar la lógica, sino **ampliar la fuente**.
+
+### El filtro se comía su propio dropdown (bug del operador, 1.11.26)
+
+Reportado en vivo: *"va limitando la cantidad de líneas que muestra el dropdown a las que tiene
+filtradas en ese momento, no las totales del workboard"*.
+
+**Causa:** al esconder las tarjetas de otras líneas, react-virtuoso **las desmonta** (el scroll se
+encogió y salen del viewport). Como el catálogo del DOM se armaba con lo montado **en ese
+instante**, filtrar por `T300` dejaba el dropdown solo con `T300` ⇒ **quedabas atrapado**: para
+saltar a `T204` había que quitar el filtro primero.
+
+**Fix:** `accumulateSeenLines` vuelve el catálogo del DOM **acumulativo** — las líneas vistas se
+suman y no se pierden aunque su tarjeta se desmonte; se limpian al salir del board. De paso
+arregla el caso normal de virtualización: scrollear descubre líneas nuevas y se **suman**.
+
+**Lección:** cuando el efecto de un filtro cambia el DOM del que ese filtro deriva sus opciones,
+hay un **lazo de retroalimentación**. El catálogo tiene que vivir fuera de lo que el filtro
+modifica. Es la misma familia del bug anterior (dropdown vacío): las dos veces el núcleo estaba
+bien y lo que fallaba era **de dónde salían las opciones**.
 
 ### Aislamiento del candado
 
