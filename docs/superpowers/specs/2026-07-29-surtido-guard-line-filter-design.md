@@ -1,7 +1,8 @@
 # Diseño — `surtido-guard` v0.3.0: filtro por LÍNEA DESTINO
 
 > Fecha: 2026-07-29
-> Estado: **diseño pendiente de aprobación**. Bloqueado en la inspección en vivo del board (paso 0).
+> Estado: **diseño aprobado** por el operador (2026-07-29) · **Paso 0 (inspección en vivo)
+> COMPLETADO** — todas las decisiones de DOM están medidas, no supuestas. Listo para plan.
 > Tipo: extensión del applet existente `surtido-guard` (no un applet nuevo — ver §3).
 > Spec base: [`2026-06-26-surtido-guard-design.md`](2026-06-26-surtido-guard-design.md) ·
 > Bitácora: [`docs/applets/surtido-guard.md`](../../applets/surtido-guard.md)
@@ -117,23 +118,43 @@ div[border-bottom, overflow:hidden]              ← RAÍZ de la tarjeta (lo que
 4. **`lineCodeOf` no sirve tal cual** en la celda de estación: ancla al inicio
    (`/^([A-Z]\d{3})/`) y la celda empieza con `at `. Se agrega al core
    `lineCodeFromStationText()` con `\b([A-Z]\d{3})\b` (sin anclar) — seguro **porque el ámbito es
-   una sola celda** que solo contiene el nombre de la estación. `lineCodeOf` se sigue usando
-   anclado sobre `td[0]` (el tratamiento **sí** empieza con el código).
-   - **Precedencia:** manda la **estación** (`td[1]`) porque es a donde físicamente va el
-     material; el **tratamiento** (`td[0]`) es respaldo si la estación no revela código. Una
-     discrepancia entre ambos se registra en debug, no se adivina.
+   una sola celda** que solo contiene el nombre de la estación.
    - El `at ` es literal **inglés dentro de una UI en español** (mezcla ya conocida en SH). No se
      depende de él: se ignora por completo al no anclar el regex.
+   - **`td[1]` es la ÚNICA fuente. NO hay respaldo por tratamiento** (corregido con datos en vivo,
+     ver hallazgo 6): el tratamiento a veces no trae ningún código de línea.
 
-5. **La raíz de la tarjeta NO tiene `data-item-index` ni `data-index`.** El
-   `closest('[data-item-index], [data-index]')` que `decorateCards` usa hoy devuelve **null** y
-   cae siempre a su fallback — o sea, el naranja se pinta en el contenedor de contenido, no en el
-   cuerpo blanco. **Bug latente aparte**, se anota en la bitácora (no se toca en esta versión).
-   Para el filtro implica que la raíz se localiza subiendo desde el cuerpo blanco, no por atributo.
+5. **La raíz de la tarjeta a esconder es el nodo `[data-item-index]`** — el item de react-virtuoso
+   (`div[style="overflow-anchor: none"]`), verificado en vivo (`data-item-index="1"`).
+   > Corrección: una lectura previa de este spec afirmó que ese atributo **no existía**. Era falso
+   > — el HTML capturado empezaba **debajo** del wrapper de virtuoso. `decorateCards` funciona
+   > bien hoy y **no hay bug latente**; se confirmó `sa-sg-orange` aplicado al cuerpo blanco en el
+   > board real.
 
 **Confirmación del filtro nativo (§Problema), con evidencia DOM:** `Estación: Proquipa.N1.A1` es
 una **ubicación de almacén** — dónde está *parada*. Nada que ver con `T204-LI`. Los dos filtros
 miran campos distintos de la misma tarjeta.
+
+**6. Medición en el board vivo (6 tarjetas, `/Domains/344/Workboards/6234`) — dos correcciones
+más:**
+
+| WO | `td[0]` (tratamiento) | `td[1]` (estación) | `Proceso:` de la tarjeta |
+|---|---|---|---|
+| 12831 | `TR-PRM-001 Antitarnish Manual` | `at `**`T300`**`-CE03-002 Célula de Antitarnish` | **`T400`** (ANT)-CU-VARIOS (20.0) |
+
+- **La trampa del hallazgo 2 NO es teórica:** en la **única** tarjeta programada del board, el
+  `Proceso:` dice `T400` y la estación destino real es `T300`. Un filtro anclado al `Proceso:`
+  habría mandado a surtir a la línea equivocada en el primer caso real.
+- **`td[0]` puede no traer código de línea:** `TR-PRM-001 Antitarnish Manual` no contiene ninguno.
+  Por eso el respaldo por tratamiento se **elimina** del diseño — `td[1]` es la única fuente.
+- **El destino puede ser una CÉLULA, no solo una línea** (`T300-CE03-002`). Agrupar por prefijo
+  `T300` junta las células de esa línea, que es la granularidad pedida.
+- **5 de 6 tarjetas NO están programadas** (sin tabla, y las 5 en naranja). Con la decisión de
+  esconderlas, filtrar dejaría **1 de 6** visibles: por eso el contador y el
+  `N sin programar ocultas` no son adorno, son lo que evita que el board parezca vacío.
+- **El board tiene VARIOS scrollers** (aquí 2, bajo el agrupador `Scheduled`). El filtro recorre
+  **todos**, no uno. Los `data-item-index` **se repiten entre scrollers** ⇒ nunca usar el índice
+  como identidad; se opera sobre el nodo.
 
 ### 2. Fail-safe: el árbitro cruzado
 
@@ -169,9 +190,17 @@ altera. Un test fija esto: con filtro activo, `evaluateMove` da el mismo veredic
 
 ### 4. UI
 
-Box dark-mode en el header del Workboard. `position:fixed` sobre `document.body` — el header
-`MuiPaper` de SH tiene `overflow:hidden` que recorta un panel `absolute` (lección ya pagada por
-`batch-name-filter`).
+Box dark-mode **en flujo normal** dentro de la barra de acciones del header del Workboard.
+
+**Ancla medida (2026-07-29):** la barra es el `div[display:flex]` que contiene el título del board
+y los 4 botones de acción (`ESCANEAR ETIQUETA DE TRABAJO`, `GESTIONAR INVENTARIO`,
+`CONFIGURACIÓN DE ETIQUETAS`, `NUEVA TARJETA`). Se localiza subiendo desde el botón
+`NUEVA TARJETA` / `NEW CARD` (texto ES+EN) hasta su contenedor flex; sin
+`data-steelhead-component-id` disponible en esa zona, ese es el mejor anclaje.
+
+**A diferencia de `batch-name-filter`, aquí NO se necesita `position:fixed`:** ese header tiene
+`overflow: visible` (medido), así que no recorta. Se inyecta como un hijo más del flex y hereda el
+comportamiento responsive. Menos código y menos deuda de posicionamiento.
 
 ```
 🔒 → Línea destino:  [ Todas ▾ ]   Mostrando 6 de 47   ✕
@@ -206,26 +235,48 @@ alturas y posiciones. Si al medirlo se rompe el layout, se cae a **atenuar** (`o
 `grayscale`), que es lo que `schedule-batch-highlighter` eligió por esta misma razón. El resto
 del diseño no cambia — solo el efecto visual.
 
-**Evidencia parcial (2026-07-29):** el comentario del applet afirma "DOM virtualizado", pero el
-HTML real **no lo respalda**: la raíz de la tarjeta no trae `data-item-index`/`data-index` ni
-`position:absolute` con `top`/`height` inline — las marcas que react-window/react-virtualized
-siempre dejan. El `transform: translate(0,0); transition: 400ms` es el **swipe** de la tarjeta,
-no posicionamiento virtual. Hipótesis de trabajo: **no hay virtualización real** y esconder es
-viable. **Sin confirmar** — falta medir el contenedor padre (§Paso 0).
+**MEDIDO EN VIVO (2026-07-29) — esconder FUNCIONA. Decisión cerrada.**
 
-## Paso 0 (bloqueante): inspección en vivo del board
+El board **sí** está virtualizado, con **react-virtuoso**
+(`[data-testid="virtuoso-scroller"]` / `"virtuoso-item-list"`, items con `data-item-index` +
+`data-known-size`, `overflow-anchor: none`). Una hipótesis previa de este spec decía lo contrario;
+la medición la refutó.
+
+**Y aun así esconder es seguro**, porque virtuoso re-mide con `ResizeObserver`. Experimento: se
+ocultaron 2 de 6 items con `display:none` sobre el nodo `[data-item-index]`:
+
+| Señal | Antes | Después |
+|---|---|---|
+| `scrollHeight` de `virtuoso-item-list` | 1034 | **524** (recalculó solo) |
+| Rects de los items visibles | contiguos | **contiguos: 365→416→467→678→889** |
+| Huecos / tarjetas encimadas | — | **ninguno** |
+
+Revertido sin residuo (`scrollHeight` volvió a 1034). ⇒ **Se implementa esconder**, no atenuar.
+
+**Dos guardas que sí hace falta poner** (consecuencia de la virtualización, no del ocultamiento):
+
+1. **Virtuoso monta más items al liberarse espacio.** Eso es lo *deseado* (rellena con las que sí
+   matchean), pero si el filtro esconde casi todo, puede montar mucho más de lo normal. Tope: al
+   pasar de **200** items montados con filtro activo, se cae a atenuar y se avisa en el box.
+2. **Si el conteo de la API dice 0 para la línea elegida**, no se esconde nada: se muestra el aviso
+   "ninguna orden va a T204". Evita el escenario de un board en blanco con virtuoso montando todo
+   en busca de algo que no existe.
+
+## Paso 0 — inspección en vivo del board: ✅ COMPLETADO (2026-07-29)
 
 Regla dura del repo: **no se escriben selectores sin el wrapper HTML real**.
 
-- [x] **1. Wrapper completo de una tarjeta** con `Tareas Programadas:` — **HECHO** (§1.1, HTML
-      provisto por el operador). Resolvió el anclaje y destapó la trampa del `Proceso:`.
-- [ ] **2. ¿Es virtualización real?** Contenedor padre del listado: cuántos hijos monta vs total
-      del step, si hay `overflow:auto` + `scrollHeight` >> `clientHeight`, si los hijos llevan
-      posición/altura inline. (Hipótesis: **no** lo es — §5.)
-- [ ] **3. Qué pasa al ocultar** una tarjeta con `display:none` en su raíz: huecos, encimadas o
-      nada. Se mide poniendo y quitando la propiedad, sin deploy.
-- [ ] **4. Dónde anclar el box** en el header, y **dónde queda el filtro nativo de estación**
-      (para no pegarlos y que se confundan — §Problema).
+- [x] **1. Wrapper completo de una tarjeta** con `Tareas Programadas:` — HTML provisto por el
+      operador. Resolvió el anclaje y destapó la trampa del `Proceso:` (§1.1).
+- [x] **2. ¿Es virtualización real?** **SÍ — react-virtuoso** (§5). Refutó la hipótesis contraria
+      de una versión previa de este spec.
+- [x] **3. Qué pasa al ocultar** con `display:none`: **nada malo** — virtuoso recalcula
+      (`scrollHeight` 1034→524) y los rects quedan contiguos. Revertido sin residuo (§5).
+- [x] **4. Dónde anclar el box:** la barra flex del header con los 4 botones de acción, que tiene
+      `overflow: visible` ⇒ inyección en flujo, sin `position:fixed` (§4).
+      **Pendiente menor, no bloqueante:** no se ubicó el filtro **nativo** de estación en el DOM
+      visible (está detrás de algún menú). No estorba: el box va en la barra de acciones, no junto
+      a él. Se confirma visualmente en la validación.
 
 Se hace **leyendo DOM, sin disparar queries** — el `/graphql` de la sesión se cuelga con ráfagas
 (~40-45 requests, sin 429, no se recupera al recargar).
