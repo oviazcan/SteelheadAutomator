@@ -13,6 +13,10 @@
 //   · fetch → si el payload de CreateReceiverChecked llega con accounts sin locationId, la
 //            mutación NO sale (Response sintética con errors). Es la red que sobrevive a un
 //            cambio de layout o de idioma: convierte una falla silenciosa en ruidosa.
+//
+// 0.6.1 — el renglón se juzga por señal POSITIVA (hay un valor elegido), no por ausencia de
+// placeholder: al TECLEAR en el combo sin elegir nada react-select retira el placeholder, y
+// el criterio anterior daba el renglón por resuelto. Ver rowHasLocation() en el núcleo.
 
 const WarehouseLocationPrefill = (() => {
   'use strict';
@@ -807,7 +811,8 @@ const WarehouseLocationPrefill = (() => {
 
   // El combo de ubicación VACÍO de un renglón, o null si ya tiene valor. react-select sustituye
   // el placeholder por un singleValue al elegir, así que la presencia del placeholder ES la
-  // señal de "vacío" (verificado en vivo con los dos estados).
+  // señal de "vacío" (verificado en vivo con los dos estados). OJO: esta señal es NEGATIVA y
+  // no distingue el estado "tecleando sin elegir" — por eso solo es el fallback.
   function findEmptyLocationCombo(row) {
     const G = guard();
     if (!G) return null;
@@ -815,6 +820,33 @@ const WarehouseLocationPrefill = (() => {
       if (G.isLocationPlaceholder(ph.textContent)) {
         return ph.closest('[class*="-control"]') || ph.parentElement;
       }
+    }
+    return null;
+  }
+
+  // El elemento que contiene el label buscado, en cualquier profundidad del renglón.
+  function findLabelHost(root, re) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      const txt = (node.textContent || '').trim();
+      if (txt && re.test(txt)) return node.parentElement || null;
+    }
+    return null;
+  }
+
+  // El combo de ubicación del renglón EN CUALQUIER ESTADO, localizado por su label
+  // «Ubicación Inicial:» y el primer control react-select que le sigue en orden de documento
+  // (`compareDocumentPosition`, así no se depende de la forma del grid). Localizarlo siempre
+  // es lo que permite exigir la señal POSITIVA — ver rowHasLocation() en el núcleo.
+  function locateRowLocationCombo(row) {
+    const G = guard();
+    if (!G) return null;
+    const labelHost = findLabelHost(row, G.ROW_LOCATION_LABEL_RE);
+    if (!labelHost) return null;
+    for (const ctrl of row.querySelectorAll('[class*="-control"]')) {
+      const rel = labelHost.compareDocumentPosition(ctrl);
+      if (rel & Node.DOCUMENT_POSITION_FOLLOWING) return ctrl;
     }
     return null;
   }
@@ -838,16 +870,25 @@ const WarehouseLocationPrefill = (() => {
   }
 
   function collectRowInfo(modal) {
+    const G = guard();
     const rows = [...modal.querySelectorAll('tbody.MuiTableBody-root tr')];
     return rows.map((row, i) => {
+      const byLabel = locateRowLocationCombo(row);
       const emptyCombo = findEmptyLocationCombo(row);
+      const signals = {
+        foundByLabel: !!byLabel,
+        hasSingleValue: !!(byLabel && byLabel.querySelector('[class*="singleValue"]')),
+        hasPlaceholder: !!emptyCombo,
+      };
       return {
         index: i + 1,
-        hasLocation: !emptyCombo,
+        hasLocation: G ? G.rowHasLocation(signals) : true,
         part: rowPartName(row),
         batch: rowBatchName(row),
         el: row,
-        emptyCombo,
+        // A dónde va la marca naranja: el combo localizado por label, o el que tenga el
+        // placeholder si el label no se reconoció.
+        locationControl: byLabel || emptyCombo,
       };
     });
   }
@@ -872,7 +913,7 @@ const WarehouseLocationPrefill = (() => {
     if (!gate) return null;
     const state = modalStates.get(modal);
     if (state) state.lastGate = gate;
-    try { markMissingRows(gate); } catch (err) { console.warn(LOG_PREFIX, 'markMissingRows:', err); }
+    try { markMissingRows(modal, gate); } catch (err) { console.warn(LOG_PREFIX, 'markMissingRows:', err); }
     try { applyButtonGate(modal, gate); } catch (err) { console.warn(LOG_PREFIX, 'applyButtonGate:', err); }
     try { syncGateNote(modal, gate); } catch (err) { console.warn(LOG_PREFIX, 'syncGateNote:', err); }
     return gate;
@@ -880,11 +921,20 @@ const WarehouseLocationPrefill = (() => {
 
   // Se resalta la EXCEPCIÓN (el renglón que FALTA), no la norma — misma lección que
   // surtido-guard 0.2.0: marcar todo deja de ser señal.
-  function markMissingRows(gate) {
+  function markMissingRows(modal, gate) {
+    const keep = new Set();
     for (const row of gate.rows) {
-      if (!row || !row.emptyCombo) continue;
-      const mark = gate.blocked && !row.hasLocation;
-      setAttrIfNeeded(row.emptyCombo, 'data-sa-wlp-missing', mark ? 'true' : null);
+      if (!row || !row.locationControl) continue;
+      if (gate.blocked && !row.hasLocation) {
+        setAttrIfNeeded(row.locationControl, 'data-sa-wlp-missing', 'true');
+        keep.add(row.locationControl);
+      }
+    }
+    // Barrido de huérfanas: el combo que llevaba la marca puede haber cambiado de estado (o
+    // haberlo re-creado React), y entonces ya no aparece en `rows` para limpiarse solo. Sin
+    // esto queda una marca naranja sobre un renglón que ya está resuelto — mentira visible.
+    for (const el of modal.querySelectorAll('[data-sa-wlp-missing="true"]')) {
+      if (!keep.has(el)) el.removeAttribute('data-sa-wlp-missing');
     }
   }
 
@@ -1062,7 +1112,7 @@ const WarehouseLocationPrefill = (() => {
     const gate = computeGate(modal);
     const first = gate?.missing?.[0];
     if (!first) return;
-    const target = first.emptyCombo || first.el;
+    const target = first.locationControl || first.el;
     target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 

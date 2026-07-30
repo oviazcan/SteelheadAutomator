@@ -23,6 +23,11 @@
   // «Buscar Ubicaciones...»; con valor = `css-1bsomep-control` + `singleValue` con el path.
   const LOCATION_PLACEHOLDER_RE = /^(?:buscar\s+ubicaciones|search\s+locations)/i;
 
+  // Label del campo de ubicación DENTRO del renglón. Sirve para localizar el combo en
+  // CUALQUIER estado —vacío, con valor, o a medio teclear— y así poder exigir la señal
+  // POSITIVA (hay un valor elegido) en vez de la negativa (no hay placeholder).
+  const ROW_LOCATION_LABEL_RE = /^(?:ubicaci[oó]n\s+inicial|initial\s+location)\s*:?$/i;
+
   // Botones del pie del modal. Bilingüe ES+EN porque el pie NO expone
   // data-steelhead-component-id (verificado en vivo: los 4 botones vienen sin él).
   const SAVE_BUTTON_RE = /(?:guardar|save)/i;
@@ -41,6 +46,26 @@
 
   function isCancelButtonText(txt) {
     return CANCEL_BUTTON_RE.test(norm(txt));
+  }
+
+  function isRowLocationLabel(txt) {
+    return ROW_LOCATION_LABEL_RE.test(norm(txt));
+  }
+
+  // ¿El renglón tiene ubicación? Se decide a partir de las señales que el glue leyó del DOM:
+  //   foundByLabel  — se localizó el combo por su label (funciona en cualquier estado)
+  //   hasSingleValue— el combo muestra un valor elegido
+  //   hasPlaceholder— el combo muestra su placeholder «Buscar Ubicaciones...»
+  //
+  // Con el combo localizado se exige la señal POSITIVA. Es lo que atrapa el caso que la
+  // validación en vivo destapó (2026-07-29): al TECLEAR en el combo sin elegir nada,
+  // react-select **retira el placeholder** aunque no haya valor — juzgar por "no hay
+  // placeholder" daba el renglón por resuelto y liberaba el guardado. Sin el combo
+  // localizado (locale desconocido) se cae a la señal negativa, y ahí el candado del
+  // payload es la red.
+  function rowHasLocation(signals) {
+    if (signals && signals.foundByLabel) return !!signals.hasSingleValue;
+    return !(signals && signals.hasPlaceholder);
   }
 
   // Un botón es "de guardar" si menciona guardar/save y NO es el de cancelar. Cubre los tres
@@ -156,10 +181,13 @@
 
   const api = {
     LOCATION_PLACEHOLDER_RE,
+    ROW_LOCATION_LABEL_RE,
     SAVE_BUTTON_RE,
     CANCEL_BUTTON_RE,
     MAX_TOOLTIP_ROWS,
     isLocationPlaceholder,
+    isRowLocationLabel,
+    rowHasLocation,
     isSaveButtonText,
     isCancelButtonText,
     describeRow,
