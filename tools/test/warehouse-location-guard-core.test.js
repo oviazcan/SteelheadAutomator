@@ -37,6 +37,46 @@ test('isLocationPlaceholder: tolera espacios raros y vacíos', () => {
   assert.equal(Core.isLocationPlaceholder(undefined), false);
 });
 
+// ---------- isRowLocationLabel ----------
+
+test('isRowLocationLabel: el label REAL del renglón, con y sin dos puntos', () => {
+  assert.equal(Core.isRowLocationLabel('Ubicación Inicial:'), true);
+  assert.equal(Core.isRowLocationLabel('ubicacion inicial'), true);
+  assert.equal(Core.isRowLocationLabel('Initial Location:'), true);
+});
+
+test('isRowLocationLabel: NO confunde el label del encabezado ni los vecinos del renglón', () => {
+  // El del encabezado es nuestro propio campo, no el nativo del renglón.
+  assert.equal(Core.isRowLocationLabel('Ubicación inicial'), true); // mismo texto: es aceptable
+  for (const t of ['Orden de Venta (OC#):', 'Cotización:', 'Grupo de Piezas:', 'Contenedor:', 'Ubicación:']) {
+    assert.equal(Core.isRowLocationLabel(t), false, `no debe matchear «${t}»`);
+  }
+});
+
+// ---------- rowHasLocation ----------
+// El caso que destapó la validación en vivo (2026-07-29): al TECLEAR en el combo del renglón
+// sin elegir nada, react-select retira el placeholder aunque NO haya valor. Juzgar por
+// "no hay placeholder" daba el renglón por resuelto y liberaba el guardado.
+
+test('rowHasLocation: combo localizado por label — manda la señal POSITIVA', () => {
+  assert.equal(Core.rowHasLocation({ foundByLabel: true, hasSingleValue: true, hasPlaceholder: false }), true);
+  assert.equal(Core.rowHasLocation({ foundByLabel: true, hasSingleValue: false, hasPlaceholder: true }), false);
+});
+
+test('rowHasLocation: TECLEANDO SIN ELEGIR (sin placeholder y sin valor) cuenta como FALTANTE', () => {
+  assert.equal(Core.rowHasLocation({ foundByLabel: true, hasSingleValue: false, hasPlaceholder: false }), false);
+});
+
+test('rowHasLocation: sin el combo localizado cae a la señal negativa (fallback de locale)', () => {
+  assert.equal(Core.rowHasLocation({ foundByLabel: false, hasPlaceholder: true }), false);
+  assert.equal(Core.rowHasLocation({ foundByLabel: false, hasPlaceholder: false }), true);
+});
+
+test('rowHasLocation: señales ausentes no truenan', () => {
+  assert.equal(Core.rowHasLocation(undefined), true);
+  assert.equal(Core.rowHasLocation({}), true);
+});
+
 // ---------- isSaveButtonText / isCancelButtonText ----------
 
 test('isSaveButtonText: los TRES botones de guardar del pie real, y Cancelar NO', () => {
