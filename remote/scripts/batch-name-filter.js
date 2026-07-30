@@ -6,10 +6,15 @@
 // UX (definida con el usuario): mientras escribe se muestra un preview en vivo de los
 // lotes que coinciden; al dar ENTER se aplica automático (modo REEMPLAZAR el filtro).
 //
-// Fuente de datos: persisted query InventoryBatchViewQuery (searchQuery + paginación real,
-// hideCompleted:true). Devuelve el `name` estructurado → matching exacto robusto y SIN el tope
-// de 10 de FilterSearch. En Packing Slips/Scheduling los lotes completados no se filtran, así
-// que hideCompleted:true es además lo correcto y más eficiente.
+// Fuente de datos: persisted query InventoryBatchViewQuery (searchQuery + paginación real).
+// Devuelve el `name` estructurado → matching exacto robusto y SIN el tope de 10 de FilterSearch.
+//
+// v0.3.0 — se consultan LOS DOS UNIVERSOS de `hideCompleted`. Medido en vivo 2026-07-29:
+// ese parámetro no esconde, SELECCIONA universo, y los dos son DISJUNTOS (true = 585 lotes
+// con material · false = 12 926 agotados · solape 0). Consultando solo `true` el applet veía
+// el 4.3% del inventario y respondía «Sin lotes «X»» sobre lotes que existen y que el
+// dropdown NATIVO de SH sí ofrece → Enter no hacía nada. Ahora se unen ambos universos y el
+// preview distingue los agotados en vez de esconderlos. Ver bitácora §"Los dos universos".
 //
 // Estado singleton en window.__saBNF (no en el closure) porque injectAppScripts re-evalúa
 // el IIFE en cada acción del popup (lección surtido-guard/price-guard).
@@ -99,21 +104,40 @@
       p.appendChild(head);
       return;
     }
-    head.innerHTML = '';
-    head.appendChild(document.createTextNode(`Aplicar `));
+    const withMat = (result.withMaterial && result.withMaterial.count) || 0;
+    const gone = (result.depleted && result.depleted.count) || 0;
+    head.appendChild(document.createTextNode('Aplicar '));
     const acc = document.createElement('span'); acc.className = 'sa-bnf-acc'; acc.textContent = `${count} lote${count === 1 ? '' : 's'} «${name}»`;
     head.appendChild(acc);
+    // El desglose es el dato que faltaba: un lote AGOTADO existe pero no tiene piezas
+    // por enviar, así que al aplicarlo la lista sale vacía. Decirlo aquí evita que el
+    // operador lea la lista vacía como "el filtro no funciona".
+    if (withMat && gone) head.appendChild(document.createTextNode(` — ${withMat} con material, ${gone} agotado${gone === 1 ? '' : 's'}`));
     p.appendChild(head);
     const ul = document.createElement('ul');
-    matches.slice(0, 30).forEach((m) => {
+    // Los que tienen material primero: son los que sirven para enviar.
+    const ordered = [
+      ...((result.withMaterial && result.withMaterial.matches) || []),
+      ...((result.unknown && result.unknown.matches) || []),
+      ...((result.depleted && result.depleted.matches) || []),
+    ];
+    (ordered.length ? ordered : matches).slice(0, 30).forEach((m) => {
       const li = document.createElement('li');
       // InventoryBatchView nodes: {id, idInDomain, name}; FilterSearch legado: {display}.
-      const label = m.display || ('#' + m.idInDomain + ' — ' + m.name);
+      let label = m.display || ('#' + m.idInDomain + ' — ' + m.name);
+      if (Core.isDepletedBatch(m) === true) label += ' · agotado';
       li.textContent = label;                   // textContent → sin XSS
       li.title = label;
       ul.appendChild(li);
     });
     p.appendChild(ul);
+    if (Core.shouldWarnAllDepleted(result)) {
+      const w = document.createElement('div'); w.className = 'sa-bnf-warn';
+      w.textContent = count === 1
+        ? '⚠️ Está agotado: al aplicar, la lista saldrá vacía (ese lote ya no tiene piezas por enviar).'
+        : `⚠️ Los ${count} están agotados: al aplicar, la lista saldrá vacía (ese lote ya no tiene piezas por enviar).`;
+      p.appendChild(w);
+    }
     if (capped) {
       const w = document.createElement('div'); w.className = 'sa-bnf-warn';
       w.textContent = '⚠️ Muchísimos lotes con este nombre; se aplican los primeros encontrados.';

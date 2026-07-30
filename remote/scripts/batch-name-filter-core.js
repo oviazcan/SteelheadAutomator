@@ -33,9 +33,9 @@
   // Fuente PREFERIDA: InventoryBatchViewQuery — pagina de verdad (first/offset, sin tope de 10)
   // y devuelve el `name` ESTRUCTURADO (no concatenado) → matching exacto trivial y robusto.
   // Variables: {includeArchived:'NO', hideCompleted:true, orderBy:['CREATED_AT_DESC'], offset, first, searchQuery}
-  //   · hideCompleted NO es un "esconder" — SELECCIONA universo, y los dos son DISJUNTOS.
-  //     Ver el bloque "LOS DOS UNIVERSOS" abajo: se consultan AMBOS (la creencia previa de
-  //     que bastaba `true` dejaba fuera el 95.7% de los lotes y era LA causa del bug 0.2.1).
+  //   · hideCompleted:true en producción: en Packing Slips/Scheduling los lotes COMPLETADOS no se
+  //     pueden filtrar (no muestran piezas listas), así que traerlos es inútil + menos eficiente.
+  //     (La prueba del tope usó hideCompleted:false para ver 18 T-125 vs los 10 de FilterSearch.)
   //   · searchQuery filtra por substring del name → se refina a exacto en cliente (name estructurado).
   // Respuesta: data.pagedData.{ totalCount, nodes:[{ id(=dbId), idInDomain, name }] }.
   const INVENTORY_BATCH_VIEW_OP = 'InventoryBatchViewQuery';
@@ -50,25 +50,26 @@
   //   hideCompleted:false → SOLO lotes AGOTADOS (remaining = 0) → 12 926 lotes
   //   solape medido = 0 · unión = 13 511 = TODO el inventario del dominio
   //
-  // Consultar solo con `true` (lo que hacía el applet hasta 0.2.1) esconde el 95.7% de
-  // los lotes: el operador teclea un lote que EXISTE —el dropdown nativo de SH sí lo
-  // ofrece— el applet responde «Sin lotes «X»» y Enter no hace nada. El síntoma aparecía
-  // con el TIEMPO, no de golpe: un lote recién creado está en el universo CON MATERIAL y
-  // se muda al de AGOTADOS al consumirse, así que el applet solo funcionaba con lotes
-  // frescos — por eso su validación del 2026-07-22 pasó y una semana después ya no.
-  // → Se consultan AMBOS y se unen; el preview distingue los agotados en vez de esconderlos.
+  // Consultar solo con `true` (lo que hacía el applet hasta 0.2.1) esconde el 95.7%
+  // de los lotes: el operador teclea un lote que EXISTE —el dropdown nativo de SH sí
+  // lo ofrece—, el applet responde «Sin lotes «X»» y Enter no hace nada. El síntoma
+  // aparecía con el tiempo, no de golpe: un lote recién creado está en el universo
+  // CON MATERIAL y se muda al de AGOTADOS al consumirse, así que el applet solo
+  // funcionaba con lotes frescos (por eso su validación del 2026-07-22 pasó).
+  // → Se consultan AMBOS y se unen; el preview distingue cuáles están agotados.
   const UNIVERSE_WITH_MATERIAL = true;
   const UNIVERSE_DEPLETED = false;
   const SEARCH_UNIVERSES = [UNIVERSE_WITH_MATERIAL, UNIVERSE_DEPLETED];
 
   // ── Guardarraíl de volumen ──
-  // El `/graphql` de la sesión se CUELGA bajo ráfaga (~40-45 requests, sin 429 ni error,
-  // y tumba la pantalla NATIVA del operador — incidente medido en po-listing-filters).
-  // Duplicar el universo duplica el tráfico, así que la amplitud se acota ANTES de la red:
+  // El `/graphql` de la sesión se CUELGA bajo ráfaga (~40-45 requests, sin 429 ni
+  // error, y tumba la pantalla NATIVA del operador — incidente medido en
+  // po-listing-filters). Duplicar el universo duplica el tráfico, así que la
+  // amplitud de la búsqueda se acota ANTES de tocar la red:
   //   · searchQuery:'T'   → 12 793 lotes (medido) ⇒ mínimo de caracteres.
   //   · searchQuery:'T-1' →  1 009 lotes (medido) ⇒ tope por totalCount.
-  // El operador busca un nombre EXACTO: si el substring trae cientos, no terminó de
-  // escribirlo. Es más útil pedirle el nombre completo que bajarle 5 000 lotes.
+  // El operador busca un nombre EXACTO: si el substring trae cientos, no terminó
+  // de escribirlo. Es más útil pedirle el nombre completo que bajar 5 000 lotes.
   const MIN_QUERY_CHARS = 2;
   const MAX_TOTAL_TO_PAGE = 600;      // > esto ⇒ tooBroad (no se pagina)
   const MAX_PAGES_PER_UNIVERSE = 5;   // cap duro; si se alcanza se REPORTA (capped)
@@ -117,10 +118,10 @@
 
   // ── Fuente PREFERIDA (InventoryBatchViewQuery): matching por name ESTRUCTURADO ──
   function normalizeName(s) { return String(s == null ? '' : s).trim().toLowerCase(); }
-  // ¿El lote está AGOTADO (sin material remanente)? → true / false / null(desconocido).
-  // Fail-safe deliberado: si el campo NO viene se devuelve null, nunca `true`. Dar por
-  // agotado un lote cuyo dato falta lo etiqueta de "ya no sirve" sin evidencia — el mismo
-  // error de forma que asumir 1 pieza por carga cuando `partsPerRack` no existe.
+  // ¿El lote está AGOTADO (sin material remanente)?  true / false / null(desconocido).
+  // Fail-safe deliberado: si el campo NO viene, se devuelve null — nunca `true`. Dar por
+  // agotado un lote cuyo dato falta lo etiquetaría de "ya no sirve" sin evidencia; el
+  // mismo error de forma que asumir 1 pieza por carga cuando `partsPerRack` no existe.
   function isDepletedBatch(node) {
     if (!node) return null;
     const v = node.totalRemainingMicroQuantity;
@@ -139,14 +140,15 @@
   // → dbIds de los que tienen name EXACTO.
   // searchQuery ya filtró por substring server-side; aquí exigimos igualdad exacta del name
   // (limpio, sin idInDomain pegado) → sin regex ni colisión numérica.
-  // `ids`/`count` son SIEMPRE el total (con material + agotados + desconocidos): el operador
-  // aplica lo mismo que podría clic-ear a mano en el dropdown nativo. Los sub-buckets
-  // existen para que el PREVIEW diga la verdad, no para recortar el filtro.
+  // `ids`/`count` son SIEMPRE el total (con material + agotados + desconocidos): el
+  // operador aplica lo mismo que podría clic-ear a mano en el dropdown nativo. Los
+  // sub-buckets existen para que el PREVIEW diga la verdad, no para recortar el filtro.
   function selectByExactName(nodes, targetName) {
-    const target = normalizeName(targetName);
-    if (!target) {
-      return { matches: [], ids: [], count: 0, withMaterial: bucket([]), depleted: bucket([]), unknown: bucket([]) };
+    const empty = { matches: [], ids: [], count: 0 };
+    if (!normalizeName(targetName)) {
+      return Object.assign({}, empty, { withMaterial: bucket([]), depleted: bucket([]), unknown: bucket([]) });
     }
+    const target = normalizeName(targetName);
     const arr = Array.isArray(nodes) ? nodes : [];
     const matches = arr.filter((n) => n && normalizeName(n.name) === target);
     const withMaterial = [], depleted = [], unknown = [];
@@ -162,22 +164,22 @@
   }
 
   // ¿Avisar que TODO lo encontrado está agotado? Ese aviso es la diferencia entre
-  // «Sin lotes «T-125»» (mentira: existen 20) y «20 lotes, todos agotados» (la verdad, que
-  // además explica por qué la lista saldrá vacía al aplicar).
+  // «Sin lotes «T-125»» (mentira: existen 20) y «20 lotes, todos agotados» (la verdad,
+  // que además explica por qué la lista saldrá vacía al aplicar).
   function shouldWarnAllDepleted(result) {
     if (!result || !result.count) return false;
     return !!(result.depleted && result.depleted.count === result.count);
   }
 
-  // Decisión PURA de si vale la pena tocar la red, antes de tocarla.
+  // Decisión PURA de si vale la pena tocar la red, antes de hacerlo.
   function planSearch(rawName) {
     const name = String(rawName == null ? '' : rawName).trim();
     if (name.length < MIN_QUERY_CHARS) return { ok: false, reason: 'too-short', name, minChars: MIN_QUERY_CHARS };
     return { ok: true, name, universes: SEARCH_UNIVERSES.slice() };
   }
 
-  // Cuántas páginas pedir de un universo, dado su totalCount. `tooBroad` corta ANTES de
-  // paginar; `capped` se REPORTA (truncar en silencio se lee como "los cubrí todos").
+  // Cuántas páginas pedir para un universo, dado su totalCount. `tooBroad` corta ANTES
+  // de paginar; `capped` se REPORTA (truncar en silencio se lee como "los cubrí todos").
   function planPagination(totalCount, pageSize, opts) {
     const o = opts || {};
     const maxTotal = o.maxTotal == null ? MAX_TOTAL_TO_PAGE : o.maxTotal;

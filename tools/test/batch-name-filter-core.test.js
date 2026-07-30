@@ -240,13 +240,13 @@ test('normalizeName: trim + lowercase', () => {
 //   hideCompleted:false → SOLO lotes AGOTADOS (remaining = 0) → 12 926 lotes
 //   solape medido = 0 · unión = 13 511 = TODO el inventario
 //
-// El nombre del parámetro MIENTE: `false` no es "no esconder" (superconjunto), es el
-// COMPLEMENTO. Buscar solo con `true` esconde 95.7% de los lotes: el operador teclea
-// un lote que existe, ve «Sin lotes», y Enter no hace nada.
+// El nombre del parámetro MIENTE: `false` no es "no esconder" (superconjunto),
+// es el COMPLEMENTO. Buscar solo con `true` esconde 95.7% de los lotes: el
+// operador teclea un lote que existe, ve «Sin lotes», y Enter no hace nada.
 // ═══════════════════════════════════════════════════════════════════════════════
 
 // Fixture REAL capturado en vivo 2026-07-29: los T-125 que el dropdown NATIVO de
-// Steelhead SÍ ofrece y que el applet devolvía como 0. Todos agotados.
+// Steelhead SÍ ofrece (10 de 20) y que el applet devolvía como 0. Todos agotados.
 const IBV_T125_REAL_DEPLETED = [
   { id: 1429651, idInDomain: 16630, name: 'T-125', totalRemainingMicroQuantity: '0', createdMicroQuantity: '1000000' },
   { id: 1422384, idInDomain: 16394, name: 'T-125', totalRemainingMicroQuantity: '0', createdMicroQuantity: '1000000' },
@@ -341,7 +341,8 @@ test('planPagination: tooBroad corta ANTES de paginar (no cuelga el /graphql del
 
 test('planPagination: el cap de páginas se reporta, no se calla', () => {
   const cap = Core.MAX_PAGES_PER_UNIVERSE;
-  const r = Core.planPagination(Core.MAX_TOTAL_TO_PAGE, 1); // fuerza muchas páginas con page=1
+  const justUnderBroad = Core.MAX_TOTAL_TO_PAGE;
+  const r = Core.planPagination(justUnderBroad, 1); // fuerza muchas páginas con page=1
   assert.equal(r.pages, cap);
   assert.equal(r.capped, true, 'truncar en silencio se lee como «los cubrí todos»');
 });
