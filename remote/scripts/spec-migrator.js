@@ -3242,6 +3242,36 @@ const SpecMigrator = (() => {
     return [];
   }
 
+
+  // Lista de clientes con reintentos. Devuelve [] si el ERP no coopera — el llamador decide
+  // si sigue con la del checkpoint. Un fallo aquí NO puede matar una corrida ya avanzada.
+  async function fetchCustomersTolerante(onProgress) {
+    const PAGE = 200;
+    const out = [];
+    for (let intento = 1; intento <= 3; intento++) {
+      out.length = 0;
+      try {
+        for (let offset = 0; offset < 20000; offset += PAGE) {
+          const d = await api().query('AllCustomers', {
+            includeArchived: 'NO', includeAccountingFields: false,
+            orderBy: ['NAME_ASC'], offset, first: PAGE, searchQuery: ''
+          }, 'AllCustomers');
+          const nodes = firstNodes(d);
+          for (const c of nodes) {
+            if (c && c.id != null && !c.archivedAt) out.push({ id: c.id, name: c.name || ('#' + c.id) });
+          }
+          if (onProgress) onProgress(out.length, intento);
+          if (nodes.length < PAGE) break;
+        }
+        return out.slice();
+      } catch (e) {
+        if (onProgress) onProgress(out.length, intento, String(e && e.message || e));
+        if (intento < 3) await new Promise(r => setTimeout(r, intento * 5000));
+      }
+    }
+    return [];
+  }
+
   const DUP_SWEEP_KEY = 'sa-specm-sweep-v1';
   function sweepLoad() {
     try { return JSON.parse(localStorage.getItem(DUP_SWEEP_KEY) || 'null'); } catch (_) { return null; }
@@ -3266,29 +3296,32 @@ const SpecMigrator = (() => {
     dupSetFooter('<button class="dup-btn dup-btn-danger" data-act="sw-stop">Detener</button>');
     dupState.panelEl.querySelector('[data-act=sw-stop]')?.addEventListener('click', () => { dupState.runId++; });
 
-    const clientes = [];
-    try {
-      const PAGE = 200;
-      for (let offset = 0; offset < 20000; offset += PAGE) {
-        if (dupState.runId !== myRunId) return;
-        const d = await api().query('AllCustomers',
-          { first: PAGE, offset, orderBy: ['ID_ASC'], searchQuery: '' }, 'AllCustomers');
-        // El contenedor varía entre ops (pagedData / allCustomers / …). En vez de adivinarlo,
-        // se toma el primer objeto con `nodes` que traiga la respuesta: si Steelhead lo renombra,
-        // el barrido sigue vivo en lugar de reportar "no hay clientes" y no hacer nada.
-        const nodes = firstNodes(d);
-        for (const c of nodes) if (c && c.id != null) clientes.push({ id: c.id, name: c.name || ('#' + c.id) });
-        dupSetBody(`<div class="dup-progress">Cargando clientes… ${clientes.length}</div>`);
-        if (nodes.length < PAGE) break;
-      }
-    } catch (e) {
-      dupSetBody(`<div class="dup-error">No pude listar clientes: ${dupEscHtml(String(e && e.message || e))}</div>`);
+    // El checkpoint se lee ANTES de pedir nada: si el ERP falla al listar, la corrida sigue
+    // con la lista guardada en vez de morir y dejar el avance inalcanzable.
+    const ckPrevio = sweepLoad();
+    const frescos = await fetchCustomersTolerante((n, intento, err) => {
+      dupSetBody(`<div class="dup-progress">Cargando clientes… ${n}`
+        + (intento > 1 ? ` (intento ${intento}/3)` : '')
+        + (err ? `<div style="color:#fbbf24;font-size:11px;margin-top:4px">${dupEscHtml(err.slice(0,90))}</div>` : '')
+        + `</div>`);
+    });
+    const lista = SMNs.resolveCustomerList(ckPrevio, frescos);
+    const clientes = lista.clientes;
+    if (!clientes.length) {
+      dupSetBody('<div class="dup-error">No pude listar clientes y no hay lista guardada. '
+        + 'El ERP no está respondiendo — inténtalo más tarde.</div>');
+      dupSetFooter('<button class="dup-btn" data-act="sw-x">Cerrar</button>');
+      dupState.panelEl.querySelector('[data-act=sw-x]')?.addEventListener('click', () => dupClosePanel());
       return;
     }
-    if (!clientes.length) { dupSetBody('<div class="dup-error">No se encontraron clientes.</div>'); return; }
+    if (lista.origen === 'checkpoint') {
+      dupSetBody('<div class="dup-progress">El ERP no listó clientes; sigo con los '
+        + clientes.length + ' guardados del intento anterior.</div>');
+      await new Promise(r => setTimeout(r, 1200));
+    }
 
     // ── 2) plan con checkpoint ───────────────────────────────────────────────
-    const ck = sweepLoad();
+    const ck = ckPrevio;
     const plan = SMNs.planCustomerSweep(clientes, ck);
     if (ck && plan.yaHechos) {
       const seguir = confirm('Hay un barrido a medias: ' + plan.yaHechos + ' de ' + clientes.length
@@ -3324,19 +3357,29 @@ const SpecMigrator = (() => {
           · ${totales.errores} errores${fallos.length ? ` · ${fallos.length} clientes con fallo` : ''}
         </div>
         <div data-ctrl="sw-erp" style="font-size:11px;color:#fbbf24;margin-top:4px"></div>
+        <div data-ctrl="sw-log" style="font-size:10px;color:#6b7280;margin-top:8px;
+             max-height:110px;overflow-y:auto;font-family:ui-monospace,monospace;
+             border-top:1px solid #374151;padding-top:6px"></div>
       </div>`);
       const swMsg = dupState.panelEl.querySelector('[data-ctrl=sw-msg]');
       const swErp = dupState.panelEl.querySelector('[data-ctrl=sw-erp]');
+      const swLog = dupState.panelEl.querySelector('[data-ctrl=sw-log]');
+      const lineas = [];
+      const vb = (t) => {
+        lineas.push(t);
+        if (lineas.length > 40) lineas.shift();
+        if (swLog) { swLog.textContent = lineas.slice(-8).join('\n'); swLog.scrollTop = swLog.scrollHeight; }
+      };
 
       try {
-        const res = await sweepOneCustomer(cli, myRunId, swMsg, swErp, tiempos, SMNs);
+        const res = await sweepOneCustomer(cli, myRunId, swMsg, swErp, tiempos, SMNs, vb);
         totales = SMNs.mergeSweepTotals(totales, res);
       } catch (e) {
         fallos.push({ cliente: cli.name, error: String(e && e.message || e) });
         totales = SMNs.mergeSweepTotals(totales, { errores: 1 });
       }
       hechos.add(Number(cli.id));
-      sweepSave({ done: [...hechos], totales, ts: new Date().toISOString() });
+      sweepSave({ done: [...hechos], totales, clientes, ts: new Date().toISOString() });
 
       // respiro entre clientes: el /graphql se degrada por sesión, no por pestaña
       const salud = SMNs.erpHealth(tiempos);
@@ -3359,7 +3402,8 @@ const SpecMigrator = (() => {
   }
 
   // Un cliente: escanear sus NPs, detectar nodo forzado y aplicar atómico.
-  async function sweepOneCustomer(cli, myRunId, swMsg, swErp, tiempos, SMNs) {
+  async function sweepOneCustomer(cli, myRunId, swMsg, swErp, tiempos, SMNs, vb) {
+    const verbose = vb || (() => {});
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     const out = { archivados: 0, repuestos: 0, errores: 0 };
 
@@ -3396,7 +3440,8 @@ const SpecMigrator = (() => {
     }
     await Promise.all([lane(), lane(), lane()]);
     if (dupState.runId !== myRunId) return out;
-    if (!grupos.length) return out;
+    if (!grupos.length) { verbose(cli.name + ': nada que corregir'); return out; }
+    verbose(cli.name + ': ' + grupos.length + ' campos con nodo forzado');
 
     // Aplicar ATÓMICO por campo
     const units = SMNs.planApplyUnits(grupos, () => ({ winnerRowId: null, ignored: false }));
@@ -3417,8 +3462,12 @@ const SpecMigrator = (() => {
                                               Number(unit.repone.specFieldParamId), false);
           if (st !== 'ok' && st !== 'conflict' && st !== 'duplicate') throw new Error('reponer: ' + st);
           out.repuestos++;
+          verbose('repuesto sin nodo · NP ' + unit.pnId + ' campo ' + unit.fieldId);
         }
-      } catch (_) { out.errores++; }
+      } catch (e) {
+        out.errores++;
+        verbose('✗ NP ' + unit.pnId + ' campo ' + unit.fieldId + ' → ' + String(e && e.message || e).slice(0, 60));
+      }
       tiempos.push(Date.now() - t0);
       if (tiempos.length > 12) tiempos.shift();
       if (swMsg && u % 5 === 0) swMsg.textContent = `aplicando ${u}/${units.length} campos…`;
@@ -3461,6 +3510,222 @@ const SpecMigrator = (() => {
     return out;
   }
 
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // REPARADOR: archivados sin reponer (2026-07-30)
+  // ══════════════════════════════════════════════════════════════════════════
+  // Una corrida del apply en dos fases archivó ~21 000 parámetros y las reposiciones fallaron
+  // en masa contra un ERP que devolvía HTTP 500. Los datos NO se perdieron —están archivados—
+  // así que reponer el MISMO sfp deja el NP como debía quedar, y sin nodo forzado.
+  //
+  // Recorre por cliente con checkpoint, igual que el barrido: se lanza y se ocupa solo.
+
+  const DUP_REPAIR_KEY = 'sa-specm-repair-v1';
+
+  async function repairArchivedWithoutRestore() {
+    const SMNr = (typeof window !== 'undefined' && window.SpecMigratorNormalize) || null;
+    if (!SMNr || !SMNr.planRepairs) { alert('Falta spec-migrator-normalize.js'); return; }
+
+    // ¿desde cuándo cuentan los archivados? Por omisión, las últimas 24 h.
+    const horas = parseFloat(prompt(
+      'Reparar campos que quedaron SIN parámetro porque se archivó y la reposición falló.\n\n'
+      + '¿Cuántas horas hacia atrás se consideran los archivados?\n'
+      + '(24 = el último día. Solo se reponen campos que hoy NO tienen parámetro activo.)', '24'));
+    if (!isFinite(horas) || horas <= 0) return;
+    const corteMs = Date.now() - horas * 3600 * 1000;
+
+    dupEnsurePanel('Reparar archivados sin reponer');
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    const myRunId = ++dupState.runId;
+
+    dupSetBody('<div class="dup-progress">Cargando lista de clientes…</div>');
+    dupSetFooter('<button class="dup-btn dup-btn-danger" data-act="rp-stop">Detener</button>');
+    dupState.panelEl.querySelector('[data-act=rp-stop]')?.addEventListener('click', () => { dupState.runId++; });
+
+    // Checkpoint PRIMERO: si el ERP falla al listar, se sigue con la lista guardada en vez
+    // de morir dejando el avance inalcanzable (reporte del operador: "pasó varios clientes,
+    // pero aún así me bota el error de nuevo").
+    let ckPrev = null;
+    try { ckPrev = JSON.parse(localStorage.getItem(DUP_REPAIR_KEY) || 'null'); } catch (_) {}
+
+    const frescos = await fetchCustomersTolerante((n, intento, err) => {
+      dupSetBody(`<div class="dup-progress">Cargando clientes… ${n}`
+        + (intento > 1 ? ` (intento ${intento}/3)` : '')
+        + (err ? `<div style="color:#fbbf24;font-size:11px;margin-top:4px">${dupEscHtml(err.slice(0,90))}</div>` : '')
+        + `</div>`);
+    });
+    const lista = SMNr.resolveCustomerList(ckPrev, frescos);
+    const clientes = lista.clientes;
+    if (!clientes.length) {
+      dupSetBody('<div class="dup-error">No pude listar clientes y no hay lista guardada. '
+        + 'El ERP no está respondiendo — inténtalo más tarde.</div>');
+      dupSetFooter('<button class="dup-btn" data-act="rp-x">Cerrar</button>');
+      dupState.panelEl.querySelector('[data-act=rp-x]')?.addEventListener('click', () => dupClosePanel());
+      return;
+    }
+    if (lista.origen === 'checkpoint') {
+      dupSetBody('<div class="dup-progress">El ERP no listó clientes; sigo con los '
+        + clientes.length + ' guardados del intento anterior.</div>');
+      await new Promise(r => setTimeout(r, 1200));
+    }
+
+    const ck = ckPrev;
+    const plan = SMNr.planCustomerSweep(clientes, ck);
+    if (ck && plan.yaHechos) {
+      if (!confirm('Reparación a medias: ' + plan.yaHechos + ' de ' + clientes.length
+        + ' clientes ya revisados (' + plan.totales.repuestos + ' repuestos).\n\n'
+        + 'Aceptar = REANUDAR.  Cancelar = empezar de CERO.')) {
+        try { localStorage.removeItem(DUP_REPAIR_KEY); } catch (_) {}
+        return repairArchivedWithoutRestore();
+      }
+    }
+
+    let totales = plan.totales;
+    const hechos = new Set(((ck && ck.done) || []).map(Number));
+    const tiempos = [];
+    let i = 0;
+
+    for (const cli of plan.pendientes) {
+      if (dupState.runId !== myRunId) break;
+      i++;
+      const pct = ((i / plan.pendientes.length) * 100).toFixed(1);
+      dupSetBody(`<div class="dup-progress">
+        <b>${dupEscHtml(cli.name)}</b> — cliente ${i} de ${plan.pendientes.length}
+        ${plan.yaHechos ? `(+${plan.yaHechos} de antes)` : ''}
+        <div data-ctrl="rp-msg">revisando…</div>
+        <div class="dup-bar"><div style="width:${pct}%"></div></div>
+        <div style="font-size:11px;color:#9ca3af;margin-top:6px">
+          acumulado: <b style="color:#34d399">${totales.repuestos}</b> campos reparados
+          · ${totales.errores} errores
+        </div>
+        <div data-ctrl="rp-erp" style="font-size:11px;color:#fbbf24;margin-top:4px"></div>
+        <div data-ctrl="rp-log" style="font-size:10px;color:#6b7280;margin-top:8px;
+             max-height:110px;overflow-y:auto;font-family:ui-monospace,monospace;
+             border-top:1px solid #374151;padding-top:6px"></div>
+      </div>`);
+      const rpMsg = dupState.panelEl.querySelector('[data-ctrl=rp-msg]');
+      const rpErp = dupState.panelEl.querySelector('[data-ctrl=rp-erp]');
+      const rpLog = dupState.panelEl.querySelector('[data-ctrl=rp-log]');
+      const lineas = [];
+      const vb = (t) => {
+        lineas.push(t);
+        if (lineas.length > 40) lineas.shift();
+        if (rpLog) { rpLog.textContent = lineas.slice(-8).join('\n'); rpLog.scrollTop = rpLog.scrollHeight; }
+      };
+
+      try {
+        const res = await repairOneCustomer(cli, myRunId, rpMsg, rpErp, tiempos, SMNr, vb, corteMs);
+        totales = SMNr.mergeSweepTotals(totales, res);
+      } catch (e) {
+        totales = SMNr.mergeSweepTotals(totales, { errores: 1 });
+        vb('✗ ' + cli.name + ' → ' + String(e && e.message || e).slice(0, 60));
+      }
+      hechos.add(Number(cli.id));
+      try {
+        localStorage.setItem(DUP_REPAIR_KEY, JSON.stringify({
+          done: [...hechos], totales, clientes, ts: new Date().toISOString() }));
+      } catch (_) {}
+
+      const salud = SMNr.erpHealth(tiempos);
+      if (salud.degradado) {
+        if (rpErp) rpErp.textContent = `⏸ el ERP va lento (~${Math.round(salud.medianaMs)} ms). Pausa de ${Math.round(salud.pausaMs / 1000)} s…`;
+        await sleep(salud.pausaMs);
+      }
+    }
+
+    const interrumpido = dupState.runId !== myRunId;
+    dupSetBody(`<div class="${totales.errores ? 'dup-error' : 'dup-success'}">
+      ${interrumpido ? 'Reparación DETENIDA' : 'Reparación terminada'} — ${totales.clientes} clientes revisados<br>
+      <b>${totales.repuestos}</b> campos reparados · ${totales.errores} errores
+      ${interrumpido ? '<br><small>El avance quedó guardado: al reabrir te ofrece reanudar.</small>' : ''}
+    </div>`);
+    dupSetFooter('<button class="dup-btn" data-act="rp-close">Cerrar</button>');
+    dupState.panelEl.querySelector('[data-act=rp-close]')?.addEventListener('click', () => dupClosePanel());
+    if (!interrumpido && !totales.errores) { try { localStorage.removeItem(DUP_REPAIR_KEY); } catch (_) {} }
+  }
+
+  async function repairOneCustomer(cli, myRunId, rpMsg, rpErp, tiempos, SMNr, vb, corteMs) {
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    const verbose = vb || (() => {});
+    const out = { archivados: 0, repuestos: 0, errores: 0 };
+
+    const pns = [];
+    const PAGE = 200;
+    for (let offset = 0; offset < 20000; offset += PAGE) {
+      if (dupState.runId !== myRunId) return out;
+      const d = await api().query('AllPartNumbers',
+        { first: PAGE, offset, includeArchived: 'NO', orderBy: ['ID_DESC'], searchQuery: '',
+          customerIdFilter: [cli.id] }, 'AllPartNumbers');
+      const nodes = (d && d.pagedData && d.pagedData.nodes) || [];
+      for (const n of nodes) pns.push({ id: n.id, name: n.name || '' });
+      if (nodes.length < PAGE) break;
+    }
+    if (!pns.length) return out;
+
+    if (rpMsg) rpMsg.textContent = `revisando ${pns.length} NPs…`;
+    let k = 0, revisados = 0;
+    // Lectura con pool 3; la reposición va EN SERIE dentro de cada NP.
+    async function lane() {
+      while (k < pns.length) {
+        if (dupState.runId !== myRunId) return;
+        const pn = pns[k++];
+        const t0 = Date.now();
+        try {
+          const detail = await getPNDetail(pn.id);
+          const filas = flattenPnRows(detail);
+          const reparos = SMNr.planRepairs(filas, corteMs);
+          for (const r of reparos) {
+            if (dupState.runId !== myRunId) return;
+            try {
+              const st = await addSingleParamToPN(pn.id, Number(r.specFieldId),
+                                                  Number(r.specFieldParamId), false);
+              if (st !== 'ok' && st !== 'conflict' && st !== 'duplicate') throw new Error(st);
+              out.repuestos++;
+              verbose('reparado ' + pn.name + ' · campo ' + r.specFieldId + ' = ' + r.paramName);
+            } catch (e) {
+              out.errores++;
+              verbose('✗ ' + pn.name + ' campo ' + r.specFieldId + ' → ' + String(e && e.message || e).slice(0, 50));
+            }
+          }
+        } catch (_) { out.errores++; }
+        tiempos.push(Date.now() - t0);
+        if (tiempos.length > 12) tiempos.shift();
+        revisados++;
+        if (rpMsg && revisados % 10 === 0) {
+          rpMsg.textContent = `revisando ${revisados}/${pns.length} NPs · ${out.repuestos} reparados`;
+        }
+        const salud = SMNr.erpHealth(tiempos);
+        if (salud.degradado) {
+          if (rpErp) rpErp.textContent = `⏸ ERP lento (~${Math.round(salud.medianaMs)} ms), pausa ${Math.round(salud.pausaMs / 1000)} s…`;
+          await sleep(salud.pausaMs);
+          if (rpErp) rpErp.textContent = '';
+        }
+      }
+    }
+    await Promise.all([lane(), lane(), lane()]);
+    if (!out.repuestos) verbose(cli.name + ': nada que reparar');
+    return out;
+  }
+
+  // Aplana las filas de params de un NP al shape que espera planRepairs.
+  function flattenPnRows(detail) {
+    const nodes = (detail && detail.partNumberSpecFieldParamsByPartNumberId
+      && detail.partNumberSpecFieldParamsByPartNumberId.nodes) || [];
+    const out = [];
+    for (const p of nodes) {
+      const sfp = p.specFieldParamBySpecFieldParamId;
+      if (!sfp) continue;
+      const sfs = sfp.specFieldSpecBySpecFieldSpecId;
+      if (!sfs || sfs.id == null) continue;
+      out.push({
+        id: p.id, archivedAt: p.archivedAt, processNodeId: p.processNodeId || null,
+        paramId: sfp.id, paramName: sfp.name || '',
+        fieldId: (sfs.specFieldBySpecFieldId || {}).id || p.specFieldId, sfsId: sfs.id
+      });
+    }
+    return out;
+  }
+
   async function dupRunApply(parentRunId) {
     const myRunId = ++dupState.runId;
     void parentRunId;
@@ -3490,10 +3755,14 @@ const SpecMigrator = (() => {
       + 'un hueco.\n\n¿Continuar?')) return;
 
     dupSetBody(`<div class="dup-progress">
-      Aplicando ${units.length} campos (archivar + reponer juntos)…
-      <div data-ctrl="prog-msg">0/${units.length}</div>
+      Aplicando ${units.length} campos (cada uno se archiva y repone junto)…
+      <div data-ctrl="prog-msg" style="margin-top:4px">0/${units.length}</div>
       <div class="dup-bar"><div data-ctrl="prog-bar" style="width:0%"></div></div>
-      <div data-ctrl="prog-erp" style="font-size:11px;color:#9ca3af;margin-top:6px"></div>
+      <div data-ctrl="prog-now" style="font-size:11px;color:#cbd5e1;margin-top:6px"></div>
+      <div data-ctrl="prog-erp" style="font-size:11px;color:#fbbf24;margin-top:4px"></div>
+      <div data-ctrl="prog-log" style="font-size:10px;color:#6b7280;margin-top:8px;
+           max-height:120px;overflow-y:auto;font-family:ui-monospace,monospace;
+           border-top:1px solid #374151;padding-top:6px"></div>
     </div>`);
     dupSetFooter(`<button class="dup-btn dup-btn-danger" data-act="dup-stop">Detener</button>`);
     dupState.panelEl.querySelector('[data-act=dup-stop]')?.addEventListener('click', () => {
@@ -3502,6 +3771,16 @@ const SpecMigrator = (() => {
     const pm = dupState.panelEl.querySelector('[data-ctrl=prog-msg]');
     const pb = dupState.panelEl.querySelector('[data-ctrl=prog-bar]');
     const pe = dupState.panelEl.querySelector('[data-ctrl=prog-erp]');
+    const pn_ = dupState.panelEl.querySelector('[data-ctrl=prog-now]');
+    const pl = dupState.panelEl.querySelector('[data-ctrl=prog-log]');
+    // Bitácora en vivo: sin esto, una corrida larga se ve igual que una colgada. El fallo de
+    // hoy pasó desapercibido justo porque el panel no decía nada mientras trabajaba.
+    const logLineas = [];
+    const verbose = (txt) => {
+      logLineas.push(txt);
+      if (logLineas.length > 60) logLineas.shift();
+      if (pl) { pl.textContent = logLineas.slice(-12).join('\n'); pl.scrollTop = pl.scrollHeight; }
+    };
 
     const okRows = [];
     const errRows = [];
@@ -3513,6 +3792,8 @@ const SpecMigrator = (() => {
     for (const u of units) {
       if (dupState.runId !== myRunId) break;
       const t0 = Date.now();
+      const etiqueta = 'NP ' + u.pnId + ' · campo ' + u.fieldId;
+      if (pn_) pn_.textContent = '▶ ' + etiqueta;
       try {
         for (const rowId of u.archive) {
           await dupWithRetry(
@@ -3520,6 +3801,7 @@ const SpecMigrator = (() => {
               { id: rowId, archivedAt: new Date().toISOString() }, 'UpdatePartNumberSpecParam'),
             `archivar ${rowId}`);
           okRows.push({ group: { pnId: u.pnId }, paramRowId: rowId, sfpName: '' });
+          verbose('archivado  row#' + rowId + '  (' + etiqueta + ')');
         }
         if (u.repone) {
           const st = await addSingleParamToPN(
@@ -3528,10 +3810,13 @@ const SpecMigrator = (() => {
             throw new Error('reponer devolvió: ' + st);
           }
           repuestos++;
+          verbose('REPUESTO   sfp#' + u.repone.specFieldParamId + ' sin nodo  (' + etiqueta + ')');
         }
       } catch (e) {
+        const msg = e?.message || String(e);
         errRows.push({ group: { pnId: u.pnId }, paramRowId: u.archive.join(','),
-                       sfpName: '', error: e?.message || String(e) });
+                       sfpName: '', error: msg });
+        verbose('✗ ERROR    ' + etiqueta + ' → ' + msg.slice(0, 70));
       }
       tiempos.push(Date.now() - t0);
       if (tiempos.length > 12) tiempos.shift();
@@ -4468,7 +4753,7 @@ const SpecMigrator = (() => {
 
 
   return { run, assignPendingParams, resolveConflicts, runDuplicateParamsValidator,
-           sweepAllCustomers };
+           sweepAllCustomers, repairArchivedWithoutRestore };
 })();
 
 if (typeof window !== 'undefined') window.SpecMigrator = SpecMigrator;
