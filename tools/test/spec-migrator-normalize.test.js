@@ -407,3 +407,41 @@ test('planRepairs: la reposición NUNCA lleva nodo forzado', () => {
   const r = SMN.planRepairs(filas, CORTE);
   assert.equal(r[0].processNodeId, null, 'el punto de todo esto es dejarlo sin nodo');
 });
+
+// ── El checkpoint tiene que sobrevivir a un ERP caído (2026-07-30) ──────────
+// Reporte del operador: "pasó varios clientes, pero aún así me bota el error de nuevo".
+// El listado de clientes iba ANTES de leer el checkpoint, así que un fallo transitorio al
+// listar mataba la corrida y dejaba el avance guardado pero inalcanzable.
+
+test('resolveCustomerList: si el checkpoint trae la lista, no hace falta pedirla', () => {
+  const ck = { done: [1], clientes: [{ id: 1, name: 'A' }, { id: 2, name: 'B' }] };
+  const r = SMN.resolveCustomerList(ck, null);
+  assert.equal(r.origen, 'checkpoint');
+  assert.equal(r.clientes.length, 2);
+});
+
+test('resolveCustomerList: sin checkpoint usa la lista recién traída', () => {
+  const r = SMN.resolveCustomerList(null, [{ id: 5, name: 'X' }]);
+  assert.equal(r.origen, 'servidor');
+  assert.equal(r.clientes.length, 1);
+});
+
+test('resolveCustomerList: la lista fresca gana si es más completa', () => {
+  const ck = { done: [], clientes: [{ id: 1, name: 'A' }] };
+  const r = SMN.resolveCustomerList(ck, [{ id: 1, name: 'A' }, { id: 2, name: 'B' }]);
+  assert.equal(r.origen, 'servidor');
+  assert.equal(r.clientes.length, 2);
+});
+
+test('resolveCustomerList: si el servidor falla pero hay checkpoint, se sigue con lo guardado', () => {
+  const ck = { done: [1], clientes: [{ id: 1, name: 'A' }, { id: 2, name: 'B' }] };
+  const r = SMN.resolveCustomerList(ck, []);      // el listado falló → arreglo vacío
+  assert.equal(r.origen, 'checkpoint');
+  assert.equal(r.clientes.length, 2);
+});
+
+test('resolveCustomerList: sin checkpoint y sin servidor no hay nada que hacer', () => {
+  const r = SMN.resolveCustomerList(null, []);
+  assert.equal(r.clientes.length, 0);
+  assert.equal(r.origen, 'ninguno');
+});

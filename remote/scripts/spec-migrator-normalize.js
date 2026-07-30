@@ -221,6 +221,28 @@
   }
 
   /**
+   * De dónde sale la lista de clientes de un barrido: del checkpoint o del servidor.
+   *
+   * Por qué existe: el listado iba ANTES de leer el checkpoint, así que un fallo transitorio
+   * del ERP —hoy frecuentes— mataba la corrida y dejaba el avance guardado pero inalcanzable.
+   * "Pasó varios clientes, pero aún así me bota el error de nuevo." Guardando la lista dentro
+   * del checkpoint, reanudar deja de depender de que el servidor conteste.
+   *
+   * @param {{clientes?:Array}|null} checkpoint
+   * @param {Array|null} frescos  lo que devolvió el servidor (vacío si falló)
+   * @returns {{clientes:Array, origen:'servidor'|'checkpoint'|'ninguno'}}
+   */
+  function resolveCustomerList(checkpoint, frescos) {
+    const guardados = (checkpoint && Array.isArray(checkpoint.clientes)) ? checkpoint.clientes : [];
+    const nuevos = Array.isArray(frescos) ? frescos : [];
+    // La lista fresca solo gana si de verdad aporta: si el listado falló (vacío) o vino corto,
+    // se sigue con la guardada — reanudar no puede quedar a merced del servidor.
+    if (nuevos.length && nuevos.length >= guardados.length) return { clientes: nuevos, origen: 'servidor' };
+    if (guardados.length) return { clientes: guardados, origen: 'checkpoint' };
+    return { clientes: [], origen: 'ninguno' };
+  }
+
+  /**
    * Decide qué hacer con UN field "falso pendiente" de un PN.
    * @param {Array<{id, archivedAt, processNodeId, paramId, paramName}>} fieldRows
    *        TODAS las filas (activas y archivadas) del MISMO specFieldId en el PN.
@@ -271,7 +293,7 @@
   const api = { planFieldNormalization: planFieldNormalization, extractFieldRows: extractFieldRows,
                 planForcedNodeRelease: planForcedNodeRelease, planApplyUnits: planApplyUnits,
                 erpHealth: erpHealth, planCustomerSweep: planCustomerSweep,
-                mergeSweepTotals: mergeSweepTotals, planRepairs: planRepairs, norm: norm };
+                mergeSweepTotals: mergeSweepTotals, planRepairs: planRepairs, resolveCustomerList: resolveCustomerList, norm: norm };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (typeof window !== 'undefined') window.SpecMigratorNormalize = api;
 })();

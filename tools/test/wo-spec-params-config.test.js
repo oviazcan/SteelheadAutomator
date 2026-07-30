@@ -120,3 +120,34 @@ test('los textos visibles del applet están en español, sin caracteres de otro 
     assert.equal(raro, null, f + ' tiene caracteres de otro alfabeto: ' + (raro || []).slice(0,5).join(''));
   }
 });
+
+test('el checkpoint se lee ANTES de listar clientes, en barrido y reparador', () => {
+  // "Pasó varios clientes, pero aún así me bota el error de nuevo": el listado iba primero,
+  // así que un fallo del ERP mataba la corrida y dejaba el avance guardado pero inalcanzable.
+  const fs4 = require('node:fs'), path4 = require('node:path');
+  const src = fs4.readFileSync(
+    path4.join(__dirname, '..', '..', 'remote', 'scripts', 'spec-migrator.js'), 'utf8');
+
+  for (const fn of ['sweepAllCustomers', 'repairArchivedWithoutRestore']) {
+    const i = src.indexOf('async function ' + fn);
+    assert.ok(i > 0, 'falta ' + fn);
+    const cuerpo = src.slice(i, i + 4000);
+    const iCk = cuerpo.search(/sweepLoad\(\)|getItem\(DUP_REPAIR_KEY/);
+    const iLista = cuerpo.indexOf('fetchCustomersTolerante');
+    assert.ok(iCk > 0, fn + ' debe leer el checkpoint');
+    assert.ok(iLista > 0, fn + ' debe usar el listado tolerante');
+    assert.ok(iCk < iLista, fn + ': el checkpoint se lee ANTES de pedir la lista');
+    assert.ok(cuerpo.includes('resolveCustomerList'),
+      fn + ' debe poder seguir con la lista guardada si el ERP falla');
+  }
+});
+
+test('la lista de clientes se guarda EN el checkpoint', () => {
+  const fs5 = require('node:fs'), path5 = require('node:path');
+  const src = fs5.readFileSync(
+    path5.join(__dirname, '..', '..', 'remote', 'scripts', 'spec-migrator.js'), 'utf8');
+  assert.match(src, /sweepSave\(\{ done: \[\.\.\.hechos\], totales, clientes,/,
+    'el barrido debe persistir la lista');
+  assert.match(src, /done: \[\.\.\.hechos\], totales, clientes, ts/,
+    'el reparador debe persistir la lista');
+});
