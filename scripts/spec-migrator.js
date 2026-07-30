@@ -3219,6 +3219,248 @@ const SpecMigrator = (() => {
     return (withProc.length ? withProc[0] : g.params[0]).rowId;
   }
 
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // BARRIDO AUTÓNOMO POR CLIENTE (2026-07-29)
+  // ══════════════════════════════════════════════════════════════════════════
+  // El operador: "desarrollo esto para no ser el cuello de botella; cargar cliente a cliente
+  // me convierte en el cuello de botella". Esto se lanza UNA vez y recorre todos los clientes
+  // solo, con checkpoint, aunque tarde horas.
+  //
+  // Por qué trocear por cliente y no por páginas de NP: `customerIdFilter` filtra server-side
+  // (133 en vez de 26 899 — verificado), cada lote es de decenas, el checkpoint cae en una
+  // frontera natural y un fallo afecta a UN cliente.
+
+  // Extrae el arreglo `nodes` de la respuesta sin depender del nombre del contenedor.
+  function firstNodes(data) {
+    if (!data || typeof data !== 'object') return [];
+    if (Array.isArray(data.nodes)) return data.nodes;
+    for (const k of Object.keys(data)) {
+      const v = data[k];
+      if (v && typeof v === 'object' && Array.isArray(v.nodes)) return v.nodes;
+    }
+    return [];
+  }
+
+  const DUP_SWEEP_KEY = 'sa-specm-sweep-v1';
+  function sweepLoad() {
+    try { return JSON.parse(localStorage.getItem(DUP_SWEEP_KEY) || 'null'); } catch (_) { return null; }
+  }
+  function sweepSave(v) {
+    try { localStorage.setItem(DUP_SWEEP_KEY, JSON.stringify(v)); } catch (_) {}
+  }
+  function sweepClear() {
+    try { localStorage.removeItem(DUP_SWEEP_KEY); } catch (_) {}
+  }
+
+  async function sweepAllCustomers() {
+    const SMNs = (typeof window !== 'undefined' && window.SpecMigratorNormalize) || null;
+    if (!SMNs || !SMNs.planCustomerSweep) { alert('Falta spec-migrator-normalize.js'); return; }
+
+    dupEnsurePanel('Barrido de nodo forzado — todos los clientes');
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    const myRunId = ++dupState.runId;
+
+    // ── 1) clientes ──────────────────────────────────────────────────────────
+    dupSetBody('<div class="dup-progress">Cargando lista de clientes…</div>');
+    dupSetFooter('<button class="dup-btn dup-btn-danger" data-act="sw-stop">Detener</button>');
+    dupState.panelEl.querySelector('[data-act=sw-stop]')?.addEventListener('click', () => { dupState.runId++; });
+
+    const clientes = [];
+    try {
+      const PAGE = 200;
+      for (let offset = 0; offset < 20000; offset += PAGE) {
+        if (dupState.runId !== myRunId) return;
+        const d = await api().query('AllCustomers',
+          { first: PAGE, offset, orderBy: ['ID_ASC'], searchQuery: '' }, 'AllCustomers');
+        // El contenedor varía entre ops (pagedData / allCustomers / …). En vez de adivinarlo,
+        // se toma el primer objeto con `nodes` que traiga la respuesta: si Steelhead lo renombra,
+        // el barrido sigue vivo en lugar de reportar "no hay clientes" y no hacer nada.
+        const nodes = firstNodes(d);
+        for (const c of nodes) if (c && c.id != null) clientes.push({ id: c.id, name: c.name || ('#' + c.id) });
+        dupSetBody(`<div class="dup-progress">Cargando clientes… ${clientes.length}</div>`);
+        if (nodes.length < PAGE) break;
+      }
+    } catch (e) {
+      dupSetBody(`<div class="dup-error">No pude listar clientes: ${dupEscHtml(String(e && e.message || e))}</div>`);
+      return;
+    }
+    if (!clientes.length) { dupSetBody('<div class="dup-error">No se encontraron clientes.</div>'); return; }
+
+    // ── 2) plan con checkpoint ───────────────────────────────────────────────
+    const ck = sweepLoad();
+    const plan = SMNs.planCustomerSweep(clientes, ck);
+    if (ck && plan.yaHechos) {
+      const seguir = confirm('Hay un barrido a medias: ' + plan.yaHechos + ' de ' + clientes.length
+        + ' clientes ya procesados (' + plan.totales.archivados + ' archivados, '
+        + plan.totales.repuestos + ' repuestos).\n\nAceptar = REANUDAR donde quedó.\n'
+        + 'Cancelar = empezar de CERO.');
+      if (!seguir) { sweepClear(); return sweepAllCustomers(); }
+    } else {
+      if (!confirm('Barrido de TODOS los clientes (' + clientes.length + ').\n\n'
+        + 'Por cada uno: detecta parámetros con nodo forzado, los archiva y los repone sin nodo.\n'
+        + 'Cada campo se archiva y repone JUNTO, así que una interrupción deja como mucho un hueco.\n'
+        + 'El avance se guarda: puedes detenerlo y reanudar.\n\n¿Empezar?')) return;
+    }
+
+    // ── 3) recorrer ──────────────────────────────────────────────────────────
+    let totales = plan.totales;
+    const hechos = new Set(((ck && ck.done) || []).map(Number));
+    const tiempos = [];
+    const fallos = [];
+    let i = 0;
+
+    for (const cli of plan.pendientes) {
+      if (dupState.runId !== myRunId) break;
+      i++;
+      const pct = ((i / plan.pendientes.length) * 100).toFixed(1);
+      dupSetBody(`<div class="dup-progress">
+        <b>${dupEscHtml(cli.name)}</b> — cliente ${i} de ${plan.pendientes.length}
+        ${plan.yaHechos ? `(+${plan.yaHechos} de antes)` : ''}
+        <div data-ctrl="sw-msg">escaneando…</div>
+        <div class="dup-bar"><div style="width:${pct}%"></div></div>
+        <div style="font-size:11px;color:#9ca3af;margin-top:6px">
+          acumulado: ${totales.archivados} archivados · ${totales.repuestos} repuestos
+          · ${totales.errores} errores${fallos.length ? ` · ${fallos.length} clientes con fallo` : ''}
+        </div>
+        <div data-ctrl="sw-erp" style="font-size:11px;color:#fbbf24;margin-top:4px"></div>
+      </div>`);
+      const swMsg = dupState.panelEl.querySelector('[data-ctrl=sw-msg]');
+      const swErp = dupState.panelEl.querySelector('[data-ctrl=sw-erp]');
+
+      try {
+        const res = await sweepOneCustomer(cli, myRunId, swMsg, swErp, tiempos, SMNs);
+        totales = SMNs.mergeSweepTotals(totales, res);
+      } catch (e) {
+        fallos.push({ cliente: cli.name, error: String(e && e.message || e) });
+        totales = SMNs.mergeSweepTotals(totales, { errores: 1 });
+      }
+      hechos.add(Number(cli.id));
+      sweepSave({ done: [...hechos], totales, ts: new Date().toISOString() });
+
+      // respiro entre clientes: el /graphql se degrada por sesión, no por pestaña
+      const salud = SMNs.erpHealth(tiempos);
+      if (salud.degradado) {
+        if (swErp) swErp.textContent = `⏸ el ERP va lento (~${Math.round(salud.medianaMs)} ms). Pausa de ${Math.round(salud.pausaMs / 1000)} s…`;
+        await sleep(salud.pausaMs);
+      }
+    }
+
+    const interrumpido = dupState.runId !== myRunId;
+    dupSetBody(`<div class="${totales.errores ? 'dup-error' : 'dup-success'}">
+      ${interrumpido ? 'Barrido DETENIDO' : 'Barrido terminado'} — ${totales.clientes} clientes procesados<br>
+      ${totales.archivados} parámetros archivados · ${totales.repuestos} repuestos sin nodo · ${totales.errores} errores
+      ${interrumpido ? '<br><small>El avance quedó guardado: al volver a abrirlo te ofrece reanudar.</small>' : ''}
+      ${fallos.length ? '<br><small>Clientes con fallo: ' + dupEscHtml(fallos.slice(0, 5).map(f => f.cliente).join(', ')) + '</small>' : ''}
+    </div>`);
+    dupSetFooter(`<button class="dup-btn" data-act="sw-close">Cerrar</button>`);
+    dupState.panelEl.querySelector('[data-act=sw-close]')?.addEventListener('click', () => dupClosePanel());
+    if (!interrumpido && !totales.errores) sweepClear();
+  }
+
+  // Un cliente: escanear sus NPs, detectar nodo forzado y aplicar atómico.
+  async function sweepOneCustomer(cli, myRunId, swMsg, swErp, tiempos, SMNs) {
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    const out = { archivados: 0, repuestos: 0, errores: 0 };
+
+    // NPs del cliente (server-side: decenas, no el catálogo entero)
+    const pns = [];
+    const PAGE = 200;
+    for (let offset = 0; offset < 20000; offset += PAGE) {
+      if (dupState.runId !== myRunId) return out;
+      const d = await api().query('AllPartNumbers',
+        { first: PAGE, offset, includeArchived: 'NO', orderBy: ['ID_DESC'], searchQuery: '',
+          customerIdFilter: [cli.id] }, 'AllPartNumbers');
+      const nodes = (d && d.pagedData && d.pagedData.nodes) || [];
+      for (const n of nodes) pns.push({ id: n.id, name: n.name || '' });
+      if (nodes.length < PAGE) break;
+    }
+    if (!pns.length) return out;
+
+    // Detectar grupos con nodo forzado (pool 3 — lectura)
+    if (swMsg) swMsg.textContent = `revisando ${pns.length} NPs…`;
+    const grupos = [];
+    let k = 0;
+    async function lane() {
+      while (k < pns.length) {
+        if (dupState.runId !== myRunId) return;
+        const pn = pns[k++];
+        const t0 = Date.now();
+        try {
+          const detail = await getPNDetail(pn.id);
+          for (const g of detectForcedGroups(detail, pn, SMNs)) grupos.push(g);
+        } catch (_) { out.errores++; }
+        tiempos.push(Date.now() - t0);
+        if (tiempos.length > 12) tiempos.shift();
+      }
+    }
+    await Promise.all([lane(), lane(), lane()]);
+    if (dupState.runId !== myRunId) return out;
+    if (!grupos.length) return out;
+
+    // Aplicar ATÓMICO por campo
+    const units = SMNs.planApplyUnits(grupos, () => ({ winnerRowId: null, ignored: false }));
+    if (swMsg) swMsg.textContent = `aplicando ${units.length} campos…`;
+    let u = 0;
+    for (const unit of units) {
+      if (dupState.runId !== myRunId) break;
+      u++;
+      const t0 = Date.now();
+      try {
+        for (const rowId of unit.archive) {
+          await api().query('UpdatePartNumberSpecParam',
+            { id: rowId, archivedAt: new Date().toISOString() }, 'UpdatePartNumberSpecParam');
+          out.archivados++;
+        }
+        if (unit.repone) {
+          const st = await addSingleParamToPN(unit.pnId, Number(unit.repone.specFieldId),
+                                              Number(unit.repone.specFieldParamId), false);
+          if (st !== 'ok' && st !== 'conflict' && st !== 'duplicate') throw new Error('reponer: ' + st);
+          out.repuestos++;
+        }
+      } catch (_) { out.errores++; }
+      tiempos.push(Date.now() - t0);
+      if (tiempos.length > 12) tiempos.shift();
+      if (swMsg && u % 5 === 0) swMsg.textContent = `aplicando ${u}/${units.length} campos…`;
+
+      const salud = SMNs.erpHealth(tiempos);
+      if (salud.degradado) {
+        if (swErp) swErp.textContent = `⏸ ERP lento (~${Math.round(salud.medianaMs)} ms), pausa ${Math.round(salud.pausaMs / 1000)} s…`;
+        await sleep(salud.pausaMs);
+        if (swErp) swErp.textContent = '';
+      }
+    }
+    return out;
+  }
+
+  // Grupos de UN PN cuyo SpecField tiene filas con processNodeId forzado.
+  function detectForcedGroups(detail, pn, SMNs) {
+    const out = [];
+    const params = (detail && detail.partNumberSpecFieldParamsByPartNumberId
+      && detail.partNumberSpecFieldParamsByPartNumberId.nodes) || [];
+    const buckets = new Map();
+    for (const p of params) {
+      if (p.archivedAt) continue;
+      const sfp = p.specFieldParamBySpecFieldParamId;
+      if (!sfp) continue;
+      const sfs = sfp.specFieldSpecBySpecFieldSpecId;
+      if (!sfs || sfs.id == null) continue;
+      if (!buckets.has(sfs.id)) buckets.set(sfs.id, {
+        rows: [], fieldId: (sfs.specFieldBySpecFieldId || {}).id || p.specFieldId });
+      buckets.get(sfs.id).rows.push({
+        rowId: p.id, processNodeId: p.processNodeId || null,
+        paramId: sfp.id, paramName: sfp.name || '' });
+    }
+    for (const [sfsId, b] of buckets) {
+      if (!b.rows.some(r => r.processNodeId)) continue;      // solo nodo forzado
+      const releasePlan = SMNs.planForcedNodeRelease(b.rows);
+      if (releasePlan.action === 'ok' || releasePlan.action === 'ambiguous') continue;
+      out.push({ key: pn.id + '-' + sfsId, pnId: pn.id, pnName: pn.name,
+                 fieldId: b.fieldId, params: b.rows, releasePlan });
+    }
+    return out;
+  }
+
   async function dupRunApply(parentRunId) {
     const myRunId = ++dupState.runId;
     void parentRunId;
@@ -4225,7 +4467,8 @@ const SpecMigrator = (() => {
   }
 
 
-  return { run, assignPendingParams, resolveConflicts, runDuplicateParamsValidator };
+  return { run, assignPendingParams, resolveConflicts, runDuplicateParamsValidator,
+           sweepAllCustomers };
 })();
 
 if (typeof window !== 'undefined') window.SpecMigrator = SpecMigrator;
