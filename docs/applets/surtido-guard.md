@@ -1,14 +1,14 @@
 # Applet `surtido-guard` — Candado de Surtido Programado
 
-> Versión: **0.3.0** — ✅ **DEPLOYADO** (2026-07-30): config **1.11.29**, tag `v1.11.29`, firma
-> KMS verificada en vivo. Bundle Safari **0.6.15** construido y sincronizado a `Resources/` —
+> Versión: **0.3.0** — ✅ **DEPLOYADO** (2026-07-30): config **1.11.32**, tag `v1.11.32`, firma
+> KMS verificada en vivo. Bundle Safari **0.6.16** construido y sincronizado a `Resources/` —
 > **falta recompilar en Xcode**. Core **55/55** + 4 de aislamiento + 5 de contrato de config.
 >
-> **Validado end-to-end en vivo con la 1.11.24.** Los dos fixes de catálogo posteriores
-> (**1.11.26** acumulativo — el operador confirmó que ese bug quedó corregido — y **1.11.29**
-> catálogo completo desde la API) **NO están validados en vivo**: la pestaña de pruebas quedó
-> oculta y Chrome no renderiza React ahí. Cubiertos por 11 tests de regresión entre ambos.
-> **Es lo primero que hay que ver.**
+> **Validado end-to-end en vivo con la 1.11.24.** Los tres fixes de catálogo posteriores los
+> **confirmó el operador en piso**: **1.11.26** (acumulativo) *"ya se corrigió"*, y **1.11.29**
+> (catálogo completo desde la API) *"ya salen"* — con la observación de que **tarda**, que es
+> lo que atiende **1.11.32** (indicador animado). El indicador en sí **no está visto en vivo**
+> todavía.
 >
 > **Run real en `/Domains/344/Workboards/6234`:** el box se pinta en el header, el dropdown ofrece
 > `Todas` + `T300`, y al filtrar por `T300` queda **1 visible · 5 sin programar ocultas** — la
@@ -143,6 +143,25 @@ mentir justo en el dato con el que el operador decide. En el board real el dropd
 
 **Lección:** un applet puede tener el núcleo impecable y ser inservible porque su *entrada* depende
 de un dato opcional. El fallback no fue relajar la lógica, sino **ampliar la fuente**.
+
+### El catálogo tarda, y callarlo confunde (1.11.32)
+
+Con el catálogo ya correcto, el operador reportó lo siguiente: *"ya salen pero se tarda en cargar,
+así que si le doy rápido sólo salen 3, pero después de unos segundos salen las demás"*. El **dato
+estaba bien**; lo que faltaba era **decir que aún no terminaba** — abrir el dropdown temprano
+mostraba las líneas del DOM y se leían como si fueran todas.
+
+**Anillo animado + «buscando líneas…»** junto al dropdown mientras `boardCatalogState` no sea
+`ready`. Si la carga falla, el anillo **deja de girar**, se pone ámbar y dice «catálogo incompleto
+(solo lo visible)»: un spinner eterno mentiría prometiendo algo que ya no viene.
+
+La animación es **CSS pura** — el DOM no muta mientras gira, así que no re-dispara el
+`MutationObserver` (que corre con `subtree:true`); el nodo se crea una vez y solo se
+muestra/oculta. Respeta `prefers-reduced-motion`.
+
+**Lección:** los tres bugs del filtro fueron del **catálogo**, no del núcleo — de dónde salen las
+opciones, cuándo se pierden, y **cuánto tarda en estar completo**. Un dato correcto que llega
+tarde y en silencio se lee como un dato equivocado.
 
 ### El catálogo se descubría por accidente (bug del operador, 1.11.29)
 
