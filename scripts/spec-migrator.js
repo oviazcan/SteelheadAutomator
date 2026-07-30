@@ -3324,12 +3324,22 @@ const SpecMigrator = (() => {
           · ${totales.errores} errores${fallos.length ? ` · ${fallos.length} clientes con fallo` : ''}
         </div>
         <div data-ctrl="sw-erp" style="font-size:11px;color:#fbbf24;margin-top:4px"></div>
+        <div data-ctrl="sw-log" style="font-size:10px;color:#6b7280;margin-top:8px;
+             max-height:110px;overflow-y:auto;font-family:ui-monospace,monospace;
+             border-top:1px solid #374151;padding-top:6px"></div>
       </div>`);
       const swMsg = dupState.panelEl.querySelector('[data-ctrl=sw-msg]');
       const swErp = dupState.panelEl.querySelector('[data-ctrl=sw-erp]');
+      const swLog = dupState.panelEl.querySelector('[data-ctrl=sw-log]');
+      const lineas = [];
+      const vb = (t) => {
+        lineas.push(t);
+        if (lineas.length > 40) lineas.shift();
+        if (swLog) { swLog.textContent = lineas.slice(-8).join('\n'); swLog.scrollTop = swLog.scrollHeight; }
+      };
 
       try {
-        const res = await sweepOneCustomer(cli, myRunId, swMsg, swErp, tiempos, SMNs);
+        const res = await sweepOneCustomer(cli, myRunId, swMsg, swErp, tiempos, SMNs, vb);
         totales = SMNs.mergeSweepTotals(totales, res);
       } catch (e) {
         fallos.push({ cliente: cli.name, error: String(e && e.message || e) });
@@ -3359,7 +3369,8 @@ const SpecMigrator = (() => {
   }
 
   // Un cliente: escanear sus NPs, detectar nodo forzado y aplicar atómico.
-  async function sweepOneCustomer(cli, myRunId, swMsg, swErp, tiempos, SMNs) {
+  async function sweepOneCustomer(cli, myRunId, swMsg, swErp, tiempos, SMNs, vb) {
+    const verbose = vb || (() => {});
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     const out = { archivados: 0, repuestos: 0, errores: 0 };
 
@@ -3396,7 +3407,8 @@ const SpecMigrator = (() => {
     }
     await Promise.all([lane(), lane(), lane()]);
     if (dupState.runId !== myRunId) return out;
-    if (!grupos.length) return out;
+    if (!grupos.length) { verbose(cli.name + ': nada que corregir'); return out; }
+    verbose(cli.name + ': ' + grupos.length + ' campos con nodo forzado');
 
     // Aplicar ATÓMICO por campo
     const units = SMNs.planApplyUnits(grupos, () => ({ winnerRowId: null, ignored: false }));
@@ -3417,8 +3429,12 @@ const SpecMigrator = (() => {
                                               Number(unit.repone.specFieldParamId), false);
           if (st !== 'ok' && st !== 'conflict' && st !== 'duplicate') throw new Error('reponer: ' + st);
           out.repuestos++;
+          verbose('repuesto sin nodo · NP ' + unit.pnId + ' campo ' + unit.fieldId);
         }
-      } catch (_) { out.errores++; }
+      } catch (e) {
+        out.errores++;
+        verbose('✗ NP ' + unit.pnId + ' campo ' + unit.fieldId + ' → ' + String(e && e.message || e).slice(0, 60));
+      }
       tiempos.push(Date.now() - t0);
       if (tiempos.length > 12) tiempos.shift();
       if (swMsg && u % 5 === 0) swMsg.textContent = `aplicando ${u}/${units.length} campos…`;
@@ -3490,10 +3506,14 @@ const SpecMigrator = (() => {
       + 'un hueco.\n\n¿Continuar?')) return;
 
     dupSetBody(`<div class="dup-progress">
-      Aplicando ${units.length} campos (archivar + reponer juntos)…
-      <div data-ctrl="prog-msg">0/${units.length}</div>
+      Aplicando ${units.length} campos (cada uno se archiva y repone junto)…
+      <div data-ctrl="prog-msg" style="margin-top:4px">0/${units.length}</div>
       <div class="dup-bar"><div data-ctrl="prog-bar" style="width:0%"></div></div>
-      <div data-ctrl="prog-erp" style="font-size:11px;color:#9ca3af;margin-top:6px"></div>
+      <div data-ctrl="prog-now" style="font-size:11px;color:#cbd5e1;margin-top:6px"></div>
+      <div data-ctrl="prog-erp" style="font-size:11px;color:#fbbf24;margin-top:4px"></div>
+      <div data-ctrl="prog-log" style="font-size:10px;color:#6b7280;margin-top:8px;
+           max-height:120px;overflow-y:auto;font-family:ui-monospace,monospace;
+           border-top:1px solid #374151;padding-top:6px"></div>
     </div>`);
     dupSetFooter(`<button class="dup-btn dup-btn-danger" data-act="dup-stop">Detener</button>`);
     dupState.panelEl.querySelector('[data-act=dup-stop]')?.addEventListener('click', () => {
@@ -3502,6 +3522,16 @@ const SpecMigrator = (() => {
     const pm = dupState.panelEl.querySelector('[data-ctrl=prog-msg]');
     const pb = dupState.panelEl.querySelector('[data-ctrl=prog-bar]');
     const pe = dupState.panelEl.querySelector('[data-ctrl=prog-erp]');
+    const pn_ = dupState.panelEl.querySelector('[data-ctrl=prog-now]');
+    const pl = dupState.panelEl.querySelector('[data-ctrl=prog-log]');
+    // Bitácora en vivo: sin esto, una corrida larga se ve igual que una colgada. El fallo de
+    // hoy pasó desapercibido justo porque el panel no decía nada mientras trabajaba.
+    const logLineas = [];
+    const verbose = (txt) => {
+      logLineas.push(txt);
+      if (logLineas.length > 60) logLineas.shift();
+      if (pl) { pl.textContent = logLineas.slice(-12).join('\n'); pl.scrollTop = pl.scrollHeight; }
+    };
 
     const okRows = [];
     const errRows = [];
@@ -3513,6 +3543,8 @@ const SpecMigrator = (() => {
     for (const u of units) {
       if (dupState.runId !== myRunId) break;
       const t0 = Date.now();
+      const etiqueta = 'NP ' + u.pnId + ' · campo ' + u.fieldId;
+      if (pn_) pn_.textContent = '▶ ' + etiqueta;
       try {
         for (const rowId of u.archive) {
           await dupWithRetry(
@@ -3520,6 +3552,7 @@ const SpecMigrator = (() => {
               { id: rowId, archivedAt: new Date().toISOString() }, 'UpdatePartNumberSpecParam'),
             `archivar ${rowId}`);
           okRows.push({ group: { pnId: u.pnId }, paramRowId: rowId, sfpName: '' });
+          verbose('archivado  row#' + rowId + '  (' + etiqueta + ')');
         }
         if (u.repone) {
           const st = await addSingleParamToPN(
@@ -3528,10 +3561,13 @@ const SpecMigrator = (() => {
             throw new Error('reponer devolvió: ' + st);
           }
           repuestos++;
+          verbose('REPUESTO   sfp#' + u.repone.specFieldParamId + ' sin nodo  (' + etiqueta + ')');
         }
       } catch (e) {
+        const msg = e?.message || String(e);
         errRows.push({ group: { pnId: u.pnId }, paramRowId: u.archive.join(','),
-                       sfpName: '', error: e?.message || String(e) });
+                       sfpName: '', error: msg });
+        verbose('✗ ERROR    ' + etiqueta + ' → ' + msg.slice(0, 70));
       }
       tiempos.push(Date.now() - t0);
       if (tiempos.length > 12) tiempos.shift();
