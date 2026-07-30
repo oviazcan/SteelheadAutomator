@@ -139,6 +139,36 @@
     return { blocked: true, reason: 'missing-locations', missing, total, summary, tooltip };
   }
 
+  // ── Texto tecleado en el combo del ENCABEZADO ────────────────────────────────
+  // El combo que inyecta el applet acepta texto libre, así que el input puede MOSTRAR
+  // una ubicación que nunca se eligió de la lista — y ahí el candado bloquea con razón
+  // (no hay locationId) mientras el operador ve el campo lleno. Es la misma trampa que
+  // 0.6.1 cerró en los combos del RENGLÓN («no hay placeholder» ≠ «hay valor»), sólo que
+  // aquí el que miente es nuestro propio campo.
+  //
+  // resolveTypedLocation() decide si ese texto se puede convertir en una selección REAL.
+  // No adivina nunca: sólo resuelve cuando la respuesta es única.
+  //   exact     — el texto es idéntico al path o al name de UNA ubicación
+  //   unique    — el texto filtra a UNA sola ubicación
+  //   ambiguous — filtra a varias: hay que elegir
+  //   none      — no filtra a ninguna
+  //   empty     — no hay texto
+  function normLoc(txt) {
+    return String(txt == null ? '' : txt).replace(/\s+/g, ' ').trim().toLowerCase();
+  }
+
+  function resolveTypedLocation(text, options) {
+    const t = normLoc(text);
+    if (!t) return { kind: 'empty', match: null, candidates: 0 };
+    const list = Array.isArray(options) ? options : [];
+    const exact = list.filter((o) => o && (normLoc(o.path) === t || normLoc(o.name) === t));
+    if (exact.length === 1) return { kind: 'exact', match: exact[0], candidates: 1 };
+    if (exact.length > 1) return { kind: 'ambiguous', match: null, candidates: exact.length };
+    const partial = list.filter((o) => o && (normLoc(o.path).includes(t) || normLoc(o.name).includes(t)));
+    if (partial.length === 1) return { kind: 'unique', match: partial[0], candidates: 1 };
+    return { kind: partial.length ? 'ambiguous' : 'none', match: null, candidates: partial.length };
+  }
+
   // ¿Este locationId cuenta como "puesto"? Los ids de Steelhead son enteros positivos;
   // null/undefined/''/0 significan que el renglón se va a escribir SIN ubicación.
   function hasLocationId(value) {
@@ -195,6 +225,7 @@
     decideSaveGate,
     hasLocationId,
     payloadMissingLocations,
+    resolveTypedLocation,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.WarehouseLocationGuardCore = api;
