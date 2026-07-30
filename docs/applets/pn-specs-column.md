@@ -5,17 +5,20 @@
 
 ## Qué hace
 
-En el dashboard `https://app.gosteelhead.com/PartNumbers` agrega, **al INICIO de la tabla**, hasta **5 columnas** con un **toggle por columna** en el header (junto a "NUEVO NÚMERO DE PARTE"). Todas se alimentan de **una sola** consulta `GetPartNumber` por NP visible:
+En el dashboard `https://app.gosteelhead.com/PartNumbers` agrega **3 columnas al INICIO de la tabla** más un enriquecimiento **dentro de la celda nativa del nombre**, con un **toggle por cada uno** en el header (junto a "NUEVO NÚMERO DE PARTE"). Todo se alimenta de **una sola** consulta `GetPartNumber` por NP visible:
 
-| Columna | Contenido |
-|---|---|
-| 🧪 **Especificaciones** | specs activas (cada una **link** a su ficha) y sus **parámetros con valor numérico** (`Espesor: 2 - 5 µm`) |
-| ⚗️ **Metal base** | `customInputs.DatosAdicionalesNP.BaseMetal` (`Cobre`) — la columna nativa `Material` es otra cosa |
-| 🏭 **Línea** | dimensión contable 349 (`T107-LI Plata Colgado Cx (60.0)`); la nativa existe pero cae en la columna 11 |
-| 🧺 **Rack Types** | cada rack type con sus **piezas por carga** (`T102-RA02: 18 pz`) |
-| 📐 **Unidades** | **todos** los factores registrados, en unidades por pieza (`KGM: 0.376 /pz`) |
+| Toggle | Qué pinta | Contenido |
+|---|---|---|
+| 🧺 **Racks** | columna *Rack Types* | cada rack en dos renglones: nombre y `(18 pz)` |
+| 📐 **Unidades** | columna *Unidades /pz* | **todos** los factores registrados, 3 decimales, en el orden del ERP (`KGM 0.376`) |
+| 📝 **Desc+Metal** | **celda nativa del nombre** | `descriptionMarkdown` + metal base bajo el NP (`C4 FIXED CONTACT 5 DL · Cobre`) |
+| 🧪 **Specs** | columna *Especificaciones* | specs activas (cada una **link** a su ficha) y sus **parámetros con valor numérico** (`Espesor: 2 - 5 µm`) |
 
-El criterio de "numérico" (desde 0.2.0) es que el **valor** traiga dígitos, no el `specField.type`. Excluye parámetros y specs **archivados**. Todas las columnas arrancan **APAGADAS** (ver §0.3.0: el response pesa 5.84 MB).
+Ese es también el orden de la **barra de toggles** (Specs al final porque arrastra el contador y el medidor de memoria); el orden de las **columnas** en la tabla es Especificaciones · Rack Types · Unidades /pz.
+
+**No hay columna de Línea ni de Metal base** (las hubo en 0.3.0): la de Línea duplicaba a la nativa y el metal cabía dentro de la celda del nombre. Ver §0.3.1.
+
+El criterio de "numérico" (desde 0.2.0) es que el **valor** traiga dígitos, no el `specField.type`. Excluye parámetros y specs **archivados**. Todo arranca **APAGADO** (ver §0.3.0: el response pesa 5.84 MB).
 
 ## Decisión de diseño (respuesta a la pregunta original del usuario)
 
@@ -58,14 +61,15 @@ Los params vienen **DUPLICADOS**: en el PN de referencia (44068-205-01), 5 archi
 
 | Archivo | Rol |
 |---|---|
-| `remote/scripts/pn-specs-column-core.js` | Motor puro (sin DOM/red): ruta/ids (`isPartNumbersIndexPath`, `parsePartNumberId`), formato (`unitSymbol`, `fmtNum`, `fmtFactor`, `formatRange`, `formatCellText`, `formatRackTypesText`, `formatUnitFactorsText`) y extracción (`extractSpecsWithNumericParams`, `extractMetalBase`, `buildAcctDimensionCatalog`, `extractDimensionValue`, `extractLinea`, `extractRackTypes`, `extractUnitFactors`, `extractPnRow`). Dual node/browser. |
-| `remote/scripts/pn-specs-column.js` | Glue DOM: barra de 5 toggles persistentes, columnas al inicio (`moveToFront`), MutationObserver, pool de `GetPartNumber`, memory-hardening. |
-| `tools/test/pn-specs-column-core.test.js` | 30 golden tests (13 sobre fixture real del PN 2300153). |
+| `remote/scripts/pn-specs-column-core.js` | Motor puro (sin DOM/red): ruta/ids (`isPartNumbersIndexPath`, `parsePartNumberId`), formato (`unitSymbol`, `fmtNum`, `fmtFactor`, `fmtQty3`, `formatRange`, `formatCellText`, `formatRackChip`, `formatNameInfo`, `formatRackTypesText`, `formatUnitFactorsText`), orden (`UNIT_ORDER`, `unitOrderIndex`) y extracción (`extractSpecsWithNumericParams`, `extractMetalBase`, `extractDescription`, `buildAcctDimensionCatalog`, `extractDimensionValue`, `extractLinea`, `extractRackTypes`, `extractUnitFactors`, `extractPnRow`). Dual node/browser. |
+| `remote/scripts/pn-specs-column.js` | Glue DOM: barra de 4 toggles persistentes, 3 columnas al inicio (`moveToFront`), inyección en la celda nativa del nombre (`syncNameInfo`), MutationObserver, pool de `GetPartNumber`, memory-hardening. |
+| `tools/test/pn-specs-column-core.test.js` | **42** golden tests (25 sobre fixture real del PN 2300153). |
 
-- **Toggles persistentes** (uno por columna, todos **default OFF** — no sorprender con 50 queries de 5.8 MB): `sa_pn_specs_col_enabled` (la original, se respeta el valor previo), `sa_pn_metal_col_enabled`, `sa_pn_linea_col_enabled`, `sa_pn_racks_col_enabled`, `sa_pn_units_col_enabled`. La acción del popup (`PnSpecsColumn.toggleFromPopup`) sigue apuntando a Specs; las demás solo tienen toggle en el header.
-- **Columnas**: `<th>` + `<td>` por fila, **siempre al INICIO** en el orden canónico de `COLS`, reposicionadas en cada sync con `moveToFront` (idempotente). `partNumberId` sale del `<a href="/PartNumbers/:id">` de la celda Nombre y se marca en `data-sa-pnid` de cada celda nuestra.
-- **React/MUI**: la tabla es `MuiTable-root` controlada por React. Un `MutationObserver` (debounce 160ms) re-inyecta la columna al paginar/ordenar/filtrar. **Validado en vivo:** insertar `<td>` extra al final de cada `<tr>` **sobrevive** el render de React (50/50 celdas persisten).
-- **Estilo**: toggle/toast en **dark-mode** (UI nuestra, regla de diseño); la columna se integra a la tabla clara de SH pero **marcada con acento verde** (`border-left:3px #13a36f`) para señalar que es enriquecimiento de la extensión. Render con `textContent` (no innerHTML de datos → no XSS con nombres de spec).
+- **Toggles persistentes** (uno por cada cosa que se pinta, todos **default OFF** — no sorprender con 50 queries de 5.8 MB): `sa_pn_specs_col_enabled` (la original, se respeta el valor previo), `sa_pn_racks_col_enabled`, `sa_pn_units_col_enabled` y `sa_pn_metal_col_enabled` (que desde 0.3.1 gobierna la línea **desc+metal** dentro de la celda del nombre; se conservó la key para no perderle el estado a quien ya la tenía puesta). `sa_pn_linea_col_enabled` quedó **retirada** y `dropRetiredKeys()` la borra en el init. `TOGGLE_ORDER` fija el orden de la barra, `COLS` el de las columnas: son independientes, y la acción del popup (`PnSpecsColumn.toggleFromPopup`) apunta a Specs **por nombre**, no por posición.
+- **Columnas**: `<th>` + `<td>` por fila, **siempre al INICIO** en el orden canónico de `COLS`, reposicionadas en cada sync con `moveToFront` (idempotente — si moviera en estado estable, el observer entraría en bucle con sus propias mutaciones). `partNumberId` sale del `<a href="/PartNumbers/:id">` de la celda Nombre y se marca en `data-sa-pnid` de cada nodo nuestro.
+- **Celda nativa del nombre**: `syncNameInfo` cuelga un `<div>` propio del `<td>` que ya trae el link. **Idempotente por contrato** (`data-sa-txt` guarda el texto pintado y no se toca el DOM si no cambió): sin eso, cada sync mutaría un subárbol que React también toca → bucle. El realce del nombre (14px/700) cuelga de la clase `sa-pn-active` en `<body>`, **no** del `className` del `<td>`, que React reescribiría.
+- **React/MUI**: la tabla es `MuiTable-root` controlada por React. Un `MutationObserver` (debounce 160ms) re-inyecta al paginar/ordenar/filtrar. **Validado en vivo:** las 5 celdas quedaron en los índices 0-4 del `thead` y de las 50 filas, y `moveToFront` recupera cuando se simula que React las flota al final (20-24 → 0-4).
+- **Estilo**: toggles/toast en **dark-mode** (UI nuestra, regla de diseño); las columnas heredan la `className` MUI de una celda nativa y solo llevan un **separador punteado gris** (`border-left:1px dashed`) más un borde derecho en la última — el acento verde sólido de 0.1.0 se quitó en 0.1.2 porque se veía como parche. Render con `textContent` (no innerHTML de datos → no XSS con nombres de spec, rack o unidad, que vienen de GraphQL y los captura otro usuario). El `<style>` se versiona con `data-sa-v`: **el número del chequeo y el del `setAttribute` tienen que ser el mismo** (ver el bug de 0.3.1 en §0.3.2).
 
 ## Memory hardening (skill `memory-hardening-applets`)
 
@@ -74,9 +78,9 @@ Importa `host-cleanup-shared.js`. Aplica porque el toggle ON dispara ~50 `GetPar
 **EJE A (propia):** cache **slim** por `partNumberId` (`window.__saPnSpecsCache` Map → `{specs, total, metal, linea, rackTypes, units}` ≈ 2 KB, **no** el response de **5.84 MB** — medido en vivo, ver §0.3.0); cache se limpia al **navegar fuera** del index; teardown de columnas/observer/pool al desactivar.
 **EJE B (host):** `stopDatadogSessionReplay()` al primer fetch real; `createMemMonitor` con guardrail @88% → vacía la cola de enriquecimiento + toast (checkpoint > crash); `makePeriodicDrain(25)` (Apollo) al final de cada worker; pool con `MAX_CONC=4` + `MIN_GAP_MS=130` (~7 req/s) + retry `[0,800,2500]` solo en transitorios.
 
-## Estado de validación (2026-07-08)
+## Estado de validación (2026-07-08, cerrado el 2026-07-29)
 
-- ✅ **Core**: 14/14 golden + payload real (mayo) + **datos reales de hoy** vía fetch en vivo → `44068-205-01` → `E27550 (Plata): Espesor 1.27–3.5 µm` (excluye BOOLEAN/DROPDOWN/archivados). PN sin specs (`SWB-00496986`) → celda vacía correcta.
+- ✅ **Core**: 14/14 golden en su momento (**42/42** hoy) + payload real (mayo) + **datos reales de hoy** vía fetch en vivo → `44068-205-01` → `E27550 (Plata): Espesor 1.27–3.5 µm` (excluye BOOLEAN/DROPDOWN/archivados). PN sin specs (`SWB-00496986`) → celda vacía correcta.
 - ✅ **Hash `GetPartNumber`**: el de config (`8e3fdb52…`) **ROTÓ** (HTTP 400 "Must provide a query string"). Capturado el nuevo del front: **`5efd689d…`** (HTTP 200 verificado). Actualizado en `config.json`.
 - ✅ **DOM en vivo**: `findHeaderAnchor` encuentra el ancla; columna inyectada (th + 50 td con pnId); **sobrevive el render de React**.
 - ✅ **Deploy**: config 1.7.85 en vivo; `pn-specs-column-core.js` + `pn-specs-column.js` servidos **byte-exact** (sha256 verificado vs `main:remote/`); hash `GetPartNumber` nuevo y app presentes en el config servido.
