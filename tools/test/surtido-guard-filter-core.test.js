@@ -289,3 +289,36 @@ test('planFilter: entrada vacía no truena', () => {
   assert.strictEqual(p.effect, 'none');
   assert.strictEqual(p.visible, 0);
 });
+
+// ── mergeLineCatalog ─────────────────────────────────────────────────────
+// Existe por un caso REAL: en el board "Preparación de Surtido Almacén 5" la API no entregó
+// GetRelatedScheduleData, así que el dropdown quedaba vacío mientras una tarjeta mostraba T300.
+test('mergeLineCatalog: sin API, las líneas del DOM salvan el dropdown', () => {
+  const r = Core.mergeLineCatalog({ byLine: {} }, ['T300']);
+  assert.deepStrictEqual(r.lines, ['T300']);
+  assert.deepStrictEqual(r.domOnly, ['T300']);
+  assert.deepStrictEqual(r.byLine, {});
+});
+
+test('mergeLineCatalog: con API, el conteo de la API manda y NO se inventa uno del DOM', () => {
+  const r = Core.mergeLineCatalog({ byLine: { T204: 6 } }, ['T204']);
+  assert.deepStrictEqual(r.lines, ['T204']);
+  assert.deepStrictEqual(r.byLine, { T204: 6 });
+  assert.deepStrictEqual(r.domOnly, [], 'T204 ya venía de la API: no es domOnly');
+});
+
+test('mergeLineCatalog: une ambas fuentes y ordena', () => {
+  const r = Core.mergeLineCatalog({ byLine: { T204: 6, T110: 2 } }, ['T300', 'T204']);
+  assert.deepStrictEqual(r.lines, ['T110', 'T204', 'T300']);
+  assert.deepStrictEqual(r.domOnly, ['T300']);
+});
+
+test('mergeLineCatalog: dedup y normalización de las del DOM', () => {
+  const r = Core.mergeLineCatalog(null, ['t300', 'T300', 'T205']);
+  assert.deepStrictEqual(r.lines, ['T205', 'T300']);
+});
+
+test('mergeLineCatalog: entradas basura → catálogo vacío, no truena', () => {
+  assert.deepStrictEqual(Core.mergeLineCatalog(null, null), { lines: [], byLine: {}, domOnly: [] });
+  assert.deepStrictEqual(Core.mergeLineCatalog(undefined, ['', null, 5]).lines, []);
+});

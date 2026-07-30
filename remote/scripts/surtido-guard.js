@@ -438,10 +438,20 @@ const SurtidoGuard = (() => {
       bar.appendChild(box);            // React repintó el header → recolocar, no recrear
     }
 
-    // Opciones: "Todas" + una por línea del board, con su conteo de ÓRDENES (de la API).
+    // Opciones: "Todas" + una por línea del board.
+    // El catálogo UNE la API (completa, con conteo de órdenes) con las líneas que las tarjetas
+    // montadas revelan. Sin esa unión, un board donde GetRelatedScheduleData no llega deja el
+    // dropdown SOLO con "Todas" aunque haya tarjetas con destino visible — medido en vivo
+    // 2026-07-30 y era un filtro inutilizable. Las que solo vio el DOM van SIN número: dar el
+    // conteo de lo montado como si fuera el total sería mentir justo en el dato que se usa
+    // para decidir.
+    const cards = readMountedCards();
+    const domLines = [];
+    cards.forEach((c) => c.lines.forEach((l) => domLines.push(l)));
+    const catalog = FilterCore().mergeLineCatalog(lineCounts, domLines);
+    const lines = catalog.lines;
     const sel = box.querySelector('#sa-sg-filter-sel');
-    const lines = (lineCounts && lineCounts.lines) || [];
-    const wanted = ['', ...lines].join('|');
+    const wanted = ['', ...lines.map((c) => c + ':' + (catalog.byLine[c] != null ? catalog.byLine[c] : ''))].join('|');
     if (sel.dataset.saOpts !== wanted) {
       sel.dataset.saOpts = wanted;
       sel.textContent = '';
@@ -452,7 +462,8 @@ const SurtidoGuard = (() => {
       lines.forEach((code) => {
         const o = document.createElement('option');
         o.value = code;
-        o.textContent = code + ' (' + lineCounts.byLine[code] + ')';
+        const n = catalog.byLine[code];
+        o.textContent = (n != null) ? (code + ' (' + n + ')') : code;
         sel.appendChild(o);
       });
     }
@@ -461,7 +472,7 @@ const SurtidoGuard = (() => {
 
     // Contador SIEMPRE a la vista con filtro activo, con el desglose de por qué falta gente.
     // Sin esto un board recortado se lee como "no hay trabajo" (lección batch-name-filter).
-    const plan = currentPlan(readMountedCards());
+    const plan = currentPlan(cards);
     const count = box.querySelector('#sa-sg-filter-count');
     let txt = '', warn = false;
     if (!plan) {
