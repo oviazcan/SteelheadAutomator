@@ -1,6 +1,6 @@
 {
-  "version": "1.11.37",
-  "lastUpdated": "2026-07-30T14:13",
+  "version": "1.11.38",
+  "lastUpdated": "2026-07-30T14:14",
   "extensionVersion": "1.7.1",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -2899,7 +2899,7 @@
     "scripts/sensor-graph-hide-all.js": "3da2ad449d6792035a8ae952cc829ad7d6b5dd598b7281799b473cea5087ca6f",
     "scripts/sensor-status-autofill.js": "e19d6183c84c1cdd153110bdd31b3eb95b1973b089210182a177937a11f2b6bd",
     "scripts/spec-migrator-normalize.js": "55e77558ab7a8019265a80e873ce3b99d5bebe0d4d61e3c6020c2cf2d162b216",
-    "scripts/spec-migrator.js": "a97a22daa6a5bbcc6e8ab0db3e62ab2067ffe735cf26898ebbde3115b41f5817",
+    "scripts/spec-migrator.js": "8bae96fd47d3ed2df9574dd5d4005ba2c39b921e1d817b25a86412ea4da84046",
     "scripts/spec-params-bulk.js": "f49affd0af9c7aa11fd8ab586b4a2b70c71e34405796f5d136909db0184a929b",
     "scripts/spec-shared.js": "9a4adf965ffac349fdc69dd05b6bc1c50bb4dcc298333c7ff245acd955d0b255",
     "scripts/steelhead-api.js": "9377271a0ee2dd11b2a17908717575951b904c0ce6184ef07819d90b93c5de32",

@@ -3606,7 +3606,20 @@ const SpecMigrator = (() => {
     // checkpoint queda limpio y el panel puede decir con verdad que ya no falta nada.
     const hechos = new Set(((ck && ck.done) || []).map(Number));
     const fallidos = new Set(((ck && ck.fallidos) || []).map(Number));
+    // Avance dentro de UN cliente (el que quedó a medias). Solo hay uno a la vez: los
+    // clientes se procesan en serie.
+    let parciales = (ck && ck.parciales) || null;
     if (plan.modo === 'reintentar') for (const c of plan.pendientes) hechos.delete(Number(c.id));
+
+    // Se guarda QUIÉNES fallaron —clientes y NPs— no solo cuántos: sin los ids no hay forma
+    // de reintentar solo esos, y la corrida entera se vuelve la única unidad de reintento.
+    const guardarCheckpoint = () => {
+      try {
+        localStorage.setItem(DUP_REPAIR_KEY, JSON.stringify({
+          done: [...hechos], fallidos: [...fallidos], parciales, totales, clientes,
+          ts: new Date().toISOString() }));
+      } catch (_) {}
+    };
     const tiempos = [];
     let i = 0;
 
@@ -3650,24 +3663,36 @@ const SpecMigrator = (() => {
         if (rpLog) { rpLog.textContent = lineas.slice(-8).join('\n'); rpLog.scrollTop = rpLog.scrollHeight; }
       };
 
+      // Avance DENTRO de este cliente, si quedó a medias en una corrida anterior.
+      const parcialCli = (parciales && Number(parciales.clienteId) === Number(cli.id))
+        ? parciales : null;
+      // Guardar el parcial no puede esperar a que el cliente termine: en uno de 17 716 NPs
+      // eso son horas. Se persiste cada 200 NPs junto al estado global.
+      const guardarParcial = (p) => {
+        parciales = p;
+        guardarCheckpoint();
+      };
+
       try {
-        const res = await repairOneCustomer(cli, myRunId, rpMsg, rpErp, tiempos, SMNr, vb, corteMs, onAvance);
+        const res = await repairOneCustomer(cli, myRunId, rpMsg, rpErp, tiempos, SMNr, vb,
+                                            corteMs, onAvance, parcialCli, guardarParcial);
         totales = SMNr.mergeSweepTotals(totales, res);
-        // Pasó: si venía marcado como fallido, deja de estarlo.
-        if (res.errores) fallidos.add(Number(cli.id)); else fallidos.delete(Number(cli.id));
+        // El cliente solo se marca fallido si quedan NPs suyos por reintentar. Un error ya
+        // atendido no debe condenarlo a repetirse entero.
+        if (res.pnFallidos && res.pnFallidos.length) {
+          fallidos.add(Number(cli.id));
+          parciales = { clienteId: cli.id, hastaId: res.cursor, fallidos: res.pnFallidos.slice(0, 500) };
+        } else {
+          fallidos.delete(Number(cli.id));
+          if (parciales && Number(parciales.clienteId) === Number(cli.id)) parciales = null;
+        }
       } catch (e) {
         totales = SMNr.mergeSweepTotals(totales, { errores: 1 });
         fallidos.add(Number(cli.id));
         vb('✗ ' + cli.name + ' → ' + String(e && e.message || e).slice(0, 60));
       }
       hechos.add(Number(cli.id));
-      try {
-        // Se guarda QUIÉNES fallaron, no solo cuántos: sin los ids no hay forma de
-        // reintentar solo esos, y la corrida entera se vuelve la única unidad de reintento.
-        localStorage.setItem(DUP_REPAIR_KEY, JSON.stringify({
-          done: [...hechos], fallidos: [...fallidos], totales, clientes,
-          ts: new Date().toISOString() }));
-      } catch (_) {}
+      guardarCheckpoint();
 
       const salud = SMNr.erpHealth(tiempos);
       if (salud.degradado) {
@@ -3705,12 +3730,13 @@ const SpecMigrator = (() => {
     return h + ' h ' + (m % 60) + ' min';
   }
 
-  async function repairOneCustomer(cli, myRunId, rpMsg, rpErp, tiempos, SMNr, vb, corteMs, onAvance) {
+  async function repairOneCustomer(cli, myRunId, rpMsg, rpErp, tiempos, SMNr, vb, corteMs,
+                                   onAvance, parcial, guardarParcial) {
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     const verbose = vb || (() => {});
     const out = { archivados: 0, repuestos: 0, yaEstaban: 0, errores: 0 };
 
-    const pns = [];
+    const todos = [];
     const PAGE = 200;
     for (let offset = 0; offset < 20000; offset += PAGE) {
       if (dupState.runId !== myRunId) return out;
@@ -3718,10 +3744,37 @@ const SpecMigrator = (() => {
         { first: PAGE, offset, includeArchived: 'NO', orderBy: ['ID_DESC'], searchQuery: '',
           customerIdFilter: [cli.id] }, 'AllPartNumbers');
       const nodes = (d && d.pagedData && d.pagedData.nodes) || [];
-      for (const n of nodes) pns.push({ id: n.id, name: n.name || '' });
+      for (const n of nodes) todos.push({ id: n.id, name: n.name || '' });
       if (nodes.length < PAGE) break;
     }
+    if (!todos.length) return out;
+
+    // Avance DENTRO del cliente. Sin esto, un cliente de 17 716 NPs no puede terminar: basta
+    // un error para marcarlo fallido y el reintento vuelve a empezar por el primero.
+    const trozo = SMNr.planCustomerChunk(todos, parcial);
+    const pns = trozo.pendientes;
+    if (trozo.yaHechos) {
+      verbose(`${cli.name}: retomo en ${pns.length} de ${todos.length} NPs`
+        + (trozo.reintentos ? ` (+${trozo.reintentos} que fallaron)` : ''));
+    }
     if (!pns.length) return out;
+
+    // Cursor = menor id COMPLETADO. Se guarda cada CHUNK para que una caída cueste, como
+    // mucho, ese trozo — y no el cliente entero.
+    const CHUNK = 200;
+    let cursor = parcial && parcial.hastaId != null ? Number(parcial.hastaId) : null;
+    const fallidosPn = new Set(((parcial && parcial.fallidos) || []).map(Number));
+    let completadosBuffer = [];
+    const persistir = () => {
+      cursor = SMNr.avanzarCursor(cursor, completadosBuffer);
+      completadosBuffer = [];
+      if (guardarParcial) {
+        guardarParcial({ clienteId: cli.id, hastaId: cursor,
+                         // Cap defensivo: con muchos fallos la lista podría crecer sin tope
+                         // dentro de localStorage. 500 sobra y no compite con el resto.
+                         fallidos: [...fallidosPn].slice(0, 500) });
+      }
+    };
 
     if (rpMsg) rpMsg.textContent = `revisando ${pns.length} NPs…`;
     let k = 0, revisados = 0;
@@ -3755,10 +3808,19 @@ const SpecMigrator = (() => {
               verbose('✗ ' + pn.name + ' campo ' + r.specFieldId + ' → ' + String(e && e.message || e).slice(0, 50));
             }
           }
-        } catch (_) { out.errores++; }
+          // El NP se completó: entra al cursor y deja de estar en la lista de reintentos.
+          completadosBuffer.push(Number(pn.id));
+          fallidosPn.delete(Number(pn.id));
+        } catch (_) {
+          out.errores++;
+          // Falló la LECTURA del NP: no se reparó ninguno de sus campos. Se anota por id
+          // para reintentarlo, en vez de arrastrar al cliente entero a repetirse.
+          fallidosPn.add(Number(pn.id));
+        }
         tiempos.push(Date.now() - t0);
         if (tiempos.length > 12) tiempos.shift();
         revisados++;
+        if (revisados % CHUNK === 0) persistir();
         if (revisados % 10 === 0) {
           if (onAvance) onAvance(revisados / pns.length);
           if (rpMsg) {
@@ -3780,6 +3842,9 @@ const SpecMigrator = (() => {
       }
     }
     await Promise.all([lane(), lane(), lane()]);
+    persistir();   // último trozo, incluido el caso de "Detener" a media corrida
+    out.pnFallidos = [...fallidosPn];
+    out.cursor = cursor;
     if (!out.repuestos) verbose(cli.name + ': nada que reparar');
     return out;
   }
