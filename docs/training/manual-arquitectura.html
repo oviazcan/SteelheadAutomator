@@ -607,10 +607,16 @@ revisión de recepción.</p>
     <td><b>Ningún efecto en producción.</b> Sólo afecta la comodidad de desarrollar reportes nuevos.</td>
   </tr>
   <tr>
+    <td>GitHub Actions<br><span style="font-size:.85em">vigía del latido</span></td>
+    <td>Hospeda en la nube el proceso que vigila que la vigilancia de compatibilidad siga viva.</td>
+    <td><span class="badge b-warn">Consultor</span><br><span style="font-size:.85em">mismo repositorio</span></td>
+    <td>Se pierde la detección de que la vigilancia principal se detuvo. Se resuelve junto con la titularidad del repositorio (10.1).</td>
+  </tr>
+  <tr>
     <td>Equipo que corre los procesos automáticos</td>
     <td>Ejecuta los tres trabajos programados de la sección 9.</td>
     <td><span class="badge b-warn">Consultor</span><br><span style="font-size:.85em">equipo personal</span></td>
-    <td>Se detienen la vigilancia automática de compatibilidad y la actualización de la copia de datos. Efecto diferido, no inmediato. <b>Punto de decisión (§10).</b></td>
+    <td>Se detienen los tres procesos locales. La detención de la vigilancia <b>sí se detecta</b> por el vigía en la nube; la de los otros dos no. <b>Punto de decisión (§10).</b></td>
   </tr>
 </tbody>
 </table>
@@ -618,19 +624,19 @@ revisión de recepción.</p>
 
 <div class="callout">
   <h4>Lectura de conjunto</h4>
-  <p>De nueve dependencias, <strong>tres están a nombre de Ecoplating</strong> (el ERP, la llave de
+  <p>De diez dependencias, <strong>tres están a nombre de Ecoplating</strong> (el ERP, la llave de
   firma, el generador de PDF), <strong>dos son de proveedores globales</strong> sin alternativa
-  práctica (Google, Apple) y <strong>cuatro están hoy a nombre del consultor</strong>: los
-  repositorios, el sitio que sirve la extensión, la cuenta de compilación para iPad y el equipo que
-  corre los procesos automáticos.</p>
-  <p>Esas cuatro son migrables y ninguna requiere reescribir código. Las trato una por una en la
+  práctica (Google, Apple) y <strong>cinco están hoy a nombre del consultor</strong>: los
+  repositorios, el sitio que sirve la extensión, el vigía en la nube, la cuenta de compilación para
+  iPad y el equipo que corre los procesos automáticos.</p>
+  <p>Esas cinco son migrables y ninguna requiere reescribir código. Las trato una por una en la
   sección 10, porque <strong>son exactamente las decisiones que corresponden a Ecoplating</strong> y no
   al proveedor.</p>
 </div>
 
 <!-- ============ 9 ============ -->
 <h2 id="s9"><span class="num">9</span>Procesos automáticos programados</h2>
-<p class="measure">Tres trabajos corren sin intervención humana. Conviene conocerlos porque su ausencia
+<p class="measure">Cuatro trabajos corren sin intervención humana. Conviene conocerlos porque su ausencia
 no produce una falla visible de inmediato: produce <strong>deterioro silencioso</strong>.</p>
 
 <div class="tablewrap">
@@ -655,19 +661,42 @@ no produce una falla visible de inmediato: produce <strong>deterioro silencioso<
     <td>Baja los datos del ERP a la copia local de desarrollo, en los dos dominios, y reporta si Steelhead cambió su estructura de datos.</td>
     <td><b>Ningún efecto en los reportes productivos.</b> Sólo envejece el banco de pruebas del desarrollador.</td>
   </tr>
+  <tr>
+    <td>Vigía del latido<br><span style="font-size:.85em;color:var(--faint)">corre en la nube</span></td>
+    <td class="nowrap">Cada 2 horas</td>
+    <td>Comprueba que la vigilancia de compatibilidad siga viva. Si lleva más de 3 horas sin dar señales, levanta un aviso automático; cuando revive, lo cierra solo.</td>
+    <td>Se pierde la única señal capaz de detectar que la vigilancia principal <b>dejó de correr</b>.</td>
+  </tr>
 </tbody>
 </table>
 </div>
 
+<div class="callout acc">
+  <h4>El punto ciego que ya está resuelto: quién vigila al vigilante</h4>
+  <p>Los avisos de la vigilancia horaria son <strong>reactivos</strong>: sólo salen cuando el proceso
+  corre. Si el proceso se detuviera, sus avisos simplemente dejarían de llegar — y un buzón en silencio
+  es indistinguible de un sistema sano. Es el modo de falla más traicionero de cualquier esquema
+  automático, y aquí <strong>está cubierto</strong>.</p>
+  <p>El mecanismo: en cada corrida, la vigilancia <strong>deja constancia de vida</strong>, y un vigía
+  independiente comprueba cada dos horas que esa constancia siga fresca. Lo que lo hace confiable es
+  <strong>dónde vive: en la nube de GitHub, no en el equipo que vigila</strong> — un vigilante
+  hospedado en la misma máquina moriría junto con lo que debe cuidar. Verificado al redactar este
+  documento: el último latido tenía nueve minutos.</p>
+</div>
+
 <div class="callout warn">
-  <h4>Los tres corren hoy en el equipo del consultor</h4>
+  <h4>Los tres procesos locales corren hoy en el equipo del consultor</h4>
   <p>Están configurados como tareas programadas del sistema operativo en la Mac de Capaz Consultoría.
-  Si ese equipo se apaga, se reemplaza o deja de estar disponible, <strong>los tres se detienen sin
-  emitir ninguna alarma</strong>.</p>
-  <p>La buena noticia es que el traslado ya está previsto en el código: los scripts detectan
-  automáticamente su ubicación y su intérprete, y contemplan tanto macOS como Windows con el Programador
-  de tareas. <strong>Mudarlos a un equipo o servidor de Ecoplating es configuración, no
-  desarrollo.</strong> Es el punto 10.4.</p>
+  Si ese equipo se apaga, se reemplaza o deja de estar disponible, los tres se detienen. <strong>La
+  detención del más importante sí se detecta</strong>, por el vigía descrito arriba; la de los otros
+  dos no, y por eso hay una verificación mensual en el catálogo de mantenimiento.</p>
+  <p>Queda un matiz que conviene resolver: <strong>el aviso del vigía llega hoy al consultor</strong>,
+  porque va dirigido al titular del repositorio. Redirigirlo o duplicarlo a un buzón de Ecoplating es
+  el punto 10.6 y es cuestión de minutos.</p>
+  <p>El traslado del equipo también está previsto en el código: los scripts detectan automáticamente su
+  ubicación y su intérprete, y contemplan tanto macOS como Windows con el Programador de tareas.
+  <strong>Mudarlos a un equipo o servidor de Ecoplating es configuración, no desarrollo.</strong>
+  Es el punto 10.4.</p>
 </div>
 
 <!-- ============ 10 ============ -->
@@ -718,7 +747,7 @@ corresponden a Ecoplating. Los enumero con el esfuerzo estimado para que puedan 
   <tr>
     <td class="nowrap">10.6</td>
     <td>Destinatario de los avisos automáticos</td>
-    <td>Hoy los correos de la vigilancia horaria llegan al consultor. Agregar o sustituir por un buzón de Ecoplating es un cambio de configuración.</td>
+    <td>Hoy tanto los correos de la vigilancia horaria como los avisos del vigía llegan al consultor. Agregar o sustituir por un buzón de Ecoplating es un cambio de configuración.</td>
     <td class="nowrap">Muy bajo<br><span style="font-size:.85em">minutos</span></td>
     <td><span class="badge b-warn">Alta</span></td>
   </tr>
