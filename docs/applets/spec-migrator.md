@@ -1,3 +1,58 @@
+# INCIDENTE 2026-07-30 — el icono desapareció del menú (AUSENTE ≠ VACÍO)
+
+**Síntoma:** *«desapareció el icono de menú de specs en la extensión»*. **Resuelto en config
+1.11.25** (deploy de config; el fix de fondo espera republicación del `.zip`).
+
+## Lo que NO era
+Descartado con evidencia, en orden y sin tocar la red: el config vivo trae la app con sus 7
+acciones y su categoría; los 6 scripts pasan la verificación de integridad byte-a-byte contra
+`scriptIntegrity`; `READ_SPECS`/`WRITE_SPECS` **sí existen** en el catálogo de 262 permisos (no
+es una fragmentación como la de `MANAGE_REPORTING`); y el `git log` de `remote/config.json`
+muestra esos dos permisos **sin cambios desde el primer commit** — nadie los tocó.
+
+Eso deja un silogismo cerrado: si la app está en el config vivo y no se ve, el **único** filtro
+entre "está declarada" y "se ve en el menú" es el de permisos.
+
+## La causa: "no sé" se escribía igual que "no tiene"
+
+```
+background.js  managedPermissions: Array.isArray(perms) ? perms : []   ← "no sé" → "no tiene"
+popup.js       d.sa_user_permissions || null                           ← [] es TRUTHY: pasa
+filtro         req.every(p => [].includes(p)) === false                ← esconde, en silencio
+```
+
+Un `[]` cacheado en `storage.local` **sobrevive a las recargas** y esconde TODA app con
+`requiredPermissions`. `spec-migrator` era la **única** app con `READ_SPECS`/`WRITE_SPECS`, lo
+que explica que desapareciera sola si la lista del usuario era real pero incompleta.
+
+**Es el mismo modo de falla que dejó invisible a `report-regen` (0.3.2)**, y reaparece porque la
+lección se había escrito en prosa en la bitácora de aquel applet, no en un test que la vigilara.
+
+## El arreglo, en dos capas
+1. **Llega hoy, sin republicar:** `requiredPermissions: []` en el config. El gate del menú es
+   **cosmético** — el servidor valida cada mutación al ejecutarla — así que un falso "sí" cuesta
+   un error visible al hacer clic, mientras que un falso "no" deja al operador sin herramienta y
+   **sin explicación**. Otras 12 apps ya corren así, incluida `spec-params-bulk`, que también
+   toca specs.
+2. **Fondo (requiere `.zip` nuevo):** módulo puro [`extension/permission-gate.js`](../../extension/permission-gate.js)
+   con **12 tests**: una lista vacía cuenta como **desconocida** y la app se muestra. Además
+   `background.js` manda `null` en vez de `[]` cuando el ERP no da la lista, y **no cachea listas
+   vacías**. El test incluye el trinquete que ata el módulo con `background.js`, `popup.js` y el
+   orden de carga de `popup.html` — el bug vivía repartido en tres archivos y ninguno fallaba solo.
+
+## Lección
+**Un valor vacío no es un dato: es la forma que toma la ausencia de dato.** Cuando el código lo
+trata como conocimiento, el fail-open se apaga justo cuando más falta hace. La regla —*ausente ≠
+vacío, y ante la duda se muestra*— ya se había aprendido con `report-regen`; lo que faltaba era
+un test que impidiera reaprenderla.
+
+**Nota operativa:** intentar leer los permisos del usuario desde la pestaña automatizada **colgó
+el renderer** (`Runtime.evaluate` timeout de 45 s). Es el modo de falla del arnés ya documentado
+—pestaña en background ⇒ Chrome congela los `fetch`—, no de la extensión. El caso se cerró con
+evidencia local, sin red.
+
+---
+
 # INCIDENTE 2026-07-29 — archivó 52 parámetros y repuso 0 (shape equivocado)
 
 **Alcance:** 13 NPs de GRUPO COLLADO, 52 parámetros. **Reparado y verificado el mismo día.**
