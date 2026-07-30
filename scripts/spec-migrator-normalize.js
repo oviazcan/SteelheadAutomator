@@ -72,6 +72,69 @@
   }
 
   /**
+   * Convierte los grupos en UNIDADES ATÓMICAS de trabajo: cada una lleva su archivado y su
+   * reposición JUNTOS.
+   *
+   * Por qué: el incidente del 2026-07-29 (GRUPO COLLADO) dejó 52 parámetros archivados sin
+   * reponer porque el apply archivaba TODO primero y reponía TODO después. Cuando la segunda
+   * fase falló en bloque, el daño fue de 52. Procesando unidad por unidad, un fallo deja UN
+   * hueco. El radio de daño deja de depender del tamaño de la corrida.
+   *
+   * @param {Array} grupos          los grupos detectados por el scan
+   * @param {Function} getDecision  key → { winnerRowId, ignored }
+   * @returns {Array<{key, pnId, fieldId, archive:number[], repone:{specFieldId,specFieldParamId}|null}>}
+   */
+  function planApplyUnits(grupos, getDecision) {
+    const out = [];
+    for (const g of (grupos || [])) {
+      const dec = getDecision ? getDecision(g.key) : null;
+      if (!dec || dec.ignored) continue;
+
+      const rp = g.releasePlan || { action: 'ok', archiveIds: [], insertParamId: null };
+      if (rp.action === 'ambiguous') continue;   // valores distintos: no lo decide la herramienta
+
+      const archive = [];
+      const ya = new Set(rp.archiveIds || []);
+      for (const id of (rp.archiveIds || [])) archive.push(id);
+      for (const p of (g.params || [])) {
+        if (p.rowId === dec.winnerRowId || ya.has(p.rowId)) continue;
+        archive.push(p.rowId);
+      }
+      const repone = (rp.action === 'rewrite' && rp.insertParamId != null)
+        ? { specFieldId: g.fieldId, specFieldParamId: rp.insertParamId }
+        : null;
+      if (!archive.length && !repone) continue;
+      out.push({ key: g.key, pnId: g.pnId, fieldId: g.fieldId, archive, repone });
+    }
+    return out;
+  }
+
+  /**
+   * ¿El ERP está aguantando el ritmo? Decide desde los tiempos de respuesta recientes.
+   *
+   * Medido el 2026-07-29: tras un día de escaneos pesados, una consulta trivial tardó 24 s y
+   * el /graphql dejó de responder varias veces —sin devolver 429—. Seguir empujando en ese
+   * estado es lo que deja corridas a medias. Más vale ir lento que dejar datos rotos.
+   *
+   * @param {number[]} muestrasMs  duraciones recientes, la última al final
+   * @returns {{degradado:boolean, pausaMs:number, medianaMs:number}}
+   */
+  function erpHealth(muestrasMs) {
+    const m = (muestrasMs || []).filter(x => typeof x === 'number' && x >= 0);
+    if (m.length < 3) return { degradado: false, pausaMs: 0, medianaMs: 0 };
+    const ord = m.slice().sort((a, b) => a - b);
+    const mediana = ord[Math.floor(ord.length / 2)];
+    const ultimas = m.slice(-3);
+    const promUlt = ultimas.reduce((s, x) => s + x, 0) / ultimas.length;
+
+    // Umbrales por tiempo absoluto: lo que importa es si el server ya está sufriendo.
+    if (promUlt >= 8000) return { degradado: true, pausaMs: 30000, medianaMs: mediana };
+    if (promUlt >= 4000) return { degradado: true, pausaMs: 10000, medianaMs: mediana };
+    if (promUlt >= 2000) return { degradado: true, pausaMs: 3000, medianaMs: mediana };
+    return { degradado: false, pausaMs: 0, medianaMs: mediana };
+  }
+
+  /**
    * Decide qué hacer con UN field "falso pendiente" de un PN.
    * @param {Array<{id, archivedAt, processNodeId, paramId, paramName}>} fieldRows
    *        TODAS las filas (activas y archivadas) del MISMO specFieldId en el PN.
@@ -120,7 +183,8 @@
   }
 
   const api = { planFieldNormalization: planFieldNormalization, extractFieldRows: extractFieldRows,
-                planForcedNodeRelease: planForcedNodeRelease, norm: norm };
+                planForcedNodeRelease: planForcedNodeRelease, planApplyUnits: planApplyUnits,
+                erpHealth: erpHealth, norm: norm };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (typeof window !== 'undefined') window.SpecMigratorNormalize = api;
 })();
