@@ -3271,13 +3271,24 @@ const SpecMigrator = (() => {
       const PAGE = 200;
       for (let offset = 0; offset < 20000; offset += PAGE) {
         if (dupState.runId !== myRunId) return;
-        const d = await api().query('AllCustomers',
-          { first: PAGE, offset, orderBy: ['ID_ASC'], searchQuery: '' }, 'AllCustomers');
+        // Variables EXACTAS de catalog-fetcher.js:243, que ya funcionaba. `includeArchived` e
+        // `includeAccountingFields` son OBLIGATORIAS: sin ellas el server devuelve HTTP 400.
+        // Inventé la llamada en vez de copiar la que ya existía y falló en la primera corrida.
+        const d = await api().query('AllCustomers', {
+          includeArchived: 'NO',
+          includeAccountingFields: false,
+          orderBy: ['NAME_ASC'],
+          offset,
+          first: PAGE,
+          searchQuery: ''
+        }, 'AllCustomers');
         // El contenedor varía entre ops (pagedData / allCustomers / …). En vez de adivinarlo,
         // se toma el primer objeto con `nodes` que traiga la respuesta: si Steelhead lo renombra,
         // el barrido sigue vivo en lugar de reportar "no hay clientes" y no hacer nada.
         const nodes = firstNodes(d);
-        for (const c of nodes) if (c && c.id != null) clientes.push({ id: c.id, name: c.name || ('#' + c.id) });
+        for (const c of nodes) {
+          if (c && c.id != null && !c.archivedAt) clientes.push({ id: c.id, name: c.name || ('#' + c.id) });
+        }
         dupSetBody(`<div class="dup-progress">Cargando clientes… ${clientes.length}</div>`);
         if (nodes.length < PAGE) break;
       }

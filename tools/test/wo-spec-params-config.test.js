@@ -71,7 +71,7 @@ test('el barrido no adivina el contenedor de la respuesta de clientes', () => {
     'debe existir un extractor genérico de nodes');
   const i = src.indexOf("api().query('AllCustomers'");
   assert.ok(i > 0);
-  const bloque = src.slice(i, i + 500);
+  const bloque = src.slice(i, i + 900);
   assert.ok(bloque.includes('firstNodes('),
     'AllCustomers debe usar firstNodes, no un contenedor fijo');
 });
@@ -86,4 +86,18 @@ test('ninguna fase larga se queda sin pintar progreso', () => {
     assert.ok(src.includes(marca), 'falta el indicador ' + marca);
   }
   assert.match(src, /const verbose = /, 'debe existir una bitácora en vivo');
+});
+
+test('AllCustomers se llama con las variables obligatorias', () => {
+  // HTTP 400 en la primera corrida del barrido: includeArchived e includeAccountingFields son
+  // required. catalog-fetcher.js ya tenía la llamada buena; había que copiarla, no inventarla.
+  const fs2 = require('node:fs'), path2 = require('node:path');
+  const src = fs2.readFileSync(
+    path2.join(__dirname, '..', '..', 'remote', 'scripts', 'spec-migrator.js'), 'utf8');
+  const i = src.indexOf("api().query('AllCustomers'");
+  assert.ok(i > 0, 'no encontré la llamada a AllCustomers');
+  const bloque = src.slice(i, i + 400);
+  for (const v of ['includeArchived', 'includeAccountingFields', 'orderBy', 'first', 'offset']) {
+    assert.ok(bloque.includes(v), 'AllCustomers debe mandar ' + v);
+  }
 });
