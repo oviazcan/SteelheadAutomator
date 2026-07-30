@@ -3596,6 +3596,7 @@ const SpecMigrator = (() => {
         <div class="dup-bar"><div style="width:${pct}%"></div></div>
         <div style="font-size:11px;color:#9ca3af;margin-top:6px">
           acumulado: <b style="color:#34d399">${totales.repuestos}</b> campos reparados
+          ${totales.yaEstaban ? `· ${totales.yaEstaban} ya estaban bien` : ''}
           · ${totales.errores} errores
         </div>
         <div data-ctrl="rp-erp" style="font-size:11px;color:#fbbf24;margin-top:4px"></div>
@@ -3637,6 +3638,7 @@ const SpecMigrator = (() => {
     dupSetBody(`<div class="${totales.errores ? 'dup-error' : 'dup-success'}">
       ${interrumpido ? 'Reparación DETENIDA' : 'Reparación terminada'} — ${totales.clientes} clientes revisados<br>
       <b>${totales.repuestos}</b> campos reparados · ${totales.errores} errores
+      ${totales.yaEstaban ? `<br><small>${totales.yaEstaban} campos ya tenían su parámetro: el ERP rechazó reponerlos (correcto).</small>` : ''}
       ${interrumpido ? '<br><small>El avance quedó guardado: al reabrir te ofrece reanudar.</small>' : ''}
     </div>`);
     dupSetFooter('<button class="dup-btn" data-act="rp-close">Cerrar</button>');
@@ -3647,7 +3649,7 @@ const SpecMigrator = (() => {
   async function repairOneCustomer(cli, myRunId, rpMsg, rpErp, tiempos, SMNr, vb, corteMs) {
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     const verbose = vb || (() => {});
-    const out = { archivados: 0, repuestos: 0, errores: 0 };
+    const out = { archivados: 0, repuestos: 0, yaEstaban: 0, errores: 0 };
 
     const pns = [];
     const PAGE = 200;
@@ -3680,8 +3682,15 @@ const SpecMigrator = (() => {
               const st = await addSingleParamToPN(pn.id, Number(r.specFieldId),
                                                   Number(r.specFieldParamId), false);
               if (st !== 'ok' && st !== 'conflict' && st !== 'duplicate') throw new Error(st);
-              out.repuestos++;
-              verbose('reparado ' + pn.name + ' · campo ' + r.specFieldId + ' = ' + r.paramName);
+              // 'duplicate'/'conflict' = el ERP rechazó porque el campo YA tenía su fila viva.
+              // Contarlo como reparado infla el total y borra la señal que importa: cuántos
+              // campos estaban de verdad rotos. Se cuentan aparte.
+              if (st === 'ok') {
+                out.repuestos++;
+                verbose('reparado ' + pn.name + ' · campo ' + r.specFieldId + ' = ' + r.paramName);
+              } else {
+                out.yaEstaban = (out.yaEstaban || 0) + 1;
+              }
             } catch (e) {
               out.errores++;
               verbose('✗ ' + pn.name + ' campo ' + r.specFieldId + ' → ' + String(e && e.message || e).slice(0, 50));

@@ -389,6 +389,40 @@ test('planRepairs: valores DISTINTOS entre los archivados → no se decide solo'
   assert.equal(r.length, 0, 'elegir el valor no le toca al reparador');
 });
 
+test('planRepairs: REGRESIÓN — un campo cubierto por OTRA spec del NP no se propone', () => {
+  // Caso real (NP 73449-553-04, campo Adherencia 15820): el campo vive en dos specs del mismo
+  // NP — sfs=150436 (Níquel) con su parámetro ACTIVO, y sfs=106116 (Estaño) archivado.
+  // Agrupando por (campo, sfs) el bucket del Estaño se veía "sin activo" y proponía reponer,
+  // aunque el campo YA estaba cubierto. El ERP lo rechazaba con 23P01 —no se corrompió nada—
+  // pero el contador sumaba esos intentos como "reparados" e inflaba el total: el operador vio
+  // 63 correcciones donde esperaba 11. El criterio correcto es el del ERP: 1 fila viva por
+  // specFieldId, sin importar de qué spec venga.
+  const filas = [
+    mk(1, null, null, 20902273, 'Sí o No', 15820, 150436),                 // ACTIVO, otra spec
+    mk(2, '2026-07-30T03:36:19Z', 241753, 28683577, 'Sí o No', 15820, 106116)
+  ];
+  assert.deepEqual(SMN.planRepairs(filas, CORTE), [],
+    'el campo ya tiene parámetro: no hay nada que reparar');
+});
+
+test('planRepairs: si NINGUNA spec lo cubre, sí se repara aunque haya varios sfs', () => {
+  const filas = [
+    mk(1, '2026-07-30T03:36:00Z', 241753, 900, 'Sí o No', 15820, 150436),
+    mk(2, '2026-07-30T03:36:19Z', 241753, 901, 'Sí o No', 15820, 106116)
+  ];
+  const r = SMN.planRepairs(filas, CORTE);
+  assert.equal(r.length, 1, 'un solo campo → una sola reposición');
+  assert.equal(r[0].specFieldParamId, 901, 'gana el archivado más reciente');
+});
+
+test('mergeSweepTotals: acumula yaEstaban aparte de repuestos', () => {
+  const t = SMN.mergeSweepTotals({ repuestos: 5, yaEstaban: 40, errores: 1, clientes: 2 },
+                                 { repuestos: 3, yaEstaban: 20, errores: 0 });
+  assert.equal(t.repuestos, 8, 'reparados = daño realmente corregido');
+  assert.equal(t.yaEstaban, 60, 'los rechazados por el ERP no inflan el total');
+  assert.equal(t.clientes, 3);
+});
+
 test('planRepairs: campos distintos se reparan por separado', () => {
   const filas = [
     mk(1, '2026-07-30T03:40:00Z', 241753, 900, 'Sí o No', 15820, 500),
