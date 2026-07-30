@@ -23,7 +23,10 @@
   const BOX_ID = 'sa-bnf-box';
   const STYLE_ID = 'sa-bnf-style';
   const PANEL_ID = 'sa-bnf-panel';
-  const DEBOUNCE_MS = 300;
+  // 450ms (antes 300): cada búsqueda ahora consulta DOS universos, así que un debounce
+  // corto multiplica la ráfaga contra /graphql — el mismo límite de sesión que tumbó la
+  // pantalla nativa en po-listing-filters. `alive()` corta las páginas ya en vuelo.
+  const DEBOUNCE_MS = 450;
 
   const S = (window.__saBNF = window.__saBNF || { seq: 0, lastQuery: '', lastResult: null });
 
