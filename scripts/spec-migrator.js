@@ -3242,6 +3242,36 @@ const SpecMigrator = (() => {
     return [];
   }
 
+
+  // Lista de clientes con reintentos. Devuelve [] si el ERP no coopera — el llamador decide
+  // si sigue con la del checkpoint. Un fallo aquí NO puede matar una corrida ya avanzada.
+  async function fetchCustomersTolerante(onProgress) {
+    const PAGE = 200;
+    const out = [];
+    for (let intento = 1; intento <= 3; intento++) {
+      out.length = 0;
+      try {
+        for (let offset = 0; offset < 20000; offset += PAGE) {
+          const d = await api().query('AllCustomers', {
+            includeArchived: 'NO', includeAccountingFields: false,
+            orderBy: ['NAME_ASC'], offset, first: PAGE, searchQuery: ''
+          }, 'AllCustomers');
+          const nodes = firstNodes(d);
+          for (const c of nodes) {
+            if (c && c.id != null && !c.archivedAt) out.push({ id: c.id, name: c.name || ('#' + c.id) });
+          }
+          if (onProgress) onProgress(out.length, intento);
+          if (nodes.length < PAGE) break;
+        }
+        return out.slice();
+      } catch (e) {
+        if (onProgress) onProgress(out.length, intento, String(e && e.message || e));
+        if (intento < 3) await new Promise(r => setTimeout(r, intento * 5000));
+      }
+    }
+    return [];
+  }
+
   const DUP_SWEEP_KEY = 'sa-specm-sweep-v1';
   function sweepLoad() {
     try { return JSON.parse(localStorage.getItem(DUP_SWEEP_KEY) || 'null'); } catch (_) { return null; }
@@ -3266,40 +3296,32 @@ const SpecMigrator = (() => {
     dupSetFooter('<button class="dup-btn dup-btn-danger" data-act="sw-stop">Detener</button>');
     dupState.panelEl.querySelector('[data-act=sw-stop]')?.addEventListener('click', () => { dupState.runId++; });
 
-    const clientes = [];
-    try {
-      const PAGE = 200;
-      for (let offset = 0; offset < 20000; offset += PAGE) {
-        if (dupState.runId !== myRunId) return;
-        // Variables EXACTAS de catalog-fetcher.js:243, que ya funcionaba. `includeArchived` e
-        // `includeAccountingFields` son OBLIGATORIAS: sin ellas el server devuelve HTTP 400.
-        // Inventé la llamada en vez de copiar la que ya existía y falló en la primera corrida.
-        const d = await api().query('AllCustomers', {
-          includeArchived: 'NO',
-          includeAccountingFields: false,
-          orderBy: ['NAME_ASC'],
-          offset,
-          first: PAGE,
-          searchQuery: ''
-        }, 'AllCustomers');
-        // El contenedor varía entre ops (pagedData / allCustomers / …). En vez de adivinarlo,
-        // se toma el primer objeto con `nodes` que traiga la respuesta: si Steelhead lo renombra,
-        // el barrido sigue vivo en lugar de reportar "no hay clientes" y no hacer nada.
-        const nodes = firstNodes(d);
-        for (const c of nodes) {
-          if (c && c.id != null && !c.archivedAt) clientes.push({ id: c.id, name: c.name || ('#' + c.id) });
-        }
-        dupSetBody(`<div class="dup-progress">Cargando clientes… ${clientes.length}</div>`);
-        if (nodes.length < PAGE) break;
-      }
-    } catch (e) {
-      dupSetBody(`<div class="dup-error">No pude listar clientes: ${dupEscHtml(String(e && e.message || e))}</div>`);
+    // El checkpoint se lee ANTES de pedir nada: si el ERP falla al listar, la corrida sigue
+    // con la lista guardada en vez de morir y dejar el avance inalcanzable.
+    const ckPrevio = sweepLoad();
+    const frescos = await fetchCustomersTolerante((n, intento, err) => {
+      dupSetBody(`<div class="dup-progress">Cargando clientes… ${n}`
+        + (intento > 1 ? ` (intento ${intento}/3)` : '')
+        + (err ? `<div style="color:#fbbf24;font-size:11px;margin-top:4px">${dupEscHtml(err.slice(0,90))}</div>` : '')
+        + `</div>`);
+    });
+    const lista = SMNs.resolveCustomerList(ckPrevio, frescos);
+    const clientes = lista.clientes;
+    if (!clientes.length) {
+      dupSetBody('<div class="dup-error">No pude listar clientes y no hay lista guardada. '
+        + 'El ERP no está respondiendo — inténtalo más tarde.</div>');
+      dupSetFooter('<button class="dup-btn" data-act="sw-x">Cerrar</button>');
+      dupState.panelEl.querySelector('[data-act=sw-x]')?.addEventListener('click', () => dupClosePanel());
       return;
     }
-    if (!clientes.length) { dupSetBody('<div class="dup-error">No se encontraron clientes.</div>'); return; }
+    if (lista.origen === 'checkpoint') {
+      dupSetBody('<div class="dup-progress">El ERP no listó clientes; sigo con los '
+        + clientes.length + ' guardados del intento anterior.</div>');
+      await new Promise(r => setTimeout(r, 1200));
+    }
 
     // ── 2) plan con checkpoint ───────────────────────────────────────────────
-    const ck = sweepLoad();
+    const ck = ckPrevio;
     const plan = SMNs.planCustomerSweep(clientes, ck);
     if (ck && plan.yaHechos) {
       const seguir = confirm('Hay un barrido a medias: ' + plan.yaHechos + ' de ' + clientes.length
@@ -3357,7 +3379,7 @@ const SpecMigrator = (() => {
         totales = SMNs.mergeSweepTotals(totales, { errores: 1 });
       }
       hechos.add(Number(cli.id));
-      sweepSave({ done: [...hechos], totales, ts: new Date().toISOString() });
+      sweepSave({ done: [...hechos], totales, clientes, ts: new Date().toISOString() });
 
       // respiro entre clientes: el /graphql se degrada por sesión, no por pestaña
       const salud = SMNs.erpHealth(tiempos);
@@ -3520,29 +3542,34 @@ const SpecMigrator = (() => {
     dupSetFooter('<button class="dup-btn dup-btn-danger" data-act="rp-stop">Detener</button>');
     dupState.panelEl.querySelector('[data-act=rp-stop]')?.addEventListener('click', () => { dupState.runId++; });
 
-    const clientes = [];
-    try {
-      const PAGE = 200;
-      for (let offset = 0; offset < 20000; offset += PAGE) {
-        if (dupState.runId !== myRunId) return;
-        const d = await api().query('AllCustomers', {
-          includeArchived: 'NO', includeAccountingFields: false,
-          orderBy: ['NAME_ASC'], offset, first: PAGE, searchQuery: ''
-        }, 'AllCustomers');
-        const nodes = firstNodes(d);
-        for (const c of nodes) {
-          if (c && c.id != null && !c.archivedAt) clientes.push({ id: c.id, name: c.name || ('#' + c.id) });
-        }
-        dupSetBody(`<div class="dup-progress">Cargando clientes… ${clientes.length}</div>`);
-        if (nodes.length < PAGE) break;
-      }
-    } catch (e) {
-      dupSetBody(`<div class="dup-error">No pude listar clientes: ${dupEscHtml(String(e && e.message || e))}</div>`);
+    // Checkpoint PRIMERO: si el ERP falla al listar, se sigue con la lista guardada en vez
+    // de morir dejando el avance inalcanzable (reporte del operador: "pasó varios clientes,
+    // pero aún así me bota el error de nuevo").
+    let ckPrev = null;
+    try { ckPrev = JSON.parse(localStorage.getItem(DUP_REPAIR_KEY) || 'null'); } catch (_) {}
+
+    const frescos = await fetchCustomersTolerante((n, intento, err) => {
+      dupSetBody(`<div class="dup-progress">Cargando clientes… ${n}`
+        + (intento > 1 ? ` (intento ${intento}/3)` : '')
+        + (err ? `<div style="color:#fbbf24;font-size:11px;margin-top:4px">${dupEscHtml(err.slice(0,90))}</div>` : '')
+        + `</div>`);
+    });
+    const lista = SMNr.resolveCustomerList(ckPrev, frescos);
+    const clientes = lista.clientes;
+    if (!clientes.length) {
+      dupSetBody('<div class="dup-error">No pude listar clientes y no hay lista guardada. '
+        + 'El ERP no está respondiendo — inténtalo más tarde.</div>');
+      dupSetFooter('<button class="dup-btn" data-act="rp-x">Cerrar</button>');
+      dupState.panelEl.querySelector('[data-act=rp-x]')?.addEventListener('click', () => dupClosePanel());
       return;
     }
+    if (lista.origen === 'checkpoint') {
+      dupSetBody('<div class="dup-progress">El ERP no listó clientes; sigo con los '
+        + clientes.length + ' guardados del intento anterior.</div>');
+      await new Promise(r => setTimeout(r, 1200));
+    }
 
-    let ck = null;
-    try { ck = JSON.parse(localStorage.getItem(DUP_REPAIR_KEY) || 'null'); } catch (_) {}
+    const ck = ckPrev;
     const plan = SMNr.planCustomerSweep(clientes, ck);
     if (ck && plan.yaHechos) {
       if (!confirm('Reparación a medias: ' + plan.yaHechos + ' de ' + clientes.length
@@ -3596,7 +3623,7 @@ const SpecMigrator = (() => {
       hechos.add(Number(cli.id));
       try {
         localStorage.setItem(DUP_REPAIR_KEY, JSON.stringify({
-          done: [...hechos], totales, ts: new Date().toISOString() }));
+          done: [...hechos], totales, clientes, ts: new Date().toISOString() }));
       } catch (_) {}
 
       const salud = SMNr.erpHealth(tiempos);
