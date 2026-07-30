@@ -3488,6 +3488,217 @@ const SpecMigrator = (() => {
     return out;
   }
 
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // REPARADOR: archivados sin reponer (2026-07-30)
+  // ══════════════════════════════════════════════════════════════════════════
+  // Una corrida del apply en dos fases archivó ~21 000 parámetros y las reposiciones fallaron
+  // en masa contra un ERP que devolvía HTTP 500. Los datos NO se perdieron —están archivados—
+  // así que reponer el MISMO sfp deja el NP como debía quedar, y sin nodo forzado.
+  //
+  // Recorre por cliente con checkpoint, igual que el barrido: se lanza y se ocupa solo.
+
+  const DUP_REPAIR_KEY = 'sa-specm-repair-v1';
+
+  async function repairArchivedWithoutRestore() {
+    const SMNr = (typeof window !== 'undefined' && window.SpecMigratorNormalize) || null;
+    if (!SMNr || !SMNr.planRepairs) { alert('Falta spec-migrator-normalize.js'); return; }
+
+    // ¿desde cuándo cuentan los archivados? Por omisión, las últimas 24 h.
+    const horas = parseFloat(prompt(
+      'Reparar campos que quedaron SIN parámetro porque se archivó y la reposición falló.\n\n'
+      + '¿Cuántas horas hacia atrás se consideran los archivados?\n'
+      + '(24 = el último día. Solo se reponen campos que hoy NO tienen parámetro activo.)', '24'));
+    if (!isFinite(horas) || horas <= 0) return;
+    const corteMs = Date.now() - horas * 3600 * 1000;
+
+    dupEnsurePanel('Reparar archivados sin reponer');
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    const myRunId = ++dupState.runId;
+
+    dupSetBody('<div class="dup-progress">Cargando lista de clientes…</div>');
+    dupSetFooter('<button class="dup-btn dup-btn-danger" data-act="rp-stop">Detener</button>');
+    dupState.panelEl.querySelector('[data-act=rp-stop]')?.addEventListener('click', () => { dupState.runId++; });
+
+    const clientes = [];
+    try {
+      const PAGE = 200;
+      for (let offset = 0; offset < 20000; offset += PAGE) {
+        if (dupState.runId !== myRunId) return;
+        const d = await api().query('AllCustomers', {
+          includeArchived: 'NO', includeAccountingFields: false,
+          orderBy: ['NAME_ASC'], offset, first: PAGE, searchQuery: ''
+        }, 'AllCustomers');
+        const nodes = firstNodes(d);
+        for (const c of nodes) {
+          if (c && c.id != null && !c.archivedAt) clientes.push({ id: c.id, name: c.name || ('#' + c.id) });
+        }
+        dupSetBody(`<div class="dup-progress">Cargando clientes… ${clientes.length}</div>`);
+        if (nodes.length < PAGE) break;
+      }
+    } catch (e) {
+      dupSetBody(`<div class="dup-error">No pude listar clientes: ${dupEscHtml(String(e && e.message || e))}</div>`);
+      return;
+    }
+
+    let ck = null;
+    try { ck = JSON.parse(localStorage.getItem(DUP_REPAIR_KEY) || 'null'); } catch (_) {}
+    const plan = SMNr.planCustomerSweep(clientes, ck);
+    if (ck && plan.yaHechos) {
+      if (!confirm('Reparación a medias: ' + plan.yaHechos + ' de ' + clientes.length
+        + ' clientes ya revisados (' + plan.totales.repuestos + ' repuestos).\n\n'
+        + 'Aceptar = REANUDAR.  Cancelar = empezar de CERO.')) {
+        try { localStorage.removeItem(DUP_REPAIR_KEY); } catch (_) {}
+        return repairArchivedWithoutRestore();
+      }
+    }
+
+    let totales = plan.totales;
+    const hechos = new Set(((ck && ck.done) || []).map(Number));
+    const tiempos = [];
+    let i = 0;
+
+    for (const cli of plan.pendientes) {
+      if (dupState.runId !== myRunId) break;
+      i++;
+      const pct = ((i / plan.pendientes.length) * 100).toFixed(1);
+      dupSetBody(`<div class="dup-progress">
+        <b>${dupEscHtml(cli.name)}</b> — cliente ${i} de ${plan.pendientes.length}
+        ${plan.yaHechos ? `(+${plan.yaHechos} de antes)` : ''}
+        <div data-ctrl="rp-msg">revisando…</div>
+        <div class="dup-bar"><div style="width:${pct}%"></div></div>
+        <div style="font-size:11px;color:#9ca3af;margin-top:6px">
+          acumulado: <b style="color:#34d399">${totales.repuestos}</b> campos reparados
+          · ${totales.errores} errores
+        </div>
+        <div data-ctrl="rp-erp" style="font-size:11px;color:#fbbf24;margin-top:4px"></div>
+        <div data-ctrl="rp-log" style="font-size:10px;color:#6b7280;margin-top:8px;
+             max-height:110px;overflow-y:auto;font-family:ui-monospace,monospace;
+             border-top:1px solid #374151;padding-top:6px"></div>
+      </div>`);
+      const rpMsg = dupState.panelEl.querySelector('[data-ctrl=rp-msg]');
+      const rpErp = dupState.panelEl.querySelector('[data-ctrl=rp-erp]');
+      const rpLog = dupState.panelEl.querySelector('[data-ctrl=rp-log]');
+      const lineas = [];
+      const vb = (t) => {
+        lineas.push(t);
+        if (lineas.length > 40) lineas.shift();
+        if (rpLog) { rpLog.textContent = lineas.slice(-8).join('\n'); rpLog.scrollTop = rpLog.scrollHeight; }
+      };
+
+      try {
+        const res = await repairOneCustomer(cli, myRunId, rpMsg, rpErp, tiempos, SMNr, vb, corteMs);
+        totales = SMNr.mergeSweepTotals(totales, res);
+      } catch (e) {
+        totales = SMNr.mergeSweepTotals(totales, { errores: 1 });
+        vb('✗ ' + cli.name + ' → ' + String(e && e.message || e).slice(0, 60));
+      }
+      hechos.add(Number(cli.id));
+      try {
+        localStorage.setItem(DUP_REPAIR_KEY, JSON.stringify({
+          done: [...hechos], totales, ts: new Date().toISOString() }));
+      } catch (_) {}
+
+      const salud = SMNr.erpHealth(tiempos);
+      if (salud.degradado) {
+        if (rpErp) rpErp.textContent = `⏸ el ERP va lento (~${Math.round(salud.medianaMs)} ms). Pausa de ${Math.round(salud.pausaMs / 1000)} s…`;
+        await sleep(salud.pausaMs);
+      }
+    }
+
+    const interrumpido = dupState.runId !== myRunId;
+    dupSetBody(`<div class="${totales.errores ? 'dup-error' : 'dup-success'}">
+      ${interrumpido ? 'Reparación DETENIDA' : 'Reparación terminada'} — ${totales.clientes} clientes revisados<br>
+      <b>${totales.repuestos}</b> campos reparados · ${totales.errores} errores
+      ${interrumpido ? '<br><small>El avance quedó guardado: al reabrir te ofrece reanudar.</small>' : ''}
+    </div>`);
+    dupSetFooter('<button class="dup-btn" data-act="rp-close">Cerrar</button>');
+    dupState.panelEl.querySelector('[data-act=rp-close]')?.addEventListener('click', () => dupClosePanel());
+    if (!interrumpido && !totales.errores) { try { localStorage.removeItem(DUP_REPAIR_KEY); } catch (_) {} }
+  }
+
+  async function repairOneCustomer(cli, myRunId, rpMsg, rpErp, tiempos, SMNr, vb, corteMs) {
+    const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+    const verbose = vb || (() => {});
+    const out = { archivados: 0, repuestos: 0, errores: 0 };
+
+    const pns = [];
+    const PAGE = 200;
+    for (let offset = 0; offset < 20000; offset += PAGE) {
+      if (dupState.runId !== myRunId) return out;
+      const d = await api().query('AllPartNumbers',
+        { first: PAGE, offset, includeArchived: 'NO', orderBy: ['ID_DESC'], searchQuery: '',
+          customerIdFilter: [cli.id] }, 'AllPartNumbers');
+      const nodes = (d && d.pagedData && d.pagedData.nodes) || [];
+      for (const n of nodes) pns.push({ id: n.id, name: n.name || '' });
+      if (nodes.length < PAGE) break;
+    }
+    if (!pns.length) return out;
+
+    if (rpMsg) rpMsg.textContent = `revisando ${pns.length} NPs…`;
+    let k = 0, revisados = 0;
+    // Lectura con pool 3; la reposición va EN SERIE dentro de cada NP.
+    async function lane() {
+      while (k < pns.length) {
+        if (dupState.runId !== myRunId) return;
+        const pn = pns[k++];
+        const t0 = Date.now();
+        try {
+          const detail = await getPNDetail(pn.id);
+          const filas = flattenPnRows(detail);
+          const reparos = SMNr.planRepairs(filas, corteMs);
+          for (const r of reparos) {
+            if (dupState.runId !== myRunId) return;
+            try {
+              const st = await addSingleParamToPN(pn.id, Number(r.specFieldId),
+                                                  Number(r.specFieldParamId), false);
+              if (st !== 'ok' && st !== 'conflict' && st !== 'duplicate') throw new Error(st);
+              out.repuestos++;
+              verbose('reparado ' + pn.name + ' · campo ' + r.specFieldId + ' = ' + r.paramName);
+            } catch (e) {
+              out.errores++;
+              verbose('✗ ' + pn.name + ' campo ' + r.specFieldId + ' → ' + String(e && e.message || e).slice(0, 50));
+            }
+          }
+        } catch (_) { out.errores++; }
+        tiempos.push(Date.now() - t0);
+        if (tiempos.length > 12) tiempos.shift();
+        revisados++;
+        if (rpMsg && revisados % 10 === 0) {
+          rpMsg.textContent = `revisando ${revisados}/${pns.length} NPs · ${out.repuestos} reparados`;
+        }
+        const salud = SMNr.erpHealth(tiempos);
+        if (salud.degradado) {
+          if (rpErp) rpErp.textContent = `⏸ ERP lento (~${Math.round(salud.medianaMs)} ms), pausa ${Math.round(salud.pausaMs / 1000)} s…`;
+          await sleep(salud.pausaMs);
+          if (rpErp) rpErp.textContent = '';
+        }
+      }
+    }
+    await Promise.all([lane(), lane(), lane()]);
+    if (!out.repuestos) verbose(cli.name + ': nada que reparar');
+    return out;
+  }
+
+  // Aplana las filas de params de un NP al shape que espera planRepairs.
+  function flattenPnRows(detail) {
+    const nodes = (detail && detail.partNumberSpecFieldParamsByPartNumberId
+      && detail.partNumberSpecFieldParamsByPartNumberId.nodes) || [];
+    const out = [];
+    for (const p of nodes) {
+      const sfp = p.specFieldParamBySpecFieldParamId;
+      if (!sfp) continue;
+      const sfs = sfp.specFieldSpecBySpecFieldSpecId;
+      if (!sfs || sfs.id == null) continue;
+      out.push({
+        id: p.id, archivedAt: p.archivedAt, processNodeId: p.processNodeId || null,
+        paramId: sfp.id, paramName: sfp.name || '',
+        fieldId: (sfs.specFieldBySpecFieldId || {}).id || p.specFieldId, sfsId: sfs.id
+      });
+    }
+    return out;
+  }
+
   async function dupRunApply(parentRunId) {
     const myRunId = ++dupState.runId;
     void parentRunId;
@@ -4515,7 +4726,7 @@ const SpecMigrator = (() => {
 
 
   return { run, assignPendingParams, resolveConflicts, runDuplicateParamsValidator,
-           sweepAllCustomers };
+           sweepAllCustomers, repairArchivedWithoutRestore };
 })();
 
 if (typeof window !== 'undefined') window.SpecMigrator = SpecMigrator;
