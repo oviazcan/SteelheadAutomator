@@ -104,6 +104,32 @@ Cuando inspecciones la SPA con las herramientas de navegador en vez de pedir el 
 - **MUI X DatePicker (masked):** ignora native `value` setter; requiere keystroke-by-keystroke con `beforeinput`/`input` events.
 - **react-datepicker (plain `<input type="text">`):** sí responde a native value setter + InputEvent.
 
+## Leer el estado de un react-select: señal POSITIVA, nunca la ausencia del placeholder (2026-07-29)
+
+Un react-select tiene **tres** estados, no dos, y el tercero es el que rompe los candados:
+
+| Estado | `[id$="-placeholder"]` | `[class*="singleValue"]` |
+|---|---|---|
+| vacío | **sí** | no |
+| con valor elegido | no | **sí** |
+| **escribiendo sin elegir** | **no** | no |
+
+Medido en el modal Recibir piezas del cliente: vacío = `css-qpe0ht-control` con «Buscar Ubicaciones...»; con valor = `css-1bsomep-control` con `singleValue`; **tecleando** = `css-1bsomep-control`, `input.value="A3Aduana"` y **ningún** `singleValue`.
+
+Por eso **«no hay placeholder» NO significa «tiene valor»**: es una señal **negativa** y hereda todos los motivos por los que el placeholder puede faltar. En `warehouse-location-prefill` 0.6.0 eso liberaba el guardado de un renglón sin ubicación en cuanto el operador tecleaba en el combo (corregido en 0.6.1). La regla: **para decidir, exige la presencia del valor** (`singleValue`), no la ausencia del placeholder.
+
+Consecuencia práctica: exigir la señal positiva obliga a poder **localizar el combo en cualquier estado** — y sin placeholder ya no se puede buscar por él. La vía que funcionó: hallar el nodo del label y tomar el primer `[class*="-control"]` que lo siga en **orden de documento** con `compareDocumentPosition`, que no depende de la forma del grid (el label vive en un `.css-xd9ivb` y el control es un nodo posterior, no un descendiente).
+
+## Deshabilitar un control de React: listener capture en el nodo, no `disabled` ni `className`
+
+`disabled` y `className` los reescribe React en el siguiente render. Lo que sí sobrevive:
+
+- **Bloquear el evento:** listener en **fase capture sobre el propio botón** con `stopPropagation()` + `preventDefault()`. React 17+ escucha en el contenedor raíz durante la **burbuja**, así que un capture en el nodo corre antes y su `onClick` nunca se dispara. **Medido en ambas direcciones** (2026-07-29, botón «Hoy» del modal de recibo): con el capture la fecha no cambia; sin él, 28→29.
+- **Marcar el estilo:** un **atributo propio** (`data-sa-wlp-blocked`) + regla CSS global que cuelgue de él.
+- **Re-aplicar:** si React re-crea el nodo se pierden ambos, así que el applet los repone en su observer/poll — de forma **idempotente**.
+
+Es preferible al overlay de `warehouse-location-prefill` 0.5.78 (que sigue siendo lo correcto para tapar un widget entero como un react-select): el listener no depende de geometría ni de `z-index`.
+
 ## Auto-fill que reacciona a cambios del usuario
 
 Patrones de cancellation tokens (`runId` monotónico + `myRunId` local + `bailIfStale()`), idempotencia de acciones "create", lectura label-driven de campos vs walking-up desde singleValues, y pausar fill mientras el usuario interactúa con el upstream input — documentados en detalle en [`../applets/invoice-autofill.md`](../applets/invoice-autofill.md).

@@ -138,6 +138,21 @@ tarjeta (requiere el HTML de una tarjeta con "Tareas Programadas") o agregar el 
 | invoice-auto-regen | `:930` | `=== 'Close'` (botón) | solo EN | ¿"Cerrar"? |
 | invoice-default-tab | `invoice-default-tab.js:12` | `/packing slips/i` | solo EN | ¿"Notas de Empaque"? |
 | load-calculator-modal | `:251` | `/rack type/i` (título modal) | solo EN | ¿"Tipo de Rack"? |
+| **warehouse-location-guard-core** `ROW_LOCATION_LABEL_RE` **(NUEVO 2026-07-29)** | `warehouse-location-guard-core.js` | `/^(?:ubicaci[oó]n\s+inicial\|initial\s+location)\s*:?$/i` | ES **verificado en vivo** («Ubicación Inicial:»); **EN es HIPÓTESIS mía** | ¿«Initial Location:»? — **no observado**, lo escribí por simetría. Ver la nota de abajo: el fallo **degrada, no apaga**. |
+
+### 🆕 2026-07-29 — el candado de `warehouse-location-prefill` 0.6.x y la deuda que sí admite
+
+El candado del modal de recibo introdujo **anclajes por texto nuevos**, y hay que ser explícito sobre cuáles tienen evidencia y cuáles no:
+
+| Ancla | ES | EN | Si el EN falla |
+|---|---|---|---|
+| `ROW_LOCATION_LABEL_RE` (label del renglón) | **verificado en vivo**: «Ubicación Inicial:» | **hipótesis**: «Initial Location:» | **Degrada, no apaga**: `rowHasLocation` cae al criterio por placeholder («Search Locations», éste sí verificado desde 0.5.x) ⇒ se pierde solo la detección del estado *«escribiendo sin elegir»*, que la capa del **payload** frena igual. |
+| `SAVE_BUTTON_RE` (botones del pie) | **verificado**: «Guardar», «Guardar + imprimir todas las piezas», «Guardar y agregar piezas a OT» | `/save/i` — **subcadena**, no string exacto | Robusto por construcción: cualquier variante en inglés («Save», «Save and add…») contiene `save`. |
+| `CANCEL_BUTTON_RE` (excluir Cancelar) | **verificado**: «Cancelar» | `/^cancel$/i` exacto | Si el real fuera «Cancel changes», `findFooter` no reconoce el pie y **acota al modal** (scope más amplio, sigue operando); y ese texto tampoco matchea `save`, así que **no se bloquea por error**. |
+
+**Por qué esta deuda es aceptable donde la de `price-confirm-guard` no lo era:** ahí el texto era la ÚNICA señal de un candado, y al no matchear el candado **se apagaba en silencio**. Aquí cada anclaje por texto tiene detrás (a) un fallback estructural o de subcadena y (b) el candado del **payload**, que es idioma-independiente. La degradación es acotada y observable, no silenciosa.
+
+**Cómo cerrarla:** una sola observación del modal con la UI en inglés basta para confirmar las tres filas. No adivinar más de lo ya adivinado.
 
 ## Cómo cerrar la deuda (para cada fila)
 
@@ -150,7 +165,8 @@ tarjeta (requiere el HTML de una tarjeta con "Tareas Programadas") o agregar el 
 
 ## Limpios / ya bilingües (referencia)
 
-Autofills de recepción (`receiver-date-override`, `warehouse-location-prefill`,
-`weight-quick-entry` = patrón bueno), `bill-autofill` (salvo `:162`), la mayoría de
+Autofills de recepción (`receiver-date-override`, `warehouse-location-prefill` — **su
+autofill sigue limpio, pero su CANDADO 0.6.x agregó anclajes por texto: ver la sección
+«2026-07-29» arriba**, `weight-quick-entry` = patrón bueno), `bill-autofill` (salvo `:162`), la mayoría de
 `invoice-autofill`, `create-order-autofill` (salvo `:231`), `pn-specs-column`,
 `report-regen` (ancla por testid). Los ~50 scripts API-driven no anclan texto de SH.
