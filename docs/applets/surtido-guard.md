@@ -1,10 +1,15 @@
 # Applet `surtido-guard` — Candado de Surtido Programado
 
-> Versión: **0.3.0** — ⚠️ **SIN DEPLOYAR** (código en la rama `wt/wlp-save-guard`; capa 6, filtro
-> por línea destino). Su lógica de extracción, el ancla del header y el ciclo de esconder/revertir
-> **ya se verificaron sobre el DOM real** del board `/Domains/344/Workboards/6234` (2026-07-29,
-> inyectando a mano); falta deploy + ver el box pintado + rebundle Safari. Core 39/39 + 4 de
-> aislamiento + 5 de contrato de config.
+> Versión: **0.3.0** — ✅ **DEPLOYADO y VALIDADO END-TO-END EN VIVO** (2026-07-30): config
+> **1.11.24**, tag `v1.11.24`, firma KMS verificada en vivo. Bundle Safari **0.6.13** construido y
+> sincronizado a `Resources/` — **falta recompilar en Xcode**. Core **44/44** + 4 de aislamiento
+> + 5 de contrato de config.
+>
+> **Run real en `/Domains/344/Workboards/6234`:** el box se pinta en el header, el dropdown ofrece
+> `Todas` + `T300`, y al filtrar por `T300` queda **1 visible · 5 sin programar ocultas** — la
+> tarjeta que sobrevive es la **WO 12831**, exactamente la programada a esa línea. El
+> `scrollHeight` bajó 441/1034 → **51/401** con los rects **contiguos** (365→416→715→766) y al
+> limpiar volvió a 441/1034 con **0 residuos**.
 >
 > **0.2.0 (lo que está VIVO):** DEPLOYADO 2026-07-20 — config 1.7.160, tag `v1.7.160`, commit
 > `1382d33`; `sa-sg-orange` verificado EN VIVO en github.io. Bundle Safari v0.5.8 lo hornea
@@ -115,6 +120,24 @@ puesto → **atenúa** en vez de esconder (esconder libera espacio y virtuoso mo
 deseado… hasta que el filtro deja casi nada); y si la API reporta programadas pero **ninguna**
 tarjeta revela línea, el filtro **se apaga solo** y lo avisa. Ese árbitro pesa más que en el
 naranja: **un color errado se ve; trabajo escondido, no.**
+
+### El catálogo se UNE con el DOM — el bug que encontró la validación en vivo
+
+Primer deploy (1.11.23) validado en el board: la extracción por tarjeta funcionaba perfecto
+(una tarjeta daba `T300`) pero **el dropdown salió vacío**, solo con `Todas`. Causa medida:
+`GetRelatedScheduleData` **no llegó al interceptor** —ni recargando ni navegando dentro de la
+SPA—, así que `lineCounts` quedó en `{}`. Un filtro con el dropdown vacío es **inutilizable**
+aunque su lógica esté bien.
+
+Fix (1.11.24): `mergeLineCatalog` **une** el catálogo de la API con las líneas que las tarjetas
+montadas revelan. Cuando la API llega manda ella (conteo completo de órdenes, que es la razón de
+preferirla); cuando no, al menos se puede filtrar por lo que hay a la vista. **Las líneas que solo
+vio el DOM van SIN número** — dar el conteo de lo montado como si fuera el total de órdenes sería
+mentir justo en el dato con el que el operador decide. En el board real el dropdown quedó
+`Todas` + `T300` (sin número, correcto).
+
+**Lección:** un applet puede tener el núcleo impecable y ser inservible porque su *entrada* depende
+de un dato opcional. El fallback no fue relajar la lógica, sino **ampliar la fuente**.
 
 ### Aislamiento del candado
 
@@ -261,10 +284,31 @@ haría que **TODAS** las tarjetas se pinten (falsa alarma masiva "nada se puede 
 malo", revisa el failure mode del anclaje: resaltar la excepción amplifica los falsos positivos del ancla.
 
 ## Pendientes
-- **Filtro (v0.3.0): validación en vivo con el applet DEPLOYADO.** La extracción, el ancla del
-  header y el ciclo de esconder/revertir **ya se verificaron sobre el DOM real** inyectando la
-  lógica a mano (resultados en la capa 6); falta ver el **box pintado** y el dropdown poblado con
-  el applet cargado desde gh-pages, y el rebundle Safari para el iPad.
+
+### 🔴 PRIORITARIO — `scheduledAccountIds` salió VACÍO en un board de surtido real (2026-07-30)
+
+Medido al validar el filtro en `/Domains/344/Workboards/6234` ("Preparación de Surtido Almacén 5
+(Blanca)"): `_getState().scheduled.length === 0` **con el board cargado y con una tarjeta que sí
+muestra su tabla de `Tareas Programadas:`** (WO 12831 → T300). No es una carrera de inyección: se
+reprodujo **recargando por URL y navegando dentro de la SPA**, y en la misma sesión
+`GetRelatedWorkboardData` **sí** se capturó (`surtido` traía 4 nodos). O sea, en ese board
+`GetRelatedScheduleData` no llega al interceptor.
+
+**Por qué importa (razonamiento sobre el código, NO observado en vivo — no se intentó mover nada
+en producción):** con `scheduledAccountIds` vacío, en cuanto el operador abra el modal de mover
+—que es lo que llena `accountNode`— `evaluateMove` encontraría `info`, el nodo estaría en scope y
+`scheduled.has(accountId)` daría `false` ⇒ **bloquearía una orden legítimamente programada**. Es
+exactamente el riesgo de falso positivo que esta bitácora ya listaba como "el que hay que vigilar",
+y su síntoma es que el operador apaga el candado.
+
+Contra esto juega que el 2026-07-22 el operador validó que una programada **sí se mueve**, así que
+ahí el set no estaba vacío. Hipótesis a checar (sin confirmar): que aquél fuera **otro workboard**
+de surtido y que la query dependa del board.
+
+**Qué hacer:** (1) reproducir en el board donde se validó en julio; (2) si se confirma, el candado
+necesita **pedir la query él mismo** en vez de esperar a cazarla, o **fail-safe explícito**: si el
+set está vacío y el board sí es de surtido, no bloquear y avisar. Enlaza con la telemetría ya
+pendiente ("alerta cuando el set sale vacío en un board de surtido"), que deja de ser un nice-to-have.
 - **Filtro: los ENCABEZADOS DE GRUPO no se filtran (conocido, cosmético).** El board tiene items
   `[data-item-index]` que no son tarjetas sino headers del agrupador (`Scheduled | Total QTY: 2291`;
   3 de los 9 items montados). El filtro no los toca —correcto, son estructura— pero si un grupo
