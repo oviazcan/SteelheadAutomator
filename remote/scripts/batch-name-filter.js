@@ -55,6 +55,7 @@
       #${PANEL_ID} li{padding:3px 4px;border-bottom:1px solid #263140;color:#cfd6de;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
       #${PANEL_ID} li:last-child{border-bottom:none;}
       #${PANEL_ID} .sa-bnf-acc{color:#13a36f;}
+      #${PANEL_ID} li.sa-bnf-live{color:#13a36f;font-weight:600;}
     `;
     document.head.appendChild(st);
   }
@@ -105,17 +106,22 @@
       return;
     }
     const withMat = (result.withMaterial && result.withMaterial.count) || 0;
-    const gone = (result.depleted && result.depleted.count) || 0;
     head.appendChild(document.createTextNode('Aplicar '));
     const acc = document.createElement('span'); acc.className = 'sa-bnf-acc'; acc.textContent = `${count} lote${count === 1 ? '' : 's'} «${name}»`;
     head.appendChild(acc);
-    // El desglose es el dato que faltaba: un lote AGOTADO existe pero no tiene piezas
-    // por enviar, así que al aplicarlo la lista sale vacía. Decirlo aquí evita que el
-    // operador lea la lista vacía como "el filtro no funciona".
-    if (withMat && gone) head.appendChild(document.createTextNode(` — ${withMat} con material, ${gone} agotado${gone === 1 ? '' : 's'}`));
+    // MARCADO INVERTIDO — misma lección que surtido-guard 0.2.0: se resalta la EXCEPCIÓN.
+    // MODELO DE DOMINIO (aclarado por el operador 2026-07-29): un lote es un CONTENEDOR que
+    // Steelhead VACÍA al convertirlo a OT — su contenido pasa a la orden. Entonces
+    // `totalRemainingMicroQuantity = 0` es el estado NORMAL Y ESPERADO de todo lote que ya
+    // siguió su curso, y ahí el lote sirve como REFERENCIA, que es justo para lo que el
+    // operador lo busca en el Panel de Envío. Lo EXCEPCIONAL es el que sigue CON material:
+    // no se pasó a OT, o no se pasó completo.
+    // Por eso NO se anuncia el vacío (marcaría la norma y se leería como un problema —
+    // era el error de la primera versión de este preview): se marca el que conserva material.
+    if (withMat) head.appendChild(document.createTextNode(` — ${withMat} aún con material`));
     p.appendChild(head);
     const ul = document.createElement('ul');
-    // Los que tienen material primero: son los que sirven para enviar.
+    // Los que aún tienen material primero: son la excepción y lo único enviable.
     const ordered = [
       ...((result.withMaterial && result.withMaterial.matches) || []),
       ...((result.unknown && result.unknown.matches) || []),
@@ -125,19 +131,12 @@
       const li = document.createElement('li');
       // InventoryBatchView nodes: {id, idInDomain, name}; FilterSearch legado: {display}.
       let label = m.display || ('#' + m.idInDomain + ' — ' + m.name);
-      if (Core.isDepletedBatch(m) === true) label += ' · agotado';
+      if (Core.isDepletedBatch(m) === false) { label += ' · aún con material'; li.className = 'sa-bnf-live'; }
       li.textContent = label;                   // textContent → sin XSS
       li.title = label;
       ul.appendChild(li);
     });
     p.appendChild(ul);
-    if (Core.shouldWarnAllDepleted(result)) {
-      const w = document.createElement('div'); w.className = 'sa-bnf-warn';
-      w.textContent = count === 1
-        ? '⚠️ Está agotado: al aplicar, la lista saldrá vacía (ese lote ya no tiene piezas por enviar).'
-        : `⚠️ Los ${count} están agotados: al aplicar, la lista saldrá vacía (ese lote ya no tiene piezas por enviar).`;
-      p.appendChild(w);
-    }
     if (capped) {
       const w = document.createElement('div'); w.className = 'sa-bnf-warn';
       w.textContent = '⚠️ Muchísimos lotes con este nombre; se aplican los primeros encontrados.';

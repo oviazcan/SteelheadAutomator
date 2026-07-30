@@ -306,11 +306,23 @@ test('selectByExactName: nodos sin el campo caen en unknown (compat con fixtures
   assert.equal(r.depleted.count, 0, 'ausente NO es agotado');
 });
 
-test('shouldWarnAllDepleted: avisa solo si TODO lo encontrado está agotado', () => {
-  assert.equal(Core.shouldWarnAllDepleted(Core.selectByExactName(IBV_T125_REAL_DEPLETED, 'T-125')), true);
-  assert.equal(Core.shouldWarnAllDepleted(Core.selectByExactName(IBV_WITH_MATERIAL, 'T-233')), false);
-  assert.equal(Core.shouldWarnAllDepleted(Core.selectByExactName([], 'X')), false, 'sin resultados no hay nada que avisar');
-  assert.equal(Core.shouldWarnAllDepleted(Core.selectByExactName(IBV_T125, 'T-125')), false, 'desconocido no dispara el aviso');
+test('el aviso de «todos vacíos» YA NO existe: vacío es la norma, no una anomalía', () => {
+  // Un lote es un contenedor que Steelhead VACÍA al convertirlo a OT, así que remaining=0 es
+  // el curso normal. El aviso salía casi siempre y leía como problema lo que es lo esperado.
+  assert.equal(Core.shouldWarnAllDepleted, undefined, 'se retiró del core, no solo del render');
+});
+
+test('MARCADO INVERTIDO: lo que se resalta es el lote que AÚN tiene material (la excepción)', () => {
+  // Misma lección que surtido-guard 0.2.0. `withMaterial` es el bucket que la UI marca.
+  const soloVacios = Core.selectByExactName(IBV_T125_REAL_DEPLETED, 'T-125');
+  assert.equal(soloVacios.count, 6, 'se aplican igual: sirven como REFERENCIA');
+  assert.equal(soloVacios.withMaterial.count, 0, 'nada que resaltar — es el caso normal');
+
+  const mixto = [...IBV_T125_REAL_DEPLETED.slice(0, 2),
+                 { id: 999, idInDomain: 1, name: 'T-125', totalRemainingMicroQuantity: '5000000' }];
+  const r = Core.selectByExactName(mixto, 'T-125');
+  assert.deepEqual(r.withMaterial.ids, ['999'], 'el que conserva material es el que se marca');
+  assert.equal(r.count, 3, 'pero se aplican los tres');
 });
 
 // ── Guardarraíl de volumen: el /graphql de la sesión se CUELGA a ~40-45 requests
@@ -333,10 +345,19 @@ test('planPagination: pide solo las páginas necesarias', () => {
   assert.deepEqual(Core.planPagination(201, 200), { pages: 2, capped: false, tooBroad: false });
 });
 
-test('planPagination: tooBroad corta ANTES de paginar (no cuelga el /graphql del operador)', () => {
-  const r = Core.planPagination(1009, 200); // searchQuery:'T-1' medido en vivo
+test('planPagination: 1 009 (searchQuery:"T-1") SÍ se pagina — el tope subió a 1 600', () => {
+  // Nació en 600 y cortaba búsquedas legítimas: los lotes vacíos se ACUMULAN históricamente
+  // (todo lote que pasa a OT queda vacío), así que un nombre viejo junta cientos.
+  const r = Core.planPagination(1009, 200);
+  assert.equal(r.tooBroad, false);
+  assert.equal(r.pages, 6);
+  assert.equal(r.capped, false);
+});
+
+test('planPagination: tooBroad corta ANTES de paginar cuando el substring es de veras amplio', () => {
+  const r = Core.planPagination(12793, 200); // searchQuery:'T' medido en vivo
   assert.equal(r.tooBroad, true);
-  assert.equal(r.pages, 0, 'tooBroad NO pagina: pide al operador que escriba el nombre completo');
+  assert.equal(r.pages, 0, 'no pagina: un exacto sacado de un substring inpaginable queda parcial e IMPREDECIBLE');
 });
 
 test('planPagination: el cap de páginas se reporta, no se calla', () => {
