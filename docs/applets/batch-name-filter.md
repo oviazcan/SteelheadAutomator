@@ -1,6 +1,88 @@
 # batch-name-filter — Filtrar Lote por Nombre
 
-**Versión actual:** 0.2.1 — **VIVO y VALIDADO end-to-end en producción (config 1.7.169).**
+**Versión actual:** 0.3.0 — commiteada en `main` (`46b2b3a`), **SIN deployar todavía**.
+Fuente = `InventoryBatchViewQuery` paginada, `name` estructurado, y desde 0.3.0 **los DOS
+universos de `hideCompleted`**. **41/41 tests** (11 nuevos sobre fixtures reales del 2026-07-29).
+
+## 🔴 0.3.0 (2026-07-29) — `hideCompleted` no esconde: SELECCIONA universo, y son DISJUNTOS
+
+Reporte del operador: *«mi filtro de lote de Packing Slips está sin funcionar, simplemente no
+hace nada cuando le doy enter»*.
+
+**No era ninguno de los sospechosos.** Descartados con evidencia, en este orden: el hash
+(`InventoryBatchViewQuery` vigente — validación del día 17:28, **0 stale** de 249), el deploy
+(main = gh-pages = vivo = 1.11.8, invariante byte-a-byte ✓), el gate por URL (los 3 scripts
+cargan y `isShippingUrl` da `true`), el montaje del box (aparece en el header junto a KGM/LBR) y
+el glue completo (con un lote del universo correcto el preview y la URL se construyen bien).
+
+**La causa raíz, medida en vivo (dominio 344):** el parámetro `hideCompleted` de
+`InventoryBatchViewQuery` **no es un "esconder los completados"** —donde `false` sería el
+superconjunto—. Es un **SELECTOR DE UNIVERSO**, y los dos universos son **disjuntos**:
+
+| `hideCompleted` | universo | lotes | `totalRemainingMicroQuantity` |
+|---|---|---|---|
+| `true` | **con material** | 585 (4.3%) | 200/200 ≠ 0 |
+| `false` | **agotados** | 12 926 (95.7%) | 200/200 = 0 |
+| | **solape** | **0** | unión = 13 511 = todo el inventario |
+
+Comprobado por pares, no por inferencia: `T-233`/`T-232`/`2907202601` → **1 con `true`, 0 con
+`false`**; `T-125` → **0 con `true`, 20 con `false`**. El nombre del parámetro miente.
+
+Consultando solo `true`, el applet **no veía el 95.7% de los lotes**. Buscar «T-125» devolvía 0
+aunque existen 20 —y el **dropdown NATIVO de SH sí los ofrece**, verificado con `FilterSearch`:
+10 items con sus dbIds—. El panel decía «Sin lotes «T-125»» (falso) y `applyCurrent()` retornaba
+sin ids: **eso es el "no hace nada"**.
+
+**Por qué apareció con el TIEMPO y no de golpe** — la parte que explica el reporte: un lote
+nace en el universo CON MATERIAL y **se muda** al de AGOTADOS al consumirse. El applet solo
+servía para lotes frescos. Por eso su validación del 2026-07-22 pasó (C-21568 tenía material
+ese día) y una semana después el mismo flujo ya no encontraba nada. **Un applet puede pasar su
+validación en vivo y estar roto por diseño si el dato de prueba era el caso favorable.**
+
+**Lección de método (la de fondo):** la premisa vieja —«en Packing Slips los lotes completados
+no se pueden filtrar, así que traerlos es inútil»— nunca se verificó contra el ERP; se adoptó
+como justificación de un flag cuya semántica se supuso por su NOMBRE. Y era doblemente falsa:
+ni `false` significa lo que parece, ni «no se pueden filtrar» es cierto (el nativo los ofrece).
+
+### El fix
+- **Se consultan AMBOS universos y se unen** (`SEARCH_UNIVERSES`).
+- **El preview DISTINGUE en vez de esconder.** `· agotado` por renglón, desglose «N con
+  material, M agotados», los con material primero, y aviso explícito cuando todos están
+  agotados. Verificado en vivo: aplicar los 10 chips T-125 **sí filtra** y la lista sale
+  vacía porque ya no tienen piezas por enviar — «20 lotes, todos agotados» **explica** ese
+  vacío; «Sin lotes» lo ocultaba tras una mentira.
+- `isDepletedBatch` → `true`/`false`/**`null`** si falta el dato. Ausente no es agotado (mismo
+  fail-safe que no asumir 1 pieza por carga cuando `partsPerRack` no existe).
+- **Guardarraíl de volumen**, porque duplicar el universo duplica el tráfico: mínimo de 2
+  caracteres (`searchQuery:'T'` = **12 793** lotes), tope `tooBroad` por `totalCount`
+  (`searchQuery:'T-1'` = **1 009** → pide el nombre completo en vez de bajar 5 000), cap de
+  páginas que **se reporta**, `alive()` que corta las páginas en vuelo de una búsqueda ya
+  reemplazada, y debounce 300→450 ms.
+
+### ⚠️ Incidente durante la validación (vale como advertencia de método)
+Validando el fix **colgué el `/graphql` de la sesión** con una ráfaga de 5 búsquedas × 2
+universos sin espera: el renderer dejó de responder (`Runtime.evaluate` timeout ×3) y **no se
+recuperó al recargar la pestaña** — es el modo de falla ya documentado en `po-listing-filters`
+(~40-45 requests, sin 429 ni error, **límite por SESIÓN, no por pestaña**). Al validar contra
+el ERP productivo: **una búsqueda a la vez**. El guardarraíl del applet acota a ≤6 requests por
+búsqueda; lo que colgó la sesión fue el arnés de prueba, no el applet.
+
+### Pendientes
+- [ ] **Deploy** — bloqueado por coordinación: una sesión paralela estaba deployando
+      (`config.json` ya en 1.11.11) y `deploy.sh` hace `git add remote/`.
+- [ ] **Validar el ciclo end-to-end en vivo** con el código deployado (teclear → preview con
+      desglose → Enter → chips). Lo verificado hoy: la unión de universos contra el servidor
+      real, los 20 T-125, la clasificación, y que los chips se aplican.
+- [ ] `tools/archive-inventory-batch-statuses.js` llama esta misma query **sin pasar
+      `hideCompleted`** (usa el default del server) para su detector de "lotes en uso". Según
+      cuál sea el default, el conteo puede quedar parcial. Falla ruidosa (la mutación truena),
+      no silenciosa → no urgente, pero conviene fijar el flag explícito.
+
+---
+
+## Historia previa (0.2.1)
+
+**Versión:** 0.2.1 — VIVO y validado end-to-end en producción (config 1.7.169).
 Fuente = `InventoryBatchViewQuery` (paginada, `name` estructurado, `hideCompleted:true`) →
 **supera el tope de 10** (probado con 18 T-125) y matching exacto robusto (adiós regex + colisión
 numérica). **30/30 tests.**
@@ -42,10 +124,14 @@ La fuente correcta (la encontró el usuario en el scan `2026-07-22_090514`): **`
 **Validado en vivo (2026-07-22):** `searchQuery:'T-125'` con `hideCompleted:false` → **18 lotes**
 T-125 (vs 10 de FilterSearch = supera el tope); con `hideCompleted:true` → 1 (el único no-completado).
 
-**Decisión de producto (usuario):** en producción `hideCompleted:true` — en Packing Slips/Scheduling
-los lotes **completados no se pueden filtrar** (no muestran piezas), así que traerlos es inútil +
-menos eficiente. El `false` fue solo para la prueba del tope. El glue pagina con `first:200` y un cap
-de seguridad de 25 páginas.
+~~**Decisión de producto (usuario):** en producción `hideCompleted:true` — en Packing
+Slips/Scheduling los lotes **completados no se pueden filtrar** (no muestran piezas), así que
+traerlos es inútil + menos eficiente.~~ **❌ REFUTADO el 2026-07-29 — era LA causa del bug.**
+Doblemente falso: (1) `hideCompleted:false` no "incluye además", es el **complemento disjunto**,
+así que `true` no era "lo mismo pero más limpio" sino **otro universo** (4.3% del inventario);
+(2) los lotes agotados **sí se pueden filtrar** — el dropdown nativo los ofrece y aplicarlos
+produce chips válidos. Ver §"0.3.0" arriba. El cap de 25 páginas también se retiró (era
+5 000 lotes por búsqueda contra un `/graphql` que se cuelga a ~45 requests).
 
 **Discovery headless de esta query:** llamarla SIN `searchQuery` devuelve los ~10k lotes y congela el
 renderer; con `searchQuery` filtrando la respuesta es chica y no congela. Por eso antes fallaba.
