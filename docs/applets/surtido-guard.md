@@ -1,8 +1,22 @@
 # Applet `surtido-guard` — Candado de Surtido Programado
 
-> Versión: **0.2.0** (DEPLOYADO 2026-07-20: config 1.7.160, tag `v1.7.160`, commit `1382d33`; `sa-sg-orange` verificado EN VIVO en github.io. Bundle Safari v0.5.8 lo hornea — commit `172947c`, pendiente recompilar Xcode). Estado: **toggle VALIDADO en vivo (2026-06-29) ✓; el bloqueo aparece en vivo. v0.2.0 (2026-07-20): marcado INVERTIDO — NARANJA en las NO movibles (antes verde en las movibles), señal DOM bilingüe ES+EN (`Tareas Programadas:` / `Scheduled tasks:`) + salvaguarda anti-falsa-alarma con el set de la API. **✅ VALIDADO en vivo 2026-07-22** (confirmación del operador): bloqueo fino (sin falsos positivos prog/no-prog), drag silencioso y marcado naranja**.
-> Spec: [`docs/superpowers/specs/2026-06-26-surtido-guard-design.md`](../superpowers/specs/2026-06-26-surtido-guard-design.md) ·
-> Plan: [`docs/superpowers/plans/2026-06-26-surtido-guard.md`](../superpowers/plans/2026-06-26-surtido-guard.md)
+> Versión: **0.3.0** — ⚠️ **SIN DEPLOYAR** (código en la rama `wt/wlp-save-guard`; capa 6, filtro
+> por línea destino). Su lógica de extracción, el ancla del header y el ciclo de esconder/revertir
+> **ya se verificaron sobre el DOM real** del board `/Domains/344/Workboards/6234` (2026-07-29,
+> inyectando a mano); falta deploy + ver el box pintado + rebundle Safari. Core 39/39 + 4 de
+> aislamiento + 5 de contrato de config.
+>
+> **0.2.0 (lo que está VIVO):** DEPLOYADO 2026-07-20 — config 1.7.160, tag `v1.7.160`, commit
+> `1382d33`; `sa-sg-orange` verificado EN VIVO en github.io. Bundle Safari v0.5.8 lo hornea
+> (commit `172947c`, pendiente recompilar Xcode). Estado: **toggle VALIDADO en vivo (2026-06-29) ✓;
+> el bloqueo aparece en vivo. Marcado INVERTIDO — NARANJA en las NO movibles** (antes verde en las
+> movibles), señal DOM bilingüe ES+EN (`Tareas Programadas:` / `Scheduled tasks:`) + salvaguarda
+> anti-falsa-alarma con el set de la API. **✅ VALIDADO en vivo 2026-07-22** (confirmación del
+> operador): bloqueo fino (sin falsos positivos prog/no-prog), drag silencioso y marcado naranja.
+> Spec: [`2026-06-26-surtido-guard-design.md`](../superpowers/specs/2026-06-26-surtido-guard-design.md) ·
+> Plan: [`2026-06-26-surtido-guard.md`](../superpowers/plans/2026-06-26-surtido-guard.md)
+> **v0.3.0 (filtro):** spec [`2026-07-29-surtido-guard-line-filter-design.md`](../superpowers/specs/2026-07-29-surtido-guard-line-filter-design.md) ·
+> plan [`2026-07-29-surtido-guard-line-filter.md`](../superpowers/plans/2026-07-29-surtido-guard-line-filter.md)
 
 ## Qué resuelve
 En el Workboard **"Preparación de Surtido"** (`/Domains/<id>/Workboards/<n>`), step
@@ -16,7 +30,7 @@ se pueden mover (sin tarea programada). Las movibles (programadas) quedan sin ma
 "Tareas Programadas:" con tratamiento + estación + fecha-hora). El color del calendario rojo/verde es
 la **fecha de entrega** (deadline), NO la señal de programación.
 
-## Arquitectura (5 capas)
+## Arquitectura (6 capas — la 6ª es el filtro de v0.3.0, ver abajo)
 Glue en `surtido-guard.js`; lógica pura + parsers en `surtido-guard-core.js` (golden tests).
 El corazón es un **interceptor de `window.fetch`** (patrón `auto-router.js`) que cubre las dos rutas
 de movimiento con un solo punto de enforcement:
@@ -35,6 +49,89 @@ de movimiento con un solo punto de enforcement:
    **default ON cada carga**; se reactiva al recargar. El naranja no se ve afectado por el toggle.
 
 **Política FAIL-SAFE:** ante dato faltante (account sin puente, set no cargado) **no bloquea**.
+
+## Capa 6 — Filtro por LÍNEA DESTINO (v0.3.0, 2026-07-29)
+
+Filtra las tarjetas del step por la **línea a la que va** el material (`T204`, `T300`…) = la línea
+de la estación donde la orden está **programada**. Pedido de operaciones.
+
+**Complementa, no duplica, el filtro nativo de SH** (confirmado con el operador y con evidencia
+DOM): el nativo filtra por la estación donde la pieza está **parada** —en la tarjeta,
+`Estación: Proquipa.N1.A1`, una ubicación de almacén—, no por la que sigue. Son preguntas
+opuestas y **composables**: el nativo te deja en el step, el nuestro recorta a los que van a T204.
+Por eso la etiqueta lleva flecha (**`→ Línea destino`**) y el box va en **dark-mode**: dos filtros
+de "estación" juntos son el anti-patrón de `auto-router` 0.3.2, y aquí escoger mal **surte
+material a la línea equivocada**.
+
+### El dato: `td[1]` de la tabla, nunca el texto de la tarjeta
+
+La tarjeta trae, tras el label `Tareas Programadas:`, una `<table>` con
+`[td0=tratamiento, td1=estación, td2=fecha]`. La línea sale de **`td[1]`**.
+
+**Por qué importa — medido en el board real (`/Domains/344/Workboards/6234`, 6 tarjetas):** el
+enfoque "ingenuo" de sacar el código del `textContent` de la tarjeta se equivoca en **6 de 6**.
+
+| Tarjetas | Correcto (`td[1]`) | Ingenuo (`textContent`) |
+|---|---|---|
+| 16408, 16407, 12819, 12798, 12799 (**no** programadas) | `[]` | `T205`,`T300`,`T400`,`T205`,`T205` — **líneas inventadas** |
+| 12831 (la **única** programada) | **`T300`** | **`T400`** — la del `Proceso:`, no la del destino |
+
+O sea: la tarjeta dice `Proceso: T400 (ANT)-CU-VARIOS` y su estación destino real es
+`T300-CE03-002 Célula de Antitarnish`. **El anclaje por posición de celda no es preferencia de
+estilo: es lo que evita surtir a la línea equivocada.**
+
+Tampoco sirve `td[0]`: el tratamiento a veces no trae código (`TR-PRM-001 Antitarnish Manual`).
+El prefijo `at ` de `td[1]` es un literal **inglés en UI española** — se ignora al no anclar el
+regex al inicio, que es seguro porque el ámbito es **una sola celda**.
+
+### El catálogo del dropdown viene de la API, no del DOM
+
+`GetRelatedScheduleData` —que el candado **ya interceptaba**— trae el `stationId` **hermano** del
+set de accounts programados, así que el destino no cuesta ninguna consulta nueva. `AllStations`
+(hash ya en config, 1 llamada por carga) le pone nombre y `lineCodeFromStationText` lo agrega.
+
+Se hace así **porque el board está virtualizado**: solo monta ~8 tarjetas, así que un dropdown
+armado del DOM nacería incompleto y no dejaría elegir una línea cuya tarjeta no se ha montado.
+Los conteos son de **órdenes únicas** (`workOrderId`), no de accounts; las estaciones que no se
+pudieron resolver se **reportan** (`unknownStationIds`) — un conteo que se las traga hace mentir
+al dropdown por omisión.
+
+### Esconder SÍ es seguro con react-virtuoso (medido, no supuesto)
+
+El board usa **react-virtuoso** (`[data-testid="virtuoso-scroller"]`/`"virtuoso-item-list"`,
+items con `data-item-index` + `data-known-size`, `overflow-anchor:none`). `display:none` sobre el
+nodo `[data-item-index]` hace que virtuoso **re-mida solo** vía `ResizeObserver`:
+
+| Prueba | Antes | Después | Revertido |
+|---|---|---|---|
+| Ocultar 2 de 6 | `scrollHeight` 1034 | **524** | 1034 ✓ |
+| Filtrar por `T300` (oculta 5) | 441 / 1034 | **51 / 401** | 441 / 1034 ✓ |
+| Rects de las visibles | contiguos | **contiguos** (365→416→467→678→889) | — |
+
+Cero huecos, cero tarjetas encimadas. ⇒ se implementó **esconder**, no atenuar.
+
+**Dos guardas fail-safe** (`planFilter`): si virtuoso pasa de **200** items montados con el filtro
+puesto → **atenúa** en vez de esconder (esconder libera espacio y virtuoso monta más, que es lo
+deseado… hasta que el filtro deja casi nada); y si la API reporta programadas pero **ninguna**
+tarjeta revela línea, el filtro **se apaga solo** y lo avisa. Ese árbitro pesa más que en el
+naranja: **un color errado se ve; trabajo escondido, no.**
+
+### Aislamiento del candado
+
+Esconder es **puramente visual**. El candado bloquea sobre el *payload* de la mutación, así que
+una tarjeta oculta sigue igual de bloqueada; y `display:none` **no desmonta**, así que
+`decorateCards` sigue viendo todas y su árbitro del naranja no se altera.
+`surtido-guard-filter-isolation.test.js` lo fija: el core del filtro no menciona el flag del
+candado, ni `fetch`, ni la mutación, ni `evaluateMove`, y `evaluateMove` da el mismo veredicto con
+y sin filtro. **No persiste** entre recargas, igual que el candado.
+
+**UI:** box en la barra de acciones del header, anclado subiendo desde `NUEVA TARJETA`/`NEW CARD`
+(ES+EN). Va **en flujo, sin `position:fixed`**: esa barra tiene `overflow: visible` (medido), a
+diferencia del header que forzó el `fixed` en `batch-name-filter`.
+
+**Componentes:** `remote/scripts/surtido-guard-filter-core.js` (puro, **39 golden**) +
+`tools/test/surtido-guard-filter-isolation.test.js` (4) +
+`tools/test/surtido-guard-filter-config.test.js` (5, fija el ORDEN core→glue en `config.json`).
 
 ## Shapes confirmados (Fase 0, tráfico real 2026-06-26/29)
 | Operación | Tipo | Rol |
@@ -164,6 +261,21 @@ haría que **TODAS** las tarjetas se pinten (falsa alarma masiva "nada se puede 
 malo", revisa el failure mode del anclaje: resaltar la excepción amplifica los falsos positivos del ancla.
 
 ## Pendientes
+- **Filtro (v0.3.0): validación en vivo con el applet DEPLOYADO.** La extracción, el ancla del
+  header y el ciclo de esconder/revertir **ya se verificaron sobre el DOM real** inyectando la
+  lógica a mano (resultados en la capa 6); falta ver el **box pintado** y el dropdown poblado con
+  el applet cargado desde gh-pages, y el rebundle Safari para el iPad.
+- **Filtro: los ENCABEZADOS DE GRUPO no se filtran (conocido, cosmético).** El board tiene items
+  `[data-item-index]` que no son tarjetas sino headers del agrupador (`Scheduled | Total QTY: 2291`;
+  3 de los 9 items montados). El filtro no los toca —correcto, son estructura— pero si un grupo
+  queda **sin tarjetas visibles**, su header se queda huérfano anunciando un total que no
+  corresponde a lo que se ve. Resolverlo requiere modelar el agrupamiento (hay varios grupos
+  intercalados **dentro** de una misma lista virtuoso: se observaron headers con `data-item-index`
+  0 y 2 en el mismo scroller), y esconder un header por error ocultaría información legítima. Por
+  eso se dejó fuera de v0.3.0; el contador del box (`N visibles`) es la mitigación actual.
+- **Filtro: `mountedCount` cuenta headers además de tarjetas** (9 vs 6 en el board medido). Solo
+  alimenta la guarda del tope de 200, así que el efecto es dispararla un poco antes —conservador,
+  no incorrecto—. Afinarlo si alguna vez la guarda se activa de más.
 - **Validación en vivo del bloqueo real** (arriba). Riesgo a vigilar: **falsos positivos** (bloquear una
   programada) → el operador apaga el toggle y se reporta.
 - **HTML fino de la tarjeta**: el marcado verde usa heurística (sube desde "Tareas Programadas:" hasta un
