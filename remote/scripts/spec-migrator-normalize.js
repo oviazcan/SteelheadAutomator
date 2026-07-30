@@ -256,6 +256,58 @@
   }
 
   /**
+   * Qué ofrecer al reabrir el reparador: reanudar, reintentar lo que falló, o nada.
+   *
+   * POR QUÉ EXISTE (2026-07-30): el checkpoint solo se borraba si la corrida terminaba SIN
+   * errores, así que una corrida COMPLETA con 11 fallos quedaba marcada "a medias" para
+   * siempre. Al reabrir, el modal ofrecía reanudar; al aceptar, la lista de pendientes salía
+   * VACÍA, el bucle no corría y el panel repintaba el resumen viejo en rojo sin explicar nada:
+   * «me regresa al error anterior y se queda parado». Y los clientes que sí fallaron —lo único
+   * que faltaba— no tenían forma de reintentarse.
+   *
+   * Los tres estados son distintos y hay que nombrarlos:
+   *   'reanudar'  → quedan clientes sin revisar
+   *   'reintentar'→ todos revisados, pero algunos fallaron: se reintentan SOLO esos
+   *   'completo'  → todos revisados y sin fallos: no hay nada que hacer, se borra el avance
+   *
+   * @param {Array<{id,name}>} clientes  lista completa
+   * @param {{done?:Array, fallidos?:Array, totales?:Object}|null} checkpoint
+   * @returns {{modo:'reanudar'|'reintentar'|'completo'|'nuevo', pendientes:Array,
+   *            yaHechos:number, fallidos:number, totales:Object}}
+   */
+  function planRepairResume(clientes, checkpoint) {
+    const lista = Array.isArray(clientes) ? clientes.filter(Boolean) : [];
+    const ck = checkpoint || null;
+    const done = new Set(((ck && ck.done) || []).map(Number));
+    const fallidos = new Set(((ck && ck.fallidos) || []).map(Number));
+    const base = (ck && ck.totales) || {};
+    const totales = {
+      archivados: base.archivados || 0,
+      repuestos: base.repuestos || 0,
+      yaEstaban: base.yaEstaban || 0,
+      errores: base.errores || 0,
+      clientes: base.clientes || 0
+    };
+
+    if (!ck || !done.size) {
+      return { modo: 'nuevo', pendientes: lista, yaHechos: 0, fallidos: 0, totales };
+    }
+
+    const sinRevisar = lista.filter(c => !done.has(Number(c.id)));
+    if (sinRevisar.length) {
+      return { modo: 'reanudar', pendientes: sinRevisar, yaHechos: done.size,
+               fallidos: fallidos.size, totales };
+    }
+    if (fallidos.size) {
+      // Solo los que fallaron. Sus totales se descuentan al reintentarlos, así que se
+      // arranca de cero en errores: lo que importa es si esta vez pasan.
+      return { modo: 'reintentar', pendientes: lista.filter(c => fallidos.has(Number(c.id))),
+               yaHechos: done.size, fallidos: fallidos.size, totales };
+    }
+    return { modo: 'completo', pendientes: [], yaHechos: done.size, fallidos: 0, totales };
+  }
+
+  /**
    * Decide qué hacer con UN field "falso pendiente" de un PN.
    * @param {Array<{id, archivedAt, processNodeId, paramId, paramName}>} fieldRows
    *        TODAS las filas (activas y archivadas) del MISMO specFieldId en el PN.
@@ -306,7 +358,8 @@
   const api = { planFieldNormalization: planFieldNormalization, extractFieldRows: extractFieldRows,
                 planForcedNodeRelease: planForcedNodeRelease, planApplyUnits: planApplyUnits,
                 erpHealth: erpHealth, planCustomerSweep: planCustomerSweep,
-                mergeSweepTotals: mergeSweepTotals, planRepairs: planRepairs, resolveCustomerList: resolveCustomerList, norm: norm };
+                mergeSweepTotals: mergeSweepTotals, planRepairs: planRepairs, resolveCustomerList: resolveCustomerList,
+                planRepairResume: planRepairResume, norm: norm };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (typeof window !== 'undefined') window.SpecMigratorNormalize = api;
 })();
