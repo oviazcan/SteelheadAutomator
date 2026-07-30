@@ -109,6 +109,38 @@
     };
   }
 
+  // Une el catálogo de la API con las líneas efectivamente VISTAS en las tarjetas montadas.
+  //
+  // Por qué existe (medido en vivo 2026-07-30, board "Preparación de Surtido Almacén 5"):
+  // el catálogo de la API es COMPLETO cuando llega, pero **puede no llegar** — ahí
+  // `GetRelatedScheduleData` no se disparó (ni por recarga ni navegando dentro de la SPA), así
+  // que `lineCounts` salía vacío y el dropdown se quedaba SOLO con "Todas"… mientras una tarjeta
+  // mostraba claramente su destino T300. Un filtro cuyo dropdown está vacío es INUTILIZABLE
+  // aunque su lógica sea correcta.
+  //
+  // Las líneas que solo vio el DOM van SIN conteo: dar un número de tarjetas montadas como si
+  // fuera el total de órdenes sería mentir, y aquí el número es lo que el operador usa para
+  // decidir. Mejor sin número que con un número falso.
+  function mergeLineCatalog(apiCounts, domLines) {
+    const byLine = {};
+    const api = (apiCounts && apiCounts.byLine) ? apiCounts.byLine : {};
+    for (const k of Object.keys(api)) byLine[k] = api[k];
+    const domOnly = [];
+    const seenDom = {};
+    (Array.isArray(domLines) ? domLines : []).forEach(function (code) {
+      if (typeof code !== 'string' || code === '') return;
+      const c = code.toUpperCase();
+      if (Object.prototype.hasOwnProperty.call(byLine, c) || seenDom[c]) return;
+      seenDom[c] = true;
+      domOnly.push(c);
+    });
+    return {
+      lines: Object.keys(byLine).concat(domOnly).sort(),
+      byLine: byLine,
+      domOnly: domOnly
+    };
+  }
+
   const MAX_MOUNTED_DEFAULT = 200;
 
   // ¿Esta tarjeta se ve con el filtro puesto?
@@ -178,7 +210,7 @@
   const api = {
     LINE_CODE_RE, MAX_MOUNTED_DEFAULT,
     lineCodeFromStationText, linesFromScheduledRows,
-    buildStationLineIndex, buildLineCounts,
+    buildStationLineIndex, buildLineCounts, mergeLineCatalog,
     cardVisibleUnderFilter, planFilter
   };
   if (typeof window !== 'undefined') window.SurtidoGuardFilterCore = api;
