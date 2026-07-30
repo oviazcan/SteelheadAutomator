@@ -1,21 +1,24 @@
 # pn-specs-column — Datos del NP (specs, metal, línea, racks, unidades) en el dashboard de Números de Parte
 
-**Versión:** 0.3.0 — Core **30/30** golden (13 nuevos contra **fixture REAL** del PN 2300153 capturado en vivo). **0.3.0** 4 columnas nuevas + todas AL INICIO (ver §0.3.0). **0.2.1** fix del toggle que no se montaba. **0.2.0** criterio "el valor trae dígitos" + spec como link. **0.1.2** estilo. **0.1.1** 2 bugs del run real.
+**Versión:** 0.3.2 — **VIVO; salió en config 1.11.7 (tag `v1.11.7`) y el config vivo sigue avanzando con deploys de otros applets. VALIDADO EN VIVO por el operador** («ya quedó», 2026-07-29, con el contador marcando `50/50`). Core **42/42** golden (25 nuevos contra **fixture REAL** del PN 2300153 capturado en vivo). **0.3.2** Specs al final de la barra, racks en 2 renglones, unidades en el orden del ERP, nombre del NP realzado + fix del `<style>` que se recreaba en cada sync. **0.3.1** angostar (fuera Línea; desc+metal dentro de la celda del nombre). **0.3.0** columnas nuevas + todas AL INICIO. **0.2.1** fix del toggle que no se montaba. **0.2.0** criterio "el valor trae dígitos" + spec como link. **0.1.2** estilo. **0.1.1** 2 bugs del run real.
 **Categoría:** Números de Parte · **autoInject:true** · ruta: `/PartNumbers` (index, NO la ficha `/PartNumbers/:id`)
 
 ## Qué hace
 
-En el dashboard `https://app.gosteelhead.com/PartNumbers` agrega, **al INICIO de la tabla**, hasta **5 columnas** con un **toggle por columna** en el header (junto a "NUEVO NÚMERO DE PARTE"). Todas se alimentan de **una sola** consulta `GetPartNumber` por NP visible:
+En el dashboard `https://app.gosteelhead.com/PartNumbers` agrega **3 columnas al INICIO de la tabla** más un enriquecimiento **dentro de la celda nativa del nombre**, con un **toggle por cada uno** en el header (junto a "NUEVO NÚMERO DE PARTE"). Todo se alimenta de **una sola** consulta `GetPartNumber` por NP visible:
 
-| Columna | Contenido |
-|---|---|
-| 🧪 **Especificaciones** | specs activas (cada una **link** a su ficha) y sus **parámetros con valor numérico** (`Espesor: 2 - 5 µm`) |
-| ⚗️ **Metal base** | `customInputs.DatosAdicionalesNP.BaseMetal` (`Cobre`) — la columna nativa `Material` es otra cosa |
-| 🏭 **Línea** | dimensión contable 349 (`T107-LI Plata Colgado Cx (60.0)`); la nativa existe pero cae en la columna 11 |
-| 🧺 **Rack Types** | cada rack type con sus **piezas por carga** (`T102-RA02: 18 pz`) |
-| 📐 **Unidades** | **todos** los factores registrados, en unidades por pieza (`KGM: 0.376 /pz`) |
+| Toggle | Qué pinta | Contenido |
+|---|---|---|
+| 🧺 **Racks** | columna *Rack Types* | cada rack en dos renglones: nombre y `(18 pz)` |
+| 📐 **Unidades** | columna *Unidades /pz* | **todos** los factores registrados, 3 decimales, en el orden del ERP (`KGM 0.376`) |
+| 📝 **Desc+Metal** | **celda nativa del nombre** | `descriptionMarkdown` + metal base bajo el NP (`C4 FIXED CONTACT 5 DL · Cobre`) |
+| 🧪 **Specs** | columna *Especificaciones* | specs activas (cada una **link** a su ficha) y sus **parámetros con valor numérico** (`Espesor: 2 - 5 µm`) |
 
-El criterio de "numérico" (desde 0.2.0) es que el **valor** traiga dígitos, no el `specField.type`. Excluye parámetros y specs **archivados**. Todas las columnas arrancan **APAGADAS** (ver §0.3.0: el response pesa 5.84 MB).
+Ese es también el orden de la **barra de toggles** (Specs al final porque arrastra el contador y el medidor de memoria); el orden de las **columnas** en la tabla es Especificaciones · Rack Types · Unidades /pz.
+
+**No hay columna de Línea ni de Metal base** (las hubo en 0.3.0): la de Línea duplicaba a la nativa y el metal cabía dentro de la celda del nombre. Ver §0.3.1.
+
+El criterio de "numérico" (desde 0.2.0) es que el **valor** traiga dígitos, no el `specField.type`. Excluye parámetros y specs **archivados**. Todo arranca **APAGADO** (ver §0.3.0: el response pesa 5.84 MB).
 
 ## Decisión de diseño (respuesta a la pregunta original del usuario)
 
@@ -58,14 +61,15 @@ Los params vienen **DUPLICADOS**: en el PN de referencia (44068-205-01), 5 archi
 
 | Archivo | Rol |
 |---|---|
-| `remote/scripts/pn-specs-column-core.js` | Motor puro (sin DOM/red): ruta/ids (`isPartNumbersIndexPath`, `parsePartNumberId`), formato (`unitSymbol`, `fmtNum`, `fmtFactor`, `formatRange`, `formatCellText`, `formatRackTypesText`, `formatUnitFactorsText`) y extracción (`extractSpecsWithNumericParams`, `extractMetalBase`, `buildAcctDimensionCatalog`, `extractDimensionValue`, `extractLinea`, `extractRackTypes`, `extractUnitFactors`, `extractPnRow`). Dual node/browser. |
-| `remote/scripts/pn-specs-column.js` | Glue DOM: barra de 5 toggles persistentes, columnas al inicio (`moveToFront`), MutationObserver, pool de `GetPartNumber`, memory-hardening. |
-| `tools/test/pn-specs-column-core.test.js` | 30 golden tests (13 sobre fixture real del PN 2300153). |
+| `remote/scripts/pn-specs-column-core.js` | Motor puro (sin DOM/red): ruta/ids (`isPartNumbersIndexPath`, `parsePartNumberId`), formato (`unitSymbol`, `fmtNum`, `fmtFactor`, `fmtQty3`, `formatRange`, `formatCellText`, `formatRackChip`, `formatNameInfo`, `formatRackTypesText`, `formatUnitFactorsText`), orden (`UNIT_ORDER`, `unitOrderIndex`) y extracción (`extractSpecsWithNumericParams`, `extractMetalBase`, `extractDescription`, `buildAcctDimensionCatalog`, `extractDimensionValue`, `extractLinea`, `extractRackTypes`, `extractUnitFactors`, `extractPnRow`). Dual node/browser. |
+| `remote/scripts/pn-specs-column.js` | Glue DOM: barra de 4 toggles persistentes, 3 columnas al inicio (`moveToFront`), inyección en la celda nativa del nombre (`syncNameInfo`), MutationObserver, pool de `GetPartNumber`, memory-hardening. |
+| `tools/test/pn-specs-column-core.test.js` | **42** golden tests (25 sobre fixture real del PN 2300153). |
 
-- **Toggles persistentes** (uno por columna, todos **default OFF** — no sorprender con 50 queries de 5.8 MB): `sa_pn_specs_col_enabled` (la original, se respeta el valor previo), `sa_pn_metal_col_enabled`, `sa_pn_linea_col_enabled`, `sa_pn_racks_col_enabled`, `sa_pn_units_col_enabled`. La acción del popup (`PnSpecsColumn.toggleFromPopup`) sigue apuntando a Specs; las demás solo tienen toggle en el header.
-- **Columnas**: `<th>` + `<td>` por fila, **siempre al INICIO** en el orden canónico de `COLS`, reposicionadas en cada sync con `moveToFront` (idempotente). `partNumberId` sale del `<a href="/PartNumbers/:id">` de la celda Nombre y se marca en `data-sa-pnid` de cada celda nuestra.
-- **React/MUI**: la tabla es `MuiTable-root` controlada por React. Un `MutationObserver` (debounce 160ms) re-inyecta la columna al paginar/ordenar/filtrar. **Validado en vivo:** insertar `<td>` extra al final de cada `<tr>` **sobrevive** el render de React (50/50 celdas persisten).
-- **Estilo**: toggle/toast en **dark-mode** (UI nuestra, regla de diseño); la columna se integra a la tabla clara de SH pero **marcada con acento verde** (`border-left:3px #13a36f`) para señalar que es enriquecimiento de la extensión. Render con `textContent` (no innerHTML de datos → no XSS con nombres de spec).
+- **Toggles persistentes** (uno por cada cosa que se pinta, todos **default OFF** — no sorprender con 50 queries de 5.8 MB): `sa_pn_specs_col_enabled` (la original, se respeta el valor previo), `sa_pn_racks_col_enabled`, `sa_pn_units_col_enabled` y `sa_pn_metal_col_enabled` (que desde 0.3.1 gobierna la línea **desc+metal** dentro de la celda del nombre; se conservó la key para no perderle el estado a quien ya la tenía puesta). `sa_pn_linea_col_enabled` quedó **retirada** y `dropRetiredKeys()` la borra en el init. `TOGGLE_ORDER` fija el orden de la barra, `COLS` el de las columnas: son independientes, y la acción del popup (`PnSpecsColumn.toggleFromPopup`) apunta a Specs **por nombre**, no por posición.
+- **Columnas**: `<th>` + `<td>` por fila, **siempre al INICIO** en el orden canónico de `COLS`, reposicionadas en cada sync con `moveToFront` (idempotente — si moviera en estado estable, el observer entraría en bucle con sus propias mutaciones). `partNumberId` sale del `<a href="/PartNumbers/:id">` de la celda Nombre y se marca en `data-sa-pnid` de cada nodo nuestro.
+- **Celda nativa del nombre**: `syncNameInfo` cuelga un `<div>` propio del `<td>` que ya trae el link. **Idempotente por contrato** (`data-sa-txt` guarda el texto pintado y no se toca el DOM si no cambió): sin eso, cada sync mutaría un subárbol que React también toca → bucle. El realce del nombre (14px/700) cuelga de la clase `sa-pn-active` en `<body>`, **no** del `className` del `<td>`, que React reescribiría.
+- **React/MUI**: la tabla es `MuiTable-root` controlada por React. Un `MutationObserver` (debounce 160ms) re-inyecta al paginar/ordenar/filtrar. **Validado en vivo:** las 5 celdas quedaron en los índices 0-4 del `thead` y de las 50 filas, y `moveToFront` recupera cuando se simula que React las flota al final (20-24 → 0-4).
+- **Estilo**: toggles/toast en **dark-mode** (UI nuestra, regla de diseño); las columnas heredan la `className` MUI de una celda nativa y solo llevan un **separador punteado gris** (`border-left:1px dashed`) más un borde derecho en la última — el acento verde sólido de 0.1.0 se quitó en 0.1.2 porque se veía como parche. Render con `textContent` (no innerHTML de datos → no XSS con nombres de spec, rack o unidad, que vienen de GraphQL y los captura otro usuario). El `<style>` se versiona con `data-sa-v`: **el número del chequeo y el del `setAttribute` tienen que ser el mismo** (ver el bug de 0.3.1 en §0.3.2).
 
 ## Memory hardening (skill `memory-hardening-applets`)
 
@@ -74,13 +78,13 @@ Importa `host-cleanup-shared.js`. Aplica porque el toggle ON dispara ~50 `GetPar
 **EJE A (propia):** cache **slim** por `partNumberId` (`window.__saPnSpecsCache` Map → `{specs, total, metal, linea, rackTypes, units}` ≈ 2 KB, **no** el response de **5.84 MB** — medido en vivo, ver §0.3.0); cache se limpia al **navegar fuera** del index; teardown de columnas/observer/pool al desactivar.
 **EJE B (host):** `stopDatadogSessionReplay()` al primer fetch real; `createMemMonitor` con guardrail @88% → vacía la cola de enriquecimiento + toast (checkpoint > crash); `makePeriodicDrain(25)` (Apollo) al final de cada worker; pool con `MAX_CONC=4` + `MIN_GAP_MS=130` (~7 req/s) + retry `[0,800,2500]` solo en transitorios.
 
-## Estado de validación (2026-07-08)
+## Estado de validación (2026-07-08, cerrado el 2026-07-29)
 
-- ✅ **Core**: 14/14 golden + payload real (mayo) + **datos reales de hoy** vía fetch en vivo → `44068-205-01` → `E27550 (Plata): Espesor 1.27–3.5 µm` (excluye BOOLEAN/DROPDOWN/archivados). PN sin specs (`SWB-00496986`) → celda vacía correcta.
+- ✅ **Core**: 14/14 golden en su momento (**42/42** hoy) + payload real (mayo) + **datos reales de hoy** vía fetch en vivo → `44068-205-01` → `E27550 (Plata): Espesor 1.27–3.5 µm` (excluye BOOLEAN/DROPDOWN/archivados). PN sin specs (`SWB-00496986`) → celda vacía correcta.
 - ✅ **Hash `GetPartNumber`**: el de config (`8e3fdb52…`) **ROTÓ** (HTTP 400 "Must provide a query string"). Capturado el nuevo del front: **`5efd689d…`** (HTTP 200 verificado). Actualizado en `config.json`.
 - ✅ **DOM en vivo**: `findHeaderAnchor` encuentra el ancla; columna inyectada (th + 50 td con pnId); **sobrevive el render de React**.
 - ✅ **Deploy**: config 1.7.85 en vivo; `pn-specs-column-core.js` + `pn-specs-column.js` servidos **byte-exact** (sha256 verificado vs `main:remote/`); hash `GetPartNumber` nuevo y app presentes en el config servido.
-- ⏳ **Pendiente (run real integrado)**: el intento de correr el applet completo desde una tab automatizada se topó con el **throttling de Chrome en tabs sin foco** (los `fetch` a `/graphql` y a gh-pages se congelan en background) — NO es un problema del applet; las piezas (fetch `GetPartNumber` 200 + extract + DOM) se validaron por separado. **Validación final la hace el usuario en foreground**: recargar la extensión (`chrome://extensions` → reload) → `/PartNumbers` → activar el toggle **🧪 Specs num.** en el header → confirmar chips (ej. `E27550 (Plata): Espesor 1.27–3.5 µm`), paginación (observer re-inyecta) y el contador `done/total`.
+- ✅ **Run real integrado — CERRADO el 2026-07-29** (quedó abierto desde el 2026-07-08). El operador corrió el applet completo en foreground con las columnas encendidas y el contador marcó **`50/50`** con el medidor de memoria en `338MB / 4192MB (8%)`. Lo que bloqueaba la verificación no era el applet sino el **throttling de Chrome en tabs sin foco**: desde una pestaña automatizada los `fetch` a `/graphql` se congelan (`document.hidden === true` ⇒ `inFlight` se queda clavado). **Regla para futuras validaciones de este applet: el ciclo con red se comprueba en foreground; desde automatización solo se verifica extracción y DOM** (inyectando el row al cache y forzando un sync síncrono con dos `toggle()` seguidos).
 
 ## Fixes 0.1.1 (primer run real del usuario, 2026-07-08)
 
@@ -115,15 +119,23 @@ A pedido del usuario, la columna se integra al look nativo en vez de destacar en
 - **Toggle**: más delgado — `padding 2px 8px`, switch `26×14`, font 11px, sin el border-left grueso.
 - La señal "esto es de la extensión" queda en los **chips verdes** de los parámetros y en el toggle dark-mode.
 
-## Pendientes / Fase 2
+## Pendientes (reconciliados 2026-07-29)
 
-- **Deploy** (`tools/deploy.sh` con `--check pn-specs-column`). El toggle default OFF hace el deploy seguro (nadie ve queries extra sin activar).
-- Run real integrado (validar observer en paginación + guardrail de memoria con captura del mem monitor).
-- El hash de `GetPartNumber` rotó → probablemente afecta **otros applets** (bulk-upload, spec-migrator, auditor…). Conviene correr el skill `steelhead-hash-validator` / hash-scanner y registrar en `docs/api/hash-validation-log.md`.
-- Fase 2 posible: tooltip on-hover con TODOS los params (incl. booleanos) además de la columna numérica; recordar la última posición de scroll; incluir specs desde `partNumberSpecsByPartNumberId` aunque no tengan numéricos (ya se muestran con "sin params num.").
+**Abiertos de verdad:**
+- **Recompilar en Xcode** para que el bundle **v0.6.9** llegue al iPad. Es lo único que falta del lado Safari: el artefacto ya está construido, verificado y copiado a `Resources/`.
+- **Observer en paginación y guardrail de memoria**: el run real cubrió la carga inicial (`50/50`), pero nadie ha capturado el mem monitor disparando el guardrail al 88% ni ha paginado con las 4 columnas encendidas.
 
-## Safari/iPad (2026-07-09)
-Integrado al bundle Safari/iPad (`safari/bundle.json` **v0.5.3**, `safari-bundle-sync`). Es **FAB-only**: `autoInject:true` pone el toggle en el header de `/PartNumbers` (control en página, no requiere lanzador de popup). Sin bloqueadores iOS (read-only, sin descarga/clipboard). Rebuild `tools/build-safari.sh` (build-safari test 10/10). **Requiere recompilar en Xcode** para que llegue al iPad (el bundle es estático).
+**Cerrados (no volver a abrirlos):**
+- ~~Deploy~~ — vive en producción desde config 1.7.85; hoy en **1.11.7**.
+- ~~Run real integrado~~ — cerrado por el operador (ver §Estado de validación).
+- ~~Rotación del hash `GetPartNumber`~~ — se atendió en su momento y **hoy sigue vigente**: `5efd689d…` respondió HTTP 200 en las pruebas en vivo del 2026-07-29.
+
+**Ideas, no compromisos:** tooltip on-hover con TODOS los params (incluidos los cualitativos); recordar la posición de scroll.
+
+## Safari/iPad
+En el bundle desde **v0.5.3** (2026-07-09). Es **FAB-only**: `autoInject:true` pone la barra de toggles en el header de `/PartNumbers`, no requiere lanzador de popup. Sin bloqueadores iOS (read-only, sin descarga ni clipboard).
+
+Al día en **v0.6.9** (2026-07-29). Rebuilds de esta tanda: **0.6.7** trajo 0.3.0 (y saldó de paso `wo-schedule-button` 0.9.0), **0.6.8** trajo 0.3.1, **0.6.9** trajo 0.3.2. Ninguno agregó applets — el scanner dio 0 integrables las tres veces. **Falta recompilar en Xcode** (el bundle es estático).
 
 ## v0.2.1 (2026-07-27) — el toggle no se montaba si arrancaba apagado
 
@@ -229,13 +241,12 @@ para un rango de spec, **no** para un dato maestro que el operador puede querer 
   anclaje del repo. Si no matchea nada, la celda queda vacía: **no agarra otra dimensión**.
 - Sin links a rack types ni a unidades: no se verificó la URL de esas fichas y no se inventan.
 
-### Pendiente de validación en vivo
+### Validación
 
-El operador debe: recargar la extensión → `/PartNumbers` → encender los 4 toggles nuevos y
-confirmar los valores contra un NP conocido, la paginación (el observer re-inyecta) y el ancho
-de la tabla. Lo verificado hasta aquí es la **extracción** (30/30 golden, fixture real) y el
-**posicionamiento DOM** (simulacro sobre la tabla real de 50 filas); falta el applet completo
-corriendo de punta a punta.
+Al momento de escribir 0.3.0 quedaba pendiente el run integrado; **se cerró el mismo día** tras
+las iteraciones 0.3.1 y 0.3.2 (ver §Estado de validación). Lo verificado en el momento del deploy
+fue la **extracción** (golden con fixture real) y el **posicionamiento DOM** (simulacro sobre la
+tabla real de 50 filas).
 
 ### Safari/iPad — bundle v0.6.7 (2026-07-29)
 
