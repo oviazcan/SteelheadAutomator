@@ -121,45 +121,82 @@
     p.appendChild(hint);
   }
 
-  // ── InventoryBatchViewQuery paginada (sin tope de 10; name estructurado) ──
-  // Trae los lotes NO-completados cuyo name contiene `name` (searchQuery, substring server-side).
-  async function fetchBatchesByName(name) {
+  // ── InventoryBatchViewQuery paginada, UN universo de hideCompleted ──
+  // La 1ª página trae los nodos Y el totalCount; con ese total se decide si vale la pena
+  // seguir paginando (planPagination) o si la búsqueda es demasiado amplia. `alive()` corta
+  // en cada vuelta: seguir bajando páginas de una búsqueda que el operador ya reemplazó es
+  // justo la ráfaga que cuelga el /graphql de la sesión.
+  async function fetchUniverse(name, hideCompleted, alive) {
     const PAGE = Core.INVENTORY_BATCH_VIEW_PAGE;
-    const all = [];
-    let offset = 0;
-    let capped = false;
-    for (let guard = 0; guard < 25; guard++) { // cap duro 25*PAGE por seguridad
-      const data = await api().query('InventoryBatchViewQuery', {
-        includeArchived: 'NO', hideCompleted: true, orderBy: ['CREATED_AT_DESC'],
-        offset, first: PAGE, searchQuery: name,
-      }, 'InventoryBatchViewQuery');
-      const pd = data && data.pagedData;
-      const nodes = (pd && pd.nodes) || [];
+    const ask = (offset) => api().query('InventoryBatchViewQuery', {
+      includeArchived: 'NO', hideCompleted, orderBy: ['CREATED_AT_DESC'],
+      offset, first: PAGE, searchQuery: name,
+    }, 'InventoryBatchViewQuery');
+
+    const first = await ask(0);
+    const pd0 = (first && first.pagedData) || {};
+    const total = pd0.totalCount;
+    const plan = Core.planPagination(total, PAGE);
+    if (plan.tooBroad) return { nodes: [], tooBroad: true, total, capped: false };
+
+    const all = [...((pd0.nodes) || [])];
+    for (let page = 1; page < plan.pages; page++) {
+      if (!alive()) break;
+      const d = await ask(page * PAGE);
+      const nodes = ((d && d.pagedData && d.pagedData.nodes)) || [];
       all.push(...nodes);
-      const total = pd && pd.totalCount;
-      offset += PAGE;
       if (nodes.length < PAGE) break;
-      if (total != null && all.length >= total) break;
-      if (guard === 24) capped = true;
     }
-    return { nodes: all, capped };
+    return { nodes: all, tooBroad: false, total, capped: plan.capped };
+  }
+
+  // Une los DOS universos (con material + agotados). Ver el bloque de encabezado: son
+  // disjuntos, así que consultar uno solo esconde el 95.7% de los lotes.
+  async function fetchBatchesByName(name, alive) {
+    const nodes = [];
+    let capped = false, tooBroad = false, total = 0;
+    for (const universe of Core.SEARCH_UNIVERSES) {
+      if (!alive()) break;
+      const r = await fetchUniverse(name, universe, alive);
+      nodes.push(...r.nodes);
+      capped = capped || r.capped;
+      tooBroad = tooBroad || r.tooBroad;
+      total += Number(r.total) || 0;
+    }
+    return { nodes, capped, tooBroad, total };
+  }
+
+  function renderNotice(box, text) {
+    const p = ensurePanel(box); p.textContent = '';
+    const h = document.createElement('div'); h.className = 'sa-bnf-head'; h.textContent = text;
+    p.appendChild(h);
   }
 
   // debounced, con token de secuencia
   async function runSearch(box, name) {
+    const plan = Core.planSearch(name);
+    if (!plan.ok) {
+      S.seq++; S.lastResult = null;
+      renderNotice(box, `Escribe al menos ${plan.minChars} caracteres`);
+      return;
+    }
     const seq = ++S.seq;
+    const alive = () => seq === S.seq;
     renderPreview(box, name, null); // "Buscando…"
     let res;
     try {
-      res = await fetchBatchesByName(name);
+      res = await fetchBatchesByName(name, alive);
     } catch (e) {
-      if (seq !== S.seq) return;
-      const p = ensurePanel(box); p.textContent = '';
-      const h = document.createElement('div'); h.className = 'sa-bnf-head'; h.textContent = 'Error al buscar (¿hash rotado?)';
-      p.appendChild(h);
+      if (!alive()) return;
+      renderNotice(box, 'Error al buscar (¿hash rotado?)');
       return;
     }
-    if (seq !== S.seq) return; // llegó una búsqueda más nueva
+    if (!alive()) return; // llegó una búsqueda más nueva
+    if (res.tooBroad) {
+      S.lastResult = null;
+      renderNotice(box, `Demasiados lotes contienen «${name}» (${res.total}) — escribe el nombre completo`);
+      return;
+    }
     const result = Core.selectByExactName(res.nodes, name);
     result.capped = res.capped;
     S.lastQuery = name; S.lastResult = result;
