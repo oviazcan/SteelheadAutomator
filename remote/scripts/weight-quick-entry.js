@@ -2,6 +2,17 @@
 // Inyecta campo de peso (KG o LB segun preferencia del cliente) en el modal de Receive Parts
 // Ejecuta mediciones via CreateInventoryItemUnitConversion / UpdateInventoryItemUnitConversion
 // Depends on: SteelheadAPI
+//
+// 0.5.82 — «el peso rápido no aparece de la fila 2 en adelante» (reporte de piso 2026-07-30).
+// El applet detectaba el modal y sus líneas UNA sola vez y quedaba inerte: la fila 1 tenía su
+// campo, las que se agregaban después no, y al cerrar y reabrir el modal ya no montaba.
+// Medido en vivo: la fila 2 era ELEGIBLE por la propia lógica del applet (misma tabla, mismas
+// 5 celdas, colIdx=1, unidad vacía) — nunca se le llamaba. Tres cambios:
+//   · poll de respaldo por modal (líneas) y poll de re-detección, como el que ya tiene el WLP
+//     en este mismo modal — por eso el candado sí veía las 2 líneas y el peso rápido no;
+//   · observador de líneas y timers colgados del NODO del modal, no de variables de módulo
+//     (el cleanup de un modal viejo podía apagar los del vigente);
+//   · la inyección ya no cuelga del .then() de la consulta del cliente.
 
 const WeightQuickEntry = (() => {
   'use strict';
@@ -31,8 +42,12 @@ const WeightQuickEntry = (() => {
   function init() {
     const disabled = document.documentElement.dataset.saWeightQuickEntryEnabled === 'false';
     if (disabled) { console.log(LOG_PREFIX, 'Deshabilitado'); return; }
-    patchFetch();
-    setupObserver();
+    // Cada paso se aísla: si uno truena, los demás siguen. Antes eran tres llamadas
+    // secuenciales y una excepción en la primera dejaba el applet a medio arrancar SIN
+    // ninguna señal (el log final tampoco salía). Un fallo aquí ahora es RUIDOSO.
+    try { patchFetch(); } catch (err) { console.warn(LOG_PREFIX, 'patchFetch falló:', err); }
+    try { setupObserver(); } catch (err) { console.warn(LOG_PREFIX, 'setupObserver falló:', err); }
+    try { startDetectPoll(); } catch (err) { console.warn(LOG_PREFIX, 'startDetectPoll falló:', err); }
     console.log(LOG_PREFIX, 'Inicializado');
   }
 
@@ -306,13 +321,62 @@ const WeightQuickEntry = (() => {
     interceptSaveButtons(modal);
     watchModalRemoval(modal);
 
-    const ready = resolveCustomerPreference(modal);
+    // Los campos y el observador de líneas NO esperan a que se resuelva el cliente: esa
+    // consulta puede tardar, fallar o ni siquiera aplicar (modal abierto sin cliente), y
+    // colgar de ella la instalación del observador dejaba al applet sin detectar las filas
+    // que se agregan después. La unidad KG/LB se corrige luego con updateFieldUnits().
+    processExistingLines(modal);
+    observeNewLines(modal);
+    startLinePoll(modal);
 
-    ready.then(() => {
+    resolveCustomerPreference(modal).then(() => {
       console.log(LOG_PREFIX, `Inyectando campos (unidad: ${customerUseLbs ? 'LB' : 'KG'})`);
       processExistingLines(modal);
-      observeNewLines(modal);
+      updateFieldUnits(modal);
     });
+  }
+
+  // ── Redes de seguridad (poll) ────────────────────────────────────────────────
+  // El applet dependía SOLO de MutationObservers y en producción se quedaba inerte tras el
+  // primer montaje: la fila 1 tenía su campo y las que se agregaban después NO (reporte de
+  // piso 2026-07-30). Medido en vivo: la fila 2 era elegible por la propia lógica del applet
+  // —misma tabla, mismas 5 celdas, colIdx=1, unidad vacía— o sea que nunca se le llamaba; y
+  // al cerrar y reabrir el modal tampoco volvía a montar. El WLP convive en ESTE MISMO modal
+  // y sobrevive porque tiene un poll; estos dos son su equivalente.
+  //
+  // Los timers cuelgan del NODO del modal, no de variables de módulo: así el cleanup de un
+  // modal viejo no puede apagar el del modal vigente.
+  const LINE_POLL_MS = 1000;
+  const DETECT_POLL_MS = 1000;
+  let detectPollTimer = null;
+
+  function startLinePoll(modal) {
+    if (modal._saWqeLinePoll) return;
+    modal._saWqeLinePoll = setInterval(() => {
+      if (!modal.isConnected) { stopLinePoll(modal); return; }
+      try { processExistingLines(modal); } catch (err) {
+        console.warn(LOG_PREFIX, 'Error en el poll de líneas:', err);
+      }
+    }, LINE_POLL_MS);
+  }
+
+  function stopLinePoll(modal) {
+    if (!modal || !modal._saWqeLinePoll) return;
+    clearInterval(modal._saWqeLinePoll);
+    modal._saWqeLinePoll = null;
+  }
+
+  // Re-DETECCIÓN del modal. Barato a propósito: dos querySelector por tick y sólo escanea
+  // si hay un diálogo abierto que todavía no lleva nuestro marcador.
+  function startDetectPoll() {
+    if (detectPollTimer) return;
+    detectPollTimer = setInterval(() => {
+      if (document.querySelector('[data-sa-wqe-attached="true"]')) return;
+      if (!document.querySelector('[role="dialog"]')) return;
+      try { scanForReceiveView(); } catch (err) {
+        console.warn(LOG_PREFIX, 'Error en el poll de detección:', err);
+      }
+    }, DETECT_POLL_MS);
   }
 
   // ── Modal Cleanup ──
@@ -327,11 +391,23 @@ const WeightQuickEntry = (() => {
     removalObserver.observe(document.body, { childList: true, subtree: true });
   }
 
+  // Limpia SOLO lo del modal que se fue. Antes desconectaba los observadores guardados en
+  // variables de módulo, así que el cierre de un modal podía apagar los del modal vigente.
   function cleanupModal(modal) {
-    if (modalObserver) { modalObserver.disconnect(); modalObserver = null; }
-    if (modal._saWqeSaveObserver) { modal._saWqeSaveObserver.disconnect(); }
-    for (const obs of unitObservers) obs.disconnect();
-    unitObservers.length = 0;
+    stopLinePoll(modal);
+    if (modal._saWqeLineObserver) {
+      modal._saWqeLineObserver.disconnect();
+      if (modalObserver === modal._saWqeLineObserver) modalObserver = null;
+      modal._saWqeLineObserver = null;
+    }
+    if (modal._saWqeSaveObserver) { modal._saWqeSaveObserver.disconnect(); modal._saWqeSaveObserver = null; }
+    for (let i = unitObservers.length - 1; i >= 0; i--) {
+      const entry = unitObservers[i];
+      if (!entry.cell || modal.contains(entry.cell) || !entry.cell.isConnected) {
+        entry.obs.disconnect();
+        unitObservers.splice(i, 1);
+      }
+    }
     for (const [container] of lineStates) {
       if (modal.contains(container)) lineStates.delete(container);
     }
@@ -432,18 +508,23 @@ const WeightQuickEntry = (() => {
   }
 
   function observeNewLines(modal) {
-    if (modalObserver) modalObserver.disconnect();
+    // El observador cuelga del NODO: era una variable de módulo compartida por todos los
+    // modales, así que el cleanup de uno viejo desconectaba el del vigente.
+    if (modal._saWqeLineObserver) modal._saWqeLineObserver.disconnect();
     let debounceTimeout = null;
-    modalObserver = new MutationObserver(() => {
+    const observer = new MutationObserver(() => {
       if (debounceTimeout) clearTimeout(debounceTimeout);
       debounceTimeout = setTimeout(() => {
+        if (!modal.isConnected) return;
         const sections = findQuantitySections(modal);
         for (const section of sections) {
           injectWeightFields(section, modal);
         }
       }, 200);
     });
-    modalObserver.observe(modal, { childList: true, subtree: true });
+    observer.observe(modal, { childList: true, subtree: true });
+    modal._saWqeLineObserver = observer;
+    modalObserver = observer;   // sólo referencia del último; la fuente de verdad es el nodo
   }
 
   function findQuantitySections(container) {
@@ -676,7 +757,7 @@ const WeightQuickEntry = (() => {
       }
     });
     unitObserver.observe(cell, { childList: true, subtree: true, characterData: true, attributes: true });
-    unitObservers.push(unitObserver);
+    unitObservers.push({ obs: unitObserver, cell });
   }
 
   // ── Measurement Execution ──
