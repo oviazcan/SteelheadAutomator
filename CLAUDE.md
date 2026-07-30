@@ -274,6 +274,44 @@ Cada bitácora incluye versión actual, lecciones, plan de validación pendiente
 | `wb-produccion-access` (tool standalone DevTools, no extensión) | 1.0.0 (panel inyectado: pega nombres → unión con acceso actual → `updateWorkboardLabelUsers` a labelId 9746; solo toca WB Producción, match por nombre, **run real OK (operador 2026-07-17)**) | [`docs/applets/wb-produccion-access.md`](docs/applets/wb-produccion-access.md) |
 | `archive-inventory-batch-statuses` (tool standalone DevTools, no extensión) | 1.0.0 (panel: lista estatus por type con color/id + checkboxes + **detector de lotes en uso** vía `InventoryBatchViewQuery.pagedData.totalCount`. **Root cause:** `ArchiveInventoryBatchStatus` truena `"An unexpected error occurred."` solo si el estatus tiene lotes activos; **éxito = ausencia de `errors`**, NO el valor de `data` (siempre `null`). Callejones descartados: `archivedAt:"NOW"` y que `UpdateInventoryBatchStatus` no expone `archivedAt`. Run real: `#322` archivado OK) | [`docs/applets/archive-inventory-batch-statuses.md`](docs/applets/archive-inventory-batch-statuses.md) |
 
+## Paquete de documentación para clientes (`docs/training/`) — 15 documentos, PUBLICADO
+
+Material didáctico HTML self-contained para **Ecoplating** (Key User + Jefe de TI), generado con la
+skill `steelhead-docs-package`. **No es bitácora técnica** — es lo que el cliente lee. Entrada:
+`docs/training/00-mapa-empieza-aqui.html`.
+
+**Publicación:** los TRES paquetes de la familia viven en el `gh-pages` de ESTE repo, en carpetas
+separadas — `training/` (Automator) · `reportes-sh/` · `powertools/`. Se publican **copiando el HTML
+al worktree de `gh-pages`**; el `pre-push` reconoce el push solo-docs y NO exige bump de versión
+(mensaje `✓ pre-push: push solo-docs`). **NO usar `tools/deploy.sh`** para esto: publica desde el
+working tree de `main` y arrastraría WIP ajena bajo `remote/`.
+
+**Documentos TRANSVERSALES (idénticos byte-a-byte en los 3 paquetes)** — al tocar uno hay que
+re-copiarlo a los tres y republicar los tres:
+`repos-y-mantenimiento.html` · `manual-arquitectura.html` · `catalogo-mantenimiento.html`.
+
+**Altas 2026-07-30** (responden a la revisión de recepción de Ecoplating del 2026-07-28, que pidió 12
+elementos documentales): `manual-arquitectura.html` (2 diagramas SVG inline —ejecución y publicación—,
+modelo de firma, e **inventario de 10 dependencias externas con su titular**) y
+`catalogo-mantenimiento.html` (**23 actividades** con frecuencia/perfil/tiempo/impacto y la columna de
+responsable **en blanco a propósito**: asignarla es del cliente). Ambos colgados del índice en nivel 5.
+
+**Hallazgo que conviene no volver a perder:** existe un **vigía externo del hash-autopilot** que la
+bitácora no documentaba y que casi se declara inexistente ante el cliente. `run-hash-autopilot.sh`
+(`emit_heartbeat`) empuja un commit huérfano a la rama `ops/heartbeat` en CADA corrida, y
+`.github/workflows/heartbeat-watchdog.yml` lo vigila **desde la nube** (cron `17 */2 * * *`): si el
+latido pasa de 3 h abre un issue, y lo cierra solo al revivir. Vive fuera de la Mac **por diseño** —
+un vigilante en la misma máquina moriría con lo que vigila. Detalle en
+`tools/hash-autopilot/README.md § Watchdog de latido`. **`escalation` y `weekly_snapshot` NO emiten
+latido**: esos dos sí se detienen en silencio.
+
+**Estado de titularidad (lo que el manual documenta y el cliente debe decidir):** de 10 dependencias
+externas, **5 están hoy a nombre del consultor** — repositorios GitHub, GitHub Pages
+(`oviazcan.github.io`), el workflow del vigía, la cuenta Apple del bundle iPad, y **el equipo que corre
+los 3 procesos programados** (`launchd` con rutas `/Users/oviazcan/...`). Los avisos automáticos
+—correo del autopilot e issue del vigía— **llegan al consultor, no a Ecoplating**. Ninguna migración
+requiere reescribir código (`weekly_snapshot.sh` ya autodetecta repo e intérprete y soporta Windows).
+
 ## Archivos scan_results
 - Los `scan_results_*.json` generados por el hash-scanner se descargan al folder de Descargas del navegador (típicamente `~/Downloads`).
 - **NUNCA** copiarlos al repo — están en `.gitignore` pero además su contenido puede incluir payloads sensibles redactados.
