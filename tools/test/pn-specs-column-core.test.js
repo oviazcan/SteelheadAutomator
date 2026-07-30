@@ -381,14 +381,15 @@ test('rack types: si el rack type trae unidad de conteo, se muestra', () => {
 test('unidades: TODOS los factores registrados, con su código y sin perder precisión', () => {
   const units = Core.extractUnitFactors(REAL);
   assert.strictEqual(units.length, 5, 'los 5 registrados, ninguno filtrado');
-  assert.deepStrictEqual(units.map((u) => u.code), ['CMK', 'DMK', 'FTK', 'KGM', 'LBR'], 'orden estable por código');
+  assert.deepStrictEqual(units.map((u) => u.code), ['KGM', 'LBR', 'DMK', 'FTK', 'CMK'],
+    'orden del ERP: peso → superficie (ver UNIT_ORDER)');
   const byCode = {}; units.forEach((u) => { byCode[u.code] = u; });
   assert.strictEqual(byCode.KGM.factor, 0.376);
   assert.strictEqual(byCode.KGM.name, 'KGM Kilogramo');
   assert.strictEqual(byCode.KGM.unitId, 3969);
   // El TEXTO de celda usa 3 decimales (0.3.1); el valor exacto vive en fmtFactor/el hover.
   assert.strictEqual(Core.formatUnitFactorsText(units),
-    'CMK 120.580 · DMK 1.162 · FTK 0.130 · KGM 0.376 · LBR 0.829');
+    'KGM 0.376 · LBR 0.829 · DMK 1.162 · FTK 0.130 · CMK 120.580');
   assert.strictEqual(Core.fmtFactor(byCode.FTK.factor), '0.1297911062', 'el dato NO se pierde');
   assert.strictEqual(Core.formatUnitFactorsText([]), '—');
 });
@@ -477,7 +478,7 @@ test('formatRackTypesText / formatUnitFactorsText usan el formato nuevo', () => 
   const row = Core.extractPnRow(REAL, { lineaDimId: 349 });
   assert.strictEqual(Core.formatRackTypesText(row.rackTypes), 'T102-RA02 (18 pz) · T107-FL01 (54 pz)');
   assert.strictEqual(Core.formatUnitFactorsText(row.units),
-    'CMK 120.580 · DMK 1.162 · FTK 0.130 · KGM 0.376 · LBR 0.829',
+    'KGM 0.376 · LBR 0.829 · DMK 1.162 · FTK 0.130 · CMK 120.580',
     'sin "/pz" por renglón: ese sufijo vive en el encabezado de la columna');
 });
 
@@ -511,4 +512,54 @@ test('extractPnRow incluye la descripción; la línea se sigue extrayendo aunque
   assert.strictEqual(Core.formatNameInfo(row), 'CONECTOR · Cobre');
   assert.strictEqual(row.linea, 'T107-LI Plata Colgado Cx (60.0)',
     'la columna se retiró por duplicada con la nativa, pero la extracción queda disponible');
+});
+
+// ════════════════════════════════════════════════════════════════════════════
+// v0.3.2 — orden de unidades igual al del ERP
+// ════════════════════════════════════════════════════════════════════════════
+
+test('unidades: se ordenan por MAGNITUD como el modal de Steelhead, no alfabéticamente', () => {
+  // Orden capturado del modal "Per Part Count Unit Definitions" del NP:
+  // peso (KGM, LBR) → superficie (DMK, FTK, CMK) → longitud (FOT, LM) → lote (LO).
+  const input = { partNumberById: { inventoryItemByPartNumberId: { inventoryItemUnitConversionsByInventoryItemId: { nodes: [
+    { factor: 1, unitByUnitId: { id: 1, name: 'LO Lote' } },
+    { factor: 2, unitByUnitId: { id: 2, name: 'CMK Centímetro Cuadrado' } },
+    { factor: 3, unitByUnitId: { id: 3, name: 'KGM Kilogramo' } },
+    { factor: 4, unitByUnitId: { id: 4, name: 'LM Metro Lineal' } },
+    { factor: 5, unitByUnitId: { id: 5, name: 'FTK Pie Cuadrado' } },
+    { factor: 6, unitByUnitId: { id: 6, name: 'LBR Libra' } },
+    { factor: 7, unitByUnitId: { id: 7, name: 'FOT ft Pie' } },
+    { factor: 8, unitByUnitId: { id: 8, name: 'DMK Decímetro Cuadrado' } },
+  ]}}}};
+  assert.deepStrictEqual(
+    Core.extractUnitFactors(input).map((u) => u.code),
+    ['KGM', 'LBR', 'DMK', 'FTK', 'CMK', 'FOT', 'LM', 'LO']
+  );
+});
+
+test('unidades: "KG" (sin M) se ordena junto al kilogramo, no al final', () => {
+  const input = { partNumberById: { inventoryItemByPartNumberId: { inventoryItemUnitConversionsByInventoryItemId: { nodes: [
+    { factor: 1, unitByUnitId: { id: 1, name: 'LBR Libra' } },
+    { factor: 2, unitByUnitId: { id: 2, name: 'KG Kilogramo' } },
+  ]}}}};
+  assert.deepStrictEqual(Core.extractUnitFactors(input).map((u) => u.code), ['KG', 'LBR']);
+  assert.ok(Core.unitOrderIndex('KG') < Core.unitOrderIndex('LBR'));
+});
+
+test('unidades: una unidad DESCONOCIDA cae al final y no descoloca a las conocidas', () => {
+  const input = { partNumberById: { inventoryItemByPartNumberId: { inventoryItemUnitConversionsByInventoryItemId: { nodes: [
+    { factor: 1, unitByUnitId: { id: 1, name: 'ZZZ Unidad Nueva' } },
+    { factor: 2, unitByUnitId: { id: 2, name: 'AAA Otra Nueva' } },
+    { factor: 3, unitByUnitId: { id: 3, name: 'KGM Kilogramo' } },
+  ]}}}};
+  assert.deepStrictEqual(Core.extractUnitFactors(input).map((u) => u.code), ['KGM', 'AAA', 'ZZZ'],
+    'las nuevas al final, alfabéticas entre sí');
+  assert.strictEqual(Core.unitOrderIndex('QQQ'), Core.UNIT_ORDER.length);
+});
+
+test('unidades del fixture REAL salen en el orden del ERP', () => {
+  const row = Core.extractPnRow(REAL, { lineaDimId: 349 });
+  assert.deepStrictEqual(row.units.map((u) => u.code), ['KGM', 'LBR', 'DMK', 'FTK', 'CMK']);
+  assert.strictEqual(Core.formatUnitFactorsText(row.units),
+    'KGM 0.376 · LBR 0.829 · DMK 1.162 · FTK 0.130 · CMK 120.580');
 });
