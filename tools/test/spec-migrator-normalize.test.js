@@ -290,3 +290,50 @@ test('erpHealth: sin muestras suficientes no opina', () => {
   assert.equal(SMN.erpHealth([500]).degradado, false);
   assert.equal(SMN.erpHealth([]).degradado, false);
 });
+
+// ── Barrido autónomo por cliente (2026-07-29) ───────────────────────────────
+// El operador: "desarrollo esto para no ser el cuello de botella; cargar cliente a cliente me
+// convierte en el cuello de botella". El barrido recorre los clientes solo, con checkpoint,
+// para que se lance una vez y se ocupe aunque tarde horas.
+
+test('planCustomerSweep: sin checkpoint, todos los clientes quedan pendientes', () => {
+  const cs = [{ id: 1, name: 'A' }, { id: 2, name: 'B' }, { id: 3, name: 'C' }];
+  const p = SMN.planCustomerSweep(cs, null);
+  assert.deepEqual(p.pendientes.map(c => c.id), [1, 2, 3]);
+  assert.equal(p.yaHechos, 0);
+});
+
+test('planCustomerSweep: reanuda saltando los que ya se hicieron', () => {
+  const cs = [{ id: 1, name: 'A' }, { id: 2, name: 'B' }, { id: 3, name: 'C' }];
+  const p = SMN.planCustomerSweep(cs, { done: [1, 3], totales: { archivados: 5, repuestos: 5 } });
+  assert.deepEqual(p.pendientes.map(c => c.id), [2]);
+  assert.equal(p.yaHechos, 2);
+  assert.equal(p.totales.archivados, 5);
+});
+
+test('planCustomerSweep: un cliente ya hecho no se repite aunque cambie de orden', () => {
+  const p = SMN.planCustomerSweep([{ id: 9, name: 'Z' }, { id: 1, name: 'A' }], { done: [9] });
+  assert.deepEqual(p.pendientes.map(c => c.id), [1]);
+});
+
+test('planCustomerSweep: lista vacía no truena', () => {
+  const p = SMN.planCustomerSweep([], null);
+  assert.deepEqual(p.pendientes, []);
+  assert.equal(p.yaHechos, 0);
+});
+
+test('planCustomerSweep: los totales arrancan en cero si el checkpoint no los trae', () => {
+  const p = SMN.planCustomerSweep([{ id: 1 }], { done: [] });
+  assert.equal(p.totales.archivados, 0);
+  assert.equal(p.totales.repuestos, 0);
+  assert.equal(p.totales.errores, 0);
+});
+
+test('mergeSweepTotals: acumula lo de cada cliente sin perder lo previo', () => {
+  const t = SMN.mergeSweepTotals({ archivados: 10, repuestos: 10, errores: 1, clientes: 2 },
+                                 { archivados: 5, repuestos: 4, errores: 2 });
+  assert.equal(t.archivados, 15);
+  assert.equal(t.repuestos, 14);
+  assert.equal(t.errores, 3);
+  assert.equal(t.clientes, 3);
+});

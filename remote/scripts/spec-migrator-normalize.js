@@ -135,6 +135,42 @@
   }
 
   /**
+   * Plan del BARRIDO por cliente: qué falta por procesar y qué se lleva acumulado.
+   *
+   * El troceo por cliente no es cosmético: cada lote es chico (decenas, no miles), el
+   * checkpoint cae en una frontera natural, y si algo falla el alcance es UN cliente.
+   *
+   * @param {Array<{id,name}>} clientes
+   * @param {{done:number[], totales?:object}|null} checkpoint
+   */
+  function planCustomerSweep(clientes, checkpoint) {
+    const done = new Set(((checkpoint && checkpoint.done) || []).map(Number));
+    const base = (checkpoint && checkpoint.totales) || {};
+    return {
+      pendientes: (clientes || []).filter(c => c && !done.has(Number(c.id))),
+      yaHechos: done.size,
+      totales: {
+        archivados: base.archivados || 0,
+        repuestos: base.repuestos || 0,
+        errores: base.errores || 0,
+        clientes: base.clientes || 0
+      }
+    };
+  }
+
+  /** Suma lo de un cliente al acumulado del barrido. */
+  function mergeSweepTotals(acum, delta) {
+    const a = acum || {};
+    const d = delta || {};
+    return {
+      archivados: (a.archivados || 0) + (d.archivados || 0),
+      repuestos: (a.repuestos || 0) + (d.repuestos || 0),
+      errores: (a.errores || 0) + (d.errores || 0),
+      clientes: (a.clientes || 0) + 1
+    };
+  }
+
+  /**
    * Decide qué hacer con UN field "falso pendiente" de un PN.
    * @param {Array<{id, archivedAt, processNodeId, paramId, paramName}>} fieldRows
    *        TODAS las filas (activas y archivadas) del MISMO specFieldId en el PN.
@@ -184,7 +220,8 @@
 
   const api = { planFieldNormalization: planFieldNormalization, extractFieldRows: extractFieldRows,
                 planForcedNodeRelease: planForcedNodeRelease, planApplyUnits: planApplyUnits,
-                erpHealth: erpHealth, norm: norm };
+                erpHealth: erpHealth, planCustomerSweep: planCustomerSweep,
+                mergeSweepTotals: mergeSweepTotals, norm: norm };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (typeof window !== 'undefined') window.SpecMigratorNormalize = api;
 })();

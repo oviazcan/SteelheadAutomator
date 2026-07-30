@@ -56,3 +56,10 @@ test('config: la acción del popup está cableada con fn (si no, nace inalcanzab
   assert.equal(act.handler, 'message');
   assert.equal(act.fn, 'WoSpecParams.openFromPopup');
 });
+
+test('config: el barrido autónomo está cableado con fn', () => {
+  const app = cfg.apps.find(a => a.id === 'spec-migrator');
+  const act = app.actions.find(a => a.id === 'sweep-forced-node');
+  assert.ok(act, 'falta la acción sweep-forced-node');
+  assert.equal(act.fn, 'SpecMigrator.sweepAllCustomers');
+});

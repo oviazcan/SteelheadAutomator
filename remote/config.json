@@ -1108,6 +1108,15 @@
           "handler": "message",
           "message": "reapply-wo-params",
           "fn": "WoSpecParams.openFromPopup"
+        },
+        {
+          "id": "sweep-forced-node",
+          "label": "Barrer nodo forzado (todos los clientes)",
+          "sublabel": "Recorre los clientes solo, con checkpoint reanudable",
+          "icon": "🧹",
+          "handler": "message",
+          "message": "sweep-forced-node",
+          "fn": "SpecMigrator.sweepAllCustomers"
         }
       ]
     },
