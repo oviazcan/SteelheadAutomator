@@ -75,3 +75,15 @@ test('el barrido no adivina el contenedor de la respuesta de clientes', () => {
   assert.ok(bloque.includes('firstNodes('),
     'AllCustomers debe usar firstNodes, no un contenedor fijo');
 });
+
+test('ninguna fase larga se queda sin pintar progreso', () => {
+  // El fallo de GRUPO COLLADO pasó desapercibido porque el panel no decía NADA mientras
+  // trabajaba: 52 errores se acumularon y el operador vio una pantalla en blanco. Toda fase
+  // que escriba en lote debe tener barra, contador y bitácora en vivo.
+  const src = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', '..', 'remote', 'scripts', 'spec-migrator.js'), 'utf8');
+  for (const marca of ['prog-msg', 'prog-bar', 'prog-log', 'sw-msg', 'sw-log']) {
+    assert.ok(src.includes(marca), 'falta el indicador ' + marca);
+  }
+  assert.match(src, /const verbose = /, 'debe existir una bitácora en vivo');
+});
