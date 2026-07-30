@@ -160,6 +160,14 @@ tbody tr:last-child td{border-bottom:none}
 
   <p class="measure"><strong>Montos y cantidades.</strong> Los montos se muestran en dólares americanos (USD). Las cantidades vienen en piezas o en kilogramos según lo que mida el reporte — el encabezado de la columna lo indica.</p>
 
+  <p class="measure"><strong>Los separadores de miles y decimales los pone tu navegador, no el reporte.</strong> Un monto debe leerse <code>2,016,026.76</code>: <strong>coma</strong> para los miles, <strong>punto</strong> para los decimales. Si en tu pantalla sale <code>2.016.026,76</code> —con los separadores al revés, a la europea—, el reporte <em>no</em> está mal: el formato de los números lo decide el <strong>idioma configurado en tu navegador</strong>, y Steelhead solo lo obedece. Es un ajuste tuyo, de una sola vez, y afecta a todos los reportes y dashboards a la vez. Mientras no se cambie, cada persona ve los números con la convención de su propio navegador — por eso dos compañeros pueden ver la misma cifra escrita distinto.</p>
+
+  <div class="callout tip measure" style="max-width:none">
+    <p class="ct">Cómo dejar los números en formato mexicano (se hace una sola vez)</p>
+    <p>En Chrome, entra a <strong>Configuración → Idiomas</strong>. En tu lista de idiomas preferidos busca <strong>Español (México)</strong> y súbelo al <strong>primer lugar</strong> (menú <code>⋮</code> a su derecha → <em>Mover al principio</em>). Si en la lista solo aparece «Español» a secas, agrega «Español (México)» y colócalo arriba. Después <strong>recarga la pestaña</strong> de Steelhead: los números quedan con coma de miles y punto decimal, y las fechas se conservan en día/mes/año.</p>
+    <p><strong>No pongas «Inglés (Estados Unidos)» al frente</strong> para lograrlo: sí corrige el número, pero voltea las fechas a mes/día — <code>7/29/2026</code> en lugar de <code>29/7/2026</code>—, que es peor problema.</p>
+  </div>
+
   <p class="measure"><strong>La frescura — "la foto que se renueva sola".</strong> Los reportes no leen a Steelhead en vivo: corren sobre una copia de los datos que Steelhead mantiene aparte y <strong>refresca sola cada madrugada</strong>. Un movimiento capturado hoy aparece en los reportes <strong>tras la próxima regeneración</strong> —normalmente a la mañana siguiente—; no es que el reporte esté mal, es que todavía no entró en la copia. ¿Necesitas los datos de hoy <strong>ahora</strong>? Alguien con el permiso <strong>MANAGE Reports</strong> puede pedir una regeneración al momento (tarda unos minutos, y hay que esperar ~20 min entre una y otra), y esa actualización la ven <strong>todos</strong>.</p>
 
   <!-- ============ 05 EXPORTAR ============ -->
@@ -256,7 +264,8 @@ tbody tr:last-child td{border-bottom:none}
     <li><span class="k">1</span><div><h4>Reporte vacío</h4><p>Revisa primero tus filtros: ¿el rango de fechas cae realmente sobre datos que existen? ¿algún dropdown quedó apuntando a un cliente o línea sin movimientos en ese periodo?</p></div></li>
     <li><span class="k">2</span><div><h4>Si es la planta MTY y sale en cero o con huecos</h4><p>Puede ser esperado: MTY es la planta más nueva, y algunas columnas (por ejemplo, costos de materia prima o maquila del Dashboard Directivo) legítimamente salen en cero hasta que esas operaciones terminen de capturarse en Steelhead. No asumas error antes de confirmar con tu equipo si esa captura ya debería estar completa.</p></div></li>
     <li><span class="k">3</span><div><h4>El reporte cambió de un día a otro sin que tú tocaras nada</h4><p>Puede ser que se haya corregido algo entre el <strong>banco de pruebas</strong> (donde se calibra un reporte) y la <strong>línea real</strong> (la versión que corre dentro de Steelhead) — no significa que tu lectura anterior estuviera mal, sino que el reporte mejoró.</p></div></li>
-    <li><span class="k">4</span><div><h4>Si sigue sin cuadrar</h4><p>Repórtalo al administrador del sistema / TI de tu organización. Dales tres datos concretos: la placa o nombre exacto del reporte, el filtro que usaste (rango + variables), y qué esperabas ver contra lo que viste.</p></div></li>
+    <li><span class="k">4</span><div><h4>Los números salen con los separadores al revés</h4><p>Si ves <code>2.016.026,76</code> en lugar de <code>2,016,026.76</code>, es el <strong>idioma de tu navegador</strong>, no el reporte — y lo arreglas tú en un minuto poniendo <em>Español (México)</em> al principio de tus idiomas de Chrome. El paso a paso está en la sección 04.</p></div></li>
+    <li><span class="k">5</span><div><h4>Si sigue sin cuadrar</h4><p>Repórtalo al administrador del sistema / TI de tu organización. Dales tres datos concretos: la placa o nombre exacto del reporte, el filtro que usaste (rango + variables), y qué esperabas ver contra lo que viste.</p></div></li>
   </ol>
 
   <!-- ============ 09 QUÉ SIGNIFICA PARA TI ============ -->

@@ -392,6 +392,11 @@ window.fetch = <span class="tok-k">async function</span>(...a){
           <td>Refrescar la pestaña del navegador. No requiere cambio de código.</td>
         </tr>
         <tr>
+          <td>Los números salen con punto de miles y coma decimal (<code>2.016.026,76</code>) en las vistas y dashboards — «formato europeo».</td>
+          <td>El <strong>idioma del navegador del usuario</strong>. Perspective corre en WASM y formatea con <code>Intl.NumberFormat(&lt;locale de navigator&gt;, …)</code>; con «Español» genérico (<code>es</code> = convención de España) al frente de la lista de idiomas, el separador de miles se vuelve punto y el decimal coma. No es el SQL ni la vista.</td>
+          <td>Subir <strong>Español (México)</strong> al primer lugar en <em>Chrome → Configuración → Idiomas</em> y recargar la pestaña. <strong>No</strong> intentar arreglarlo en el <code>columns_config</code>: <code>number_format</code> acepta las opciones de <code>Intl</code> (dígitos, agrupación) pero <strong>ignora el locale</strong> — verificado en vivo. Y <strong>no</strong> usar <code>en-US</code>: corrige el número y voltea la fecha a mes/día.</td>
+        </tr>
+        <tr>
           <td>El schedule semanal terminó con <code>Exit code: 1</code>.</td>
           <td>Ver el bloque más reciente de <code>logs/weekly_snapshot.log</code>: cookie expirada (401/403), hash rotado (<code>PersistedQueryNotFound</code>), o el job de generación se quedó colgado (timeout).</td>
           <td>Rotar la cookie (§06), recapturar el hash (§07), o re-correr el schedule si fue un timeout puntual.</td>
@@ -403,6 +408,13 @@ window.fetch = <span class="tok-k">async function</span>(...a){
         </tr>
       </tbody>
     </table>
+  </div>
+
+  <div class="callout info measure" style="max-width:none">
+    <p class="ct">El formato de los números no es reproducible desde el repositorio</p>
+    <p>Vale la pena subrayarlo porque cambia a quién le toca el arreglo: el separador de miles y decimales que ve cada usuario depende de <strong>su</strong> navegador, así que la misma cifra puede aparecer escrita distinto en dos máquinas y el repositorio no lo controla. Pedirle a cada Key User que ajuste su Chrome funciona, pero no escala ni sobrevive a un equipo nuevo o a un reemplazo de máquina.</p>
+    <p>La vía estable para toda la planta es <strong>fijar el idioma preferido por política</strong>, con la directiva de Chrome Enterprise que ordena los idiomas de la lista con <strong>Español (México)</strong> al frente (o quitando el «Español» genérico de la imagen base). Así el formato queda correcto de origen, sin depender de que cada persona lo configure. Si en tu organización no hay administración centralizada de Chrome, deja el paso en el checklist de alta de equipo — está explicado para el usuario final en la sección 04 del <a href="manual-operador.html">Manual del Operador</a>.</p>
+    <p>Lo único que <em>sí</em> puede fijarse server-side es devolver el número ya formateado como <strong>texto</strong> desde el SQL, y tiene un costo real: rompe las sumas y promedios ponderados de las vistas, las gráficas y la exportación a Excel sumable. Por eso se reserva a los reportes cuyo grano no se agrega, y no es el estándar.</p>
   </div>
 
   <!-- ============ 09 ROLLBACK ============ -->
