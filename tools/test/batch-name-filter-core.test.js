@@ -231,3 +231,117 @@ test('selectByExactName: dedup + entrada no-array + nombre vacío seguros', () =
 test('normalizeName: trim + lowercase', () => {
   assert.equal(Core.normalizeName('  T-125 '), 't-125');
 });
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// LOS DOS UNIVERSOS de hideCompleted — semántica REAL medida en vivo 2026-07-29
+// (dominio 344, Ecoplating TLC). El bug: el applet solo veía el 4.3% del inventario.
+//
+//   hideCompleted:true  → SOLO lotes CON material remanente   →    585 lotes
+//   hideCompleted:false → SOLO lotes AGOTADOS (remaining = 0) → 12 926 lotes
+//   solape medido = 0 · unión = 13 511 = TODO el inventario
+//
+// El nombre del parámetro MIENTE: `false` no es "no esconder" (superconjunto), es el
+// COMPLEMENTO. Buscar solo con `true` esconde 95.7% de los lotes: el operador teclea
+// un lote que existe, ve «Sin lotes», y Enter no hace nada.
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// Fixture REAL capturado en vivo 2026-07-29: los T-125 que el dropdown NATIVO de
+// Steelhead SÍ ofrece y que el applet devolvía como 0. Todos agotados.
+const IBV_T125_REAL_DEPLETED = [
+  { id: 1429651, idInDomain: 16630, name: 'T-125', totalRemainingMicroQuantity: '0', createdMicroQuantity: '1000000' },
+  { id: 1422384, idInDomain: 16394, name: 'T-125', totalRemainingMicroQuantity: '0', createdMicroQuantity: '1000000' },
+  { id: 1422383, idInDomain: 16393, name: 'T-125', totalRemainingMicroQuantity: '0', createdMicroQuantity: '1000000' },
+  { id: 1412290, idInDomain: 15355, name: 'T-125', totalRemainingMicroQuantity: '0', createdMicroQuantity: '1000000' },
+  { id: 1412289, idInDomain: 15354, name: 'T-125', totalRemainingMicroQuantity: '0', createdMicroQuantity: '2000000' },
+  { id: 1412144, idInDomain: 15326, name: 'T-125', totalRemainingMicroQuantity: '0', createdMicroQuantity: '11000000' },
+];
+// Fixture REAL del universo CON MATERIAL (hideCompleted:true) del mismo día.
+const IBV_WITH_MATERIAL = [
+  { id: 1449368, idInDomain: 17970, name: 'T-233', totalRemainingMicroQuantity: '25000000', createdMicroQuantity: '25000000' },
+  { id: 1452835, idInDomain: 18112, name: '2907202601', totalRemainingMicroQuantity: '25000000', createdMicroQuantity: '25000000' },
+];
+
+test('SEARCH_UNIVERSES: se consultan AMBOS universos (true y false), no solo el de material', () => {
+  assert.deepEqual(Core.SEARCH_UNIVERSES, [true, false]);
+  assert.equal(Core.UNIVERSE_WITH_MATERIAL, true);
+  assert.equal(Core.UNIVERSE_DEPLETED, false);
+});
+
+test('isDepletedBatch: remaining "0" = agotado; >0 = con material; AUSENTE = null (no se inventa)', () => {
+  assert.equal(Core.isDepletedBatch({ totalRemainingMicroQuantity: '0' }), true);
+  assert.equal(Core.isDepletedBatch({ totalRemainingMicroQuantity: '25000000' }), false);
+  // Fail-safe: campo ausente/null ⇒ DESCONOCIDO, nunca "agotado" por omisión.
+  assert.equal(Core.isDepletedBatch({}), null);
+  assert.equal(Core.isDepletedBatch({ totalRemainingMicroQuantity: null }), null);
+  assert.equal(Core.isDepletedBatch(null), null);
+});
+
+test('REGRESIÓN DEL BUG: los T-125 REALES (todos agotados) devuelven ids, NO cero', () => {
+  const r = Core.selectByExactName(IBV_T125_REAL_DEPLETED, 'T-125');
+  assert.equal(r.count, 6, 'el operador ve lotes, no «Sin lotes»');
+  assert.equal(r.ids.length, 6, 'Enter tiene ids que aplicar');
+});
+
+test('selectByExactName: separa CON MATERIAL de AGOTADOS para que el preview diga la verdad', () => {
+  const mixed = [...IBV_T125_REAL_DEPLETED.slice(0, 2), { id: 999, idInDomain: 1, name: 'T-125', totalRemainingMicroQuantity: '5000000' }];
+  const r = Core.selectByExactName(mixed, 'T-125');
+  assert.equal(r.count, 3);
+  assert.deepEqual(r.withMaterial.ids, ['999']);
+  assert.equal(r.withMaterial.count, 1);
+  assert.deepEqual(r.depleted.ids, ['1429651', '1422384']);
+  assert.equal(r.depleted.count, 2);
+});
+
+test('selectByExactName: universo con material se clasifica entero, sin agotados', () => {
+  const r = Core.selectByExactName(IBV_WITH_MATERIAL, 'T-233');
+  assert.equal(r.count, 1);
+  assert.equal(r.withMaterial.count, 1);
+  assert.equal(r.depleted.count, 0);
+});
+
+test('selectByExactName: nodos sin el campo caen en unknown (compat con fixtures viejos)', () => {
+  const r = Core.selectByExactName(IBV_T125, 'T-125'); // fixture 2026-07-22, sin remaining
+  assert.equal(r.count, 18, 'siguen contando para aplicar');
+  assert.equal(r.unknown.count, 18);
+  assert.equal(r.depleted.count, 0, 'ausente NO es agotado');
+});
+
+test('shouldWarnAllDepleted: avisa solo si TODO lo encontrado está agotado', () => {
+  assert.equal(Core.shouldWarnAllDepleted(Core.selectByExactName(IBV_T125_REAL_DEPLETED, 'T-125')), true);
+  assert.equal(Core.shouldWarnAllDepleted(Core.selectByExactName(IBV_WITH_MATERIAL, 'T-233')), false);
+  assert.equal(Core.shouldWarnAllDepleted(Core.selectByExactName([], 'X')), false, 'sin resultados no hay nada que avisar');
+  assert.equal(Core.shouldWarnAllDepleted(Core.selectByExactName(IBV_T125, 'T-125')), false, 'desconocido no dispara el aviso');
+});
+
+// ── Guardarraíl de volumen: el /graphql de la sesión se CUELGA a ~40-45 requests
+// (incidente medido en po-listing-filters) y tumba la pantalla NATIVA del operador.
+// Duplicar el universo duplica el tráfico → hay que acotarlo con decisión PURA.
+test('planSearch: exige un mínimo de caracteres (searchQuery:"T" = 12 793 lotes)', () => {
+  assert.equal(Core.planSearch('').ok, false);
+  assert.equal(Core.planSearch('T').ok, false);
+  assert.equal(Core.planSearch('T').reason, 'too-short');
+  assert.equal(Core.planSearch('  T  ').ok, false, 'se cuenta el nombre YA recortado');
+  const p = Core.planSearch('T-1');
+  assert.equal(p.ok, true);
+  assert.deepEqual(p.universes, [true, false]);
+});
+
+test('planPagination: pide solo las páginas necesarias', () => {
+  assert.deepEqual(Core.planPagination(0, 200), { pages: 0, capped: false, tooBroad: false });
+  assert.deepEqual(Core.planPagination(20, 200), { pages: 1, capped: false, tooBroad: false });
+  assert.deepEqual(Core.planPagination(200, 200), { pages: 1, capped: false, tooBroad: false });
+  assert.deepEqual(Core.planPagination(201, 200), { pages: 2, capped: false, tooBroad: false });
+});
+
+test('planPagination: tooBroad corta ANTES de paginar (no cuelga el /graphql del operador)', () => {
+  const r = Core.planPagination(1009, 200); // searchQuery:'T-1' medido en vivo
+  assert.equal(r.tooBroad, true);
+  assert.equal(r.pages, 0, 'tooBroad NO pagina: pide al operador que escriba el nombre completo');
+});
+
+test('planPagination: el cap de páginas se reporta, no se calla', () => {
+  const cap = Core.MAX_PAGES_PER_UNIVERSE;
+  const r = Core.planPagination(Core.MAX_TOTAL_TO_PAGE, 1); // fuerza muchas páginas con page=1
+  assert.equal(r.pages, cap);
+  assert.equal(r.capped, true, 'truncar en silencio se lee como «los cubrí todos»');
+});
