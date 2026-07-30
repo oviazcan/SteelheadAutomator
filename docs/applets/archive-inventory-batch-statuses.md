@@ -125,3 +125,25 @@ extensions con `clientLibrary {@apollo/client, 4.0.8}` + `persistedQuery
   `"An unexpected error occurred."`.
 - [ ] Si Steelhead rota los hashes, actualizarlos en el tool (no vive en
   `config.json`). Cruzar con el validador diario de hashes.
+
+## ⚠️ Pendiente abierto (2026-07-29) — `countBatchesInStatus` no fija `hideCompleted`
+
+Hallazgo colateral del fix de [`batch-name-filter` 0.3.0/0.3.1](batch-name-filter.md): en
+`InventoryBatchViewQuery`, **`hideCompleted` no es un "esconder" — SELECCIONA universo, y los
+dos son DISJUNTOS** (medido en vivo, dominio 344): `true` → solo lotes **con material** (585);
+`false` → solo lotes **vacíos** (12 926); **solape 0**. Y vacío es el estado NORMAL: un lote es
+un contenedor que Steelhead vacía al convertirlo a OT, así que **casi todo el inventario
+histórico vive en el universo `false`**.
+
+`countBatchesInStatus()` (detector de "lotes en uso" antes de archivar un estatus) llama esa
+query **sin pasar `hideCompleted`**, o sea con el default del server. Si ese default es `true`,
+el conteo solo ve ~4% de los lotes → puede devolver **0 con miles de lotes vacíos en ese
+estatus**, y entonces la UI ofrece archivar un estatus que sí está en uso.
+
+**No es urgente y no es silencioso:** `ArchiveInventoryBatchStatus` truena con
+`"An unexpected error occurred."` cuando el estatus tiene lotes (ver §root cause de este doc),
+así que la falla es RUIDOSA — pero confusa, porque el panel habría dicho que estaba libre.
+
+**Arreglo cuando se toque:** fijar el flag explícito y, si el criterio es "cualquier lote",
+consultar **ambos universos** y sumar — igual que `batch-name-filter`. No dar por bueno el
+default, que es justo el supuesto que causó el bug del otro applet.
