@@ -68,11 +68,18 @@
   // amplitud de la búsqueda se acota ANTES de tocar la red:
   //   · searchQuery:'T'   → 12 793 lotes (medido) ⇒ mínimo de caracteres.
   //   · searchQuery:'T-1' →  1 009 lotes (medido) ⇒ tope por totalCount.
-  // El operador busca un nombre EXACTO: si el substring trae cientos, no terminó
-  // de escribirlo. Es más útil pedirle el nombre completo que bajar 5 000 lotes.
   const MIN_QUERY_CHARS = 2;
-  const MAX_TOTAL_TO_PAGE = 600;      // > esto ⇒ tooBroad (no se pagina)
-  const MAX_PAGES_PER_UNIVERSE = 5;   // cap duro; si se alcanza se REPORTA (capped)
+  // El tope nació en 600 y subió a 1600 el 2026-07-29, al entender el modelo de dominio:
+  // los lotes VACÍOS no son un residuo raro, se ACUMULAN HISTÓRICAMENTE (todo lote que pasa
+  // a OT queda vacío para siempre), así que un nombre reutilizado por años junta cientos y
+  // un tope bajo cortaba búsquedas legítimas. 1600 = 8 páginas × 200 por universo ⇒ 16
+  // requests en el peor caso, bien por debajo de las ~40-45 que cuelgan la sesión.
+  // Sigue habiendo tope porque cuando el substring trae MUCHO más de lo paginable, el
+  // subconjunto de nombre exacto queda incompleto de forma IMPREDECIBLE (el orden es
+  // CREATED_AT_DESC, no por relevancia) — y un resultado silenciosamente parcial es peor
+  // que pedir un nombre más específico.
+  const MAX_TOTAL_TO_PAGE = 1600;     // > esto ⇒ tooBroad (no se pagina)
+  const MAX_PAGES_PER_UNIVERSE = 8;   // cap duro; si se alcanza se REPORTA (capped)
   const SHIPPING_URL_RE = /^\/Domains\/\d+\/Shipping\/?(?:[?#]|$)/; // Panel de Envío, NO /Shipping/PackingSlips
 
   function isShippingUrl(pathname) {
@@ -118,10 +125,18 @@
 
   // ── Fuente PREFERIDA (InventoryBatchViewQuery): matching por name ESTRUCTURADO ──
   function normalizeName(s) { return String(s == null ? '' : s).trim().toLowerCase(); }
-  // ¿El lote está AGOTADO (sin material remanente)?  true / false / null(desconocido).
+  // ¿El lote está VACÍO (sin material remanente)?  true / false / null(desconocido).
+  //
+  // OJO CON LA LECTURA: vacío NO es un defecto ni una anomalía. Un lote es un CONTENEDOR y
+  // Steelhead lo VACÍA al convertirlo a OT (su contenido pasa a la orden), así que
+  // `remaining = 0` es el estado NORMAL de todo lote que ya siguió su curso — y ahí el lote
+  // sigue sirviendo como REFERENCIA, que es justo para lo que se busca en el Panel de Envío.
+  // Lo EXCEPCIONAL es `false`: conserva material porque no se pasó a OT, o no completo.
+  // La UI marca esa excepción, nunca la norma (por eso se retiró el aviso de "todos vacíos").
+  //
   // Fail-safe deliberado: si el campo NO viene, se devuelve null — nunca `true`. Dar por
-  // agotado un lote cuyo dato falta lo etiquetaría de "ya no sirve" sin evidencia; el
-  // mismo error de forma que asumir 1 pieza por carga cuando `partsPerRack` no existe.
+  // vacío un lote cuyo dato falta es afirmar sin evidencia; el mismo error de forma que
+  // asumir 1 pieza por carga cuando `partsPerRack` no existe.
   function isDepletedBatch(node) {
     if (!node) return null;
     const v = node.totalRemainingMicroQuantity;
@@ -163,13 +178,12 @@
     };
   }
 
-  // ¿Avisar que TODO lo encontrado está agotado? Ese aviso es la diferencia entre
-  // «Sin lotes «T-125»» (mentira: existen 20) y «20 lotes, todos agotados» (la verdad,
-  // que además explica por qué la lista saldrá vacía al aplicar).
-  function shouldWarnAllDepleted(result) {
-    if (!result || !result.count) return false;
-    return !!(result.depleted && result.depleted.count === result.count);
-  }
+  // (Aquí vivía `shouldWarnAllDepleted`, que alimentaba un aviso «los N están agotados, al
+  // aplicar la lista saldrá vacía». Se RETIRÓ el 2026-07-29: anunciaba como problema lo que
+  // es el curso NORMAL de un lote —Steelhead lo vacía al convertirlo a OT— y en el Panel de
+  // Envío la mayoría de los lotes buscados están así, así que el aviso salía casi siempre.
+  // La UI marca ahora la EXCEPCIÓN, el lote que AÚN tiene material. Ver el bloque de
+  // isDepletedBatch y la bitácora §0.3.1.)
 
   // Decisión PURA de si vale la pena tocar la red, antes de hacerlo.
   function planSearch(rawName) {
@@ -232,7 +246,7 @@
     MIN_QUERY_CHARS, MAX_TOTAL_TO_PAGE, MAX_PAGES_PER_UNIVERSE,
     SHIPPING_URL_RE,
     isShippingUrl, escapeRegex, dedup, stripPnSuffix, matchesExactName, normalizeName,
-    isDepletedBatch, shouldWarnAllDepleted, planSearch, planPagination,
+    isDepletedBatch, planSearch, planPagination,
     selectExactMatches, selectByExactName, parseInventoryBatchIdFilter, buildFilterUrl, buildClearUrl,
   };
   if (typeof window !== 'undefined') window.BatchNameFilterCore = api;
