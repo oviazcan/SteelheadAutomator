@@ -89,3 +89,203 @@ test('linesFromScheduledRows: sin filas / no-array → []', () => {
 test('linesFromScheduledRows: fila corta (sin td[1]) se ignora sin truenar', () => {
   assert.deepStrictEqual(Core.linesFromScheduledRows([['solo tratamiento']]), []);
 });
+
+// ── buildStationLineIndex ─────────────────────────────────────────────────
+const STATIONS = fx('surtido-guard-allstations.json');
+
+test('buildStationLineIndex: mapea stationId → código de línea', () => {
+  const idx = Core.buildStationLineIndex(STATIONS);
+  assert.strictEqual(idx[12090], 'T204');
+  assert.strictEqual(idx[12091], 'T205');
+  assert.strictEqual(idx[12092], 'T300');
+});
+
+test('buildStationLineIndex: una ubicación de almacén NO es una línea', () => {
+  // "Proquipa.N1.A1" es donde la pieza está PARADA (lo que filtra el nativo de SH).
+  const idx = Core.buildStationLineIndex(STATIONS);
+  assert.strictEqual(idx[12093], undefined);
+});
+
+test('buildStationLineIndex: nombre null no truena ni entra al índice', () => {
+  const idx = Core.buildStationLineIndex(STATIONS);
+  assert.strictEqual(idx[12094], undefined);
+});
+
+test('buildStationLineIndex: acepta el response con o sin envoltura .data', () => {
+  const idx = Core.buildStationLineIndex({ data: STATIONS });
+  assert.strictEqual(idx[12090], 'T204');
+});
+
+test('buildStationLineIndex: shape inesperado → objeto vacío (fail-safe)', () => {
+  assert.deepStrictEqual(Core.buildStationLineIndex(null), {});
+  assert.deepStrictEqual(Core.buildStationLineIndex({}), {});
+  assert.deepStrictEqual(Core.buildStationLineIndex({ allStations: {} }), {});
+});
+
+// ── buildLineCounts ──────────────────────────────────────────────────────
+const SCHED = fx('surtido-guard-schedule.json');
+
+test('buildLineCounts: cuenta ÓRDENES por línea desde GetRelatedScheduleData', () => {
+  // El fixture tiene 1 tarea en stationId 12090 (T204) con 1 account de la WO 5001.
+  const idx = Core.buildStationLineIndex(STATIONS);
+  const r = Core.buildLineCounts(SCHED, idx);
+  assert.deepStrictEqual(r.byLine, { T204: 1 });
+  assert.deepStrictEqual(r.lines, ['T204']);
+  assert.strictEqual(r.scheduledOrders, 1);
+});
+
+test('buildLineCounts: la misma orden en 2 tareas de la MISMA línea cuenta 1 vez', () => {
+  const data = {
+    allSchedules: { nodes: [{ validScheduleTasks: { nodes: [
+      { stationId: 12090, scheduleTaskElementsByScheduleTaskId: { nodes: [
+        { associatedPartsTransferAccounts: { nodes: [{ id: 1, workOrderId: 900 }] } } ] } },
+      { stationId: 12090, scheduleTaskElementsByScheduleTaskId: { nodes: [
+        { associatedPartsTransferAccounts: { nodes: [{ id: 2, workOrderId: 900 }] } } ] } }
+    ] } }] }
+  };
+  const r = Core.buildLineCounts(data, Core.buildStationLineIndex(STATIONS));
+  assert.deepStrictEqual(r.byLine, { T204: 1 });
+});
+
+test('buildLineCounts: la misma orden en DOS líneas cuenta en las dos', () => {
+  const data = {
+    allSchedules: { nodes: [{ validScheduleTasks: { nodes: [
+      { stationId: 12090, scheduleTaskElementsByScheduleTaskId: { nodes: [
+        { associatedPartsTransferAccounts: { nodes: [{ id: 1, workOrderId: 900 }] } } ] } },
+      { stationId: 12091, scheduleTaskElementsByScheduleTaskId: { nodes: [
+        { associatedPartsTransferAccounts: { nodes: [{ id: 2, workOrderId: 900 }] } } ] } }
+    ] } }] }
+  };
+  const r = Core.buildLineCounts(data, Core.buildStationLineIndex(STATIONS));
+  assert.deepStrictEqual(r.byLine, { T204: 1, T205: 1 });
+  assert.strictEqual(r.scheduledOrders, 1);
+});
+
+test('buildLineCounts: estación desconocida se REPORTA, no se traga en silencio', () => {
+  const data = {
+    allSchedules: { nodes: [{ validScheduleTasks: { nodes: [
+      { stationId: 99999, scheduleTaskElementsByScheduleTaskId: { nodes: [
+        { associatedPartsTransferAccounts: { nodes: [{ id: 1, workOrderId: 900 }] } } ] } }
+    ] } }] }
+  };
+  const r = Core.buildLineCounts(data, Core.buildStationLineIndex(STATIONS));
+  assert.deepStrictEqual(r.byLine, {});
+  assert.deepStrictEqual(r.unknownStationIds, [99999]);
+});
+
+test('buildLineCounts: lines viene ORDENADO alfabéticamente (dropdown estable)', () => {
+  const data = {
+    allSchedules: { nodes: [{ validScheduleTasks: { nodes: [
+      { stationId: 12092, scheduleTaskElementsByScheduleTaskId: { nodes: [
+        { associatedPartsTransferAccounts: { nodes: [{ id: 1, workOrderId: 1 }] } } ] } },
+      { stationId: 12090, scheduleTaskElementsByScheduleTaskId: { nodes: [
+        { associatedPartsTransferAccounts: { nodes: [{ id: 2, workOrderId: 2 }] } } ] } }
+    ] } }] }
+  };
+  const r = Core.buildLineCounts(data, Core.buildStationLineIndex(STATIONS));
+  assert.deepStrictEqual(r.lines, ['T204', 'T300']);
+});
+
+test('buildLineCounts: sin índice de estaciones → sin líneas, pero no truena', () => {
+  const r = Core.buildLineCounts(SCHED, {});
+  assert.deepStrictEqual(r.byLine, {});
+  assert.deepStrictEqual(r.lines, []);
+});
+
+test('buildLineCounts: shape inesperado → estructura vacía completa (fail-safe)', () => {
+  const r = Core.buildLineCounts(null, null);
+  assert.deepStrictEqual(r, { byLine: {}, lines: [], scheduledOrders: 0, unknownStationIds: [] });
+});
+
+// ── cardVisibleUnderFilter ───────────────────────────────────────────────
+test('cardVisibleUnderFilter: sin filtro, TODO se ve (incluidas las no programadas)', () => {
+  assert.strictEqual(Core.cardVisibleUnderFilter([], null), true);
+  assert.strictEqual(Core.cardVisibleUnderFilter([], ''), true);
+  assert.strictEqual(Core.cardVisibleUnderFilter(['T204'], null), true);
+});
+
+test('cardVisibleUnderFilter: con filtro, coincide si la línea está en el set', () => {
+  assert.strictEqual(Core.cardVisibleUnderFilter(['T204'], 'T204'), true);
+  assert.strictEqual(Core.cardVisibleUnderFilter(['T205', 'T204'], 'T204'), true);
+  assert.strictEqual(Core.cardVisibleUnderFilter(['T205'], 'T204'), false);
+});
+
+test('cardVisibleUnderFilter: no programada (sin líneas) se ESCONDE con filtro activo', () => {
+  // Decisión del operador 2026-07-29: se esconden como el resto.
+  assert.strictEqual(Core.cardVisibleUnderFilter([], 'T204'), false);
+});
+
+test('cardVisibleUnderFilter: compara en mayúsculas', () => {
+  assert.strictEqual(Core.cardVisibleUnderFilter(['T204'], 't204'), true);
+});
+
+test('cardVisibleUnderFilter: entradas basura no truenan', () => {
+  assert.strictEqual(Core.cardVisibleUnderFilter(null, 'T204'), false);
+  assert.strictEqual(Core.cardVisibleUnderFilter('T204', 'T204'), false);
+});
+
+// ── planFilter ───────────────────────────────────────────────────────────
+const CARDS3 = [
+  { lines: ['T204'] },
+  { lines: ['T205'] },
+  { lines: [] },
+  { lines: [] }
+];
+
+test('planFilter: sin línea elegida → inactivo, efecto none, nada oculto', () => {
+  const p = Core.planFilter({ cards: CARDS3, selectedLine: null, apiScheduledOrders: 2, mountedCount: 4 });
+  assert.strictEqual(p.active, false);
+  assert.strictEqual(p.effect, 'none');
+  assert.strictEqual(p.visible, 4);
+  assert.strictEqual(p.hidden, 0);
+});
+
+test('planFilter: con línea → esconde y desglosa el motivo de cada oculta', () => {
+  const p = Core.planFilter({ cards: CARDS3, selectedLine: 'T204', apiScheduledOrders: 2, mountedCount: 4 });
+  assert.strictEqual(p.active, true);
+  assert.strictEqual(p.effect, 'hide');
+  assert.strictEqual(p.visible, 1);
+  assert.strictEqual(p.hidden, 3);
+  assert.strictEqual(p.hiddenUnscheduled, 2);
+  assert.strictEqual(p.hiddenOtherLine, 1);
+});
+
+test('planFilter: GUARDA 1 — pasa el tope de montados → cae a DIM, no a esconder', () => {
+  const p = Core.planFilter({
+    cards: CARDS3, selectedLine: 'T204', apiScheduledOrders: 2,
+    mountedCount: 250, maxMounted: 200
+  });
+  assert.strictEqual(p.effect, 'dim');
+  assert.strictEqual(p.reason, 'too-many-mounted');
+});
+
+test('planFilter: GUARDA 2 — señal DOM rota (API dice programadas, ninguna tarjeta revela línea) → no filtra', () => {
+  const ciegas = [{ lines: [] }, { lines: [] }];
+  const p = Core.planFilter({ cards: ciegas, selectedLine: 'T204', apiScheduledOrders: 7, mountedCount: 2 });
+  assert.strictEqual(p.active, false);
+  assert.strictEqual(p.effect, 'none');
+  assert.strictEqual(p.reason, 'dom-signal-broken');
+  assert.strictEqual(p.visible, 2);
+});
+
+test('planFilter: sin programadas en la API, cero líneas es NORMAL → sí filtra', () => {
+  // No es señal rota: de verdad no hay nada programado. Esconder es correcto y explicable.
+  const ciegas = [{ lines: [] }, { lines: [] }];
+  const p = Core.planFilter({ cards: ciegas, selectedLine: 'T204', apiScheduledOrders: 0, mountedCount: 2 });
+  assert.strictEqual(p.active, true);
+  assert.strictEqual(p.effect, 'hide');
+  assert.strictEqual(p.visible, 0);
+  assert.strictEqual(p.hiddenUnscheduled, 2);
+});
+
+test('planFilter: maxMounted default 200', () => {
+  const p = Core.planFilter({ cards: CARDS3, selectedLine: 'T204', apiScheduledOrders: 2, mountedCount: 201 });
+  assert.strictEqual(p.effect, 'dim');
+});
+
+test('planFilter: entrada vacía no truena', () => {
+  const p = Core.planFilter({});
+  assert.strictEqual(p.active, false);
+  assert.strictEqual(p.effect, 'none');
+  assert.strictEqual(p.visible, 0);
+});
