@@ -349,10 +349,25 @@
     return out;
   }
 
+  // Orden canónico de unidades: el MISMO del modal "Per Part Count Unit Definitions" de
+  // Steelhead (capturado de la pantalla real), para que la columna se lea igual que la
+  // ficha del NP. Agrupa por magnitud: PESO → SUPERFICIE → LONGITUD → LOTE.
+  // Un orden alfabético mezclaba kilos con centímetros cuadrados y obligaba a buscar.
+  // "KG" va junto a "KGM": algunos dominios muestran el kilogramo sin la M final
+  // (mismo alias que canoniza unit-autoconvert-core).
+  const UNIT_ORDER = ['KGM', 'KG', 'LBR', 'DMK', 'FTK', 'CMK', 'FOT', 'LM', 'LO'];
+
+  // Índice de orden de una unidad; las NO catalogadas van al final (alfabéticas entre sí)
+  // en vez de colarse en medio — así una unidad nueva del ERP no descoloca a las conocidas.
+  function unitOrderIndex(code) {
+    const i = UNIT_ORDER.indexOf(String(code || '').toUpperCase());
+    return i === -1 ? UNIT_ORDER.length : i;
+  }
+
   // Factores de unidad registrados en el item de inventario del NP.
   //   → [ { unitId, name, code, factor, mustBeInteger } ]
   // `code` = primer token del label ("KGM Kilogramo" → "KGM"). Se preservan TODOS los
-  // registrados (el usuario los quiere completos); orden por código para estabilidad.
+  // registrados (el usuario los quiere completos); orden = UNIT_ORDER.
   function extractUnitFactors(input) {
     const pn = pnRoot(input);
     const ii = pn && pn.inventoryItemByPartNumberId;
@@ -376,7 +391,10 @@
         mustBeInteger: u.mustBeInteger === true,
       });
     });
-    out.sort(function (a, b) { return a.code.localeCompare(b.code, 'es'); });
+    out.sort(function (a, b) {
+      const d = unitOrderIndex(a.code) - unitOrderIndex(b.code);
+      return d !== 0 ? d : a.code.localeCompare(b.code, 'es');
+    });
     return out;
   }
 
@@ -457,6 +475,8 @@
   const api = {
     PN_INDEX_RE,
     PN_ID_RE,
+    UNIT_ORDER,
+    unitOrderIndex,
     LINEA_DIM_ID_DEFAULT,
     LINEA_DIM_NAME_RE,
     isPartNumbersIndexPath,

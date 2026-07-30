@@ -46,7 +46,15 @@ const PnSpecsColumn = (() => {
   // columna, pero se enciende igual que ellas y comparte la misma consulta. Conserva la
   // key del viejo toggle de Metal para no perderle el estado a quien ya lo tenía puesto.
   const NAME_INFO = { key: 'nameinfo', cls: 'sa-pncol-nameinfo', store: 'sa_pn_metal_col_enabled', icon: '📝', short: 'Desc+Metal', tip: 'Descripción y metal base bajo el nombre del NP, dentro de su misma celda (no agrega columna).' };
-  const TOGGLES = COLS.concat([NAME_INFO]);
+
+  // Orden de la BARRA de toggles ≠ orden de las COLUMNAS. Specs va al FINAL porque es el
+  // único que arrastra el contador de progreso y el medidor de memoria ("50/50 Mem: 338MB
+  // / 4192MB (8%)"): puesto al inicio empujaba él solo al último toggle a un segundo
+  // renglón. Al final, los tres cortos caben juntos y lo largo cierra la fila.
+  const TOGGLE_ORDER = ['racks', 'units', 'nameinfo', 'specs'];
+  const TOGGLES = TOGGLE_ORDER
+    .map(function (k) { return COLS.find(function (c) { return c.key === k; }) || (NAME_INFO.key === k ? NAME_INFO : null); })
+    .filter(Boolean);
   // Key huérfana de la columna de Línea (0.3.0), retirada en 0.3.1.
   const RETIRED_KEYS = ['sa_pn_linea_col_enabled'];
 
@@ -86,7 +94,7 @@ const PnSpecsColumn = (() => {
   //    integran a la tabla clara de SH con un separador punteado sutil) ─────────
   function injectStyles() {
     const prev = document.getElementById('sa-pnspec-style');
-    if (prev && prev.getAttribute('data-sa-v') === '3') return;
+    if (prev && prev.getAttribute('data-sa-v') === '4') return;
     if (prev) prev.remove();   // reemplaza el <style> de versiones anteriores
     const css = [
       // Barra de toggles en el header (UI nuestra → dark-mode; delgada para no abultar)
@@ -127,9 +135,14 @@ const PnSpecsColumn = (() => {
       '.sa-pnspec-param{display:inline-block;background:#eef6f2;border:1px solid #cfe6db;color:#14503a;',
       'border-radius:6px;padding:1px 6px;margin:2px 4px 0 0;font-size:11px;',
       'white-space:normal;overflow-wrap:anywhere;}',
-      // Rack type compacto: "T102-RA02 (18 pz)" en un renglón.
-      '.sa-pncol-rack{font-size:11px;line-height:1.5;color:#3a4a58;overflow-wrap:anywhere;}',
-      '.sa-pncol-rack b{font-weight:600;color:#14503a;font-variant-numeric:tabular-nums;}',
+      // Rack type en DOS renglones por diseño: nombre arriba, "(18 pz)" abajo. En una sola
+      // línea el wrap natural partía por donde caía ("T102-RA02 (18" / "pz)"), que se lee
+      // peor que el corte deliberado.
+      '.sa-pncol-rack{font-size:11px;line-height:1.4;color:#3a4a58;margin-bottom:3px;}',
+      '.sa-pncol-rack:last-child{margin-bottom:0;}',
+      '.sa-pncol-rack-name{display:block;overflow-wrap:anywhere;}',
+      '.sa-pncol-rack-qty{display:block;white-space:nowrap;color:#5a6b7a;}',
+      '.sa-pncol-rack-qty b{font-weight:600;color:#14503a;font-variant-numeric:tabular-nums;}',
       // Unidades: código a la izquierda, valor pegado a la DERECHA con cifras tabulares
       // para que los puntos decimales queden en columna y se comparen de un vistazo.
       // El "/pz" vive en el ENCABEZADO, no en cada renglón.
@@ -144,6 +157,12 @@ const PnSpecsColumn = (() => {
       '.sa-pncol-nameinfo{font-size:11px;line-height:1.35;color:#5a6b7a;margin-top:2px;',
       'overflow-wrap:anywhere;}',
       '.sa-pncol-nameinfo b{font-weight:600;color:#14503a;}',
+      // Con las columnas encendidas la fila lleva mucho dato y el NOMBRE del NP —que es
+      // el ancla de toda la fila— se perdía entre lo demás (nativo: 12px/400). Se agranda
+      // y se pone en negritas. La regla cuelga de una clase en <body>, no del className
+      // del <td>: ese lo pinta React y lo reescribiría en cada render.
+      'body.sa-pn-active table tbody td a[href^="/PartNumbers/"]{font-size:14px;font-weight:700;',
+      'line-height:1.3;}',
       '.sa-pnspec-muted{color:#8a97a5;font-style:italic;font-size:12px;}',
       '.sa-pnspec-err{color:#b04a3a;font-size:12px;}',
       // Toast (dark-mode)
@@ -154,7 +173,10 @@ const PnSpecsColumn = (() => {
     ].join('');
     const s = document.createElement('style');
     s.id = 'sa-pnspec-style';
-    s.setAttribute('data-sa-v', '2');
+    // OJO: este número y el del chequeo de arriba TIENEN que ser el mismo. En 0.3.1 se
+    // subió el chequeo a '3' y este se quedó en '2', así que la condición de salida
+    // nunca se cumplía e injectStyles() borraba y recreaba el <style> en CADA sync.
+    s.setAttribute('data-sa-v', '4');
     s.textContent = css;
     document.head.appendChild(s);
   }
@@ -414,7 +436,8 @@ const PnSpecsColumn = (() => {
     });
   }
 
-  // "T102-RA02 (18 pz)" — un renglón por rack. Formato compacto para angostar la columna.
+  // Dos renglones por rack: nombre arriba, "(18 pz)" abajo — el corte es deliberado
+  // para que la columna se lea parejo aunque el nombre del rack sea largo.
   function renderRacks(td, racks) {
     const list = racks || [];
     if (!list.length) { muted(td, 'sin racks'); return; }
@@ -423,9 +446,13 @@ const PnSpecsColumn = (() => {
       // es el que dispara las duraciones absurdas en wo-schedule-button).
       const qty = r.partsPerRack == null ? '?' : Core().fmtNum(r.partsPerRack);
       const div = document.createElement('div'); div.className = 'sa-pncol-rack';
-      div.appendChild(document.createTextNode(r.name + ' ('));
-      const b = document.createElement('b'); b.textContent = qty; div.appendChild(b);
-      div.appendChild(document.createTextNode(' ' + (r.unit || 'pz') + ')'));
+      div.title = Core().formatRackChip(r);
+      const nm = document.createElement('span'); nm.className = 'sa-pncol-rack-name'; nm.textContent = r.name;
+      const qt = document.createElement('span'); qt.className = 'sa-pncol-rack-qty';
+      qt.appendChild(document.createTextNode('('));
+      const b = document.createElement('b'); b.textContent = qty; qt.appendChild(b);
+      qt.appendChild(document.createTextNode(' ' + (r.unit || 'pz') + ')'));
+      div.appendChild(nm); div.appendChild(qt);
       td.appendChild(div);
     });
   }
@@ -462,6 +489,7 @@ const PnSpecsColumn = (() => {
     (clsList || ALL_CLS.concat([NAME_INFO.cls])).forEach(function (cls) {
       document.querySelectorAll('.' + cls).forEach(function (el) { el.remove(); });
     });
+    if (!clsList) document.body.classList.remove('sa-pn-active');   // devuelve el nombre a su tamaño nativo
   }
 
   // ════════════════════════════════════════════════════════════════════════
@@ -590,6 +618,9 @@ const PnSpecsColumn = (() => {
     // applet llegaba tan tarde que el header ya existía; al acelerarlo (2026-07-27) pasó
     // a correr antes que React. Mismo bug que wo-listing-columns.
     ensureToggle();
+    // La clase del <body> gobierna el realce del nombre del NP. Vive en el body y no en
+    // el <td> porque ese lo pinta React y reescribiría el className en cada render.
+    document.body.classList.toggle('sa-pn-active', anyOn());
     const table = getTable();
     if (!table) return;
     if (!anyOn()) { removeColumn(); return; }   // apagadas: no dejar celdas huérfanas
@@ -634,7 +665,10 @@ const PnSpecsColumn = (() => {
   // Enciende/apaga UNA columna (o la línea del nombre). `key` omitido = 'specs'
   // (compatibilidad con la acción del popup, que no cambió).
   function toggle(key) {
-    const col = TOGGLES.find(function (c) { return c.key === key; }) || TOGGLES[0];
+    // Sin key = 'specs' (lo que espera la acción del popup), NO el primero de la barra:
+    // el orden de la barra es cosmético y no debe cambiar a qué apunta el popup.
+    const col = TOGGLES.find(function (c) { return c.key === (key || 'specs'); })
+             || TOGGLES.find(function (c) { return c.key === 'specs'; });
     const next = !getFlag(col.store);
     setFlag(col.store, next);
     refreshToggleUI();
