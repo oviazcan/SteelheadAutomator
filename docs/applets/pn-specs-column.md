@@ -304,3 +304,38 @@ lo que antes ocupaba la de specs sola. Core **38/38**.
 Rebuild sin altas. Verificado en el artefacto: `fmtQty3` ×5, `sa-pncol-nameinfo` ×3,
 `formatRackChip` ×3 y `sa-pncol-linea` **×0** (la columna retirada no viaja). 1 587 695 bytes;
 `node --check` OK, build-safari 10/10. `Resources/` sincronizado; **falta recompilar en Xcode**.
+
+## v0.3.2 (2026-07-29) — cuatro detalles de lectura + un bug propio
+
+**1. El toggle de Specs se movió al FINAL de la barra.** Es el único que arrastra el contador
+(`50/50`) y el medidor de memoria (`Mem: 338MB / 4192MB (8%)`); puesto al inicio empujaba él solo
+al último toggle a un segundo renglón. `TOGGLE_ORDER` (orden de la barra) es ahora independiente
+de `COLS` (orden de las columnas) — el popup sigue apuntando a `specs` explícitamente, porque el
+orden de la barra es cosmético y no debe decidir a qué apunta una acción.
+
+**2. Rack types en dos renglones por diseño.** Ocupaban dos líneas de todos modos, pero el wrap
+natural partía por donde caía (`T102-RA02 (18` / `pz)`). Ahora el corte es deliberado: nombre
+arriba, `(18 pz)` abajo con `nowrap`.
+
+**3. Unidades en el orden del ERP, no alfabético.** El operador pasó la captura del modal
+*Per Part Count Unit Definitions*: **KGM · LBR · DMK · FTK · CMK · FOT · LM · LO** — peso,
+superficie, longitud, lote. Alfabético mezclaba kilos con centímetros cuadrados y obligaba a
+buscar. `UNIT_ORDER` en el core; `KG` (sin M) se ordena junto a `KGM` —mismo alias que canoniza
+`unit-autoconvert-core`— y una unidad que el ERP agregue mañana cae al final en vez de colarse
+en medio.
+
+**4. El nombre del NP a 14px/700** (nativo: 12px/400). Con las columnas encendidas la fila lleva
+tanto dato que el nombre —el ancla de la fila— se perdía. La regla cuelga de una clase en
+`<body>` (`sa-pn-active`), **no** del `className` del `<td>`: ese lo pinta React y lo reescribiría
+en cada render.
+
+### Bug propio encontrado al hacer esto
+
+`injectStyles()` comparaba `data-sa-v === '3'` pero escribía `'2'`: la condición de salida nunca
+se cumplía, así que **borraba y recreaba el `<style>` en cada sync**. Entró en 0.3.1 al subir el
+número en un solo lado. No rompía nada visible —por eso sobrevivió al deploy— pero era churn de
+DOM en cada mutación de la tabla. Ambos valores están ahora en `'4'`, con un comentario que ata
+uno al otro.
+
+Core **42/42**. Bundle Safari **v0.6.9** (verificado en el artefacto: `UNIT_ORDER` ×5,
+`sa-pncol-rack-qty` ×3, `sa-pn-active` ×3, y **cero** ocurrencias del `'2'` viejo).
