@@ -1611,6 +1611,7 @@
       "category": "Recibo",
       "scripts": [
         "scripts/steelhead-api.js",
+        "scripts/warehouse-location-guard-core.js",
         "scripts/warehouse-location-prefill.js"
       ],
       "autoInject": true,
