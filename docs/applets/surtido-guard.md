@@ -36,7 +36,8 @@
 > el bloqueo aparece en vivo. Marcado INVERTIDO — NARANJA en las NO movibles** (antes verde en las
 > movibles), señal DOM bilingüe ES+EN (`Tareas Programadas:` / `Scheduled tasks:`) + salvaguarda
 > anti-falsa-alarma con el set de la API. **✅ VALIDADO en vivo 2026-07-22** (confirmación del
-> operador): bloqueo fino (sin falsos positivos prog/no-prog), drag silencioso y marcado naranja.
+> operador): drag silencioso y marcado naranja. **Ojo:** lo de «sin falsos positivos prog/no-prog»
+> de esa validación resultó **falso** — ver §Validación 2026-07-22 corregida y §El falso positivo.
 > Spec: [`2026-06-26-surtido-guard-design.md`](../superpowers/specs/2026-06-26-surtido-guard-design.md) ·
 > Plan: [`2026-06-26-surtido-guard.md`](../superpowers/plans/2026-06-26-surtido-guard.md)
 > **v0.3.0 (filtro):** spec [`2026-07-29-surtido-guard-line-filter-design.md`](../superpowers/specs/2026-07-29-surtido-guard-line-filter-design.md) ·
@@ -259,7 +260,9 @@ el `fromRecipeNodeId` del move (de las vars del query) debe ser un nodo cuyo nom
 - `remote/scripts/surtido-guard.js` — glue: interceptor, capa modal, marcado verde, toggle, memory hardening.
 - `remote/config.json` — app `surtido-guard` (`autoInject`, scripts, toggle action).
 
-## Plan de validación en vivo — ✅ COMPLETADO 2026-07-22 (confirmación del operador)
+## Plan de validación en vivo — ⚠️ COMPLETADO 2026-07-22, pero su punto 2 no probó lo que decía
+> El paso «una WO programada se mueve normal (cuidar falsos positivos)» se dio por bueno y **no lo
+> era** en boards de almacén: ahí el set salía vacío y se bloqueaba todo. Corregido en 0.4.0.
 1. **Mapa**: en el board, `window.SurtidoGuard._getState()` debe mostrar `scheduled`>0 y `surtido` con el/los recipeNodeId.
 2. **Bloqueo modal**: abrir ⇄ de una WO **no programada** + MOVER → no se mueve, toast rojo, botones grises.
    Una WO **programada** → se mueve normal (cuidar falsos positivos).
@@ -314,11 +317,18 @@ interceptor captura el nodo de surtido y **bloquea mover una pieza no programada
 guía (warning de `world`; error "Embedded binary's bundle identifier is not prefixed…" → la extensión debe ser
 `<bundleId-app>.Extension`).
 
-**✅ Validado en vivo 2026-07-22 (confirmación del operador) — sin falsos positivos:** una pieza **PROGRAMADA** en el board
-se **mueve normal** (no se bloquea). El run confirmó además que `GetRelatedScheduleData`
-sí se captura y puebla `scheduled` (hoy no se pudo distinguir "vacío correcto" de "no capturado"). Vinculado al
-riesgo del **fail-safe silencioso**: el mapa de programadas (`buildScheduledAccountSet`) devuelve `Set` vacío
-sin error si el shape cambia → pendiente telemetría/alerta cuando el set sale vacío en un board de surtido.
+**⚠️ CORREGIDO el 2026-07-30 — la validación del 2026-07-22 decía más de lo que probó.** Aquí se
+afirmaba «sin falsos positivos: una pieza PROGRAMADA se mueve normal» y que `GetRelatedScheduleData`
+«sí se captura y puebla `scheduled`». **Las dos afirmaciones eran falsas para un board de almacén:**
+esa query viene filtrada por las estaciones del workboard, así que ahí `scheduled` sale **vacío
+siempre** y el candado bloqueaba TODO lo que estuviera en un nodo de surtido. Lo que aquel run
+verificó de verdad fue el bloqueo de una **no** programada — correcto, pero **por la razón
+equivocada**. Se anota tal cual porque es el modo de fallo que este applet debe vigilar: *una
+validación que confirma el caso que el bug también produce no distingue nada.*
+
+El pendiente que colgaba de aquí —«telemetría/alerta cuando el set sale vacío»— **queda cerrado en
+0.4.0**: `hasScheduleEvidence` distingue «no hay programadas» de «no tengo el dato», el candado no
+bloquea sin evidencia, y el modal lo dice en ámbar en vez de callarlo.
 
 ## Lecciones
 
