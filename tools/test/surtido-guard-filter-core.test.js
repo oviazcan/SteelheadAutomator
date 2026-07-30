@@ -322,3 +322,31 @@ test('mergeLineCatalog: entradas basura → catálogo vacío, no truena', () => 
   assert.deepStrictEqual(Core.mergeLineCatalog(null, null), { lines: [], byLine: {}, domOnly: [] });
   assert.deepStrictEqual(Core.mergeLineCatalog(undefined, ['', null, 5]).lines, []);
 });
+
+// ── accumulateSeenLines ──────────────────────────────────────────────────
+// Bug reportado en vivo (2026-07-30): al filtrar, virtuoso DESMONTA las tarjetas escondidas,
+// así que un catálogo armado con lo montado se reduce a la línea ya elegida y el operador
+// queda atrapado (no puede saltar de T300 a T204 sin quitar el filtro).
+test('accumulateSeenLines: NO pierde una línea cuya tarjeta ya se desmontó', () => {
+  const prev = ['T204', 'T300'];
+  const soloT300Montada = [{ lines: ['T300'] }];
+  assert.deepStrictEqual(Core.accumulateSeenLines(prev, soloT300Montada), ['T204', 'T300']);
+});
+
+test('accumulateSeenLines: SUMA las que aparecen al scrollear', () => {
+  assert.deepStrictEqual(Core.accumulateSeenLines(['T204'], [{ lines: ['T205'] }, { lines: ['T110'] }]),
+    ['T110', 'T204', 'T205']);
+});
+
+test('accumulateSeenLines: dedup, normaliza y ordena', () => {
+  assert.deepStrictEqual(Core.accumulateSeenLines(['t300'], [{ lines: ['T300', 'T204'] }]), ['T204', 'T300']);
+});
+
+test('accumulateSeenLines: tarjetas sin línea (no programadas) no aportan', () => {
+  assert.deepStrictEqual(Core.accumulateSeenLines([], [{ lines: [] }, { lines: [] }]), []);
+});
+
+test('accumulateSeenLines: entradas basura no truenan', () => {
+  assert.deepStrictEqual(Core.accumulateSeenLines(null, null), []);
+  assert.deepStrictEqual(Core.accumulateSeenLines(['T204'], [null, { lines: null }, 5]), ['T204']);
+});
