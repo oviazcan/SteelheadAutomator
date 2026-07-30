@@ -3673,13 +3673,23 @@ const SpecMigrator = (() => {
         guardarCheckpoint();
       };
 
+      let cortado = false;
       try {
         const res = await repairOneCustomer(cli, myRunId, rpMsg, rpErp, tiempos, SMNr, vb,
                                             corteMs, onAvance, parcialCli, guardarParcial);
         totales = SMNr.mergeSweepTotals(totales, res);
-        // El cliente solo se marca fallido si quedan NPs suyos por reintentar. Un error ya
-        // atendido no debe condenarlo a repetirse entero.
-        if (res.pnFallidos && res.pnFallidos.length) {
+        // Detener a media corrida NO es terminar. repairOneCustomer sale igual cuando cambia
+        // el runId, y sin distinguirlo se caía en lo peor de los dos mundos: el cliente
+        // quedaba marcado como hecho sin estarlo Y el `else` borraba su cursor, así que al
+        // reanudar arrancaba desde el primer NP. En uno de 17 716 eso es no avanzar nunca.
+        cortado = dupState.runId !== myRunId;
+        if (cortado) {
+          // Se conserva el avance que repairOneCustomer ya persistió; el cliente NO se marca.
+          parciales = { clienteId: cli.id, hastaId: res.cursor,
+                        fallidos: (res.pnFallidos || []).slice(0, 500) };
+        } else if (res.pnFallidos && res.pnFallidos.length) {
+          // El cliente solo se marca fallido si quedan NPs suyos por reintentar. Un error ya
+          // atendido no debe condenarlo a repetirse entero.
           fallidos.add(Number(cli.id));
           parciales = { clienteId: cli.id, hastaId: res.cursor, fallidos: res.pnFallidos.slice(0, 500) };
         } else {
@@ -3691,8 +3701,9 @@ const SpecMigrator = (() => {
         fallidos.add(Number(cli.id));
         vb('✗ ' + cli.name + ' → ' + String(e && e.message || e).slice(0, 60));
       }
-      hechos.add(Number(cli.id));
+      if (!cortado) hechos.add(Number(cli.id));
       guardarCheckpoint();
+      if (cortado) break;
 
       const salud = SMNr.erpHealth(tiempos);
       if (salud.degradado) {
@@ -3753,6 +3764,13 @@ const SpecMigrator = (() => {
     // un error para marcarlo fallido y el reintento vuelve a empezar por el primero.
     const trozo = SMNr.planCustomerChunk(todos, parcial);
     const pns = trozo.pendientes;
+    // El retomado va al mensaje PRINCIPAL, no solo a la bitácora: es el único indicio de si el
+    // avance parcial sirvió. Enterrado en el log de 8 líneas no se distingue de empezar de cero
+    // — que es justo la duda que hubo que resolver leyendo código en vez de mirando la pantalla.
+    if (trozo.yaHechos && rpMsg) {
+      rpMsg.textContent = `retomando: ${trozo.yaHechos} de ${todos.length} NPs ya revisados`
+        + (trozo.reintentos ? ` · ${trozo.reintentos} a reintentar` : '');
+    }
     if (trozo.yaHechos) {
       verbose(`${cli.name}: retomo en ${pns.length} de ${todos.length} NPs`
         + (trozo.reintentos ? ` (+${trozo.reintentos} que fallaron)` : ''));
