@@ -3231,6 +3231,17 @@ const SpecMigrator = (() => {
   // (133 en vez de 26 899 — verificado), cada lote es de decenas, el checkpoint cae en una
   // frontera natural y un fallo afecta a UN cliente.
 
+  // Extrae el arreglo `nodes` de la respuesta sin depender del nombre del contenedor.
+  function firstNodes(data) {
+    if (!data || typeof data !== 'object') return [];
+    if (Array.isArray(data.nodes)) return data.nodes;
+    for (const k of Object.keys(data)) {
+      const v = data[k];
+      if (v && typeof v === 'object' && Array.isArray(v.nodes)) return v.nodes;
+    }
+    return [];
+  }
+
   const DUP_SWEEP_KEY = 'sa-specm-sweep-v1';
   function sweepLoad() {
     try { return JSON.parse(localStorage.getItem(DUP_SWEEP_KEY) || 'null'); } catch (_) { return null; }
@@ -3262,7 +3273,10 @@ const SpecMigrator = (() => {
         if (dupState.runId !== myRunId) return;
         const d = await api().query('AllCustomers',
           { first: PAGE, offset, orderBy: ['ID_ASC'], searchQuery: '' }, 'AllCustomers');
-        const nodes = (d && d.pagedData && d.pagedData.nodes) || (d && d.allCustomers && d.allCustomers.nodes) || [];
+        // El contenedor varía entre ops (pagedData / allCustomers / …). En vez de adivinarlo,
+        // se toma el primer objeto con `nodes` que traiga la respuesta: si Steelhead lo renombra,
+        // el barrido sigue vivo en lugar de reportar "no hay clientes" y no hacer nada.
+        const nodes = firstNodes(d);
         for (const c of nodes) if (c && c.id != null) clientes.push({ id: c.id, name: c.name || ('#' + c.id) });
         dupSetBody(`<div class="dup-progress">Cargando clientes… ${clientes.length}</div>`);
         if (nodes.length < PAGE) break;

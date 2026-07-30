@@ -63,3 +63,15 @@ test('config: el barrido autónomo está cableado con fn', () => {
   assert.ok(act, 'falta la acción sweep-forced-node');
   assert.equal(act.fn, 'SpecMigrator.sweepAllCustomers');
 });
+
+test('el barrido no adivina el contenedor de la respuesta de clientes', () => {
+  const src = require('node:fs').readFileSync(
+    require('node:path').join(__dirname, '..', '..', 'remote', 'scripts', 'spec-migrator.js'), 'utf8');
+  assert.match(src, /function firstNodes\(/,
+    'debe existir un extractor genérico de nodes');
+  const i = src.indexOf("api().query('AllCustomers'");
+  assert.ok(i > 0);
+  const bloque = src.slice(i, i + 500);
+  assert.ok(bloque.includes('firstNodes('),
+    'AllCustomers debe usar firstNodes, no un contenedor fijo');
+});
