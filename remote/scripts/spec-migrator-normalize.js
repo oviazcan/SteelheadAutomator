@@ -165,6 +165,9 @@
     return {
       archivados: (a.archivados || 0) + (d.archivados || 0),
       repuestos: (a.repuestos || 0) + (d.repuestos || 0),
+      // Campos que el ERP rechazó reponer porque ya tenían su fila viva. Se llevan aparte
+      // para que "reparados" signifique daño realmente corregido y no intentos.
+      yaEstaban: (a.yaEstaban || 0) + (d.yaEstaban || 0),
       errores: (a.errores || 0) + (d.errores || 0),
       clientes: (a.clientes || 0) + 1
     };
@@ -194,7 +197,17 @@
     const rows = Array.isArray(filas) ? filas.filter(Boolean) : [];
     const porCampo = new Map();
     for (const f of rows) {
-      const k = f.fieldId + '|' + f.sfsId;
+      // Se agrupa por specFieldId A SECAS — es el criterio que aplica el ERP (regla 1.4.38:
+      // "1 fila viva por SpecField"), no por (campo, specFieldSpec).
+      //
+      // POR QUÉ IMPORTA (2026-07-30): un mismo campo puede venir de DOS specs del NP. Ej. real:
+      // Adherencia (15820) del NP 73449-553-04 vive en sfs=150436 (Níquel, ACTIVO) y en
+      // sfs=106116 (Estaño, archivado). Agrupando por (campo, sfs), el bucket del Estaño se veía
+      // "sin activo" y proponía reponer — pero el campo YA estaba cubierto. El ERP rechazaba esa
+      // reposición con 23P01, así que no se corrompió nada; lo que se inflaba era el CONTADOR,
+      // porque el apply cuenta 'duplicate' como reparado. Es el mismo error de agrupación que
+      // hizo que la primera validación reportara 51 campos rotos donde había cero.
+      const k = String(f.fieldId);
       if (!porCampo.has(k)) porCampo.set(k, { fieldId: f.fieldId, sfsId: f.sfsId, act: 0, arch: [] });
       const e = porCampo.get(k);
       if (!f.archivedAt) { e.act++; continue; }
