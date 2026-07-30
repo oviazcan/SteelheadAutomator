@@ -49,6 +49,7 @@ const SurtidoGuard = (() => {
   let stationLineIndex = {};   // stationId → 'T204' (de AllStations)
   let lineCounts = null;       // { byLine, lines, scheduledOrders, unknownStationIds }
   let lastScheduleData = null; // último GetRelatedScheduleData.data (para recontar líneas)
+  let seenLines = [];          // líneas vistas en ESTE board (ACUMULATIVO — ver accumulateSeenLines)
 
   function isWorkboardPage() { return WB_PATH_RE.test(location.pathname); }
   function isEnabled() { return isEnforcementEnabled(); }
@@ -445,10 +446,13 @@ const SurtidoGuard = (() => {
     // 2026-07-30 y era un filtro inutilizable. Las que solo vio el DOM van SIN número: dar el
     // conteo de lo montado como si fuera el total sería mentir justo en el dato que se usa
     // para decidir.
+    // seenLines es ACUMULATIVO y esa es la parte que importa: al esconder tarjetas, virtuoso
+    // desmonta las de otras líneas, así que un catálogo hecho con lo montado AHORA se reduciría
+    // a la línea ya elegida y no habría forma de saltar a otra sin quitar el filtro (bug
+    // reportado en vivo 2026-07-30). Se limpia en el teardown, no antes.
     const cards = readMountedCards();
-    const domLines = [];
-    cards.forEach((c) => c.lines.forEach((l) => domLines.push(l)));
-    const catalog = FilterCore().mergeLineCatalog(lineCounts, domLines);
+    seenLines = FilterCore().accumulateSeenLines(seenLines, cards);
+    const catalog = FilterCore().mergeLineCatalog(lineCounts, seenLines);
     const lines = catalog.lines;
     const sel = box.querySelector('#sa-sg-filter-sel');
     const wanted = ['', ...lines.map((c) => c + ':' + (catalog.byLine[c] != null ? catalog.byLine[c] : ''))].join('|');
@@ -580,6 +584,7 @@ const SurtidoGuard = (() => {
     stationLineIndex = {};
     lineCounts = null;
     lastScheduleData = null;
+    seenLines = [];
     document.querySelectorAll('[data-sa-sg-filtered]').forEach((el) => {
       delete el.dataset.saSgFiltered;
       el.style.display = ''; el.style.opacity = ''; el.style.filter = '';
@@ -612,6 +617,7 @@ const SurtidoGuard = (() => {
       accounts: Object.keys(accountNode).length,
       line: getSelectedLine(),
       lineCounts: lineCounts,
+      seenLines: seenLines,
       mountedCards: (() => { try { return readMountedCards().map((c) => c.lines); } catch (_) { return null; } })(),
       plan: (() => { try { return currentPlan(readMountedCards()); } catch (_) { return null; } })()
     })

@@ -141,6 +141,34 @@
     };
   }
 
+  // Acumula las líneas vistas en el board. El catálogo NO puede depender de lo que está
+  // montado AHORA.
+  //
+  // Por qué (bug reportado por el operador 2026-07-30): al esconder las tarjetas de otras
+  // líneas, react-virtuoso **las desmonta** — el scroll se encogió y salen del viewport. Si el
+  // dropdown se arma con las tarjetas montadas en ese instante, después de filtrar por T300 se
+  // queda SOLO con T300 y ya no puedes saltar a T204: tendrías que quitar el filtro primero.
+  // O sea, el propio filtro se comía su catálogo.
+  //
+  // Acumular es correcto además con la virtualización normal: al scrollear aparecen líneas
+  // nuevas y se SUMAN, nunca se pierden. Se limpia al salir del board (teardown).
+  function accumulateSeenLines(prevSeen, cards) {
+    const out = [];
+    const seen = {};
+    const push = function (code) {
+      if (typeof code !== 'string' || code === '') return;
+      const c = code.toUpperCase();
+      if (seen[c]) return;
+      seen[c] = true;
+      out.push(c);
+    };
+    (Array.isArray(prevSeen) ? prevSeen : []).forEach(push);
+    (Array.isArray(cards) ? cards : []).forEach(function (c) {
+      if (c && Array.isArray(c.lines)) c.lines.forEach(push);
+    });
+    return out.sort();
+  }
+
   const MAX_MOUNTED_DEFAULT = 200;
 
   // ¿Esta tarjeta se ve con el filtro puesto?
@@ -210,7 +238,7 @@
   const api = {
     LINE_CODE_RE, MAX_MOUNTED_DEFAULT,
     lineCodeFromStationText, linesFromScheduledRows,
-    buildStationLineIndex, buildLineCounts, mergeLineCatalog,
+    buildStationLineIndex, buildLineCounts, mergeLineCatalog, accumulateSeenLines,
     cardVisibleUnderFilter, planFilter
   };
   if (typeof window !== 'undefined') window.SurtidoGuardFilterCore = api;
