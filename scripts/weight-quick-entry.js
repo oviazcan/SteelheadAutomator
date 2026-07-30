@@ -366,14 +366,25 @@ const WeightQuickEntry = (() => {
     modal._saWqeLinePoll = null;
   }
 
-  // Re-DETECCIÓN del modal. Barato a propósito: dos querySelector por tick y sólo escanea
-  // si hay un diálogo abierto que todavía no lleva nuestro marcador.
+  // Re-DETECCIÓN del modal. Tiene que ser BARATO: corre cada segundo mientras el operador
+  // esté en la pantalla. Por eso NO reusa scanForReceiveView(), que barre los headings de
+  // TODO el documento (selector con [class*=...] sobre miles de nodos); aquí el barrido se
+  // acota a los diálogos abiertos que aún no llevan nuestro marcador — y casi siempre no
+  // hay ninguno, así que el tick se reduce a un querySelectorAll por atributo.
+  function detectTick() {
+    const dialogs = document.querySelectorAll('[role="dialog"]:not([data-sa-wqe-attached])');
+    if (!dialogs.length) return;
+    for (const dlg of dialogs) {
+      for (const el of dlg.querySelectorAll(HEADING_SELECTOR)) {
+        if (VIEW_REGEX.test((el.textContent || '').trim())) { onModalFound(dlg); return; }
+      }
+    }
+  }
+
   function startDetectPoll() {
     if (detectPollTimer) return;
     detectPollTimer = setInterval(() => {
-      if (document.querySelector('[data-sa-wqe-attached="true"]')) return;
-      if (!document.querySelector('[role="dialog"]')) return;
-      try { scanForReceiveView(); } catch (err) {
+      try { detectTick(); } catch (err) {
         console.warn(LOG_PREFIX, 'Error en el poll de detección:', err);
       }
     }, DETECT_POLL_MS);
