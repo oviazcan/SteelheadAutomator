@@ -101,3 +101,22 @@ test('AllCustomers se llama con las variables obligatorias', () => {
     assert.ok(bloque.includes(v), 'AllCustomers debe mandar ' + v);
   }
 });
+
+test('config: el reparador está cableado con fn', () => {
+  const app = cfg.apps.find(a => a.id === 'spec-migrator');
+  const act = app.actions.find(a => a.id === 'repair-archived');
+  assert.ok(act, 'falta la acción repair-archived');
+  assert.equal(act.fn, 'SpecMigrator.repairArchivedWithoutRestore');
+});
+
+test('los textos visibles del applet están en español, sin caracteres de otro alfabeto', () => {
+  // Se coló una palabra en cirílico al escribir un prompt. El texto que ve el operador es
+  // parte del producto: una errata así distrae y no debe llegar a producción.
+  const fs3 = require('node:fs'), path3 = require('node:path');
+  for (const f of ['spec-migrator.js', 'spec-migrator-normalize.js',
+                   'wo-spec-params.js', 'wo-spec-params-core.js']) {
+    const src = fs3.readFileSync(path3.join(__dirname, '..', '..', 'remote', 'scripts', f), 'utf8');
+    const raro = src.match(/[Ѐ-ӿ一-鿿؀-ۿ]/g);
+    assert.equal(raro, null, f + ' tiene caracteres de otro alfabeto: ' + (raro || []).slice(0,5).join(''));
+  }
+});

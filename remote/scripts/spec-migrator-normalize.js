@@ -171,6 +171,56 @@
   }
 
   /**
+   * REPARADOR: campos que quedaron sin parámetro activo porque se archivó y la reposición
+   * falló.
+   *
+   * Origen (2026-07-30): una corrida del apply en dos fases archivó ~21 000 parámetros y las
+   * reposiciones fallaron en masa contra un ERP que devolvía HTTP 500. Los datos no se
+   * perdieron —están archivados—, así que reponer el MISMO sfp deja el NP como debía quedar,
+   * y de paso sin nodo forzado, que era el objetivo.
+   *
+   * Tres candados:
+   *  · si el campo YA tiene un parámetro activo, no se toca (no duplica);
+   *  · solo mira archivados POSTERIORES al corte (no resucita archivados legítimos viejos);
+   *  · si los archivados recientes de un campo tienen valores DISTINTOS, no repone: elegir el
+   *    criterio de calidad no le toca a una herramienta.
+   *
+   * @param {Array<{id,archivedAt,processNodeId,paramId,paramName,fieldId,sfsId}>} filas
+   *        TODAS las filas (activas y archivadas) de un NP, ya aplanadas.
+   * @param {number} corteMs  epoch ms; solo cuentan los archivados desde aquí.
+   * @returns {Array<{specFieldId,specFieldParamId,paramName,processNodeId:null,sfsId}>}
+   */
+  function planRepairs(filas, corteMs) {
+    const rows = Array.isArray(filas) ? filas.filter(Boolean) : [];
+    const porCampo = new Map();
+    for (const f of rows) {
+      const k = f.fieldId + '|' + f.sfsId;
+      if (!porCampo.has(k)) porCampo.set(k, { fieldId: f.fieldId, sfsId: f.sfsId, act: 0, arch: [] });
+      const e = porCampo.get(k);
+      if (!f.archivedAt) { e.act++; continue; }
+      const t = Date.parse(f.archivedAt);
+      if (isFinite(t) && t >= corteMs) e.arch.push({ t, paramId: f.paramId, paramName: f.paramName });
+    }
+
+    const out = [];
+    for (const e of porCampo.values()) {
+      if (e.act > 0) continue;          // ya tiene parámetro: nada que reparar
+      if (!e.arch.length) continue;     // no lo tocó esta corrida
+      const nombres = new Set(e.arch.map(a => norm(a.paramName)));
+      if (nombres.size > 1) continue;   // valores distintos: no se decide solo
+      const ganador = e.arch.slice().sort((a, b) => b.t - a.t)[0];
+      out.push({
+        specFieldId: e.fieldId,
+        specFieldParamId: ganador.paramId,
+        paramName: ganador.paramName,
+        processNodeId: null,            // el objetivo: que quede SIN nodo
+        sfsId: e.sfsId
+      });
+    }
+    return out;
+  }
+
+  /**
    * Decide qué hacer con UN field "falso pendiente" de un PN.
    * @param {Array<{id, archivedAt, processNodeId, paramId, paramName}>} fieldRows
    *        TODAS las filas (activas y archivadas) del MISMO specFieldId en el PN.
@@ -221,7 +271,7 @@
   const api = { planFieldNormalization: planFieldNormalization, extractFieldRows: extractFieldRows,
                 planForcedNodeRelease: planForcedNodeRelease, planApplyUnits: planApplyUnits,
                 erpHealth: erpHealth, planCustomerSweep: planCustomerSweep,
-                mergeSweepTotals: mergeSweepTotals, norm: norm };
+                mergeSweepTotals: mergeSweepTotals, planRepairs: planRepairs, norm: norm };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (typeof window !== 'undefined') window.SpecMigratorNormalize = api;
 })();

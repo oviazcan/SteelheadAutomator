@@ -1117,6 +1117,15 @@
           "handler": "message",
           "message": "sweep-forced-node",
           "fn": "SpecMigrator.sweepAllCustomers"
+        },
+        {
+          "id": "repair-archived",
+          "label": "Reparar archivados sin reponer",
+          "sublabel": "Repone los parámetros que quedaron sin valor tras un apply fallido",
+          "icon": "🩹",
+          "handler": "message",
+          "message": "repair-archived",
+          "fn": "SpecMigrator.repairArchivedWithoutRestore"
         }
       ]
     },

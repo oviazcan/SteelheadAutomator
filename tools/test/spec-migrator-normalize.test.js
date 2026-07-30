@@ -337,3 +337,73 @@ test('mergeSweepTotals: acumula lo de cada cliente sin perder lo previo', () => 
   assert.equal(t.errores, 3);
   assert.equal(t.clientes, 3);
 });
+
+// ── Reparador de archivados sin reponer (2026-07-30) ────────────────────────
+// Una corrida del apply viejo archivó ~21 000 parámetros y las reposiciones fallaron en masa
+// contra un ERP que devolvía HTTP 500. Los datos NO se perdieron —están archivados— pero los
+// campos quedaron sin parámetro activo. Reponer el MISMO sfp deja el NP como debía quedar.
+
+const CORTE = Date.parse('2026-07-30T03:30:00Z');
+const mk = (id, archivedAt, processNodeId, paramId, paramName, fieldId, sfsId) => ({
+  id, archivedAt, processNodeId, paramId, paramName, fieldId, sfsId
+});
+
+test('planRepairs: campo sin activo y con archivado reciente → reponer ese sfp', () => {
+  const filas = [mk(1, '2026-07-30T03:40:00Z', 241753, 900, 'Sí o No', 15820, 500)];
+  const r = SMN.planRepairs(filas, CORTE);
+  assert.equal(r.length, 1);
+  assert.equal(r[0].specFieldId, 15820);
+  assert.equal(r[0].specFieldParamId, 900);
+  assert.equal(r[0].paramName, 'Sí o No');
+});
+
+test('planRepairs: si el campo YA tiene activo, no se toca', () => {
+  const filas = [
+    mk(1, '2026-07-30T03:40:00Z', 241753, 900, 'Sí o No', 15820, 500),
+    mk(2, null, null, 900, 'Sí o No', 15820, 500),      // repuesto correctamente
+  ];
+  assert.deepEqual(SMN.planRepairs(filas, CORTE), []);
+});
+
+test('planRepairs: un archivado VIEJO no se resucita', () => {
+  const filas = [mk(1, '2026-05-01T10:00:00Z', 241753, 900, 'Sí o No', 15820, 500)];
+  assert.deepEqual(SMN.planRepairs(filas, CORTE), []);
+});
+
+test('planRepairs: entre varios archivados recientes del mismo valor, toma el más reciente', () => {
+  const filas = [
+    mk(1, '2026-07-30T03:40:00Z', 241753, 900, 'Sí o No', 15820, 500),
+    mk(2, '2026-07-30T03:45:00Z', 241753, 901, 'Sí o No', 15820, 500),
+  ];
+  const r = SMN.planRepairs(filas, CORTE);
+  assert.equal(r.length, 1);
+  assert.equal(r[0].specFieldParamId, 901);
+});
+
+test('planRepairs: valores DISTINTOS entre los archivados → no se decide solo', () => {
+  const filas = [
+    mk(1, '2026-07-30T03:40:00Z', 241753, 900, '5 - 8 µm', 15630, 500),
+    mk(2, '2026-07-30T03:45:00Z', 241753, 901, '5 - 10 µm', 15630, 500),
+  ];
+  const r = SMN.planRepairs(filas, CORTE);
+  assert.equal(r.length, 0, 'elegir el valor no le toca al reparador');
+});
+
+test('planRepairs: campos distintos se reparan por separado', () => {
+  const filas = [
+    mk(1, '2026-07-30T03:40:00Z', 241753, 900, 'Sí o No', 15820, 500),
+    mk(2, '2026-07-30T03:40:00Z', 241753, 910, 'Elección', 28479, 501),
+  ];
+  assert.equal(SMN.planRepairs(filas, CORTE).length, 2);
+});
+
+test('planRepairs: sin filas no truena', () => {
+  assert.deepEqual(SMN.planRepairs([], CORTE), []);
+  assert.deepEqual(SMN.planRepairs(null, CORTE), []);
+});
+
+test('planRepairs: la reposición NUNCA lleva nodo forzado', () => {
+  const filas = [mk(1, '2026-07-30T03:40:00Z', 241753, 900, 'Sí o No', 15820, 500)];
+  const r = SMN.planRepairs(filas, CORTE);
+  assert.equal(r[0].processNodeId, null, 'el punto de todo esto es dejarlo sin nodo');
+});
