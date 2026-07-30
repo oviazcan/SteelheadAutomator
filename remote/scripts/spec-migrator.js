@@ -3570,10 +3570,31 @@ const SpecMigrator = (() => {
     }
 
     const ck = ckPrev;
-    const plan = SMNr.planCustomerSweep(clientes, ck);
-    if (ck && plan.yaHechos) {
+    const plan = SMNr.planRepairResume(clientes, ck);
+
+    // Los tres estados se resuelven ANTES de entrar al bucle. Si no, un plan sin pendientes
+    // cae al resumen final y repinta el error de la corrida anterior sin explicar nada.
+    if (plan.modo === 'completo') {
+      try { localStorage.removeItem(DUP_REPAIR_KEY); } catch (_) {}
+      dupSetBody(`<div class="dup-success">Los ${plan.yaHechos} clientes ya se revisaron y
+        ninguno quedó pendiente.<br><small>${plan.totales.repuestos} campos reparados en la
+        corrida anterior. El avance se limpió: si vuelves a abrir, empieza de cero.</small></div>`);
+      dupSetFooter('<button class="dup-btn" data-act="rp-x">Cerrar</button>');
+      dupState.panelEl.querySelector('[data-act=rp-x]')?.addEventListener('click', () => dupClosePanel());
+      return;
+    }
+
+    if (plan.modo === 'reintentar') {
+      if (!confirm('Los ' + plan.yaHechos + ' clientes ya se revisaron, pero ' + plan.fallidos
+        + ' fallaron.\n\nAceptar = REINTENTAR solo esos ' + plan.fallidos + '.'
+        + '\nCancelar = empezar de CERO con los ' + clientes.length + '.')) {
+        try { localStorage.removeItem(DUP_REPAIR_KEY); } catch (_) {}
+        return repairArchivedWithoutRestore();
+      }
+    } else if (plan.modo === 'reanudar') {
       if (!confirm('Reparación a medias: ' + plan.yaHechos + ' de ' + clientes.length
-        + ' clientes ya revisados (' + plan.totales.repuestos + ' repuestos).\n\n'
+        + ' clientes ya revisados (' + plan.totales.repuestos + ' reparados'
+        + (plan.fallidos ? ', ' + plan.fallidos + ' con fallo' : '') + ').\n\n'
         + 'Aceptar = REANUDAR.  Cancelar = empezar de CERO.')) {
         try { localStorage.removeItem(DUP_REPAIR_KEY); } catch (_) {}
         return repairArchivedWithoutRestore();
@@ -3581,7 +3602,11 @@ const SpecMigrator = (() => {
     }
 
     let totales = plan.totales;
+    // Al reintentar, los que fallaron dejan de contar como hechos: si esta vez pasan, el
+    // checkpoint queda limpio y el panel puede decir con verdad que ya no falta nada.
     const hechos = new Set(((ck && ck.done) || []).map(Number));
+    const fallidos = new Set(((ck && ck.fallidos) || []).map(Number));
+    if (plan.modo === 'reintentar') for (const c of plan.pendientes) hechos.delete(Number(c.id));
     const tiempos = [];
     let i = 0;
 
@@ -3617,14 +3642,20 @@ const SpecMigrator = (() => {
       try {
         const res = await repairOneCustomer(cli, myRunId, rpMsg, rpErp, tiempos, SMNr, vb, corteMs);
         totales = SMNr.mergeSweepTotals(totales, res);
+        // Pasó: si venía marcado como fallido, deja de estarlo.
+        if (res.errores) fallidos.add(Number(cli.id)); else fallidos.delete(Number(cli.id));
       } catch (e) {
         totales = SMNr.mergeSweepTotals(totales, { errores: 1 });
+        fallidos.add(Number(cli.id));
         vb('✗ ' + cli.name + ' → ' + String(e && e.message || e).slice(0, 60));
       }
       hechos.add(Number(cli.id));
       try {
+        // Se guarda QUIÉNES fallaron, no solo cuántos: sin los ids no hay forma de
+        // reintentar solo esos, y la corrida entera se vuelve la única unidad de reintento.
         localStorage.setItem(DUP_REPAIR_KEY, JSON.stringify({
-          done: [...hechos], totales, clientes, ts: new Date().toISOString() }));
+          done: [...hechos], fallidos: [...fallidos], totales, clientes,
+          ts: new Date().toISOString() }));
       } catch (_) {}
 
       const salud = SMNr.erpHealth(tiempos);
@@ -3639,11 +3670,17 @@ const SpecMigrator = (() => {
       ${interrumpido ? 'Reparación DETENIDA' : 'Reparación terminada'} — ${totales.clientes} clientes revisados<br>
       <b>${totales.repuestos}</b> campos reparados · ${totales.errores} errores
       ${totales.yaEstaban ? `<br><small>${totales.yaEstaban} campos ya tenían su parámetro: el ERP rechazó reponerlos (correcto).</small>` : ''}
-      ${interrumpido ? '<br><small>El avance quedó guardado: al reabrir te ofrece reanudar.</small>' : ''}
+      ${interrumpido ? '<br><small>El avance quedó guardado: al reabrir te ofrece reanudar.</small>'
+        : (fallidos.size ? `<br><small>${fallidos.size} clientes fallaron. Al reabrir te ofrece reintentar SOLO esos.</small>`
+                         : '')}
     </div>`);
     dupSetFooter('<button class="dup-btn" data-act="rp-close">Cerrar</button>');
     dupState.panelEl.querySelector('[data-act=rp-close]')?.addEventListener('click', () => dupClosePanel());
-    if (!interrumpido && !totales.errores) { try { localStorage.removeItem(DUP_REPAIR_KEY); } catch (_) {} }
+    // El avance se borra cuando ya no queda NADA que hacer. Antes se conservaba si hubo
+    // cualquier error, así que una corrida completa quedaba marcada "a medias" para siempre
+    // y reanudarla no hacía nada: el bucle salía vacío y el panel repintaba el error viejo.
+    // La condición correcta no es "sin errores", es "sin clientes fallidos por reintentar".
+    if (!interrumpido && !fallidos.size) { try { localStorage.removeItem(DUP_REPAIR_KEY); } catch (_) {} }
   }
 
   async function repairOneCustomer(cli, myRunId, rpMsg, rpErp, tiempos, SMNr, vb, corteMs) {

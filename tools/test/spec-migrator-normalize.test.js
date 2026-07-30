@@ -423,6 +423,58 @@ test('mergeSweepTotals: acumula yaEstaban aparte de repuestos', () => {
   assert.equal(t.clientes, 3);
 });
 
+// ── Reanudación del reparador: los tres estados ─────────────────────────────
+const CLIS = [{ id: 1, name: 'A' }, { id: 2, name: 'B' }, { id: 3, name: 'C' }];
+
+test('planRepairResume: REGRESIÓN — todo revisado y con fallos NO es "reanudar"', () => {
+  // El bug (2026-07-30): el checkpoint solo se borraba si la corrida terminaba sin errores,
+  // así que una corrida COMPLETA con fallos quedaba "a medias" para siempre. Al aceptar
+  // reanudar, la lista de pendientes salía vacía, el bucle no corría y el panel repintaba el
+  // resumen viejo en rojo: "me regresa al error anterior y se queda parado".
+  const ck = { done: [1, 2, 3], fallidos: [2], totales: { repuestos: 19898, errores: 11 } };
+  const p = SMN.planRepairResume(CLIS, ck);
+  assert.equal(p.modo, 'reintentar', 'debe ofrecer reintentar, no reanudar en vacío');
+  assert.deepEqual(p.pendientes.map(c => c.id), [2], 'solo el que falló');
+  assert.equal(p.fallidos, 1);
+});
+
+test('planRepairResume: todo revisado y sin fallos → completo, sin pendientes', () => {
+  const p = SMN.planRepairResume(CLIS, { done: [1, 2, 3], fallidos: [], totales: {} });
+  assert.equal(p.modo, 'completo');
+  assert.deepEqual(p.pendientes, []);
+});
+
+test('planRepairResume: quedan clientes sin ver → reanudar con los que faltan', () => {
+  const p = SMN.planRepairResume(CLIS, { done: [1], fallidos: [], totales: { repuestos: 7 } });
+  assert.equal(p.modo, 'reanudar');
+  assert.deepEqual(p.pendientes.map(c => c.id), [2, 3]);
+  assert.equal(p.totales.repuestos, 7, 'conserva lo acumulado');
+});
+
+test('planRepairResume: un fallo con clientes pendientes NO adelanta el reintento', () => {
+  // Primero hay que terminar de recorrer; reintentar antes dejaría clientes sin ver.
+  const p = SMN.planRepairResume(CLIS, { done: [1], fallidos: [1], totales: {} });
+  assert.equal(p.modo, 'reanudar');
+  assert.deepEqual(p.pendientes.map(c => c.id), [2, 3]);
+  assert.equal(p.fallidos, 1, 'pero el fallo sigue contado');
+});
+
+test('planRepairResume: sin checkpoint es una corrida nueva', () => {
+  for (const vacio of [null, undefined, {}, { done: [] }]) {
+    const p = SMN.planRepairResume(CLIS, vacio);
+    assert.equal(p.modo, 'nuevo');
+    assert.equal(p.pendientes.length, 3);
+  }
+});
+
+test('planRepairResume: un checkpoint viejo SIN campo fallidos no truena', () => {
+  // Los checkpoints escritos antes de este fix no traen la lista de fallidos. Sin ella no se
+  // puede saber quién falló, así que se da por completo y se limpia: es preferible a dejarlo
+  // atorado, y volver a correr desde cero siempre es seguro (reponer lo puesto da 23P01).
+  const p = SMN.planRepairResume(CLIS, { done: [1, 2, 3], totales: { errores: 11 } });
+  assert.equal(p.modo, 'completo');
+});
+
 test('planRepairs: campos distintos se reparan por separado', () => {
   const filas = [
     mk(1, '2026-07-30T03:40:00Z', 241753, 900, 'Sí o No', 15820, 500),
