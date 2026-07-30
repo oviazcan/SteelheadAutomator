@@ -475,6 +475,68 @@ test('planRepairResume: un checkpoint viejo SIN campo fallidos no truena', () =>
   assert.equal(p.modo, 'completo');
 });
 
+// ── Avance DENTRO de un cliente grande ──────────────────────────────────────
+// El checkpoint tenía al cliente como unidad mínima. SCHNEIDER ELECTRIC MEXICO tiene 17 716
+// NPs: a esa escala una corrida sin un solo error es prácticamente imposible, así que el
+// cliente quedaba fallido y el reintento volvía a empezar por el primero. Nunca terminaba.
+// Los NPs se piden con ID_DESC, así que "ya hecho" es exactamente id >= hastaId.
+const pnsDesc = (n, desde) => Array.from({ length: n }, (_, i) => ({ id: desde - i, name: 'PN' + (desde - i) }));
+
+test('planCustomerChunk: sin avance previo, procesa todos', () => {
+  const t = SMN.planCustomerChunk(pnsDesc(5, 100), null);
+  assert.equal(t.pendientes.length, 5);
+  assert.equal(t.yaHechos, 0);
+});
+
+test('planCustomerChunk: REGRESIÓN — retoma donde quedó, no desde el principio', () => {
+  // 17 716 NPs, se completaron hasta el id 9000: solo faltan los menores.
+  const todos = pnsDesc(17716, 20000);
+  const t = SMN.planCustomerChunk(todos, { hastaId: 9000, fallidos: [] });
+  assert.equal(t.pendientes.length, todos.filter(p => p.id < 9000).length);
+  assert.ok(t.pendientes.every(p => p.id < 9000), 'nada por encima del cursor');
+  assert.ok(t.yaHechos > 11000, 'el grueso ya no se repite');
+});
+
+test('planCustomerChunk: los NPs que fallaron se reintentan aunque estén sobre el cursor', () => {
+  const todos = pnsDesc(10, 100);           // ids 100..91
+  const t = SMN.planCustomerChunk(todos, { hastaId: 95, fallidos: [98, 97] });
+  const ids = t.pendientes.map(p => p.id).sort((a, b) => b - a);
+  assert.deepEqual(ids, [98, 97, 94, 93, 92, 91], 'los fallidos vuelven, el resto sigue hecho');
+  assert.equal(t.reintentos, 2);
+});
+
+test('planCustomerChunk: un NP nuevo (id mayor) queda fuera del reintento', () => {
+  // Nació después del daño: no necesita reparación, y meterlo desalinearía el cursor.
+  const todos = [{ id: 30000 }].concat(pnsDesc(5, 100));
+  const t = SMN.planCustomerChunk(todos, { hastaId: 98, fallidos: [] });
+  assert.ok(!t.pendientes.some(p => p.id === 30000));
+});
+
+test('planCustomerChunk: un cursor basura no esconde trabajo', () => {
+  for (const malo of [{ hastaId: null }, { hastaId: 'x' }, {}]) {
+    assert.equal(SMN.planCustomerChunk(pnsDesc(4, 50), malo).pendientes.length, 4);
+  }
+});
+
+test('avanzarCursor: toma el MENOR completado y nunca retrocede', () => {
+  assert.equal(SMN.avanzarCursor(null, [500, 480, 495]), 480);
+  assert.equal(SMN.avanzarCursor(480, [470, 475]), 470, 'avanza hacia abajo');
+  assert.equal(SMN.avanzarCursor(470, [900, 880]), 470, 'un id alto no lo hace retroceder');
+});
+
+test('avanzarCursor: sin completados conserva el cursor', () => {
+  assert.equal(SMN.avanzarCursor(300, []), 300);
+  assert.equal(SMN.avanzarCursor(null, []), null);
+});
+
+test('avanzarCursor: usa completados REALES, no el índice del bucle', () => {
+  // Con pool 3 hay NPs en vuelo al guardar. Si el cursor se tomara del índice, esos quedarían
+  // dados por hechos y su daño no se repararía nunca. Repetirlos no cuesta: reponer un
+  // parámetro ya puesto lo rechaza el ERP con 23P01.
+  assert.equal(SMN.avanzarCursor(null, [500, 498]), 498,
+    'el 499 sigue en vuelo: el cursor no lo rebasa');
+});
+
 test('planRepairs: campos distintos se reparan por separado', () => {
   const filas = [
     mk(1, '2026-07-30T03:40:00Z', 241753, 900, 'Sí o No', 15820, 500),
