@@ -119,15 +119,13 @@ búsqueda; lo que colgó la sesión fue el arnés de prueba, no el applet.
       los fixes de este applet y de `spec-migrator` commiteados pero sin publicar). Verificado
       en el código SERVIDO, no solo en el config: el core vivo define los 5 símbolos nuevos y
       el glue vivo los consume.
-- [ ] **Validar el ciclo end-to-end en vivo** (teclear → preview con desglose → Enter → chips).
-      **No se pudo cerrar en esta sesión: el `/graphql` seguía colgado del incidente de abajo**
-      — las llamadas SIN red respondían y las que tocaban red morían por timeout, que es
-      justamente cómo se distingue "pestaña muerta" de "sesión limitada".
-      **Sí confirmado en el navegador con el código deployado:** el core cargado ES el 0.3.0
-      (`SEARCH_UNIVERSES=[true,false]`, `MIN_QUERY_CHARS=2`, `MAX_TOTAL_TO_PAGE=600`) y el box
-      se monta. Y contra el servidor real ANTES de colgarlo: la unión de universos, los 20
-      T-125, la clasificación y que los chips se aplican. Falta solo el ciclo con red completo,
-      que se cierra con sesión fresca.
+- [x] **Ciclo end-to-end en vivo — CERRADO por el operador (2026-07-29, config 1.11.14):**
+      *«ya parece jalar el filtro»*. Durante la sesión no se pudo cerrar por automatización
+      porque el `/graphql` quedó colgado del incidente de abajo (las llamadas SIN red
+      respondían y las que tocaban red morían por timeout — así se distingue "pestaña muerta"
+      de "sesión limitada"); se verificó por partes: el core cargado en el navegador ES el
+      nuevo, el box se monta, y contra el servidor real la unión de universos, los 20 T-125,
+      la clasificación y que los chips se aplican.
 - [x] **Bundle iPad 0.6.10** — verificado EN EL ARTEFACTO (los 5 símbolos pasaron de 0 a
       presentes; `node --check` OK; `build-safari` 10/10) y sincronizado a `Resources/`.
       **Falta recompilar en Xcode** (el bundle es estático). En el iPad este fix pesa doble:
