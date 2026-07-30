@@ -1995,6 +1995,7 @@
       "scripts": [
         "scripts/steelhead-api.js",
         "scripts/surtido-guard-core.js",
+        "scripts/surtido-guard-filter-core.js",
         "scripts/surtido-guard.js"
       ],
       "requiredPermissions": [],

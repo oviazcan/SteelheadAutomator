@@ -33,6 +33,23 @@ const SurtidoGuard = (() => {
   let accountNode = {};                 // accountId -> {recipeNodeId, workOrderId} (vars de move-data)
   let lastModalCtx = null;              // últimas vars de WorkOrderMovePartsData (para la capa de modal)
 
+  // ── Capa 6: filtro por LÍNEA DESTINO (v0.3.0) ──
+  // Estado en `window` por la MISMA razón que el flag del candado (lección v0.1.1):
+  // injectAppScripts re-evalúa este IIFE en cada acción del popup, y un estado en el closure
+  // quedaría desincronizado del que leen los handlers ya montados.
+  // `null` = sin filtro. NO persiste entre recargas, por diseño: un filtro pegado que esconde
+  // trabajo hace creer que no hay pendientes.
+  if (window.__saSurtidoGuardLine === undefined) window.__saSurtidoGuardLine = null;
+  function getSelectedLine() { return window.__saSurtidoGuardLine || null; }
+  function setSelectedLine(v) { window.__saSurtidoGuardLine = v || null; }
+
+  const FilterCore = () => window.SurtidoGuardFilterCore;
+  const CARD_LINK_SEL = '[data-steelhead-component-id="WORKBOARD_PAGE_WORKBOARD_CARD_SALES_ORDER_LINK"]';
+
+  let stationLineIndex = {};   // stationId → 'T204' (de AllStations)
+  let lineCounts = null;       // { byLine, lines, scheduledOrders, unknownStationIds }
+  let lastScheduleData = null; // último GetRelatedScheduleData.data (para recontar líneas)
+
   function isWorkboardPage() { return WB_PATH_RE.test(location.pathname); }
   function isEnabled() { return isEnforcementEnabled(); }
   function ctx() { return { scheduledAccountIds, accountNode, surtidoNodeIds }; }
@@ -63,7 +80,21 @@ const SurtidoGuard = (() => {
       // tenga un fondo detrás. Señal de advertencia: "esta pieza no se puede mover".
       '.sa-sg-orange{background:#fdd9a8 !important;}',
       '.sa-sg-msg{background:#3a1d1d;color:#f3c2c2;border:1px solid #6b2b2b;border-radius:8px;',
-      'padding:10px 12px;margin:10px 0;font-size:13px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}'
+      'padding:10px 12px;margin:10px 0;font-size:13px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}',
+      // Box del filtro por línea destino (capa 6). DARK MODE deliberado: debe distinguirse a
+      // simple vista del filtro NATIVO de estación de SH, que responde OTRA pregunta (dónde
+      // está PARADA la pieza, no a dónde va). Confundirlos surte material a la línea equivocada.
+      '.sa-sg-filter{display:flex;align-items:center;gap:8px;background:#1c2430;color:#e6e9ee;',
+      'border:1px solid #2b3645;border-radius:10px;padding:8px 12px;margin:0 10px;',
+      'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:13px;}',
+      '.sa-sg-filter label{font-weight:600;white-space:nowrap;}',
+      '.sa-sg-filter select{background:#141a23;color:#e6e9ee;border:1px solid #2b3645;',
+      'border-radius:6px;padding:5px 8px;font-size:13px;font-family:inherit;}',
+      '.sa-sg-filter .sa-sg-count{color:#9aa7b8;white-space:nowrap;}',
+      '.sa-sg-filter .sa-sg-count.sa-sg-warn{color:#f0b429;}',
+      '.sa-sg-filter button{background:transparent;color:#9aa7b8;border:1px solid #2b3645;',
+      'border-radius:6px;padding:4px 8px;cursor:pointer;font-family:inherit;font-size:12px;}',
+      '.sa-sg-filter button:hover{color:#e6e9ee;border-color:#13a36f;}'
     ].join('');
     const s = document.createElement('style');
     s.id = 'sa-sg-style';
@@ -122,7 +153,21 @@ const SurtidoGuard = (() => {
         try { resp.clone().json().then((j) => {
           if (j && j.data) { scheduledAccountIds = Core().buildScheduledAccountSet(j.data);
             console.log('[SA] SurtidoGuard: programadas =', scheduledAccountIds.size, 'accounts');
+            // El MISMO response trae el stationId de cada tarea → alimenta el filtro por
+            // línea destino sin una consulta extra (capa 6).
+            lastScheduleData = j.data;
+            try { recomputeLineCounts(); } catch (_) {}
             scheduleDecorate(); scheduleModalGuard(); }
+        }).catch(() => {}); } catch (_) {}
+      }
+      // Catálogo de estaciones → índice stationId→línea. Si el front ya lo pide, sale gratis.
+      if (op === 'AllStations') {
+        try { resp.clone().json().then((j) => {
+          const core = FilterCore();
+          if (!core || !j) return;
+          stationLineIndex = core.buildStationLineIndex(j);
+          recomputeLineCounts();
+          scheduleDecorate();
         }).catch(() => {}); } catch (_) {}
       }
       if (op === Core().BOARD_RECIPENODES_OP) {
@@ -232,6 +277,214 @@ const SurtidoGuard = (() => {
     });
   }
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // Capa 6 — Filtro por LÍNEA DESTINO
+  // ══════════════════════════════════════════════════════════════════════════
+  // Tarjetas MONTADAS con su set de líneas destino. El nodo que se esconde es el item de
+  // react-virtuoso ([data-item-index]): ocultarlo hace que virtuoso re-mida y encoja el scroll
+  // sin dejar huecos (medido 2026-07-29: scrollHeight 1034→524, rects contiguos).
+  // La línea sale de la celda td[1] ("at T300-CE03-002 …") de la tabla que sigue a
+  // "Tareas Programadas:", NUNCA del textContent (que trae "Proceso: T400 …", otro código).
+  function readMountedCards() {
+    const core = FilterCore();
+    if (!core) return [];
+    const out = [];
+    document.querySelectorAll(CARD_LINK_SEL).forEach((link) => {
+      const item = link.closest('[data-item-index]');
+      if (!item) return;
+      const table = item.querySelector('table.MuiTable-root');
+      const rows = table
+        ? [...table.querySelectorAll('tr')].map((tr) => [...tr.querySelectorAll('td')].map((td) => td.textContent))
+        : [];
+      out.push({ item: item, lines: core.linesFromScheduledRows(rows) });
+    });
+    return out;
+  }
+
+  function currentPlan(cards) {
+    const core = FilterCore();
+    if (!core) return null;
+    return core.planFilter({
+      cards: cards,
+      selectedLine: getSelectedLine(),
+      apiScheduledOrders: lineCounts ? lineCounts.scheduledOrders : 0,
+      mountedCount: document.querySelectorAll('[data-item-index]').length
+    });
+  }
+
+  // Aplica el plan al DOM. IDEMPOTENTE: el observer corre con subtree:true, así que una
+  // escritura que no verifique su estado previo se re-dispararía en bucle.
+  // NO desmonta nodos (display:none) → decorateCards sigue viendo TODAS las tarjetas y su
+  // árbitro del naranja (anyScheduled) no se altera.
+  function applyFilter() {
+    const core = FilterCore();
+    if (!core) return null;
+    const cards = readMountedCards();
+    const plan = currentPlan(cards);
+    if (!plan) return null;
+    const sel = getSelectedLine();
+    cards.forEach(({ item, lines }) => {
+      const show = !plan.active || core.cardVisibleUnderFilter(lines, sel);
+      // Solo se toca lo que ESTE applet marcó, para no pelear con un display/opacity de SH.
+      const marked = item.dataset.saSgFiltered === '1';
+      if (!show && plan.effect === 'hide') {
+        if (!marked || item.style.display !== 'none') {
+          item.dataset.saSgFiltered = '1';
+          item.style.display = 'none';
+          item.style.opacity = '';
+          item.style.filter = '';
+        }
+      } else if (!show && plan.effect === 'dim') {
+        if (!marked || item.style.opacity !== '0.25') {
+          item.dataset.saSgFiltered = '1';
+          item.style.display = '';
+          item.style.opacity = '0.25';
+          item.style.filter = 'grayscale(1)';
+        }
+      } else if (marked) {
+        delete item.dataset.saSgFiltered;
+        item.style.display = '';
+        item.style.opacity = '';
+        item.style.filter = '';
+      }
+    });
+    return plan;
+  }
+
+  // Recalcula los conteos por línea cuando cambia cualquiera de sus dos insumos.
+  function recomputeLineCounts() {
+    const core = FilterCore();
+    if (!core || !lastScheduleData) return;
+    lineCounts = core.buildLineCounts(lastScheduleData, stationLineIndex);
+    if (lineCounts.unknownStationIds.length) {
+      console.warn('[SA] SurtidoGuard: estaciones sin código de línea', lineCounts.unknownStationIds);
+    }
+  }
+
+  // Si el front NO pidió AllStations, lo pedimos UNA vez (catálogo, ~775 estaciones).
+  // Una sola llamada por carga de board: el /graphql de la sesión se cuelga con ráfagas.
+  function ensureStationCatalog() {
+    if (window.__saSurtidoGuardStationsAsked) return;
+    window.__saSurtidoGuardStationsAsked = true;
+    const api = window.SteelheadAPI;
+    if (!api || typeof api.query !== 'function') return;
+    // query() devuelve result.data ya desenvuelto (steelhead-api.js:77).
+    api.query('AllStations', {}).then((data) => {
+      const core = FilterCore();
+      if (!core || !data) return;
+      stationLineIndex = core.buildStationLineIndex(data);
+      recomputeLineCounts();
+      scheduleDecorate();
+    }).catch(() => {});
+  }
+
+  // Barra de acciones del header del board. Sin data-steelhead-component-id en esa zona, el
+  // mejor anclaje es subir desde uno de sus botones (texto ES+EN) hasta el contenedor flex.
+  // Ese contenedor tiene overflow:visible (medido) → no hace falta position:fixed.
+  const HEADER_BTN_RE = /NUEVA TARJETA|NEW CARD|ESCANEAR ETIQUETA|SCAN JOB TAG/i;
+  function findHeaderBar() {
+    const btns = [...document.querySelectorAll('button')];
+    for (const b of btns) {
+      if (!HEADER_BTN_RE.test(b.textContent || '')) continue;
+      let n = b.parentElement;
+      for (let i = 0; i < 4 && n; i++) {
+        if (getComputedStyle(n).display === 'flex' && n.children.length >= 3) return n;
+        n = n.parentElement;
+      }
+    }
+    return null;
+  }
+
+  function onFilterChanged() {
+    try { applyFilter(); renderFilterBox(); } catch (_) {}
+  }
+
+  // Pinta/actualiza el box. IDEMPOTENTE: reusa el nodo si ya existe y solo reescribe lo que
+  // cambió (recrearlo re-dispararía el observer con subtree:true en bucle).
+  function renderFilterBox() {
+    if (!isWorkboardPage()) return;
+    const core = FilterCore();
+    if (!core) return;
+    const bar = findHeaderBar();
+    if (!bar) return;
+
+    let box = document.getElementById('sa-sg-filter');
+    if (!box) {
+      injectStyles();
+      box = document.createElement('div');
+      box.id = 'sa-sg-filter';
+      box.className = 'sa-sg-filter';
+      const label = document.createElement('label');
+      label.textContent = '🔒 → Línea destino:';   // la flecha lo distingue del filtro NATIVO
+      const sel = document.createElement('select');
+      sel.id = 'sa-sg-filter-sel';
+      sel.addEventListener('change', () => { setSelectedLine(sel.value || null); onFilterChanged(); });
+      const count = document.createElement('span');
+      count.id = 'sa-sg-filter-count';
+      count.className = 'sa-sg-count';
+      const clear = document.createElement('button');
+      clear.id = 'sa-sg-filter-clear';
+      clear.textContent = '✕';
+      clear.title = 'Quitar el filtro de línea destino';
+      clear.addEventListener('click', () => {
+        setSelectedLine(null);
+        const s = document.getElementById('sa-sg-filter-sel');
+        if (s) s.value = '';
+        onFilterChanged();
+      });
+      box.append(label, sel, count, clear);
+      bar.appendChild(box);
+    } else if (box.parentElement !== bar) {
+      bar.appendChild(box);            // React repintó el header → recolocar, no recrear
+    }
+
+    // Opciones: "Todas" + una por línea del board, con su conteo de ÓRDENES (de la API).
+    const sel = box.querySelector('#sa-sg-filter-sel');
+    const lines = (lineCounts && lineCounts.lines) || [];
+    const wanted = ['', ...lines].join('|');
+    if (sel.dataset.saOpts !== wanted) {
+      sel.dataset.saOpts = wanted;
+      sel.textContent = '';
+      const all = document.createElement('option');
+      all.value = '';
+      all.textContent = 'Todas';
+      sel.appendChild(all);
+      lines.forEach((code) => {
+        const o = document.createElement('option');
+        o.value = code;
+        o.textContent = code + ' (' + lineCounts.byLine[code] + ')';
+        sel.appendChild(o);
+      });
+    }
+    const cur = getSelectedLine() || '';
+    if (sel.value !== cur) sel.value = cur;
+
+    // Contador SIEMPRE a la vista con filtro activo, con el desglose de por qué falta gente.
+    // Sin esto un board recortado se lee como "no hay trabajo" (lección batch-name-filter).
+    const plan = currentPlan(readMountedCards());
+    const count = box.querySelector('#sa-sg-filter-count');
+    let txt = '', warn = false;
+    if (!plan) {
+      txt = '';
+    } else if (!plan.active && plan.reason === 'dom-signal-broken') {
+      txt = '⚠️ no pude leer la línea de las tarjetas — filtro apagado';
+      warn = true;
+    } else if (!plan.active) {
+      txt = lines.length
+        ? (lines.length + (lines.length === 1 ? ' línea' : ' líneas') + ' en el board')
+        : 'sin órdenes programadas';
+    } else {
+      const partes = [plan.visible + (plan.visible === 1 ? ' visible' : ' visibles')];
+      if (plan.hiddenUnscheduled) partes.push(plan.hiddenUnscheduled + ' sin programar ocultas');
+      if (plan.hiddenOtherLine) partes.push(plan.hiddenOtherLine + ' de otras líneas');
+      if (plan.effect === 'dim') { partes.push('(atenuadas: demasiadas tarjetas)'); warn = true; }
+      txt = partes.join(' · ');
+    }
+    if (count.textContent !== txt) count.textContent = txt;
+    const cls = 'sa-sg-count' + (warn ? ' sa-sg-warn' : '');
+    if (count.className !== cls) count.className = cls;
+  }
+
   // ── Scheduling de trabajo del DOM (debounced, idle) ──
   let decoTimer = null, guardTimer = null;
   // Coalesce por FRAME (rAF) en vez de 200ms: al desplazar, la tarjeta nace blanca y se pinta
@@ -240,7 +493,13 @@ const SurtidoGuard = (() => {
   function scheduleDecorate() {
     if (decoTimer) return;
     const raf = window.requestAnimationFrame || ((cb) => setTimeout(cb, 16));
-    decoTimer = raf(() => { decoTimer = null; try { decorateCards(); } catch (_) {} });
+    decoTimer = raf(() => {
+      decoTimer = null;
+      try { decorateCards(); } catch (_) {}
+      // El filtro va en su PROPIO try/catch: es comodidad, no puede tumbar el naranja ni el
+      // candado si algo del DOM cambia bajo sus pies.
+      try { applyFilter(); renderFilterBox(); } catch (_) {}
+    });
   }
   function scheduleModalGuard() {
     if (guardTimer) return;
@@ -304,6 +563,17 @@ const SurtidoGuard = (() => {
     surtidoNodeIds = new Set();
     accountNode = {};
     lastModalCtx = null;
+    // Capa 6: suelta el estado del filtro y DESHACE lo que escondió. Salir del board con
+    // tarjetas ocultas dejaría el DOM mintiendo si React reusa los nodos.
+    setSelectedLine(null);
+    stationLineIndex = {};
+    lineCounts = null;
+    lastScheduleData = null;
+    document.querySelectorAll('[data-sa-sg-filtered]').forEach((el) => {
+      delete el.dataset.saSgFiltered;
+      el.style.display = ''; el.style.opacity = ''; el.style.filter = '';
+    });
+    const box = document.getElementById('sa-sg-filter'); if (box) box.remove();
     const t = document.getElementById('sa-sg-toast'); if (t) t.remove();
   }
 
@@ -316,12 +586,24 @@ const SurtidoGuard = (() => {
     injectStyles();
     observeDom();
     kickDecorate();                // pinta el naranja ya, sin esperar al primer MutationObserver
+    try { ensureStationCatalog(); } catch (_) {}   // capa 6: catálogo de líneas del dropdown
     console.log('[SA] SurtidoGuard activo en', location.pathname);
   }
 
   return {
     init, isEnabled, toggleFromPopup,
-    _getState: () => ({ enforcementEnabled: isEnforcementEnabled(), scheduled: [...scheduledAccountIds], surtido: [...surtidoNodeIds], accounts: Object.keys(accountNode).length })
+    // Capa 6 expuesta para operar/depurar el filtro desde la consola en la validación en vivo.
+    setLine: (code) => { setSelectedLine(code); onFilterChanged(); return getSelectedLine(); },
+    _getState: () => ({
+      enforcementEnabled: isEnforcementEnabled(),
+      scheduled: [...scheduledAccountIds],
+      surtido: [...surtidoNodeIds],
+      accounts: Object.keys(accountNode).length,
+      line: getSelectedLine(),
+      lineCounts: lineCounts,
+      mountedCards: (() => { try { return readMountedCards().map((c) => c.lines); } catch (_) { return null; } })(),
+      plan: (() => { try { return currentPlan(readMountedCards()); } catch (_) { return null; } })()
+    })
   };
 })();
 
