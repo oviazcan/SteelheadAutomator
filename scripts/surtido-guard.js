@@ -51,6 +51,9 @@ const SurtidoGuard = (() => {
   let lastScheduleData = null; // último GetRelatedScheduleData.data (para recontar líneas)
   let seenLines = [];          // líneas vistas en ESTE board (ACUMULATIVO — ver accumulateSeenLines)
   let boardLines = [];         // líneas del board según la API (COMPLETO, no depende de lo montado)
+  // 'idle' (aún no se pidió) | 'loading' | 'ready' | 'error'. Alimenta el indicador animado:
+  // mientras no sea 'ready', el dropdown está INCOMPLETO y hay que decirlo.
+  let boardCatalogState = 'idle';
 
   function isWorkboardPage() { return WB_PATH_RE.test(location.pathname); }
   function isEnabled() { return isEnforcementEnabled(); }
@@ -96,7 +99,20 @@ const SurtidoGuard = (() => {
       '.sa-sg-filter .sa-sg-count.sa-sg-warn{color:#f0b429;}',
       '.sa-sg-filter button{background:transparent;color:#9aa7b8;border:1px solid #2b3645;',
       'border-radius:6px;padding:4px 8px;cursor:pointer;font-family:inherit;font-size:12px;}',
-      '.sa-sg-filter button:hover{color:#e6e9ee;border-color:#13a36f;}'
+      '.sa-sg-filter button:hover{color:#e6e9ee;border-color:#13a36f;}',
+      // Indicador de "el catálogo aún no está completo". El catálogo bueno viene de la API y
+      // tarda (2 llamadas + ~4.6MB); mientras tanto el dropdown solo puede ofrecer las líneas
+      // de las tarjetas montadas. Sin este aviso el operador ve 3 líneas, las toma por todas y
+      // se confunde cuando después aparecen más — que es justo lo que pasó en piso.
+      // La animación es CSS pura: el DOM no muta mientras gira, así que NO re-dispara el
+      // MutationObserver (que corre con subtree:true).
+      '.sa-sg-filter .sa-sg-load{display:inline-flex;align-items:center;gap:6px;color:#9aa7b8;',
+      'white-space:nowrap;}',
+      '.sa-sg-filter .sa-sg-ring{display:inline-block;width:12px;height:12px;border:2px solid #2b3645;',
+      'border-top-color:#13a36f;border-radius:50%;animation:sa-sg-rot .8s linear infinite;}',
+      '@keyframes sa-sg-rot{to{transform:rotate(360deg);}}',
+      // Respeta a quien pidió menos movimiento en el sistema.
+      '@media (prefers-reduced-motion: reduce){.sa-sg-filter .sa-sg-ring{animation-duration:2.4s;}}'
     ].join('');
     const s = document.createElement('style');
     s.id = 'sa-sg-style';
@@ -383,10 +399,11 @@ const SurtidoGuard = (() => {
     const domainMatch = location.pathname.match(/\/Domains\/(\d+)/);
     if (!m || !domainMatch) return;
     window.__saSurtidoGuardBoardAsked = true;   // se latchea SOLO cuando de verdad se va a pedir
+    boardCatalogState = 'loading';
     const woIdInDomain = parseInt(m[1], 10);
     const domainId = parseInt(domainMatch[1], 10);
     const api = window.SteelheadAPI;
-    if (!api || typeof api.query !== 'function') return;
+    if (!api || typeof api.query !== 'function') { boardCatalogState = 'error'; return; }
     api.query('WorkOrder', { idInDomain: woIdInDomain }, 'WorkOrder').then((data) => {
       const wo = data && data.workOrderByIdInDomain;
       if (!wo || wo.id == null) return null;
@@ -396,9 +413,15 @@ const SurtidoGuard = (() => {
       if (!core || !raw) return;
       boardLines = core.linesFromBoardSchedule(raw);   // destila…
       raw = null;                                      // …y suelta los ~4.6MB
+      boardCatalogState = 'ready';
       console.log('[SA] SurtidoGuard: líneas del board (API) =', boardLines.join(', ') || '(ninguna)');
       scheduleDecorate();
-    }).catch(() => {});
+    }).catch(() => {
+      // Falla o hash rotado: el filtro SIGUE sirviendo con las líneas del DOM, pero se dice que
+      // el catálogo puede estar incompleto en vez de fingir que ya está todo.
+      boardCatalogState = 'error';
+      scheduleDecorate();
+    });
   }
 
   // Si el front NO pidió AllStations, lo pedimos UNA vez (catálogo, ~775 estaciones).
@@ -462,6 +485,16 @@ const SurtidoGuard = (() => {
       const count = document.createElement('span');
       count.id = 'sa-sg-filter-count';
       count.className = 'sa-sg-count';
+      // Indicador de catálogo incompleto: anillo animado + texto. Se crea una vez y solo se
+      // muestra/oculta, para no recrear nodos en cada sync (el observer corre con subtree:true).
+      const load = document.createElement('span');
+      load.id = 'sa-sg-filter-load';
+      load.className = 'sa-sg-load';
+      const ring = document.createElement('span');
+      ring.className = 'sa-sg-ring';
+      const loadTxt = document.createElement('span');
+      loadTxt.id = 'sa-sg-filter-loadtxt';
+      load.append(ring, loadTxt);
       const clear = document.createElement('button');
       clear.id = 'sa-sg-filter-clear';
       clear.textContent = '✕';
@@ -472,7 +505,7 @@ const SurtidoGuard = (() => {
         if (s) s.value = '';
         onFilterChanged();
       });
-      box.append(label, sel, count, clear);
+      box.append(label, sel, load, count, clear);
       bar.appendChild(box);
     } else if (box.parentElement !== bar) {
       bar.appendChild(box);            // React repintó el header → recolocar, no recrear
@@ -538,6 +571,28 @@ const SurtidoGuard = (() => {
     if (count.textContent !== txt) count.textContent = txt;
     const cls = 'sa-sg-count' + (warn ? ' sa-sg-warn' : '');
     if (count.className !== cls) count.className = cls;
+
+    // Indicador: mientras el catálogo de la API no esté 'ready', el dropdown está INCOMPLETO.
+    // El operador reportó justo esto: abría rápido, veía 3 líneas, las tomaba por todas, y
+    // segundos después aparecían las demás. Ahora se dice mientras pasa.
+    const load = box.querySelector('#sa-sg-filter-load');
+    const loadTxt = box.querySelector('#sa-sg-filter-loadtxt');
+    if (load && loadTxt) {
+      const st = boardCatalogState;
+      const mostrar = (st === 'idle' || st === 'loading' || st === 'error');
+      const t2 = (st === 'error') ? 'catálogo incompleto (solo lo visible)' : 'buscando líneas…';
+      if (loadTxt.textContent !== t2) loadTxt.textContent = t2;
+      const disp = mostrar ? 'inline-flex' : 'none';
+      if (load.style.display !== disp) load.style.display = disp;
+      // En 'error' el anillo deja de girar: no está cargando, terminó mal.
+      const ringEl = load.querySelector('.sa-sg-ring');
+      if (ringEl) {
+        const anim = (st === 'error') ? 'none' : '';
+        if (ringEl.style.animation !== anim) ringEl.style.animation = anim;
+        const bc = (st === 'error') ? '#f0b429' : '';
+        if (ringEl.style.borderTopColor !== bc) ringEl.style.borderTopColor = bc;
+      }
+    }
   }
 
   // ── Scheduling de trabajo del DOM (debounced, idle) ──
@@ -627,6 +682,7 @@ const SurtidoGuard = (() => {
     lastScheduleData = null;
     seenLines = [];
     boardLines = [];
+    boardCatalogState = 'idle';
     window.__saSurtidoGuardBoardAsked = false;
     document.querySelectorAll('[data-sa-sg-filtered]').forEach((el) => {
       delete el.dataset.saSgFiltered;
@@ -662,6 +718,7 @@ const SurtidoGuard = (() => {
       lineCounts: lineCounts,
       seenLines: seenLines,
       boardLines: boardLines,
+      boardCatalogState: boardCatalogState,
       mountedCards: (() => { try { return readMountedCards().map((c) => c.lines); } catch (_) { return null; } })(),
       plan: (() => { try { return currentPlan(readMountedCards()); } catch (_) { return null; } })()
     })
