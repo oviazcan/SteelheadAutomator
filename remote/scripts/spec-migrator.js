@@ -3613,12 +3613,18 @@ const SpecMigrator = (() => {
     for (const cli of plan.pendientes) {
       if (dupState.runId !== myRunId) break;
       i++;
-      const pct = ((i / plan.pendientes.length) * 100).toFixed(1);
+      // La barra arranca en el cliente ANTERIOR terminado y avanza DENTRO del actual.
+      // Ponderar por clientes engaña cuando sus tamaños no se parecen: SCHNEIDER ELECTRIC
+      // MEXICO tiene 17 716 NPs y otros tienen cien, así que "cliente 4 de 6" se quedaba
+      // clavado en 66% durante media hora. El avance real lo marca `rp-bar` desde el bucle
+      // de NPs — el único punto que sabe cuánto trabajo lleva de verdad.
+      const pctBase = ((i - 1) / plan.pendientes.length) * 100;
+      const pctPaso = (1 / plan.pendientes.length) * 100;
       dupSetBody(`<div class="dup-progress">
         <b>${dupEscHtml(cli.name)}</b> — cliente ${i} de ${plan.pendientes.length}
         ${plan.yaHechos ? `(+${plan.yaHechos} de antes)` : ''}
         <div data-ctrl="rp-msg">revisando…</div>
-        <div class="dup-bar"><div style="width:${pct}%"></div></div>
+        <div class="dup-bar"><div data-ctrl="rp-bar" style="width:${pctBase.toFixed(1)}%"></div></div>
         <div style="font-size:11px;color:#9ca3af;margin-top:6px">
           acumulado: <b style="color:#34d399">${totales.repuestos}</b> campos reparados
           ${totales.yaEstaban ? `· ${totales.yaEstaban} ya estaban bien` : ''}
@@ -3632,6 +3638,11 @@ const SpecMigrator = (() => {
       const rpMsg = dupState.panelEl.querySelector('[data-ctrl=rp-msg]');
       const rpErp = dupState.panelEl.querySelector('[data-ctrl=rp-erp]');
       const rpLog = dupState.panelEl.querySelector('[data-ctrl=rp-log]');
+      const rpBar = dupState.panelEl.querySelector('[data-ctrl=rp-bar]');
+      // El bucle de NPs reporta su fracción; aquí se traduce al tramo que ocupa este cliente.
+      const onAvance = (frac) => {
+        if (rpBar) rpBar.style.width = (pctBase + pctPaso * Math.min(1, Math.max(0, frac))).toFixed(1) + '%';
+      };
       const lineas = [];
       const vb = (t) => {
         lineas.push(t);
@@ -3640,7 +3651,7 @@ const SpecMigrator = (() => {
       };
 
       try {
-        const res = await repairOneCustomer(cli, myRunId, rpMsg, rpErp, tiempos, SMNr, vb, corteMs);
+        const res = await repairOneCustomer(cli, myRunId, rpMsg, rpErp, tiempos, SMNr, vb, corteMs, onAvance);
         totales = SMNr.mergeSweepTotals(totales, res);
         // Pasó: si venía marcado como fallido, deja de estarlo.
         if (res.errores) fallidos.add(Number(cli.id)); else fallidos.delete(Number(cli.id));
@@ -3683,7 +3694,18 @@ const SpecMigrator = (() => {
     if (!interrumpido && !fallidos.size) { try { localStorage.removeItem(DUP_REPAIR_KEY); } catch (_) {} }
   }
 
-  async function repairOneCustomer(cli, myRunId, rpMsg, rpErp, tiempos, SMNr, vb, corteMs) {
+  // Duración legible. Se redondea a la unidad de arriba: en una corrida de horas, los
+  // segundos son ruido y dan una falsa sensación de precisión.
+  function fmtDuracion(ms) {
+    const s = Math.round(ms / 1000);
+    if (s < 90) return s + ' s';
+    const m = Math.round(s / 60);
+    if (m < 90) return m + ' min';
+    const h = Math.floor(m / 60);
+    return h + ' h ' + (m % 60) + ' min';
+  }
+
+  async function repairOneCustomer(cli, myRunId, rpMsg, rpErp, tiempos, SMNr, vb, corteMs, onAvance) {
     const sleep = (ms) => new Promise(r => setTimeout(r, ms));
     const verbose = vb || (() => {});
     const out = { archivados: 0, repuestos: 0, yaEstaban: 0, errores: 0 };
@@ -3737,8 +3759,17 @@ const SpecMigrator = (() => {
         tiempos.push(Date.now() - t0);
         if (tiempos.length > 12) tiempos.shift();
         revisados++;
-        if (rpMsg && revisados % 10 === 0) {
-          rpMsg.textContent = `revisando ${revisados}/${pns.length} NPs · ${out.repuestos} reparados`;
+        if (revisados % 10 === 0) {
+          if (onAvance) onAvance(revisados / pns.length);
+          if (rpMsg) {
+            // Con clientes de 17 716 NPs, "cuánto falta" no se deduce de la barra: se estima
+            // con el ritmo medido. Las lecturas van en pool de 3, así que el tiempo por NP
+            // efectivo es la mediana entre 3.
+            const med = SMNr.erpHealth(tiempos).medianaMs || 0;
+            const restanMs = med ? ((pns.length - revisados) * med) / 3 : 0;
+            rpMsg.textContent = `revisando ${revisados}/${pns.length} NPs · ${out.repuestos} reparados`
+              + (restanMs > 20000 ? ` · faltan ~${fmtDuracion(restanMs)}` : '');
+          }
         }
         const salud = SMNr.erpHealth(tiempos);
         if (salud.degradado) {
