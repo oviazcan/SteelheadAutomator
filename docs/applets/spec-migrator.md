@@ -1,3 +1,61 @@
+# INCIDENTE 2026-07-29 — archivó 52 parámetros y repuso 0 (shape equivocado)
+
+**Alcance:** 13 NPs de GRUPO COLLADO, 52 parámetros. **Reparado y verificado el mismo día.**
+
+## Qué pasó
+Al liberar el nodo forzado, el apply archivaba la fila y debía reponerla sin nodo. Archivó las
+52 y repuso **ninguna**: los NPs quedaron con campos sin parámetro activo.
+
+## Causa: dos mutations con nombre casi igual y shapes INCOMPATIBLES
+
+```
+AddParamsToPartNumber                          → input.paramsToApply      (NP)
+AddParamsToPartNumberRecipeNodeSpecFieldParam  → input.parametersToAdd    (OT)
+```
+
+La reposición se escribió copiando el shape de la de OT. El server devolvió HTTP 400 en las 52:
+
+```
+Field "paramsToApply" of required type ... was not provided.
+Field "parametersToAdd" is not defined by type "ApplySpecFieldParamsToPartNumberInput".
+```
+
+Es la misma trampa que el `CLAUDE.md` ya documentaba para el auto-router (*"los shapes NO son
+intercambiables"*). **La advertencia en prosa no evitó la reincidencia** — por eso ahora hay
+dos tests que atan cada mutation a su campo (`spec-migrator-normalize.test.js`).
+
+## Por qué no se notó: el fallo se vio igual que el éxito
+El resumen se pinta **después** del bucle de reposición. Los 52 errores se acumularon en
+`errRows` sin que nada los mostrara, y el operador vio **el panel en blanco**. Un fallo total
+era indistinguible de un éxito silencioso.
+
+**Lección:** cuando una operación tiene dos fases y la segunda puede fallar entera, el reporte
+de la segunda no puede depender de que la función llegue al final.
+
+## El contador también mentía (mismo día, antes del apply)
+El pie decía `4 params a archivar` mientras el apply iba a escribir ~51,000: el contador usaba
+`params.length - 1` y el apply usaba `releasePlan.archiveIds`. **Un contador que no cuenta lo
+que el botón hace es peor que no tener contador.** Se unificaron en `dupGroupEffect()`, única
+fuente para stat, pie y confirmación.
+
+## Reparación
+Se reconstruyó el daño leyendo el ERP: campos sin parámetro activo cuyo archivado tenía la
+marca de tiempo del apply fallido. Se repuso cada uno con **su mismo `specFieldParamId`
+original** y `processNodeId: null`.
+
+No se usó *Asignar Params Pendientes* a propósito: ese asigna el **default del catálogo**, que
+puede no ser el valor que el NP tenía. La reparación fiel exige reponer el mismo parámetro.
+
+Verificación releyendo del ERP: **52 repuestos y activos · 0 sin parámetro · 0 con nodo
+forzado**.
+
+## Hallazgo útil que salió de la reparación
+`AllPartNumbers` acepta **`customerIdFilter: [id]`** server-side: 133 en vez de 26,899. Las
+variantes `customerIdsFilter` y `customerId` se **ignoran en silencio** y devuelven el dominio
+entero — el mismo patrón que `partNumberIdFilter` en las órdenes.
+
+---
+
 # `spec-migrator` (bundle "Ajuste Masivo de Specs")
 
 Bundle del menú **Ajuste Masivo de Specs** (icono 🔀, categoría "Números de Parte"). Concentra acciones que **ajustan o validan** specs ya aplicadas a PNs — distinto del bundle `spec-params-bulk` (Calidad), que **edita parámetros** vía XLSX.
