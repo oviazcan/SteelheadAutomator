@@ -42,6 +42,10 @@ test('el veredicto del candado NO depende del filtro (mismo input → mismo bloq
   };
   const ctx = {
     scheduledAccountIds: new Set([1001]),
+    // El "no programada" lo declara el mapa por cuenta (GetPartsInProcessNode4): el Set legado
+    // viene filtrado por estación y no puede negar. Sin este dato la cuenta sería DESCONOCIDA y
+    // el candado haría fail-safe, que no es lo que este test quiere comparar.
+    accountScheduled: new Map([[1001, true], [1002, false]]),
     accountNode: { 1002: { recipeNodeId: 7001, workOrderId: 5002 } },
     surtidoNodeIds: new Set([7001])
   };

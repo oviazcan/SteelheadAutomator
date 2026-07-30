@@ -1,0 +1,116 @@
+{
+  "_comment": "GetPartsInProcessNode4.data — shape REAL capturado 2026-07-30 del board /Domains/344/Workboards/10922 (Preparación de Surtido Almacén 1, Proquipa). Ids reales, sin datos sensibles. La 1ª entrada (wo 1913029, account 44812076, 105 piezas) es EXACTAMENTE la orden del reporte del operador: programada en T204-LI el 24/7 y aun así bloqueada por el candado. Los recipeNodeId 46836961/46837220/46068088 son nodos de surtido de ese board; 46768093 NO lo es (fuera de scope).",
+  "allPartLocations": {
+    "nodes": [
+      {
+        "workOrderId": 1913029,
+        "partCount": 105,
+        "recipeNodeId": 46836961,
+        "stationId": 13785,
+        "partsTransferAccountByAccountId": {
+          "id": 44812076,
+          "associatedScheduleTaskElements": {
+            "nodes": [
+              {
+                "recipeNodeId": 46836969,
+                "scheduleTaskByScheduleTaskId": {
+                  "id": 87752,
+                  "stationByStationId": {
+                    "id": 12098,
+                    "name": "T204-LI Plata y Estaño s/Cobre Colgado (16.1)",
+                    "__typename": "Station"
+                  },
+                  "expectedStartTime": "2026-07-24T23:00:00+00:00",
+                  "totalTimeMinutes": 450,
+                  "__typename": "ScheduleTask"
+                },
+                "__typename": "ScheduleTaskElement"
+              }
+            ],
+            "__typename": "ScheduleTaskElementsConnection"
+          },
+          "__typename": "PartsTransferAccount"
+        },
+        "__typename": "PartLocation"
+      },
+      {
+        "workOrderId": 1913035,
+        "partCount": 320,
+        "recipeNodeId": 46837220,
+        "stationId": 13785,
+        "partsTransferAccountByAccountId": {
+          "id": 45222065,
+          "associatedScheduleTaskElements": {
+            "nodes": [
+              {
+                "recipeNodeId": 46837228,
+                "scheduleTaskByScheduleTaskId": {
+                  "id": 87752,
+                  "stationByStationId": {
+                    "id": 12098,
+                    "name": "T204-LI Plata y Estaño s/Cobre Colgado (16.1)",
+                    "__typename": "Station"
+                  },
+                  "expectedStartTime": "2026-07-24T23:00:00+00:00",
+                  "totalTimeMinutes": 450,
+                  "__typename": "ScheduleTask"
+                },
+                "__typename": "ScheduleTaskElement"
+              }
+            ],
+            "__typename": "ScheduleTaskElementsConnection"
+          },
+          "__typename": "PartsTransferAccount"
+        },
+        "__typename": "PartLocation"
+      },
+      {
+        "workOrderId": 1884951,
+        "partCount": 5,
+        "recipeNodeId": 46068088,
+        "stationId": 13785,
+        "partsTransferAccountByAccountId": {
+          "id": 45101981,
+          "associatedScheduleTaskElements": {
+            "nodes": [],
+            "__typename": "ScheduleTaskElementsConnection"
+          },
+          "__typename": "PartsTransferAccount"
+        },
+        "__typename": "PartLocation"
+      },
+      {
+        "workOrderId": 1910575,
+        "partCount": 144000,
+        "recipeNodeId": 46768093,
+        "stationId": null,
+        "partsTransferAccountByAccountId": {
+          "id": 45320050,
+          "associatedScheduleTaskElements": {
+            "nodes": [
+              {
+                "recipeNodeId": 46768099,
+                "scheduleTaskByScheduleTaskId": {
+                  "id": 87883,
+                  "stationByStationId": {
+                    "id": 12100,
+                    "name": "T206-LI Estaño y Lavado Barril (18)",
+                    "__typename": "Station"
+                  },
+                  "expectedStartTime": "2026-07-27T13:30:00+00:00",
+                  "totalTimeMinutes": 130,
+                  "__typename": "ScheduleTask"
+                },
+                "__typename": "ScheduleTaskElement"
+              }
+            ],
+            "__typename": "ScheduleTaskElementsConnection"
+          },
+          "__typename": "PartsTransferAccount"
+        },
+        "__typename": "PartLocation"
+      }
+    ],
+    "__typename": "PartLocationsConnection"
+  }
+}

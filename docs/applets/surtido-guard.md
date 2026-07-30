@@ -1,6 +1,13 @@
 # Applet `surtido-guard` — Candado de Surtido Programado
 
-> Versión: **0.3.0** — ✅ **DEPLOYADO** (2026-07-30): config **1.11.32**, tag `v1.11.32`, firma
+> Versión: **0.4.0** — 🔴→✅ **FIX DEL FALSO POSITIVO** (2026-07-30, pendiente de deploy): el
+> candado bloqueaba órdenes que SÍ estaban programadas porque derivaba "programada" de
+> `GetRelatedScheduleData`, que el front pide **filtrada por las estaciones del workboard** y en un
+> board de almacén devuelve **vacío siempre**. La señal correcta viaja por cuenta en
+> `GetPartsInProcessNode4`, que el board ya pide. Medido en vivo: **0 vs 20 de 127** cuentas
+> programadas. Detalle abajo (§El falso positivo). Core **32/32**, suite **1433/1433**.
+>
+> Versión previa: **0.3.0** — ✅ **DEPLOYADO** (2026-07-30): config **1.11.32**, tag `v1.11.32`, firma
 > KMS verificada en vivo. Bundle Safari **0.6.16** construido y sincronizado a `Resources/` —
 > **falta recompilar en Xcode**. Core **55/55** + 4 de aislamiento + 5 de contrato de config.
 >
@@ -45,7 +52,9 @@ Glue en `surtido-guard.js`; lógica pura + parsers en `surtido-guard-core.js` (g
 El corazón es un **interceptor de `window.fetch`** (patrón `auto-router.js`) que cubre las dos rutas
 de movimiento con un solo punto de enforcement:
 
-1. **Mapa de programadas** — lee la respuesta de `GetRelatedScheduleData` → `Set<partsTransferAccountId>` programados.
+1. **Mapa de programadas** — `GetPartsInProcessNode4` → `Map<partsTransferAccountId, boolean>` (la
+   fuente que puede afirmar Y negar, desde 0.4.0) + `GetRelatedScheduleData` → `Set` de programados
+   que **sólo suma afirmaciones**. Sin dato para una cuenta ⇒ no se bloquea y se avisa en el modal.
 2. **Enforcement** — intercepta el **request** de `CreateManyPartsTransfersChecked`; si un transfer `type:"STEP"`
    sale de un nodo de surtido con account **no** programado → no lo reenvía, responde error GraphQL sintético
    (`{errors:[{message}]}`) + toast. **Cubre el modal MOVER y el drag silencioso** (ambos disparan esa mutación).
@@ -224,7 +233,8 @@ diferencia del header que forzó el `fixed` en `batch-name-filter`.
 | `CreateManyPartsTransfersChecked` | mutación | **El move.** `partsTransferEventsPayload.partsTransferEvents[].partsTransfers[].{fromAccountId, type:"STEP", toAccount:{recipeNodeId}}`. NO trae workOrderId. |
 | `WorkOrderMovePartsData` | query (modal) | `{workOrderId, fromRecipeNodeId, partsTransferAccountIds:[...]}` → puente account→{nodo,WO}. |
 | `MoveMultipleFromWorkboardData` | query (drag) | `{workOrderIds:[...], fromRecipeNodeIds:[...], partsTransferAccountIds:[...]}` pareados por índice. |
-| `GetRelatedScheduleData` | query (board) | `allSchedules.nodes[].validScheduleTasks.nodes[].scheduleTaskElementsByScheduleTaskId.nodes[].associatedPartsTransferAccounts.nodes[].{id, workOrderId}` → set de programados. |
+| `GetPartsInProcessNode4` | query (board) | **FUENTE BUENA de "programada" (desde 0.4.0).** `allPartLocations.nodes[].partsTransferAccountByAccountId.{id, associatedScheduleTaskElements.nodes[].scheduleTaskByScheduleTaskId{id, stationByStationId{id,name}, expectedStartTime, totalTimeMinutes}}`. Es la query que pinta las tarjetas ⇒ cero consultas extra. Se matchea por familia `GetPartsInProcessNode\d*`. |
+| `GetRelatedScheduleData` | query (board) | `allSchedules.nodes[].validScheduleTasks.nodes[].scheduleTaskElementsByScheduleTaskId.nodes[].associatedPartsTransferAccounts.nodes[].{id, workOrderId}`. **Sólo AFIRMA, nunca niega:** se pide con `{stationIds:[…]}` del workboard, así que en un board de almacén sale **vacía siempre** (no hay tareas en las estaciones del almacén; viven en las de línea). Usarla para negar era el bug de piso del 2026-07-30. |
 | `GetRelatedWorkboardData` | query (board) | `allRecipeNodes.nodes[].{id, name}` → nodo "Preparando Surtido en Almacén" (match normalizado por inclusión). |
 
 **Cruce:** `fromAccountId` de la mutación ↔ `id` de `associatedPartsTransferAccounts` (programado). Scope:
@@ -345,32 +355,82 @@ haría que **TODAS** las tarjetas se pinten (falsa alarma masiva "nada se puede 
 **Lección transferible:** antes de invertir cualquier marcado heurístico "resaltar lo bueno" → "resaltar lo
 malo", revisa el failure mode del anclaje: resaltar la excepción amplifica los falsos positivos del ancla.
 
+## 🔴→✅ El falso positivo: la fuente de "programada" estaba mal (v0.4.0, 2026-07-30)
+
+**Reporte del operador, con capturas:** *"no me deja mover lo que sí está programada"*. La tarjeta
+mostraba `Tareas Programadas: T204 (PLA)-CU/BR-VARIOS at T204-LI Plata y Estaño s/Cobre Colgado
+(16.1) · 24/7/2026 5:00 p.m.` y el modal, encima, `🔒 No se puede mover: la orden no está
+programada en producción`. WO **#15246**, 105 piezas, board **10922** (Almacén 1 Proquipa).
+
+### La causa, medida en vivo (no inferida)
+
+`GetRelatedScheduleData` —la fuente que el candado usaba desde su fase 1— **el front la pide
+filtrada por las estaciones del WORKBOARD**. Capturado en ese board, las dos llamadas que dispara:
+
+| Llamada | Variables | `validScheduleTasks` |
+|---|---|---|
+| 1 | `{stationIds: []}` | **0** |
+| 2 | `{stationIds: [13785, -1]}` | **0** |
+
+Y tenía que ser 0: **un board de ALMACÉN no tiene tareas programadas en sus propias estaciones.**
+Las tareas viven en estaciones de **LÍNEA** (`T204-LI`, `T206-LI`…), que es justo a donde el
+material va después. O sea, la query no fallaba: **respondía otra pregunta.**
+
+Con el set vacío, `evaluateMove` hacía `scheduled.has(accountId) === false` para **toda** cuenta en
+un nodo de surtido ⇒ bloqueaba **todas** las órdenes, programadas incluidas. El puente
+`accountNode` sólo se llena al abrir el modal de mover, y por eso el síntoma aparecía justo ahí.
+
+### La fuente correcta ya viajaba en el board, gratis
+
+`GetPartsInProcessNode4` —la query que pinta las tarjetas— trae la señal **por cuenta**:
+
+```
+allPartLocations.nodes[].partsTransferAccountByAccountId.{ id, associatedScheduleTaskElements }
+  └── nodes[].scheduleTaskByScheduleTaskId.{ id, stationByStationId{id,name}, expectedStartTime, totalTimeMinutes }
+```
+
+Medido en el mismo board, misma carga: **20 de 127 cuentas programadas** por esta vía vs **0** por
+la anterior. Y en la cuenta exacta del reporte (`44812076`, WO global 1913029): tarea `87752` en
+`T204-LI Plata y Estaño s/Cobre Colgado (16.1)`, `expectedStartTime 2026-07-24T23:00:00Z` — que es
+**el mismo 24/7 5:00 p.m. de la captura**. Cero consultas nuevas: el board ya la pedía.
+
+### Lo que cambió en la decisión
+
+1. **La fuente legada sólo puede AFIRMAR, nunca negar.** Viene filtrada por estación, así que la
+   ausencia de una cuenta ahí no prueba que no esté programada — sólo que no lo está *en esas
+   estaciones*. Negar con ella **era** el bug. Quien niega es el mapa por cuenta, que sí cubre a
+   todas las del board. (Misma forma que la cascada de `wo-spec-params`: sólo puede absolver.)
+2. **"No hay programadas" ≠ "no tengo el dato".** `evaluateMove` ya tenía el fail-safe por `found`,
+   pero el glue le pasaba `found: true` **hardcodeado**, así que nunca se activaba. Ahora una
+   cuenta sin estado conocido no se bloquea.
+3. **El fail-safe se dice, no se calla.** El nuevo modo de falla es silencioso (sin datos, el
+   candado no bloquea), así que el modal muestra una nota **ámbar**: *"El candado no pudo verificar
+   la programación de esta orden — no se bloquea, verifica a mano."* Distinta del rojo de bloqueo.
+   Es la lección de `price-confirm-guard` 0.1.5 aplicada al modo de falla nuevo.
+4. **`isPartsInProcessOp` matchea la familia `GetPartsInProcessNode\d*`**, no el literal `…Node4`:
+   si Steelhead sube la versión, un match exacto dejaría al candado sin fuente — y sin fuente no
+   bloquea, o sea se apagaría en silencio.
+5. **El árbitro del naranja usaba `scheduledAccountIds.size`**, que siempre era 0 en estos boards
+   ⇒ `isDomSignalBroken` nunca podía dispararse. Ahora cuenta las dos fuentes.
+
+### Lo que este bug corrige de la bitácora
+
+El pendiente 🔴 anterior decía que `GetRelatedScheduleData` **"no llega al interceptor"**. Es
+**falso**: llega (HTTP 200, sin errores) y se procesa — la prueba es que `lineCounts` dejaba de ser
+`null`, y eso sólo pasa si `lastScheduleData` se pobló. Lo que estaba mal era **la pregunta**, no
+el transporte. Su plan de acción ("que el candado pida la query él mismo") no habría servido:
+pedirla igual de filtrada habría devuelto lo mismo.
+
+También aclara la validación del 2026-07-22 ("una programada sí se mueve"): en un board de almacén
+el set está vacío **siempre**, así que ahí el candado no podía distinguir — lo que se verificó fue
+el bloqueo de una no-programada, que salía correcto por la razón equivocada.
+
+**Lección transferible:** cuando una fuente de datos devuelve vacío de forma consistente, antes de
+buscar por qué "no llega", revisa **con qué variables se está pidiendo**. Un filtro en la variable
+convierte "no hay" en una respuesta legítima a una pregunta que no era la tuya. Y para un candado,
+"no hay datos" nunca puede significar "prohibido".
+
 ## Pendientes
-
-### 🔴 PRIORITARIO — `scheduledAccountIds` salió VACÍO en un board de surtido real (2026-07-30)
-
-Medido al validar el filtro en `/Domains/344/Workboards/6234` ("Preparación de Surtido Almacén 5
-(Blanca)"): `_getState().scheduled.length === 0` **con el board cargado y con una tarjeta que sí
-muestra su tabla de `Tareas Programadas:`** (WO 12831 → T300). No es una carrera de inyección: se
-reprodujo **recargando por URL y navegando dentro de la SPA**, y en la misma sesión
-`GetRelatedWorkboardData` **sí** se capturó (`surtido` traía 4 nodos). O sea, en ese board
-`GetRelatedScheduleData` no llega al interceptor.
-
-**Por qué importa (razonamiento sobre el código, NO observado en vivo — no se intentó mover nada
-en producción):** con `scheduledAccountIds` vacío, en cuanto el operador abra el modal de mover
-—que es lo que llena `accountNode`— `evaluateMove` encontraría `info`, el nodo estaría en scope y
-`scheduled.has(accountId)` daría `false` ⇒ **bloquearía una orden legítimamente programada**. Es
-exactamente el riesgo de falso positivo que esta bitácora ya listaba como "el que hay que vigilar",
-y su síntoma es que el operador apaga el candado.
-
-Contra esto juega que el 2026-07-22 el operador validó que una programada **sí se mueve**, así que
-ahí el set no estaba vacío. Hipótesis a checar (sin confirmar): que aquél fuera **otro workboard**
-de surtido y que la query dependa del board.
-
-**Qué hacer:** (1) reproducir en el board donde se validó en julio; (2) si se confirma, el candado
-necesita **pedir la query él mismo** en vez de esperar a cazarla, o **fail-safe explícito**: si el
-set está vacío y el board sí es de surtido, no bloquear y avisar. Enlaza con la telemetría ya
-pendiente ("alerta cuando el set sale vacío en un board de surtido"), que deja de ser un nice-to-have.
 - **Filtro: los ENCABEZADOS DE GRUPO no se filtran (conocido, cosmético).** El board tiene items
   `[data-item-index]` que no son tarjetas sino headers del agrupador (`Scheduled | Total QTY: 2291`;
   3 de los 9 items montados). El filtro no los toca —correcto, son estructura— pero si un grupo
@@ -385,9 +445,19 @@ pendiente ("alerta cuando el set sale vacío en un board de surtido"), que deja 
 - **Validar en vivo el indicador de carga (1.11.32).** Es lo único de la capa 6 sin ver en piso: al
   recargar el board debe aparecer el anillo con «buscando líneas…» un par de segundos y luego el
   dropdown completo. Los otros tres fixes de catálogo ya los confirmó el operador.
+- **Cerrar el ciclo en vivo del fix 0.4.0**: en el board 10922, abrir el ⇄ de una orden con
+  `Tareas Programadas:` y confirmar que **NO** sale el mensaje rojo y que MOVER queda habilitado;
+  y en la que no las tiene, que sigue bloqueada. Núcleo validado con fixture real de ese board,
+  glue sin corrida real.
+- **Oportunidad (no hecha): el filtro por línea puede salir de la MISMA fuente.**
+  `associatedScheduleTaskElements[].scheduleTaskByScheduleTaskId.stationByStationId.name` trae
+  `"T204-LI Plata y Estaño s/Cobre Colgado (16.1)"` por cuenta ⇒ el catálogo de líneas se podría
+  armar de ahí y **quitar las 2 llamadas + ~4.6 MB** de `WorkOrderSchedule` (`ensureBoardLineCatalog`),
+  con la ventaja extra de que los conteos serían **de este board** y no del dominio entero. No se
+  tocó en 0.4.0 a propósito: es un cambio del filtro y éste era un deploy del candado.
 - **Riesgo permanente a vigilar en el candado: falsos positivos** (bloquear una programada) → el
-  operador apaga el toggle y se reporta. Hoy tiene un disparador concreto identificado: el
-  pendiente 🔴 de arriba.
+  operador apaga el toggle y se reporta. El disparador conocido quedó cerrado en 0.4.0; el nuevo
+  modo de falla es el opuesto (no bloquear sin datos), mitigado con la nota ámbar del modal.
 
 > **Cerrados (ya no son pendientes — se dejan anotados para que no vuelvan a la lista):**
 > **Validación en vivo del bloqueo** — hecha 2026-07-22, confirmada por el operador (sin falsos

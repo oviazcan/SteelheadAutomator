@@ -28,7 +28,13 @@ const SurtidoGuard = (() => {
   function isEnforcementEnabled() { return window.__saSurtidoGuardEnabled === true; }
   function setEnforcementEnabled(v) { window.__saSurtidoGuardEnabled = !!v; }
 
-  let scheduledAccountIds = new Set();  // partsTransferAccountId programados (GetRelatedScheduleData)
+  let scheduledAccountIds = new Set();  // programados según GetRelatedScheduleData — sólo AFIRMA (ver abajo)
+  // Fuente BUENA de "programada": accountId -> boolean, desde GetPartsInProcessNode4 (la query
+  // que el board ya pide para pintar las tarjetas). GetRelatedScheduleData viene filtrada por
+  // las stationIds del WORKBOARD y en un board de almacén devuelve SIEMPRE vacío —las tareas
+  // viven en estaciones de línea—, así que su Set no puede negar nada. Medido 2026-07-30 en el
+  // board 10922: 0 programadas por esa vía vs 20 de 127 por ésta.
+  let accountScheduled = new Map();
   let surtidoNodeIds = new Set();       // recipeNodeId del nodo de surtido (GetRelatedWorkboardData)
   let accountNode = {};                 // accountId -> {recipeNodeId, workOrderId} (vars de move-data)
   let lastModalCtx = null;              // últimas vars de WorkOrderMovePartsData (para la capa de modal)
@@ -57,7 +63,15 @@ const SurtidoGuard = (() => {
 
   function isWorkboardPage() { return WB_PATH_RE.test(location.pathname); }
   function isEnabled() { return isEnforcementEnabled(); }
-  function ctx() { return { scheduledAccountIds, accountNode, surtidoNodeIds }; }
+  function ctx() { return { scheduledAccountIds, accountScheduled, accountNode, surtidoNodeIds }; }
+  // Cuentas que SABEMOS programadas (cualquiera de las dos fuentes). Alimenta el árbitro del
+  // marcado naranja: con el conteo viejo (sólo el Set legado, que sale vacío) ese árbitro nunca
+  // se activaba.
+  function scheduledKnownCount() {
+    let n = scheduledAccountIds.size;
+    accountScheduled.forEach((v, k) => { if (v === true && !scheduledAccountIds.has(k)) n++; });
+    return n;
+  }
 
   // Entrada desde el popup (background llama window.SurtidoGuard.toggleFromPopup).
   function toggleFromPopup() {
@@ -86,6 +100,9 @@ const SurtidoGuard = (() => {
       '.sa-sg-orange{background:#fdd9a8 !important;}',
       '.sa-sg-msg{background:#3a1d1d;color:#f3c2c2;border:1px solid #6b2b2b;border-radius:8px;',
       'padding:10px 12px;margin:10px 0;font-size:13px;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;}',
+      // Ámbar = "no pude verificar", distinto del rojo = "está bloqueado". No se deja pasar en
+      // silencio: el operador tiene que saber que aquí el candado NO lo está cuidando.
+      '.sa-sg-msg.warn{background:#3a2f14;color:#f3dfae;border-color:#6b551f;}',
       // Box del filtro por línea destino (capa 6). DARK MODE deliberado: debe distinguirse a
       // simple vista del filtro NATIVO de estación de SH, que responde OTRA pregunta (dónde
       // está PARADA la pieza, no a dónde va). Confundirlos surte material a la línea equivocada.
@@ -178,6 +195,19 @@ const SurtidoGuard = (() => {
             scheduleDecorate(); scheduleModalGuard(); }
         }).catch(() => {}); } catch (_) {}
       }
+      // (c-bis) FUENTE BUENA de "programada", por cuenta. Es la query que el board ya dispara
+      // para pintar las tarjetas, así que no cuesta ninguna consulta extra. Llega por lotes →
+      // el mapa ACUMULA (el último dato de cada cuenta gana).
+      if (Core().isPartsInProcessOp(op)) {
+        try { resp.clone().json().then((j) => {
+          if (j && j.data) {
+            Core().buildAccountScheduleMap(j.data, accountScheduled);
+            console.log('[SA] SurtidoGuard: cuentas con estado de programación =', accountScheduled.size,
+                        '| programadas =', scheduledKnownCount());
+            scheduleDecorate(); scheduleModalGuard();
+          }
+        }).catch(() => {}); } catch (_) {}
+      }
       // Catálogo de estaciones → índice stationId→línea. Si el front ya lo pide, sale gratis.
       if (op === 'AllStations') {
         try { resp.clone().json().then((j) => {
@@ -209,12 +239,25 @@ const SurtidoGuard = (() => {
     return null;
   }
 
-  function modalShouldBlock() {
-    if (!isEnforcementEnabled() || !lastModalCtx) return false;
+  // Veredicto del modal: 'block' | 'unverified' | null.
+  // Mismo criterio que el interceptor (una sola fuente de verdad): sólo se bloquea con evidencia
+  // POSITIVA de que la cuenta no está programada. 'unverified' es el caso en que el candado se
+  // queda sin datos: no frena —eso pararía el piso— pero lo DICE, porque un candado que se apaga
+  // callado es peor que uno que no existe (lección price-confirm-guard 0.1.5).
+  function modalVerdict() {
+    if (!isEnforcementEnabled() || !lastModalCtx) return null;
+    if (!surtidoNodeIds.has(lastModalCtx.fromRecipeNodeId)) return null;
     const accs = lastModalCtx.partsTransferAccountIds || [];
-    const inSurtido = surtidoNodeIds.has(lastModalCtx.fromRecipeNodeId);
-    return inSurtido && accs.some((a) => !scheduledAccountIds.has(a));
+    const c = ctx();
+    let algunoSinDato = false;
+    for (const a of accs) {
+      const st = Core().resolveAccountSchedule(a, c);
+      if (!st.found) { algunoSinDato = true; continue; }
+      if (!st.programada) return 'block';
+    }
+    return algunoSinDato ? 'unverified' : null;
   }
+  function modalShouldBlock() { return modalVerdict() === 'block'; }
 
   function setBtnBlocked(btn, blocked) {
     if (blocked) {
@@ -235,7 +278,8 @@ const SurtidoGuard = (() => {
   function applyModalGuard() {
     const dialog = findMoveDialog();
     if (!dialog) return;
-    const blocked = modalShouldBlock();
+    const verdict = modalVerdict();
+    const blocked = verdict === 'block';
     dialog.querySelectorAll('button').forEach((b) => {
       const t = (b.textContent || '').trim().toLowerCase();
       if (t.indexOf('mover') === 0 || t.indexOf('imprimir y mover') === 0 ||
@@ -243,15 +287,24 @@ const SurtidoGuard = (() => {
         setBtnBlocked(b, blocked);
       }
     });
+    const texto = blocked
+      ? '🔒 No se puede mover: la orden no está programada en producción.'
+      : (verdict === 'unverified'
+          ? '⚠️ El candado no pudo verificar la programación de esta orden — no se bloquea, verifica a mano.'
+          : null);
     let msg = dialog.querySelector('#sa-sg-modal-msg');
-    if (blocked && !msg) {
-      msg = document.createElement('div');
-      msg.id = 'sa-sg-modal-msg';
-      msg.className = 'sa-sg-msg';
-      msg.textContent = '🔒 No se puede mover: la orden no está programada en producción.';
-      const body = dialog.querySelector('.MuiDialogContent-root') || dialog;
-      body.insertBefore(msg, body.firstChild);
-    } else if (!blocked && msg) {
+    if (texto) {
+      if (!msg) {
+        msg = document.createElement('div');
+        msg.id = 'sa-sg-modal-msg';
+        const body = dialog.querySelector('.MuiDialogContent-root') || dialog;
+        body.insertBefore(msg, body.firstChild);
+      }
+      // Idempotente: el observer corre con subtree:true, así que sólo se escribe lo que cambió.
+      const cls = 'sa-sg-msg' + (blocked ? '' : ' warn');
+      if (msg.className !== cls) msg.className = cls;
+      if (msg.textContent !== texto) msg.textContent = texto;
+    } else if (msg) {
       msg.remove();
     }
   }
@@ -288,7 +341,7 @@ const SurtidoGuard = (() => {
     if (!cards.length) return;   // sin tarjetas resueltas por component-id → fail-safe: no marcar
     // Pase 2: árbitro anti-falsa-alarma con el set de programadas de la API (GetRelatedScheduleData).
     const anyScheduled = cards.some((c) => c.isScheduled);
-    const domSignalBroken = core.isDomSignalBroken(anyScheduled, scheduledAccountIds.size);
+    const domSignalBroken = core.isDomSignalBroken(anyScheduled, scheduledKnownCount());
     cards.forEach(({ body, isScheduled }) => {
       body.classList.toggle('sa-sg-orange', core.shouldMarkNotMovable(isScheduled, domSignalBroken));
       body.classList.remove('sa-sg-green');   // limpia el verde legado si una versión previa lo dejó
@@ -671,6 +724,7 @@ const SurtidoGuard = (() => {
   function teardownOnLeave() {
     if (window.__saSurtidoGuardObs) { window.__saSurtidoGuardObs.disconnect(); window.__saSurtidoGuardObs = null; }
     scheduledAccountIds = new Set();
+    accountScheduled = new Map();
     surtidoNodeIds = new Set();
     accountNode = {};
     lastModalCtx = null;
@@ -712,6 +766,11 @@ const SurtidoGuard = (() => {
     _getState: () => ({
       enforcementEnabled: isEnforcementEnabled(),
       scheduled: [...scheduledAccountIds],
+      // Fuente buena: cuántas cuentas tienen estado conocido y cuántas están programadas.
+      // `accountsWithState === 0` es la señal de "el candado NO tiene datos" (no bloquea + avisa).
+      accountsWithState: accountScheduled.size,
+      scheduledKnown: scheduledKnownCount(),
+      hasEvidence: Core().hasScheduleEvidence(ctx()),
       surtido: [...surtidoNodeIds],
       accounts: Object.keys(accountNode).length,
       line: getSelectedLine(),
