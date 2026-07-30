@@ -1,6 +1,13 @@
 # Applet `surtido-guard` — Candado de Surtido Programado
 
-> Versión: **0.4.0** — 🔴→✅ **FIX DEL FALSO POSITIVO** (2026-07-30, pendiente de deploy): el
+> Versión: **0.4.0** — 🔴→✅ **FIX DEL FALSO POSITIVO**. ✅ **VIVO** config **1.11.36**, tag
+> `v1.11.36`, firma KMS verificada; bundle Safari **0.6.18** sincronizado a `Resources/` (falta
+> recompilar en Xcode). **Verificado en vivo en el board 10922 con el applet publicado:**
+> `accountsWithState 129 · scheduledKnown 20 · hasEvidence true` (antes: 0 / 0 / false), y el core
+> vivo sobre los datos reales da `block:false` para la cuenta del reporte (44812076, WO #15246,
+> programada en T204-LI), `block:true` para una no programada del mismo step, y `block:false`
+> (fail-safe) sin datos. Falta que el operador confirme el modal real (abrir el ⇄ de una orden
+> programada y ver que ya no sale el mensaje rojo). Detalle: el
 > candado bloqueaba órdenes que SÍ estaban programadas porque derivaba "programada" de
 > `GetRelatedScheduleData`, que el front pide **filtrada por las estaciones del workboard** y en un
 > board de almacén devuelve **vacío siempre**. La señal correcta viaja por cuenta en
@@ -445,10 +452,11 @@ convierte "no hay" en una respuesta legítima a una pregunta que no era la tuya.
 - **Validar en vivo el indicador de carga (1.11.32).** Es lo único de la capa 6 sin ver en piso: al
   recargar el board debe aparecer el anillo con «buscando líneas…» un par de segundos y luego el
   dropdown completo. Los otros tres fixes de catálogo ya los confirmó el operador.
-- **Cerrar el ciclo en vivo del fix 0.4.0**: en el board 10922, abrir el ⇄ de una orden con
-  `Tareas Programadas:` y confirmar que **NO** sale el mensaje rojo y que MOVER queda habilitado;
-  y en la que no las tiene, que sigue bloqueada. Núcleo validado con fixture real de ese board,
-  glue sin corrida real.
+- **Último paso del ciclo en vivo del fix 0.4.0 (para el operador)**: en el board 10922, abrir el
+  ⇄ de una orden con `Tareas Programadas:` y confirmar que **NO** sale el mensaje rojo y que MOVER
+  queda habilitado; y en una sin ellas, que sigue bloqueada. Lo verificado por automatización: el
+  applet publicado puebla el estado (129 cuentas / 20 programadas) y el core vivo decide correcto
+  sobre los datos reales; lo que falta es ver el modal pintado, que necesita interacción en piso.
 - **Oportunidad (no hecha): el filtro por línea puede salir de la MISMA fuente.**
   `associatedScheduleTaskElements[].scheduleTaskByScheduleTaskId.stationByStationId.name` trae
   `"T204-LI Plata y Estaño s/Cobre Colgado (16.1)"` por cuenta ⇒ el catálogo de líneas se podría
