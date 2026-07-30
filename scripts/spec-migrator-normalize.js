@@ -308,6 +308,64 @@
   }
 
   /**
+   * Qué NPs faltan DENTRO de un cliente ya empezado.
+   *
+   * POR QUÉ EXISTE (2026-07-30): el checkpoint tenía al CLIENTE como unidad mínima, y eso solo
+   * funciona si los clientes se parecen. SCHNEIDER ELECTRIC MEXICO tiene 17 716 NPs; a esa
+   * escala la probabilidad de una corrida sin un solo error es prácticamente nula, así que el
+   * cliente quedaba marcado como fallido y el reintento **volvía a empezar sus 17 716 desde
+   * cero**. Nunca podía terminar. Reporte del operador: *«no hay manera de que el de 17 mil
+   * quede sin errores, nunca termino»*.
+   *
+   * El cursor es un ID, no un índice: los NPs se piden con `ID_DESC`, así que al ir de mayor a
+   * menor «lo ya hecho» es exactamente `id >= hastaId`. Un índice se desalinearía en cuanto
+   * naciera un NP nuevo; un id no. Y los NPs nuevos (id mayor) quedan fuera del reintento por
+   * construcción, que es lo correcto: nacieron después del daño.
+   *
+   * Los que fallaron se guardan por id y se reprocesan aunque estén por encima del cursor. Es
+   * seguro repetirlos: reponer un parámetro que ya está puesto lo rechaza el ERP con 23P01 y se
+   * cuenta como "ya estaba", nunca duplica.
+   *
+   * @param {Array<{id}>} pns  todos los NPs del cliente, en orden ID_DESC
+   * @param {{hastaId?:number|string, fallidos?:Array}|null} parcial  avance dentro del cliente
+   * @returns {{pendientes:Array, yaHechos:number, reintentos:number}}
+   */
+  function planCustomerChunk(pns, parcial) {
+    const lista = Array.isArray(pns) ? pns.filter(Boolean) : [];
+    const p = parcial || null;
+    const hasta = p && p.hastaId != null ? Number(p.hastaId) : null;
+    const fallidos = new Set(((p && p.fallidos) || []).map(Number));
+
+    if (hasta === null || !isFinite(hasta)) {
+      return { pendientes: lista, yaHechos: 0, reintentos: 0 };
+    }
+    const pendientes = lista.filter(n => Number(n.id) < hasta || fallidos.has(Number(n.id)));
+    const reintentos = lista.filter(n => Number(n.id) >= hasta && fallidos.has(Number(n.id))).length;
+    return { pendientes, yaHechos: lista.length - pendientes.length, reintentos };
+  }
+
+  /**
+   * Avanza el cursor de un cliente a partir de los ids que YA terminaron.
+   *
+   * El cursor es el MENOR id completado, y solo puede bajar (con ID_DESC, avanzar = bajar).
+   * Se calcula sobre los completados reales y no sobre el índice del bucle porque las lecturas
+   * van en pool: cuando se guarda el checkpoint hay 2-3 NPs en vuelo, y darlos por hechos
+   * dejaría huecos silenciosos. Repetir esos pocos al reanudar no cuesta nada; saltarlos sí.
+   *
+   * @param {number|string|null} cursorPrevio
+   * @param {Array<number|string>} idsCompletados
+   * @returns {number|null}
+   */
+  function avanzarCursor(cursorPrevio, idsCompletados) {
+    const ids = (Array.isArray(idsCompletados) ? idsCompletados : [])
+      .map(Number).filter(n => isFinite(n));
+    if (!ids.length) return cursorPrevio != null ? Number(cursorPrevio) : null;
+    const min = Math.min.apply(null, ids);
+    const prev = cursorPrevio != null && isFinite(Number(cursorPrevio)) ? Number(cursorPrevio) : null;
+    return prev === null ? min : Math.min(prev, min);
+  }
+
+  /**
    * Decide qué hacer con UN field "falso pendiente" de un PN.
    * @param {Array<{id, archivedAt, processNodeId, paramId, paramName}>} fieldRows
    *        TODAS las filas (activas y archivadas) del MISMO specFieldId en el PN.
@@ -359,7 +417,8 @@
                 planForcedNodeRelease: planForcedNodeRelease, planApplyUnits: planApplyUnits,
                 erpHealth: erpHealth, planCustomerSweep: planCustomerSweep,
                 mergeSweepTotals: mergeSweepTotals, planRepairs: planRepairs, resolveCustomerList: resolveCustomerList,
-                planRepairResume: planRepairResume, norm: norm };
+                planRepairResume: planRepairResume, planCustomerChunk: planCustomerChunk,
+                avanzarCursor: avanzarCursor, norm: norm };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   if (typeof window !== 'undefined') window.SpecMigratorNormalize = api;
 })();
