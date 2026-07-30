@@ -6,10 +6,15 @@
 // UX (definida con el usuario): mientras escribe se muestra un preview en vivo de los
 // lotes que coinciden; al dar ENTER se aplica automático (modo REEMPLAZAR el filtro).
 //
-// Fuente de datos: persisted query InventoryBatchViewQuery (searchQuery + paginación real,
-// hideCompleted:true). Devuelve el `name` estructurado → matching exacto robusto y SIN el tope
-// de 10 de FilterSearch. En Packing Slips/Scheduling los lotes completados no se filtran, así
-// que hideCompleted:true es además lo correcto y más eficiente.
+// Fuente de datos: persisted query InventoryBatchViewQuery (searchQuery + paginación real).
+// Devuelve el `name` estructurado → matching exacto robusto y SIN el tope de 10 de FilterSearch.
+//
+// v0.3.0 — se consultan LOS DOS UNIVERSOS de `hideCompleted`. Medido en vivo 2026-07-29:
+// ese parámetro no esconde, SELECCIONA universo, y los dos son DISJUNTOS (true = 585 lotes
+// con material · false = 12 926 agotados · solape 0). Consultando solo `true` el applet veía
+// el 4.3% del inventario y respondía «Sin lotes «X»» sobre lotes que existen y que el
+// dropdown NATIVO de SH sí ofrece → Enter no hacía nada. Ahora se unen ambos universos y el
+// preview distingue los agotados en vez de esconderlos. Ver bitácora §"Los dos universos".
 //
 // Estado singleton en window.__saBNF (no en el closure) porque injectAppScripts re-evalúa
 // el IIFE en cada acción del popup (lección surtido-guard/price-guard).
@@ -23,7 +28,10 @@
   const BOX_ID = 'sa-bnf-box';
   const STYLE_ID = 'sa-bnf-style';
   const PANEL_ID = 'sa-bnf-panel';
-  const DEBOUNCE_MS = 300;
+  // 450ms (antes 300): cada búsqueda ahora consulta DOS universos, así que un debounce
+  // corto multiplica la ráfaga contra /graphql — el mismo límite de sesión que tumbó la
+  // pantalla nativa en po-listing-filters. `alive()` corta las páginas ya en vuelo.
+  const DEBOUNCE_MS = 450;
 
   const S = (window.__saBNF = window.__saBNF || { seq: 0, lastQuery: '', lastResult: null });
 
@@ -96,21 +104,40 @@
       p.appendChild(head);
       return;
     }
-    head.innerHTML = '';
-    head.appendChild(document.createTextNode(`Aplicar `));
+    const withMat = (result.withMaterial && result.withMaterial.count) || 0;
+    const gone = (result.depleted && result.depleted.count) || 0;
+    head.appendChild(document.createTextNode('Aplicar '));
     const acc = document.createElement('span'); acc.className = 'sa-bnf-acc'; acc.textContent = `${count} lote${count === 1 ? '' : 's'} «${name}»`;
     head.appendChild(acc);
+    // El desglose es el dato que faltaba: un lote AGOTADO existe pero no tiene piezas
+    // por enviar, así que al aplicarlo la lista sale vacía. Decirlo aquí evita que el
+    // operador lea la lista vacía como "el filtro no funciona".
+    if (withMat && gone) head.appendChild(document.createTextNode(` — ${withMat} con material, ${gone} agotado${gone === 1 ? '' : 's'}`));
     p.appendChild(head);
     const ul = document.createElement('ul');
-    matches.slice(0, 30).forEach((m) => {
+    // Los que tienen material primero: son los que sirven para enviar.
+    const ordered = [
+      ...((result.withMaterial && result.withMaterial.matches) || []),
+      ...((result.unknown && result.unknown.matches) || []),
+      ...((result.depleted && result.depleted.matches) || []),
+    ];
+    (ordered.length ? ordered : matches).slice(0, 30).forEach((m) => {
       const li = document.createElement('li');
       // InventoryBatchView nodes: {id, idInDomain, name}; FilterSearch legado: {display}.
-      const label = m.display || ('#' + m.idInDomain + ' — ' + m.name);
+      let label = m.display || ('#' + m.idInDomain + ' — ' + m.name);
+      if (Core.isDepletedBatch(m) === true) label += ' · agotado';
       li.textContent = label;                   // textContent → sin XSS
       li.title = label;
       ul.appendChild(li);
     });
     p.appendChild(ul);
+    if (Core.shouldWarnAllDepleted(result)) {
+      const w = document.createElement('div'); w.className = 'sa-bnf-warn';
+      w.textContent = count === 1
+        ? '⚠️ Está agotado: al aplicar, la lista saldrá vacía (ese lote ya no tiene piezas por enviar).'
+        : `⚠️ Los ${count} están agotados: al aplicar, la lista saldrá vacía (ese lote ya no tiene piezas por enviar).`;
+      p.appendChild(w);
+    }
     if (capped) {
       const w = document.createElement('div'); w.className = 'sa-bnf-warn';
       w.textContent = '⚠️ Muchísimos lotes con este nombre; se aplican los primeros encontrados.';
@@ -121,45 +148,82 @@
     p.appendChild(hint);
   }
 
-  // ── InventoryBatchViewQuery paginada (sin tope de 10; name estructurado) ──
-  // Trae los lotes NO-completados cuyo name contiene `name` (searchQuery, substring server-side).
-  async function fetchBatchesByName(name) {
+  // ── InventoryBatchViewQuery paginada, UN universo de hideCompleted ──
+  // La 1ª página trae los nodos Y el totalCount; con ese total se decide si vale la pena
+  // seguir paginando (planPagination) o si la búsqueda es demasiado amplia. `alive()` corta
+  // en cada vuelta: seguir bajando páginas de una búsqueda que el operador ya reemplazó es
+  // justo la ráfaga que cuelga el /graphql de la sesión.
+  async function fetchUniverse(name, hideCompleted, alive) {
     const PAGE = Core.INVENTORY_BATCH_VIEW_PAGE;
-    const all = [];
-    let offset = 0;
-    let capped = false;
-    for (let guard = 0; guard < 25; guard++) { // cap duro 25*PAGE por seguridad
-      const data = await api().query('InventoryBatchViewQuery', {
-        includeArchived: 'NO', hideCompleted: true, orderBy: ['CREATED_AT_DESC'],
-        offset, first: PAGE, searchQuery: name,
-      }, 'InventoryBatchViewQuery');
-      const pd = data && data.pagedData;
-      const nodes = (pd && pd.nodes) || [];
+    const ask = (offset) => api().query('InventoryBatchViewQuery', {
+      includeArchived: 'NO', hideCompleted, orderBy: ['CREATED_AT_DESC'],
+      offset, first: PAGE, searchQuery: name,
+    }, 'InventoryBatchViewQuery');
+
+    const first = await ask(0);
+    const pd0 = (first && first.pagedData) || {};
+    const total = pd0.totalCount;
+    const plan = Core.planPagination(total, PAGE);
+    if (plan.tooBroad) return { nodes: [], tooBroad: true, total, capped: false };
+
+    const all = [...((pd0.nodes) || [])];
+    for (let page = 1; page < plan.pages; page++) {
+      if (!alive()) break;
+      const d = await ask(page * PAGE);
+      const nodes = ((d && d.pagedData && d.pagedData.nodes)) || [];
       all.push(...nodes);
-      const total = pd && pd.totalCount;
-      offset += PAGE;
       if (nodes.length < PAGE) break;
-      if (total != null && all.length >= total) break;
-      if (guard === 24) capped = true;
     }
-    return { nodes: all, capped };
+    return { nodes: all, tooBroad: false, total, capped: plan.capped };
+  }
+
+  // Une los DOS universos (con material + agotados). Ver el bloque de encabezado: son
+  // disjuntos, así que consultar uno solo esconde el 95.7% de los lotes.
+  async function fetchBatchesByName(name, alive) {
+    const nodes = [];
+    let capped = false, tooBroad = false, total = 0;
+    for (const universe of Core.SEARCH_UNIVERSES) {
+      if (!alive()) break;
+      const r = await fetchUniverse(name, universe, alive);
+      nodes.push(...r.nodes);
+      capped = capped || r.capped;
+      tooBroad = tooBroad || r.tooBroad;
+      total += Number(r.total) || 0;
+    }
+    return { nodes, capped, tooBroad, total };
+  }
+
+  function renderNotice(box, text) {
+    const p = ensurePanel(box); p.textContent = '';
+    const h = document.createElement('div'); h.className = 'sa-bnf-head'; h.textContent = text;
+    p.appendChild(h);
   }
 
   // debounced, con token de secuencia
   async function runSearch(box, name) {
+    const plan = Core.planSearch(name);
+    if (!plan.ok) {
+      S.seq++; S.lastResult = null;
+      renderNotice(box, `Escribe al menos ${plan.minChars} caracteres`);
+      return;
+    }
     const seq = ++S.seq;
+    const alive = () => seq === S.seq;
     renderPreview(box, name, null); // "Buscando…"
     let res;
     try {
-      res = await fetchBatchesByName(name);
+      res = await fetchBatchesByName(name, alive);
     } catch (e) {
-      if (seq !== S.seq) return;
-      const p = ensurePanel(box); p.textContent = '';
-      const h = document.createElement('div'); h.className = 'sa-bnf-head'; h.textContent = 'Error al buscar (¿hash rotado?)';
-      p.appendChild(h);
+      if (!alive()) return;
+      renderNotice(box, 'Error al buscar (¿hash rotado?)');
       return;
     }
-    if (seq !== S.seq) return; // llegó una búsqueda más nueva
+    if (!alive()) return; // llegó una búsqueda más nueva
+    if (res.tooBroad) {
+      S.lastResult = null;
+      renderNotice(box, `Demasiados lotes contienen «${name}» (${res.total}) — escribe el nombre completo`);
+      return;
+    }
     const result = Core.selectByExactName(res.nodes, name);
     result.capped = res.capped;
     S.lastQuery = name; S.lastResult = result;
