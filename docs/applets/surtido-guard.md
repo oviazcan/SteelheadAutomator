@@ -1,13 +1,14 @@
 # Applet `surtido-guard` — Candado de Surtido Programado
 
-> Versión: **0.3.0** — ✅ **DEPLOYADO** (2026-07-30): config **1.11.26**, tag `v1.11.26`, firma
-> KMS verificada en vivo. Bundle Safari **0.6.14** construido y sincronizado a `Resources/` —
-> **falta recompilar en Xcode**. Core **49/49** + 4 de aislamiento + 5 de contrato de config.
+> Versión: **0.3.0** — ✅ **DEPLOYADO** (2026-07-30): config **1.11.29**, tag `v1.11.29`, firma
+> KMS verificada en vivo. Bundle Safari **0.6.15** construido y sincronizado a `Resources/` —
+> **falta recompilar en Xcode**. Core **55/55** + 4 de aislamiento + 5 de contrato de config.
 >
-> **Validado end-to-end en vivo con la 1.11.24**; el **fix del dropdown acumulativo (1.11.26)
-> quedó SIN validar en vivo** — la pestaña de pruebas se cerró antes. Riesgo bajo (5 tests de
-> regresión, incluido el caso exacto reportado), pero **es lo primero que hay que ver** en la
-> próxima sesión.
+> **Validado end-to-end en vivo con la 1.11.24.** Los dos fixes de catálogo posteriores
+> (**1.11.26** acumulativo — el operador confirmó que ese bug quedó corregido — y **1.11.29**
+> catálogo completo desde la API) **NO están validados en vivo**: la pestaña de pruebas quedó
+> oculta y Chrome no renderiza React ahí. Cubiertos por 11 tests de regresión entre ambos.
+> **Es lo primero que hay que ver.**
 >
 > **Run real en `/Domains/344/Workboards/6234`:** el box se pinta en el header, el dropdown ofrece
 > `Todas` + `T300`, y al filtrar por `T300` queda **1 visible · 5 sin programar ocultas** — la
@@ -142,6 +143,25 @@ mentir justo en el dato con el que el operador decide. En el board real el dropd
 
 **Lección:** un applet puede tener el núcleo impecable y ser inservible porque su *entrada* depende
 de un dato opcional. El fallback no fue relajar la lógica, sino **ampliar la fuente**.
+
+### El catálogo se descubría por accidente (bug del operador, 1.11.29)
+
+Reportado con capturas en el board **Almacén 1 (Proquipa)**, 142 órdenes: el dropdown abría con
+**3** líneas (T101/T104/T204), tras filtrar mostraba **5**, y siguiendo llegaba a **8**
+(T101/T102/T104/T106/T110/T204/T301…). El catálogo se iba revelando conforme filtrabas.
+
+**Causa:** el catálogo salía de las tarjetas **montadas**, y el board virtualiza — de 142 órdenes
+monta ~8. Filtrar esconde tarjetas, virtuoso monta otras para llenar el hueco, y aparecen líneas
+que antes no se veían. El fix de 1.11.26 evitaba **perder** líneas; no que el catálogo **naciera
+incompleto**.
+
+**Fix:** `linesFromBoardSchedule` sobre **`WorkOrderSchedule`**, que devuelve el schedule
+**COMPLETO del dominio** con el nombre de estación de cada tarea. Cuesta 2 llamadas (hay que
+resolver el `workOrderId` GLOBAL primero) una sola vez por carga; la respuesta pesa **~4.6 MB**,
+así que se **destila a una lista de códigos y el crudo se suelta de inmediato**.
+
+Devuelve **solo líneas, sin conteos**, y es deliberado: esa query cubre el dominio entero, no este
+workboard, así que sus números mentirían justo en el dato con el que se decide.
 
 ### El filtro se comía su propio dropdown (bug del operador, 1.11.26)
 
