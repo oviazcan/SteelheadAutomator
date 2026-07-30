@@ -209,7 +209,7 @@ qué área asignarla y, si hiciera falta, qué perfil contratar.</p>
 
 <div class="callout warn">
   <h4>El punto que conviene resolver primero</h4>
-  <p>De las 22 actividades del catálogo, <strong>11 requieren perfil C</strong> y hoy no hay nadie con
+  <p>De las 23 actividades del catálogo, <strong>11 requieren perfil C</strong> y hoy no hay nadie con
   ese perfil dentro de Ecoplating. Es la brecha real de continuidad, y admite tres salidas legítimas:
   formar a alguien de TI, contratar el perfil, o mantener un contrato de soporte con el consultor.
   <strong>La decisión es de Ecoplating; señalarla es mi responsabilidad.</strong></p>
@@ -237,26 +237,26 @@ sección más importante del catálogo: su omisión no produce una falla inmedia
     <td class="nowrap">Cada hora</td>
     <td><span class="chip c-auto">AUTO</span></td>
     <td class="nowrap">—</td>
-    <td>Las automatizaciones se rompen una a una conforme Steelhead se actualiza.</td>
+    <td>Las automatizaciones se rompen una a una conforme Steelhead se actualiza. <b>Su propia detención sí se detecta</b>, por V-06.</td>
     <td><span class="sev s-alta">Alto</span></td>
     <td class="fill"></td>
   </tr>
   <tr>
-    <td class="act"><span class="id">V-02</span><br>Revisar el correo de aviso de la vigilancia</td>
+    <td class="act"><span class="id">V-02</span><br>Revisar los avisos automáticos<br><span style="font-size:.9em;color:var(--faint)">correo de la vigilancia y aviso del vigía</span></td>
     <td class="nowrap">Diaria<br><span style="font-size:.9em">(sólo si llega)</span></td>
     <td><span class="chip c-b">B</span></td>
     <td class="nowrap">5 min</td>
-    <td>Un aviso de algo que la vigilancia no pudo resolver sola pasa desapercibido.</td>
+    <td>Un aviso de algo que la vigilancia no pudo resolver sola, o de que dejó de correr, pasa desapercibido. <b>Es la única actividad que sostiene todo el esquema automático.</b></td>
     <td><span class="sev s-alta">Alto</span></td>
     <td class="fill"></td>
   </tr>
   <tr>
-    <td class="act"><span class="id">V-03</span><br>Verificar que los tres procesos automáticos siguen corriendo</td>
+    <td class="act"><span class="id">V-03</span><br>Verificar los dos procesos que no tienen vigía</td>
     <td class="nowrap">Mensual</td>
     <td><span class="chip c-b">B</span></td>
     <td class="nowrap">10 min</td>
-    <td><b>Se detienen sin emitir alarma.</b> Es el modo de falla más peligroso: todo parece normal hasta que algo se rompe semanas después.</td>
-    <td><span class="sev s-alta">Alto</span></td>
+    <td>Sólo aplica al escalamiento (V-04) y a la copia de datos (V-05): <b>esos dos sí se detienen en silencio</b>. La vigilancia principal no lo necesita — V-06 la cubre.</td>
+    <td><span class="sev s-media">Medio</span></td>
     <td class="fill"></td>
   </tr>
   <tr>
@@ -277,8 +277,30 @@ sección más importante del catálogo: su omisión no produce una falla inmedia
     <td><span class="sev s-baja">Bajo</span></td>
     <td class="fill"></td>
   </tr>
+  <tr>
+    <td class="act"><span class="id">V-06</span><br>Vigía del latido<br><span style="font-size:.9em;color:var(--faint)">vigila a V-01 desde fuera</span></td>
+    <td class="nowrap">Cada 2 horas</td>
+    <td><span class="chip c-auto">AUTO</span></td>
+    <td class="nowrap">—</td>
+    <td>Sin él, la vigilancia principal sería <b>ciega a su propia muerte</b>: sus avisos son reactivos y sólo salen cuando corre. <b>Corre en la nube, fuera del equipo que vigila</b>, precisamente para sobrevivirle.</td>
+    <td><span class="sev s-alta">Alto</span></td>
+    <td class="fill"></td>
+  </tr>
 </tbody>
 </table>
+</div>
+
+<div class="callout acc">
+  <h4>Quién vigila al vigilante</h4>
+  <p>La vigilancia horaria (V-01) sólo puede avisar de un problema <strong>cuando corre</strong>. Si el
+  equipo se apagara o el proceso se descargara, sus avisos simplemente dejarían de llegar — y un buzón
+  en silencio es indistinguible de un sistema sano. Ese punto ciego está resuelto: en cada corrida
+  V-01 <strong>deja constancia de vida</strong>, y un vigía independiente (V-06) revisa cada dos horas
+  que esa constancia siga fresca. Si pasan más de tres horas sin ella, <strong>levanta un aviso
+  automático</strong>; cuando el latido vuelve, lo cierra solo.</p>
+  <p>Lo que hace confiable al esquema es <strong>dónde vive el vigía: en la nube, no en el equipo que
+  vigila</strong>. Un vigilante hospedado en la misma máquina moriría junto con lo que debe cuidar.
+  Por eso V-03 se limita a los otros dos procesos, que no tienen esta cobertura.</p>
 </div>
 
 <!-- ===================== 3 ===================== -->
@@ -485,8 +507,8 @@ y ninguna es obligatoria para mantenerlo funcionando: son mejoras, no mantenimie
 <h2><span class="num">6</span>Resumen de carga de trabajo</h2>
 
 <div class="effort">
-  <div class="et"><div class="n">22</div><div class="l">Actividades<br>en el catálogo</div></div>
-  <div class="et"><div class="n">3</div><div class="l">Automáticas<br>sin intervención</div></div>
+  <div class="et"><div class="n">23</div><div class="l">Actividades<br>en el catálogo</div></div>
+  <div class="et"><div class="n">4</div><div class="l">Automáticas<br>sin intervención</div></div>
   <div class="et"><div class="n">&lt;1 h</div><div class="l">Carga mensual<br>de perfil B (8 actividades)</div></div>
   <div class="et"><div class="n">11</div><div class="l">Requieren perfil C<br>10 de ellas reactivas</div></div>
 </div>
