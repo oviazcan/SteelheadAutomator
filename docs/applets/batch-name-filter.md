@@ -1,10 +1,54 @@
 # batch-name-filter — Filtrar Lote por Nombre
 
-**Versión actual:** 0.3.0 — **VIVO en producción: config 1.11.12, tag `v1.11.12`** (firma KMS
-verificada en vivo; `main = gh-pages = EN VIVO`). Bundle iPad **0.6.10**. Falta la validación
+**Versión actual:** 0.3.1 — **VIVO en producción: config 1.11.14, tag `v1.11.14`** (firma KMS
+verificada en vivo; `main = gh-pages = EN VIVO`). Bundle iPad **0.6.11**. Falta la validación
 end-to-end del ciclo en vivo (ver Pendientes).
 Fuente = `InventoryBatchViewQuery` paginada, `name` estructurado, y desde 0.3.0 **los DOS
 universos de `hideCompleted`**. **41/41 tests** (11 nuevos sobre fixtures reales del 2026-07-29).
+
+## 0.3.1 (2026-07-29) — vacío es la NORMA: fuera el aviso, marcado invertido, tope 1600
+
+Corrección de **modelo de dominio** del operador, y es la que reencuadra todo lo anterior:
+
+> Un lote es un **contenedor** que Steelhead **vacía** al convertirlo a OT — su contenido pasa
+> a la orden. **Todo lote con OT ya está vacío.** Solo se queda lleno si no se pasó a OT, o no
+> se pasó completo. En ese punto el lote funciona como **referencia**.
+
+Con ese marco, el aviso que 0.3.0 había agregado —«⚠️ los N están agotados: al aplicar la
+lista saldrá vacía»— estaba mal **en los dos sentidos**: salía **casi siempre** (la mayoría de
+los lotes que se buscan en el Panel de Envío ya pasaron a OT) y presentaba **como problema lo
+que es el curso esperado**. Retirado del render **y del core** (`shouldWarnAllDepleted` se
+elimina; no se deja como código muerto).
+
+Por la misma razón se **invierte el marcado** — misma lección que `surtido-guard` 0.2.0: la
+etiqueta `· agotado` marcaba **la norma** en casi cada renglón. Ahora se resalta la
+**EXCEPCIÓN**: el lote que **aún tiene material** (verde, y contado en el encabezado como
+«— N aún con material»), que además es **el único enviable**.
+
+**Y el modelo corrigió un tope que había dejado bajo:** los lotes vacíos **se acumulan
+históricamente** (todo lote que pasa a OT queda vacío para siempre), así que un nombre
+reutilizado por años junta cientos y `MAX_TOTAL_TO_PAGE = 600` cortaba búsquedas **legítimas**
+con un «escribe el nombre completo» cuando el nombre YA estaba completo. Sube a **1600**
+(8 páginas × 200 por universo ⇒ 16 requests en el peor caso, bien debajo de las ~40-45 que
+cuelgan la sesión). **Sigue habiendo tope**, por una razón distinta a la de 0.3.0: cuando el
+substring trae mucho más de lo paginable, el subconjunto de nombre exacto queda incompleto de
+forma **impredecible** (el orden es `CREATED_AT_DESC`, no por relevancia), y un parcial
+silencioso es peor que pedir un nombre más específico. Medido: `'T-1'` (1 009) ahora **sí** se
+pagina; `'T'` (12 793) no.
+
+**Lección:** 0.3.0 acertó el mecanismo (los dos universos) y **erró la interpretación** — leyó
+`remaining = 0` como un defecto del lote cuando es su ciclo de vida normal. Traer ambos
+universos seguía siendo lo correcto; lo que sobraba era el juicio de valor encima del dato.
+Core **43/43**.
+
+### Sobre el tope de 10
+No existe desde 0.2.0: era de `FilterSearch` (la fuente del dropdown nativo, que además **no
+pagina** — `offset` se ignora). `InventoryBatchViewQuery` pagina de verdad con `first`/`offset`.
+Confirmado hoy en vivo: los **20** lotes «T-125» se resuelven completos, contra los 10 del
+nativo. El único límite vigente es el `MAX_TOTAL_TO_PAGE` de arriba, y aplica al **substring**,
+no al nombre exacto.
+
+---
 
 ## 🔴 0.3.0 (2026-07-29) — `hideCompleted` no esconde: SELECCIONA universo, y son DISJUNTOS
 
@@ -75,15 +119,13 @@ búsqueda; lo que colgó la sesión fue el arnés de prueba, no el applet.
       los fixes de este applet y de `spec-migrator` commiteados pero sin publicar). Verificado
       en el código SERVIDO, no solo en el config: el core vivo define los 5 símbolos nuevos y
       el glue vivo los consume.
-- [ ] **Validar el ciclo end-to-end en vivo** (teclear → preview con desglose → Enter → chips).
-      **No se pudo cerrar en esta sesión: el `/graphql` seguía colgado del incidente de abajo**
-      — las llamadas SIN red respondían y las que tocaban red morían por timeout, que es
-      justamente cómo se distingue "pestaña muerta" de "sesión limitada".
-      **Sí confirmado en el navegador con el código deployado:** el core cargado ES el 0.3.0
-      (`SEARCH_UNIVERSES=[true,false]`, `MIN_QUERY_CHARS=2`, `MAX_TOTAL_TO_PAGE=600`) y el box
-      se monta. Y contra el servidor real ANTES de colgarlo: la unión de universos, los 20
-      T-125, la clasificación y que los chips se aplican. Falta solo el ciclo con red completo,
-      que se cierra con sesión fresca.
+- [x] **Ciclo end-to-end en vivo — CERRADO por el operador (2026-07-29, config 1.11.14):**
+      *«ya parece jalar el filtro»*. Durante la sesión no se pudo cerrar por automatización
+      porque el `/graphql` quedó colgado del incidente de abajo (las llamadas SIN red
+      respondían y las que tocaban red morían por timeout — así se distingue "pestaña muerta"
+      de "sesión limitada"); se verificó por partes: el core cargado en el navegador ES el
+      nuevo, el box se monta, y contra el servidor real la unión de universos, los 20 T-125,
+      la clasificación y que los chips se aplican.
 - [x] **Bundle iPad 0.6.10** — verificado EN EL ARTEFACTO (los 5 símbolos pasaron de 0 a
       presentes; `node --check` OK; `build-safari` 10/10) y sincronizado a `Resources/`.
       **Falta recompilar en Xcode** (el bundle es estático). En el iPad este fix pesa doble:
