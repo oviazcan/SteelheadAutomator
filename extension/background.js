@@ -486,7 +486,13 @@ async function handleMessage(message, sender) {
                 userType: user.currentUserEmploymentRecord?.userType || null,
                 domainId: user.domainByDomainId?.id,
                 domainName: user.domainByDomainId?.name,
-                managedPermissions: Array.isArray(user.currentManagedPermissions) ? user.currentManagedPermissions : []
+                // AUSENTE ≠ VACÍO. Si el ERP no manda la lista, devolvemos null ("no sé"),
+                // nunca [] ("no tiene ningún permiso"): un [] esconde TODA app con
+                // requiredPermissions y el operador no tiene forma de saber por qué.
+                // Es el mismo modo de falla que dejó a report-regen invisible (0.3.2).
+                managedPermissions: Array.isArray(user.currentManagedPermissions)
+                  ? user.currentManagedPermissions
+                  : null
               };
             } catch (e) {
               return { error: e.message };
@@ -494,7 +500,10 @@ async function handleMessage(message, sender) {
           }
         });
         const result = results?.[0]?.result || { error: 'No result' };
-        if (result && !result.error && Array.isArray(result.managedPermissions)) {
+        // Solo persistimos una lista NO VACÍA: cachear [] envenena el menú de forma
+        // duradera (sobrevive a recargas) y esconde apps que el usuario sí puede usar.
+        if (result && !result.error && Array.isArray(result.managedPermissions)
+            && result.managedPermissions.length > 0) {
           await chrome.storage.local.set({ sa_user_permissions: result.managedPermissions });
         }
         return result;
