@@ -185,3 +185,38 @@ test('planForcedNodeRelease: entrada vacía no truena', () => {
   assert.equal(SMN.planForcedNodeRelease([]).action, 'ok');
   assert.equal(SMN.planForcedNodeRelease(null).action, 'ok');
 });
+
+// ── Candado de shapes (2026-07-29) ──────────────────────────────────────────
+// Dos mutations con nombres casi iguales y shapes INCOMPATIBLES:
+//   AddParamsToPartNumber                          → input.paramsToApply    (NP)
+//   AddParamsToPartNumberRecipeNodeSpecFieldParam  → input.parametersToAdd  (OT)
+// Copiar el de la OT al del NP dio HTTP 400 en las 52 reposiciones de GRUPO COLLADO: el
+// applet archivó y no repuso. El error no se vio porque el panel murió antes de pintar el
+// resumen. Este test ata cada mutation a su campo.
+const fsC = require('node:fs');
+const pathC = require('node:path');
+
+test('AddParamsToPartNumber usa paramsToApply, NUNCA parametersToAdd', () => {
+  const src = fsC.readFileSync(
+    pathC.join(__dirname, '..', '..', 'remote', 'scripts', 'spec-migrator.js'), 'utf8');
+  const re = /query\('AddParamsToPartNumber'\s*,\s*\{([\s\S]{0,400}?)\}\s*,\s*'AddParamsToPartNumber'\)/g;
+  let m, n = 0;
+  while ((m = re.exec(src)) !== null) {
+    n++;
+    assert.ok(m[1].includes('paramsToApply'),
+      'la llamada #' + n + ' a AddParamsToPartNumber debe usar paramsToApply');
+    assert.ok(!m[1].includes('parametersToAdd'),
+      'la llamada #' + n + ' usa parametersToAdd, que es el shape de la mutation de OT');
+  }
+  assert.ok(n > 0, 'no encontré ninguna llamada a AddParamsToPartNumber');
+});
+
+test('el applet de OTs usa parametersToAdd, NUNCA paramsToApply', () => {
+  const src = fsC.readFileSync(
+    pathC.join(__dirname, '..', '..', 'remote', 'scripts', 'wo-spec-params.js'), 'utf8');
+  const i = src.indexOf('AddParamsToPartNumberRecipeNodeSpecFieldParam');
+  assert.ok(i > 0);
+  const bloque = src.slice(Math.max(0, i - 400), i + 400);
+  assert.ok(bloque.includes('parametersToAdd'), 'la mutation de OT usa parametersToAdd');
+  assert.equal(bloque.includes('paramsToApply'), false, 'ese es el shape del NP, no el de OT');
+});

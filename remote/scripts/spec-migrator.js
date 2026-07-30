@@ -3241,7 +3241,11 @@ const SpecMigrator = (() => {
           tasks.push({ group: g, paramRowId: id, sfpName: '(nodo forzado)', esLiberacion: true });
         }
         if (rp.action === 'rewrite' && rp.insertParamId != null) {
-          releases.push({ group: g, specFieldId: g.fieldId, specFieldParamId: rp.insertParamId });
+          // isGeneric: el shape de GetPartNumber NO lo expone a este nivel. Se manda false y
+          // se verificó en vivo (2026-07-29) que el ERP acepta la reposición igual, incluso en
+          // campos marcados Generic: YES como "Primeras Piezas" — HTTP 200.
+          releases.push({ group: g, specFieldId: g.fieldId, specFieldParamId: rp.insertParamId,
+                          isGeneric: false });
         }
         // el resto de sobrantes del grupo, si los hubiera
         for (const p of g.params) {
@@ -3320,23 +3324,16 @@ const SpecMigrator = (() => {
     for (const r of releases) {
       if (dupState.runId !== myRunId) break;
       try {
-        await dupWithRetry(
-          () => api().query('AddParamsToPartNumber', {
-            input: {
-              partNumberId: r.group.pnId,
-              parametersToAdd: [{
-                specFieldId: Number(r.specFieldId),
-                specFieldParamId: Number(r.specFieldParamId),
-                isGeneric: false,
-                geometryTypeSpecFieldId: null,
-                processNodeId: null,          // ← el punto de todo esto
-                processNodeOccurrence: null,
-                locationId: null,
-              }],
-            },
-          }, 'AddParamsToPartNumber'),
-          `reponer sin nodo pn=${r.group.pnId} field=${r.specFieldId}`
-        );
+        // Se reusa addSingleParamToPN, que YA existía y estaba probada. Mi versión inventó el
+        // shape: copié `parametersToAdd` de AddParamsToPartNumberRecipeNodeSpecFieldParam (la
+        // mutation de la OT) cuando AddParamsToPartNumber (la del NP) usa `paramsToApply`.
+        // Nombres casi iguales, tipos distintos → HTTP 400 en las 52 reposiciones del
+        // 2026-07-29, que archivó sin reponer. Misma trampa que los shapes del auto-router.
+        const st = await addSingleParamToPN(
+          r.group.pnId, Number(r.specFieldId), Number(r.specFieldParamId), !!r.isGeneric);
+        if (st !== 'ok' && st !== 'conflict' && st !== 'duplicate') {
+          throw new Error('addSingleParamToPN devolvió: ' + st);
+        }
         repuestos++;
       } catch (e) {
         errRows.push({ group: r.group, paramRowId: '(reposición)', sfpName: '(sin nodo)',
