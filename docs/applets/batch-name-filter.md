@@ -1,6 +1,8 @@
 # batch-name-filter — Filtrar Lote por Nombre
 
-**Versión actual:** 0.3.0 — commiteada en `main` (`46b2b3a`), **SIN deployar todavía**.
+**Versión actual:** 0.3.0 — **VIVO en producción: config 1.11.12, tag `v1.11.12`** (firma KMS
+verificada en vivo; `main = gh-pages = EN VIVO`). Bundle iPad **0.6.10**. Falta la validación
+end-to-end del ciclo en vivo (ver Pendientes).
 Fuente = `InventoryBatchViewQuery` paginada, `name` estructurado, y desde 0.3.0 **los DOS
 universos de `hideCompleted`**. **41/41 tests** (11 nuevos sobre fixtures reales del 2026-07-29).
 
@@ -68,11 +70,21 @@ el ERP productivo: **una búsqueda a la vez**. El guardarraíl del applet acota 
 búsqueda; lo que colgó la sesión fue el arnés de prueba, no el applet.
 
 ### Pendientes
-- [ ] **Deploy** — bloqueado por coordinación: una sesión paralela estaba deployando
-      (`config.json` ya en 1.11.11) y `deploy.sh` hace `git add remote/`.
+- [x] **Deploy** — hecho: **config 1.11.12, tag `v1.11.12`**. Cerró de paso una **deriva de 3
+      versiones** (gh-pages llevaba horas en 1.11.8 mientras `main:remote/` iba en 1.11.11, con
+      los fixes de este applet y de `spec-migrator` commiteados pero sin publicar). Verificado
+      en el código SERVIDO, no solo en el config: el core vivo define los 5 símbolos nuevos y
+      el glue vivo los consume.
 - [ ] **Validar el ciclo end-to-end en vivo** con el código deployado (teclear → preview con
-      desglose → Enter → chips). Lo verificado hoy: la unión de universos contra el servidor
-      real, los 20 T-125, la clasificación, y que los chips se aplican.
+      desglose → Enter → chips). **No se pudo cerrar en esta sesión: el `/graphql` seguía
+      colgado del incidente de más abajo.** Lo verificado contra el servidor real ANTES de
+      colgarlo: la unión de universos, los 20 T-125, la clasificación y que los chips se
+      aplican.
+- [x] **Bundle iPad 0.6.10** — verificado EN EL ARTEFACTO (los 5 símbolos pasaron de 0 a
+      presentes; `node --check` OK; `build-safari` 10/10) y sincronizado a `Resources/`.
+      **Falta recompilar en Xcode** (el bundle es estático). En el iPad este fix pesa doble:
+      el operador de piso busca lotes VIEJOS para revisar, que son justo los que caían en el
+      universo escondido.
 - [ ] `tools/archive-inventory-batch-statuses.js` llama esta misma query **sin pasar
       `hideCompleted`** (usa el default del server) para su detector de "lotes en uso". Según
       cuál sea el default, el conteo puede quedar parcial. Falla ruidosa (la mutación truena),
@@ -252,7 +264,11 @@ ya existe pero no captura `FilterSearch`; añadir un paso que abra el filtro de 
 - [ ] No interfiere con `/Shipping/PackingSlips` (invoice-autofill).
 
 ## Safari/iPad
-En el bundle desde **v0.5.9** (2026-07-23). Clasificación: **directo / autoInject / sin lanzador** — el box inline se
+En el bundle desde **v0.5.9** (2026-07-23); **v0.6.10** (2026-07-29) lo trae con el fix 0.3.0 de
+los dos universos. Verificado en el artefacto: `SEARCH_UNIVERSES`/`isDepletedBatch`/
+`planPagination` ×4, `shouldWarnAllDepleted` ×3, `fetchUniverse` ×2 y `DEBOUNCE_MS = 450` — los
+seis en **0** antes del rebuild. 1 600 211 bytes. (Recordatorio: `build-safari.sh` imprime
+**caracteres**, no bytes — compara los bloques `BEGIN/END`, no el número que imprime.) Clasificación: **directo / autoInject / sin lanzador** — el box inline se
 auto-inyecta en el header del Panel de Envío por su propio gate (`autoInject:true`), así que basta agregar el `id` a
 `safari/bundle.json.applets[]`; no requiere cablear `LAUNCHERS`/`LAUNCH_FN`. Sin bloqueadores iOS: intercepta/consulta
 vía `fetch` nativo (`InventoryBatchViewQuery`) y aplica por **recarga de la SPA** (compatible con Safari), sin
