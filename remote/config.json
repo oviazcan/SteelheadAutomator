@@ -1,6 +1,6 @@
 {
-  "version": "1.11.15",
-  "lastUpdated": "2026-07-29T20:58",
+  "version": "1.11.18",
+  "lastUpdated": "2026-07-29T21:48",
   "extensionVersion": "1.7.1",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -1611,6 +1611,7 @@
       "category": "Recibo",
       "scripts": [
         "scripts/steelhead-api.js",
+        "scripts/warehouse-location-guard-core.js",
         "scripts/warehouse-location-prefill.js"
       ],
       "autoInject": true,
@@ -2890,8 +2891,8 @@
     "scripts/sensor-graph-hide-all-core.js": "795d1741fc04de7b8a5a111542e36fe53a8b3ee473c3f0b7a457780df3ea213e",
     "scripts/sensor-graph-hide-all.js": "3da2ad449d6792035a8ae952cc829ad7d6b5dd598b7281799b473cea5087ca6f",
     "scripts/sensor-status-autofill.js": "e19d6183c84c1cdd153110bdd31b3eb95b1973b089210182a177937a11f2b6bd",
-    "scripts/spec-migrator-normalize.js": "06fddf86dd0920174a20397751ac6e7b21d2c607b88ac94ef214f8a3ea1b34e1",
-    "scripts/spec-migrator.js": "d84f00343e372202516fac0222fea64f7059c316b56eedabd5d8062741a8f815",
+    "scripts/spec-migrator-normalize.js": "c44d39e26e2227348c9856896c7de570e89112b29d057930095d789eea381e62",
+    "scripts/spec-migrator.js": "6e48debac203de21572872a9c9d6edec607a56554c149d87a17a61196326bf0a",
     "scripts/spec-params-bulk.js": "f49affd0af9c7aa11fd8ab586b4a2b70c71e34405796f5d136909db0184a929b",
     "scripts/spec-shared.js": "9a4adf965ffac349fdc69dd05b6bc1c50bb4dcc298333c7ff245acd955d0b255",
     "scripts/steelhead-api.js": "9377271a0ee2dd11b2a17908717575951b904c0ce6184ef07819d90b93c5de32",
@@ -2901,7 +2902,8 @@
     "scripts/unit-autoconvert.js": "886b971f171619e74bb250a0c076b67b7aca12006fed195a4c2c9f50d827ef11",
     "scripts/vale-almacen-engine.js": "36241da082a58d03241068bcec6fcde2131eb69a9871eb9cd2f8bce21ccdd1a0",
     "scripts/vale-almacen.js": "cbd6bc27c493cb703d4125211bc33ff510a15ed5061d31770cf2b128e8ea3985",
-    "scripts/warehouse-location-prefill.js": "e50128e0a0d0c36279cbd85bef87597814bef20e77ea53c1c206ef44dfc2f5a0",
+    "scripts/warehouse-location-guard-core.js": "a9111468ac9e45264cb828709bc499e2b552f6b74f3c958bc8543b09c840a709",
+    "scripts/warehouse-location-prefill.js": "d053d41343324591849e7e4baa6a4b83251d0bd8ed8e14d48f5ece107480f6a2",
     "scripts/weight-quick-entry.js": "9710caa9ecc4e81f97b6aa2e68565e0de2abf720ccd7cdf7ef8e30ac5f8a2b42",
     "scripts/wo-completer-engine.js": "3101a9c8f718f9469e005a02498a89d6467b8f7c49583d7bb6f96f55a5bdfc83",
     "scripts/wo-completer.js": "d2879a8daf876ff2956dfeadcba673ab082f3b28c9bb7fbabb0c00db92f487e9",

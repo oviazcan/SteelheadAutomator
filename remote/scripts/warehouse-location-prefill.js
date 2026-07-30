@@ -4,6 +4,19 @@
 // el locationId en todos los receiverBomItems[].inventoryTransferEvent.
 // debitAccounts.accounts[]. Deshabilita visualmente los combos per-line via
 // overlay CSS mientras hay valor en el header.
+//
+// 0.6.0 — CANDADO DE UBICACIÓN: el pie del modal no permite guardar hasta que TODOS los
+// renglones tengan ubicación inicial (por el combo del encabezado o uno por uno), y dice
+// CUÁL renglón falta. Dos capas independientes (ver warehouse-location-guard-core.js):
+//   · DOM  → tapa los 3 botones de guardar, tooltip con las líneas pendientes, contador en
+//            el pie y marca en naranja el combo de cada renglón que falta.
+//   · fetch → si el payload de CreateReceiverChecked llega con accounts sin locationId, la
+//            mutación NO sale (Response sintética con errors). Es la red que sobrevive a un
+//            cambio de layout o de idioma: convierte una falla silenciosa en ruidosa.
+//
+// 0.6.1 — el renglón se juzga por señal POSITIVA (hay un valor elegido), no por ausencia de
+// placeholder: al TECLEAR en el combo sin elegir nada react-select retira el placeholder, y
+// el criterio anterior daba el renglón por resuelto. Ver rowHasLocation() en el núcleo.
 
 const WarehouseLocationPrefill = (() => {
   'use strict';
@@ -20,6 +33,9 @@ const WarehouseLocationPrefill = (() => {
   };
   const LOG_PREFIX = '[WLP]';
   const api = () => window.SteelheadAPI;
+  // Núcleo puro del candado. Si el script no cargó, TODO el candado queda apagado
+  // (fail-open) y el applet sigue prellenando como siempre.
+  const guard = () => window.WarehouseLocationGuardCore;
   let observerActive = false;
 
   const modalStates = new WeakMap();
@@ -30,6 +46,11 @@ const WarehouseLocationPrefill = (() => {
 
   const HEADING_SELECTOR = 'h1, h2, h3, h4, h5, h6, [class*="MuiTypography"], [class*="heading"], [class*="title"]';
   const VIEW_REGEX = /receive\s+parts\s+from\s+customer|recibir\s+piezas\s+del\s+cliente/i;
+  const RECEIVER_OP = 'CreateReceiverChecked';
+  // Cada cuánto se re-evalúa el candado como red del MutationObserver. Existe porque los
+  // cambios que importan (elegir ubicación, teclear el lote) no siempre mutan el DOM que
+  // observamos, y porque React puede re-crear el pie y borrar nuestro aviso.
+  const GATE_POLL_MS = 900;
 
   function patchFetch() {
     if (window.__saWlpFetchPatched) return;
@@ -43,45 +64,83 @@ const WarehouseLocationPrefill = (() => {
         return origFetch.apply(this, args);
       }
 
-      // Bypass rápido si no hay locationId seleccionado
-      if (!pendingLocationId) return origFetch.apply(this, args);
+      // Bypass baratísimo: si el body ni menciona la mutación, no se parsea.
+      if (!opts.body.includes(RECEIVER_OP)) return origFetch.apply(this, args);
 
       let bodyObj;
       try { bodyObj = JSON.parse(opts.body); } catch { return origFetch.apply(this, args); }
 
-      if (bodyObj?.operationName !== 'CreateReceiverChecked') {
+      if (bodyObj?.operationName !== RECEIVER_OP) {
         return origFetch.apply(this, args);
       }
 
-      // Mutar el payload inyectando locationId en todos los debitAccounts
-      try {
-        const items = bodyObj.variables?.receiverPayload?.receiverBomItems;
-        if (!Array.isArray(items)) return origFetch.apply(this, args);
+      // (1) Inyectar el locationId del encabezado, si hay selección.
+      let injected = 0;
+      if (pendingLocationId) {
+        try {
+          injected = injectHeaderLocation(bodyObj, pendingLocationId);
+          if (injected === 0) {
+            console.warn(LOG_PREFIX, 'locationId seleccionado pero el payload no tiene accounts mutables — locationId no aplicado');
+          }
+        } catch (err) {
+          console.warn(LOG_PREFIX, 'Error mutando payload:', err);
+          injected = 0;
+        }
+      }
 
-        let totalAccounts = 0;
-        for (const item of items) {
-          const accounts = item?.inventoryTransferEvent?.debitAccounts?.accounts;
-          if (!Array.isArray(accounts)) continue;
-          for (const account of accounts) {
-            if (account && typeof account === 'object') {
-              account.locationId = pendingLocationId;
-              totalAccounts++;
-            }
+      // (2) CANDADO. Se juzga el payload YA mutado — o sea lo que de verdad se va a escribir.
+      // Solo aplica con NUESTRO modal montado: fuera de él (p.ej. la entrada de recepción con
+      // IA) el operador no tiene los combos a la vista y frenarlo lo dejaría sin salida.
+      try {
+        const G = guard();
+        const modal = document.querySelector('[data-sa-wlp-attached="true"]');
+        if (G && modal) {
+          const verdict = G.payloadMissingLocations(bodyObj);
+          if (verdict.checked && verdict.missing.length > 0) {
+            const msg = `Bloqueado por la extensión: ${verdict.missing.length} de ${verdict.total} `
+              + 'piezas van sin ubicación inicial. Elige la ubicación en cada línea, o usa '
+              + '«Ubicación inicial» del encabezado para aplicarla a todas.';
+            console.warn(LOG_PREFIX, 'Guardado BLOQUEADO —', verdict.missing.length, 'de', verdict.total, 'accounts sin locationId');
+            toast('⛔ ' + msg, true);
+            try { evaluateSaveGate(modal); } catch (_) {}
+            return new Response(
+              JSON.stringify({ errors: [{ message: msg }] }),
+              { status: 200, headers: { 'Content-Type': 'application/json' } }
+            );
           }
         }
-
-        if (totalAccounts === 0) {
-          console.warn(LOG_PREFIX, 'locationId seleccionado pero el payload no tiene accounts mutables — locationId no aplicado');
-          return origFetch.apply(this, args);
-        }
-        opts.body = JSON.stringify(bodyObj);
-        console.log(LOG_PREFIX, `locationId=${pendingLocationId} inyectado en ${items.length} bomItems (${totalAccounts} accounts total)`);
-        return origFetch.apply(this, [url, opts]);
       } catch (err) {
-        console.warn(LOG_PREFIX, 'Error mutando payload:', err);
-        return origFetch.apply(this, args);
+        // Fail-open a propósito: un error del candado no debe impedir un recibo legítimo.
+        console.warn(LOG_PREFIX, 'Error evaluando el candado de ubicación (se deja pasar):', err);
       }
+
+      if (injected > 0) {
+        opts.body = JSON.stringify(bodyObj);
+        console.log(LOG_PREFIX, `locationId=${pendingLocationId} inyectado en ${injected} accounts`);
+        return origFetch.apply(this, [url, opts]);
+      }
+      return origFetch.apply(this, args);
     };
+  }
+
+  // Sobrescribe locationId en todos los debitAccounts del payload. Devuelve cuántos tocó.
+  // Se separa del interceptor para que "calcular la mutación" y "commitear opts.body" sigan
+  // siendo pasos distintos: si esto truena, el opts original queda intacto.
+  function injectHeaderLocation(bodyObj, locationId) {
+    const items = bodyObj?.variables?.receiverPayload?.receiverBomItems;
+    if (!Array.isArray(items)) return 0;
+    let totalAccounts = 0;
+    for (const item of items) {
+      const accounts = item?.inventoryTransferEvent?.debitAccounts?.accounts;
+      if (!Array.isArray(accounts)) continue;
+      for (const account of accounts) {
+        if (account && typeof account === 'object') {
+          account.locationId = locationId;
+          totalAccounts++;
+        }
+      }
+    }
+    return totalAccounts;
   }
 
   function init() {
@@ -136,6 +195,8 @@ const WarehouseLocationPrefill = (() => {
       fullCacheExhausted: false,
       fullCacheLoading: false,
       unusedEnabled: { partGroups: false, container: false },
+      gateTimer: null,
+      lastGate: null,
     });
     console.log(LOG_PREFIX, 'Modal de recibo detectado');
     injectStyles();
@@ -144,6 +205,16 @@ const WarehouseLocationPrefill = (() => {
     watchModalRemoval(modal);
     watchLineRows(modal);
     applyUnusedFieldStatesWithRetry(modal);
+    // El loader nuevo baja los scripts con un pool de concurrencia, así que el núcleo puede
+    // llegar DESPUÉS de este applet: se avisa diferido para no dar una falsa alarma. El poll
+    // del candado se instala igual y lo activa en cuanto el núcleo aparece.
+    setTimeout(() => {
+      if (!guard() && modal.isConnected) {
+        console.warn(LOG_PREFIX, 'warehouse-location-guard-core.js no cargó — el candado de guardado queda APAGADO');
+      }
+    }, 3000);
+    evaluateSaveGate(modal);
+    startGatePoll(modal);
     preloadAduana(modal);
   }
 
@@ -181,7 +252,10 @@ const WarehouseLocationPrefill = (() => {
     const state = modalStates.get(modal);
     if (state?.removalObserver) state.removalObserver.disconnect();
     if (state?.rowObserver) state.rowObserver.disconnect();
+    if (state?.clearRowTimeout) state.clearRowTimeout();
+    if (state?.gateTimer) { clearInterval(state.gateTimer); state.gateTimer = null; }
     if (state?.docClickHandler) document.removeEventListener('mousedown', state.docClickHandler);
+    document.getElementById('sa-wlp-gatetip')?.remove();
     modalStates.delete(modal);
     pendingLocationId = null;
     pendingLocationOwner = null;
@@ -226,10 +300,20 @@ const WarehouseLocationPrefill = (() => {
     }
   }
 
+  // Versión del <style>: el remote loader puede reinyectar el script SIN recargar la SPA, y
+  // un <style> viejo con el mismo id se quedaría sin las reglas nuevas. Se compara y se
+  // escribe el MISMO número (el bug de pn-specs-column 0.3.1 fue subirlo en un solo lado).
+  const STYLE_VERSION = '2';
+
   function injectStyles() {
-    if (document.getElementById('sa-wlp-styles')) return;
+    const existing = document.getElementById('sa-wlp-styles');
+    if (existing) {
+      if (existing.dataset.saV === STYLE_VERSION) return;
+      existing.remove();
+    }
     const style = document.createElement('style');
     style.id = 'sa-wlp-styles';
+    style.dataset.saV = STYLE_VERSION;
     style.textContent = `
       .sa-wlp-row-label, .sa-wlp-row-controls { margin-top: 12px; }
       .sa-wlp-controls {
@@ -280,8 +364,58 @@ const WarehouseLocationPrefill = (() => {
         font-size: 13px; color: rgba(0,0,0,0.65); font-style: italic;
         pointer-events: auto; cursor: not-allowed; z-index: 10;
       }
+      /* ── Candado de guardado ─────────────────────────────────────────────
+         Las reglas cuelgan de atributos NUESTROS (data-sa-wlp-*), no de la
+         className del nodo: el className de los botones y de los combos lo
+         pinta React y lo reescribiría en el siguiente render. */
+      button[data-sa-wlp-blocked="true"] {
+        opacity: 0.45 !important; cursor: not-allowed !important;
+        filter: grayscale(1);
+      }
+      [data-sa-wlp-missing="true"] {
+        outline: 2px solid #f08c2e !important; outline-offset: 1px;
+        border-radius: 4px; background: rgba(240,140,46,0.08) !important;
+      }
+      .sa-wlp-gate-note {
+        display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+        margin-right: auto; padding: 6px 10px; border-radius: 6px;
+        background: rgba(240,140,46,0.12); border: 1px solid #f08c2e;
+        color: #8a4b06; font-size: 13px; font-weight: 600; line-height: 1.2;
+        max-width: 46%;
+      }
+      .sa-wlp-gate-note:hover { background: rgba(240,140,46,0.22); }
+      /* Tooltip propio: DARK MODE porque es UI de la extensión, no de Steelhead
+         (regla de diseño del repo — que el operador distinga de un vistazo). */
+      #sa-wlp-gatetip {
+        position: fixed; z-index: 2147483000; max-width: 460px;
+        background: #1c2430; color: #e6e9ee; border: 1px solid #2c3746;
+        border-radius: 8px; padding: 10px 12px; font-size: 12.5px;
+        line-height: 1.45; white-space: pre-wrap; pointer-events: none;
+        box-shadow: 0 10px 28px rgba(0,0,0,0.45); font-family: inherit;
+      }
+      #sa-wlp-gatetip[hidden] { display: none; }
+      #sa-wlp-toast {
+        position: fixed; left: 50%; bottom: 26px; transform: translateX(-50%);
+        z-index: 2147483000; max-width: 620px;
+        background: #1c2430; color: #e6e9ee; border: 1px solid #2c3746;
+        border-left: 4px solid #13a36f; border-radius: 8px;
+        padding: 12px 16px; font-size: 13px; line-height: 1.45;
+        box-shadow: 0 10px 28px rgba(0,0,0,0.45);
+      }
+      #sa-wlp-toast.err { border-left-color: #e5534b; }
     `;
     document.head.appendChild(style);
+  }
+
+  let toastTimer = null;
+  function toast(msg, isErr) {
+    injectStyles();
+    let el = document.getElementById('sa-wlp-toast');
+    if (!el) { el = document.createElement('div'); el.id = 'sa-wlp-toast'; document.body.appendChild(el); }
+    el.className = isErr ? 'err' : '';
+    el.textContent = msg;
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { document.getElementById('sa-wlp-toast')?.remove(); }, 9000);
   }
 
   function injectField(modal) {
@@ -657,6 +791,342 @@ const WarehouseLocationPrefill = (() => {
     const modal = findModalForState(state);
     if (!modal) return;
     applyDisableState(modal);
+    evaluateSaveGate(modal);
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // CANDADO DE GUARDADO — capa DOM
+  // Nada aquí escribe si el valor ya es el correcto: el MutationObserver del tbody corre con
+  // subtree, así que una escritura incondicional se re-dispararía a sí misma en bucle.
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  function setAttrIfNeeded(el, name, value) {
+    if (!el) return;
+    if (value == null) {
+      if (el.hasAttribute(name)) el.removeAttribute(name);
+    } else if (el.getAttribute(name) !== value) {
+      el.setAttribute(name, value);
+    }
+  }
+
+  // El combo de ubicación VACÍO de un renglón, o null si ya tiene valor. react-select sustituye
+  // el placeholder por un singleValue al elegir, así que la presencia del placeholder ES la
+  // señal de "vacío" (verificado en vivo con los dos estados). OJO: esta señal es NEGATIVA y
+  // no distingue el estado "tecleando sin elegir" — por eso solo es el fallback.
+  function findEmptyLocationCombo(row) {
+    const G = guard();
+    if (!G) return null;
+    for (const ph of row.querySelectorAll('[id$="-placeholder"]')) {
+      if (G.isLocationPlaceholder(ph.textContent)) {
+        return ph.closest('[class*="-control"]') || ph.parentElement;
+      }
+    }
+    return null;
+  }
+
+  // El elemento que contiene el label buscado, en cualquier profundidad del renglón.
+  function findLabelHost(root, re) {
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      const txt = (node.textContent || '').trim();
+      if (txt && re.test(txt)) return node.parentElement || null;
+    }
+    return null;
+  }
+
+  // El combo de ubicación del renglón EN CUALQUIER ESTADO, localizado por su label
+  // «Ubicación Inicial:» y el primer control react-select que le sigue en orden de documento
+  // (`compareDocumentPosition`, así no se depende de la forma del grid). Localizarlo siempre
+  // es lo que permite exigir la señal POSITIVA — ver rowHasLocation() en el núcleo.
+  function locateRowLocationCombo(row) {
+    const G = guard();
+    if (!G) return null;
+    const labelHost = findLabelHost(row, G.ROW_LOCATION_LABEL_RE);
+    if (!labelHost) return null;
+    for (const ctrl of row.querySelectorAll('[class*="-control"]')) {
+      const rel = labelHost.compareDocumentPosition(ctrl);
+      if (rel & Node.DOCUMENT_POSITION_FOLLOWING) return ctrl;
+    }
+    return null;
+  }
+
+  // Nombre del número de parte del renglón (best-effort: sirve para NOMBRAR, no para decidir).
+  function rowPartName(row) {
+    const cell = row.children && row.children[0];
+    if (!cell) return null;
+    const sv = cell.querySelector('[class*="singleValue"]');
+    return sv ? (sv.textContent || '').trim() : null;
+  }
+
+  // Nombre del lote recibido. El placeholder real es «ej. LOTE#: 12345»; el "12345" hace el
+  // anclaje independiente del idioma y "lot#" cubre el locale inglés.
+  function rowBatchName(row) {
+    for (const inp of row.querySelectorAll('input')) {
+      const ph = inp.placeholder || '';
+      if (/lote\s*#|lot\s*#|12345/i.test(ph)) return (inp.value || '').trim() || null;
+    }
+    return null;
+  }
+
+  function collectRowInfo(modal) {
+    const G = guard();
+    const rows = [...modal.querySelectorAll('tbody.MuiTableBody-root tr')];
+    return rows.map((row, i) => {
+      const byLabel = locateRowLocationCombo(row);
+      const emptyCombo = findEmptyLocationCombo(row);
+      const signals = {
+        foundByLabel: !!byLabel,
+        hasSingleValue: !!(byLabel && byLabel.querySelector('[class*="singleValue"]')),
+        hasPlaceholder: !!emptyCombo,
+      };
+      return {
+        index: i + 1,
+        hasLocation: G ? G.rowHasLocation(signals) : true,
+        part: rowPartName(row),
+        batch: rowBatchName(row),
+        el: row,
+        // A dónde va la marca naranja: el combo localizado por label, o el que tenga el
+        // placeholder si el label no se reconoció.
+        locationControl: byLabel || emptyCombo,
+      };
+    });
+  }
+
+  // Veredicto FRESCO del candado. Devuelve null si el núcleo puro no cargó (candado apagado).
+  function computeGate(modal) {
+    const G = guard();
+    if (!G) return null;
+    const state = modalStates.get(modal);
+    const rows = collectRowInfo(modal);
+    const gate = G.decideSaveGate({
+      headerLocation: state?.selectedLocation?.path || null,
+      rows,
+    });
+    gate.rows = rows;
+    return gate;
+  }
+
+  function evaluateSaveGate(modal) {
+    if (!modal || !modal.isConnected) return null;
+    const gate = computeGate(modal);
+    if (!gate) return null;
+    const state = modalStates.get(modal);
+    if (state) state.lastGate = gate;
+    try { markMissingRows(modal, gate); } catch (err) { console.warn(LOG_PREFIX, 'markMissingRows:', err); }
+    try { applyButtonGate(modal, gate); } catch (err) { console.warn(LOG_PREFIX, 'applyButtonGate:', err); }
+    try { syncGateNote(modal, gate); } catch (err) { console.warn(LOG_PREFIX, 'syncGateNote:', err); }
+    return gate;
+  }
+
+  // Se resalta la EXCEPCIÓN (el renglón que FALTA), no la norma — misma lección que
+  // surtido-guard 0.2.0: marcar todo deja de ser señal.
+  function markMissingRows(modal, gate) {
+    const keep = new Set();
+    for (const row of gate.rows) {
+      if (!row || !row.locationControl) continue;
+      if (gate.blocked && !row.hasLocation) {
+        setAttrIfNeeded(row.locationControl, 'data-sa-wlp-missing', 'true');
+        keep.add(row.locationControl);
+      }
+    }
+    // Barrido de huérfanas: el combo que llevaba la marca puede haber cambiado de estado (o
+    // haberlo re-creado React), y entonces ya no aparece en `rows` para limpiarse solo. Sin
+    // esto queda una marca naranja sobre un renglón que ya está resuelto — mentira visible.
+    for (const el of modal.querySelectorAll('[data-sa-wlp-missing="true"]')) {
+      if (!keep.has(el)) el.removeAttribute('data-sa-wlp-missing');
+    }
+  }
+
+  // El pie del modal. Se ancla en el botón de Cancelar y se sube hasta el contenedor que
+  // agrupa varios botones: el pie no expone data-steelhead-component-id (verificado en vivo).
+  function findFooter(modal) {
+    const G = guard();
+    if (!G) return null;
+    const cancel = [...modal.querySelectorAll('button')].find(b => G.isCancelButtonText(b.textContent));
+    let node = cancel ? cancel.parentElement : null;
+    for (let i = 0; node && node !== modal && i < 5; i++) {
+      const withText = [...node.querySelectorAll('button')].filter(b => (b.textContent || '').trim());
+      if (withText.length >= 2) return node;
+      node = node.parentElement;
+    }
+    return null;
+  }
+
+  function findSaveButtons(modal) {
+    const G = guard();
+    if (!G) return [];
+    // Sin pie reconocible se acota al modal: es preferible cubrir un botón de más que
+    // dejar pasar el guardado (el candado del payload atrapa lo que se escape, igual).
+    const scope = findFooter(modal) || modal;
+    return [...scope.querySelectorAll('button')].filter(b => G.isSaveButtonText(b.textContent));
+  }
+
+  function applyButtonGate(modal, gate) {
+    for (const btn of findSaveButtons(modal)) {
+      // Si React ya lo tiene deshabilitado (p.ej. falta el cliente), no hay nada que tapar:
+      // el motivo es de Steelhead y no debemos atribuirnoslo.
+      if (gate.blocked && !btn.disabled) blockSaveButton(btn, gate);
+      else unblockSaveButton(btn);
+    }
+  }
+
+  function blockSaveButton(btn, gate) {
+    if (btn.dataset.saWlpTip !== gate.tooltip) btn.dataset.saWlpTip = gate.tooltip;
+    // `title` como red de seguridad: si nuestro tooltip no llegara a montarse, el nativo
+    // dice lo mismo. Se retira mientras el cursor está encima para no duplicarlos.
+    if (btn.dataset.saWlpHover !== 'true' && btn.title !== gate.tooltip) btn.title = gate.tooltip;
+    if (btn.dataset.saWlpBlocked === 'true') return;
+    btn.dataset.saWlpBlocked = 'true';
+    btn.setAttribute('aria-disabled', 'true');
+    // Capture EN EL BOTÓN: React escucha en el contenedor raíz durante la fase de burbuja,
+    // así que un stopPropagation aquí llega antes y su onClick nunca se dispara. No se usa
+    // el atributo `disabled` porque React lo reescribiría en el siguiente render.
+    btn.addEventListener('mousedown', swallowSaveEvent, true);
+    btn.addEventListener('mouseup', swallowSaveEvent, true);
+    btn.addEventListener('click', swallowSaveEvent, true);
+    btn.addEventListener('keydown', swallowSaveKey, true);
+    btn.addEventListener('mouseenter', onGateHover);
+    btn.addEventListener('mouseleave', onGateLeave);
+    btn.addEventListener('focus', onGateHover, true);
+    btn.addEventListener('blur', onGateLeave, true);
+  }
+
+  function unblockSaveButton(btn) {
+    if (btn.dataset.saWlpBlocked !== 'true') return;
+    delete btn.dataset.saWlpBlocked;
+    delete btn.dataset.saWlpTip;
+    delete btn.dataset.saWlpHover;
+    delete btn.dataset.saWlpTitleHidden;
+    btn.removeAttribute('aria-disabled');
+    if (btn.title) btn.removeAttribute('title');
+    btn.removeEventListener('mousedown', swallowSaveEvent, true);
+    btn.removeEventListener('mouseup', swallowSaveEvent, true);
+    btn.removeEventListener('click', swallowSaveEvent, true);
+    btn.removeEventListener('keydown', swallowSaveKey, true);
+    btn.removeEventListener('mouseenter', onGateHover);
+    btn.removeEventListener('mouseleave', onGateLeave);
+    btn.removeEventListener('focus', onGateHover, true);
+    btn.removeEventListener('blur', onGateLeave, true);
+    hideGateTip();
+  }
+
+  // Antes de tragar el evento se re-mide: si en este instante ya no falta nada, el candado
+  // está obsoleto y el clic debe pasar. Vale más un candado que se abre solo que uno que
+  // deja al operador atorado con un veredicto viejo.
+  function swallowSaveEvent(e) {
+    const modal = document.querySelector('[data-sa-wlp-attached="true"]');
+    const gate = modal ? computeGate(modal) : null;
+    if (!gate || !gate.blocked) {
+      if (modal) evaluateSaveGate(modal);
+      return;
+    }
+    e.stopPropagation();
+    e.preventDefault();
+    if (e.type === 'click') {
+      showGateTip(e.currentTarget, gate);
+      toast('⛔ ' + gate.summary.replace(/^⛔\s*/, '') + '. Elige la ubicación en cada línea, o usa «Ubicación inicial» del encabezado para aplicarla a todas.', true);
+    }
+  }
+
+  function swallowSaveKey(e) {
+    if (e.key !== 'Enter' && e.key !== ' ' && e.key !== 'Spacebar') return;
+    swallowSaveEvent(e);
+  }
+
+  function onGateHover(e) {
+    const btn = e.currentTarget;
+    btn.dataset.saWlpHover = 'true';
+    if (btn.title) { btn.dataset.saWlpTitleHidden = '1'; btn.removeAttribute('title'); }
+    const modal = document.querySelector('[data-sa-wlp-attached="true"]');
+    const gate = modal ? computeGate(modal) : null;
+    if (!gate || !gate.blocked) {
+      hideGateTip();
+      if (modal) evaluateSaveGate(modal);
+      return;
+    }
+    showGateTip(btn, gate);
+  }
+
+  function onGateLeave(e) {
+    const btn = e.currentTarget;
+    delete btn.dataset.saWlpHover;
+    if (btn.dataset.saWlpTitleHidden) {
+      delete btn.dataset.saWlpTitleHidden;
+      if (btn.dataset.saWlpBlocked === 'true' && btn.dataset.saWlpTip) btn.title = btn.dataset.saWlpTip;
+    }
+    hideGateTip();
+  }
+
+  function showGateTip(btn, gate) {
+    if (!btn || !gate?.tooltip) return;
+    injectStyles();
+    let tip = document.getElementById('sa-wlp-gatetip');
+    if (!tip) {
+      tip = document.createElement('div');
+      tip.id = 'sa-wlp-gatetip';
+      document.body.appendChild(tip);
+    }
+    tip.hidden = false;
+    if (tip.textContent !== gate.tooltip) tip.textContent = gate.tooltip;
+    // Medir DESPUÉS de escribir el texto, o la altura es la del contenido anterior.
+    const r = btn.getBoundingClientRect();
+    const th = tip.offsetHeight;
+    const tw = tip.offsetWidth;
+    let top = r.top - th - 10;
+    if (top < 8) top = Math.min(r.bottom + 10, window.innerHeight - th - 8);
+    let left = r.left + (r.width / 2) - (tw / 2);
+    left = Math.max(8, Math.min(left, window.innerWidth - tw - 8));
+    tip.style.top = Math.max(8, top) + 'px';
+    tip.style.left = left + 'px';
+  }
+
+  function hideGateTip() {
+    const tip = document.getElementById('sa-wlp-gatetip');
+    if (tip && !tip.hidden) tip.hidden = true;
+  }
+
+  // Aviso en el pie: el tooltip requiere hover, y un botón gris sin explicación a la vista
+  // se lee como una falla de la extensión. El aviso vive junto a los botones porque ahí es
+  // donde el operador mira cuando quiere guardar.
+  function syncGateNote(modal, gate) {
+    const footer = findFooter(modal);
+    if (!footer) return;
+    let note = footer.querySelector('.sa-wlp-gate-note');
+    if (!gate.blocked) { note?.remove(); return; }
+    if (!note) {
+      note = document.createElement('div');
+      note.className = 'sa-wlp-gate-note';
+      note.dataset.saWlpField = 'true';
+      note.addEventListener('click', () => scrollToFirstMissing());
+      footer.insertBefore(note, footer.firstChild);
+    }
+    const text = gate.summary + ' · ir a la primera';
+    if (note.textContent !== text) note.textContent = text;
+    if (note.title !== gate.tooltip) note.title = gate.tooltip;
+  }
+
+  function scrollToFirstMissing() {
+    const modal = document.querySelector('[data-sa-wlp-attached="true"]');
+    if (!modal) return;
+    const gate = computeGate(modal);
+    const first = gate?.missing?.[0];
+    if (!first) return;
+    const target = first.locationControl || first.el;
+    target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function startGatePoll(modal) {
+    const state = modalStates.get(modal);
+    if (!state || state.gateTimer) return;
+    state.gateTimer = setInterval(() => {
+      if (!modal.isConnected) {
+        clearInterval(state.gateTimer);
+        state.gateTimer = null;
+        return;
+      }
+      evaluateSaveGate(modal);
+    }, GATE_POLL_MS);
   }
 
   function watchLineRows(modal) {
@@ -665,13 +1135,24 @@ const WarehouseLocationPrefill = (() => {
       console.warn(LOG_PREFIX, 'No se encontró tbody.MuiTableBody-root — observer de líneas no instalado');
       return;
     }
+    // subtree:true porque el candado necesita ver cuándo un combo PASA de placeholder a
+    // singleValue (eso pasa DENTRO del renglón, no en la lista de renglones). Va con debounce
+    // y todas las escrituras del candado son idempotentes: si no, se re-dispararía solo.
+    let rowTimeout = null;
     const observer = new MutationObserver(() => {
-      // Re-aplicar el estado cuando cambian las líneas (add/remove)
-      applyDisableState(modal);
+      if (rowTimeout) clearTimeout(rowTimeout);
+      rowTimeout = setTimeout(() => {
+        if (!modal.isConnected) return;
+        applyDisableState(modal);
+        evaluateSaveGate(modal);
+      }, 150);
     });
-    observer.observe(tbody, { childList: true, subtree: false });
+    observer.observe(tbody, { childList: true, subtree: true });
     const state = modalStates.get(modal);
-    if (state) state.rowObserver = observer;
+    if (state) {
+      state.rowObserver = observer;
+      state.clearRowTimeout = () => { if (rowTimeout) clearTimeout(rowTimeout); };
+    }
   }
 
   function wireCombobox(modal) {
@@ -690,7 +1171,9 @@ const WarehouseLocationPrefill = (() => {
         clearBtn.hidden = true;
         pendingLocationId = null;
         pendingLocationOwner = null;
-        applyDisableState(findModalForState(state));
+        const m = findModalForState(state);
+        applyDisableState(m);
+        if (m) evaluateSaveGate(m);
       }
       dropdown.hidden = false;
       renderDropdown(state);
