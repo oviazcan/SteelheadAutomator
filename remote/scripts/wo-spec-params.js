@@ -191,6 +191,14 @@
         .map(c => ({
           nodo: c.recipeNodeName, campo: c.fieldName, estado: c.status,
           forzada: !!c.forced, ambito: c.scope,
+          // El ORIGEN del valor decide si el cambio está respaldado o es una inferencia:
+          //   NP        lo define el Número de Parte — fuente de verdad
+          //   CATALOGO  el NP no lo define y el catálogo ofrece una sola opción
+          // Sin esta columna el CSV no permite separar «aplicar con confianza» de
+          // «verificar primero», que es justo la decisión que hay que tomar sobre las
+          // casillas de PROCESO (2026-07-30: 7 006 vacías en un escaneo del dominio).
+          origen: c.via || '',
+          spec: (c.desired && c.desired.specName) || c.specName || '',
           tenia: (c.appliedRows && c.appliedRows[0] && c.appliedRows[0].specFieldParamBySpecFieldParamId
                   && c.appliedRows[0].specFieldParamBySpecFieldParamId.name) || '',
           quedara: (c.desired && c.desired.refName) || ''
@@ -469,8 +477,8 @@
   }
 
   function buildCsv(results) {
-    const rows = [['orden', 'numero_parte', 'tipo', 'nodo', 'campo', 'ambito', 'forzada',
-                   'estado', 'tenia', 'quedara', 'id_archivado', 'id_escrito']];
+    const rows = [['orden', 'numero_parte', 'tipo', 'nodo', 'campo', 'ambito', 'origen', 'spec',
+                   'forzada', 'estado', 'tenia', 'quedara', 'id_archivado', 'id_escrito']];
     for (const r of (results || [])) {
       for (const c of (r.cells || [])) {
         if (!c || c.status === 'OK') continue;
@@ -479,14 +487,18 @@
           && c.appliedRows[0].specFieldParamBySpecFieldParamId.name) || '';
         rows.push([r.idInDomain, r.partNumberName,
           c.forced ? 'FORZADA' : 'CASILLA',
-          c.recipeNodeName, c.fieldName, c.scope, c.forced ? 'si' : 'no',
+          c.recipeNodeName, c.fieldName, c.scope,
+          c.via || '', (c.desired && c.desired.specName) || '',
+          c.forced ? 'si' : 'no',
           c.status, tenia, (c.desired && c.desired.refName) || '',
           (c.toArchiveIds || []).join(' '), c.toAddWriteId == null ? '' : c.toAddWriteId]);
       }
       for (const a of (r.anomalies || [])) {
+        // Mismo ancho que el encabezado (14): las anomalías no tienen origen ni spec, pero
+        // sus columnas deben existir o el CSV se desalinea a partir de aquí.
         rows.push([r.idInDomain, r.partNumberName, 'ANOMALIA',
-          a.recipeNodeName, a.fieldName, 'EXTERNA', 'no',
-          'NO_SE_TOCA', a.paramName, '', '', '']);
+          a.recipeNodeName, a.fieldName, 'EXTERNA', '', '',
+          'no', 'NO_SE_TOCA', a.paramName, '', '', '']);
       }
     }
     return rows.map(cols => cols.map(csvCell).join(',')).join('\n') + '\n';
@@ -934,13 +946,15 @@
   }
 
   function downloadScanCsv(hallazgos) {
-    const rows = [['orden', 'numero_parte', 'nodo', 'campo', 'ambito', 'forzada', 'estado', 'tenia', 'quedara']];
+    const rows = [['orden', 'numero_parte', 'nodo', 'campo', 'ambito', 'origen', 'spec',
+                   'forzada', 'estado', 'tenia', 'quedara']];
     for (const h of (hallazgos || [])) {
       for (const c of (h.cambios || [])) {
         rows.push([h.idInDomain, h.partNumberName, c.nodo, c.campo, c.ambito,
+                   c.origen || '', c.spec || '',
                    c.forzada ? 'si' : 'no', c.estado, c.tenia, c.quedara]);
       }
-      if (h.nAnomalias) rows.push([h.idInDomain, h.partNumberName, '', '', 'EXTERNA', 'no',
+      if (h.nAnomalias) rows.push([h.idInDomain, h.partNumberName, '', '', 'EXTERNA', '', '', 'no',
                                    'ANOMALIAS:' + h.nAnomalias, '', '']);
     }
     try {
