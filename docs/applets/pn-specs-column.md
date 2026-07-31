@@ -1,6 +1,49 @@
 # pn-specs-column — Datos del NP (specs, metal, línea, racks, unidades) en el dashboard de Números de Parte
 
-**Versión:** 0.3.2 — **VIVO; salió en config 1.11.7 (tag `v1.11.7`) y el config vivo sigue avanzando con deploys de otros applets. VALIDADO EN VIVO por el operador** («ya quedó», 2026-07-29, con el contador marcando `50/50`). Core **42/42** golden (25 nuevos contra **fixture REAL** del PN 2300153 capturado en vivo). **0.3.2** Specs al final de la barra, racks en 2 renglones, unidades en el orden del ERP, nombre del NP realzado + fix del `<style>` que se recreaba en cada sync. **0.3.1** angostar (fuera Línea; desc+metal dentro de la celda del nombre). **0.3.0** columnas nuevas + todas AL INICIO. **0.2.1** fix del toggle que no se montaba. **0.2.0** criterio "el valor trae dígitos" + spec como link. **0.1.2** estilo. **0.1.1** 2 bugs del run real.
+**Versión:** 0.3.3 — **VIVO en config 1.11.46 (tag `v1.11.46`), firma KMS verificada en vivo. Core 46/46.**
+
+## v0.3.3 (2026-07-31) — la fila reciclada mostraba los datos de OTRO número de parte
+
+**Reporte del operador, con capturas:** al **archivar** un NP, su renglón seguía mostrando la spec del
+archivado; recargando la página se recomponía solo. Las dos capturas del mismo `CXC7807602-12` lo
+muestran completo: antes `RC Lavado` · `T101-BA01 (750 KGM)` · sin DMK; tras recargar
+`1.28.032 (Níquel)` · `Espesor 5.08-8.89 µm` · `T109-BA01 (1900 KGM)` · DMK 0.369.
+
+**Causa:** React **RECICLA los `<tr>`** al archivar, filtrar o paginar — reusa el nodo y le cambia el
+contenido. El glue solo preguntaba si nuestra celda **existía**:
+
+```js
+let td = tr.querySelector(':scope > .' + col.cls);
+if (!td) { …crear, poner data-sa-pnid y pintar… }   // si YA existía, no se tocaba nunca
+```
+
+Así que la celda nativa del nombre pasaba al NP siguiente y **nuestra celda inyectada sobrevivía con
+el `data-sa-pnid` y el contenido del anterior**. Eso explica el síntoma exacto: **el nombre correcto
+con las tres columnas nuestras mintiendo**, coherentes entre sí porque venían todas del mismo NP viejo.
+
+**El daño no era solo el dato viejo:** `applyToCells` busca por `[data-sa-pnid="<id>"]`, así que un
+atributo stale hace que, cuando llegue el fetch del NP **anterior**, su resultado se pinte sobre la
+fila del NP **nuevo** — la mentira se refresca sola.
+
+**Fix:** la identidad se **revalida en CADA sync**, no solo al crear, en los **dos** sitios que
+inyectan nodos: la celda de columna (se reconstruye) y el box de descripción+metal dentro de la celda
+nativa del nombre (se re-adopta y se le borra `data-sa-txt` para forzar el repintado aunque el texto
+coincida). La decisión vive en el core como `isStaleNode(attr, pnId)` — pura y testeada, **4 tests**:
+sin `data-sa-pnid` se reconstruye (nodo nuestro sin dueño), y con `pnId` nulo **NO** se reconstruye
+(una fila sin link no está reciclada: todavía no resuelve; reconstruir ahí borraría celdas buenas en
+cada sync y el observer entraría en bucle).
+
+**Lección, y es la misma que ya cobró el repo dos veces:** cuando React recicla nodos, un guard de
+idempotencia que pregunta *«¿ya lo pinté?»* en vez de *«¿sigue siendo del mismo dueño?»* no evita
+trabajo — **conserva una mentira**. `schedule-batch-highlighter` lo pagó con los checkbox reciclados
+por la virtualización (des-marcar por referencia fallaba) y aquí con la celda entera. Todo nodo
+inyectado en una tabla de React necesita llevar **de quién es** y revalidarlo en cada pasada.
+
+**Pendiente:** rebundle Safari/iPad (el applet está en el bundle desde v0.6.7).
+
+## Historial previo
+
+**0.3.2 — VIVO; salió en config 1.11.7 (tag `v1.11.7`) y el config vivo sigue avanzando con deploys de otros applets. VALIDADO EN VIVO por el operador** («ya quedó», 2026-07-29, con el contador marcando `50/50`). Core **42/42** golden (25 nuevos contra **fixture REAL** del PN 2300153 capturado en vivo). **0.3.2** Specs al final de la barra, racks en 2 renglones, unidades en el orden del ERP, nombre del NP realzado + fix del `<style>` que se recreaba en cada sync. **0.3.1** angostar (fuera Línea; desc+metal dentro de la celda del nombre). **0.3.0** columnas nuevas + todas AL INICIO. **0.2.1** fix del toggle que no se montaba. **0.2.0** criterio "el valor trae dígitos" + spec como link. **0.1.2** estilo. **0.1.1** 2 bugs del run real.
 **Categoría:** Números de Parte · **autoInject:true** · ruta: `/PartNumbers` (index, NO la ficha `/PartNumbers/:id`)
 
 ## Qué hace
