@@ -1,0 +1,492 @@
+{
+  "_origen": "scan_results_2026-07-30_195800.json — CreateManyScheduleTasks capturado EN VIVO al guardar el Task Builder del Schedule Board 454 (agrupar 4 ordenes seleccionadas). Es el payload REAL de una tarea AGRUPADA: 1 scheduleTask con 5 scheduleTaskElements de 4 partNumbers distintos. Precedido por RackingRecipeNodes{workOrderIds:[1756482,1756460,1756468,1760657]}.",
+  "_formula": "total = treatmentTime + (SUM(ceil(partCount_i / partsPerBatch_i)) - 1) * cycleTime. Tarea #1: 45 + (41-1)*30 = 1245 (real 1245). Tarea #2: 45 + (41-1)*15 = 645 (real 645). Los lotes se SUMAN entre elementos, no se calculan por elemento.",
+  "hash": "9039afe7fe853a54fc1c31ad0d51e91dccd24b37c2698d786dc58bd1835c46c9",
+  "variables": {
+    "scheduledTasks": {
+      "mnScheduleTask": [
+        {
+          "scheduleId": 454,
+          "treatmentId": 112435,
+          "stationId": 12099,
+          "expectedStartTime": "2026-07-31T01:56:56.974Z",
+          "totalTimeMinutes": 1245,
+          "cycleTimeMinutes": 30,
+          "treatmentTimeMinutes": 45,
+          "isIntentional": false,
+          "status": "UNSCHEDULED",
+          "scheduleTaskElementsByScheduleTaskId": {
+            "nodes": [
+              {
+                "partSetUuid": "e6f7ef70-c9f5-41c7-a51f-4a65d44d5e68",
+                "recipeNodeId": 42513781,
+                "partNumberId": 3044471,
+                "rackIdLineage": null,
+                "rackTypeIdLineage": null,
+                "partCount": 14,
+                "partsPerBatch": 1,
+                "relatedPartTransferAccounts": [
+                  {
+                    "id": 40529757,
+                    "partCount": 14
+                  }
+                ]
+              },
+              {
+                "partSetUuid": "a30d1f09-e594-4bae-b1e0-20d44960b92f",
+                "recipeNodeId": 42513781,
+                "partNumberId": 3044471,
+                "rackIdLineage": null,
+                "rackTypeIdLineage": null,
+                "partCount": 10,
+                "partsPerBatch": 1,
+                "relatedPartTransferAccounts": [
+                  {
+                    "id": 44953932,
+                    "partCount": 10
+                  }
+                ]
+              },
+              {
+                "partSetUuid": "e65782f9-bef7-4974-8c9c-2f7afea0d6fa",
+                "recipeNodeId": 42513102,
+                "partNumberId": 3020058,
+                "rackIdLineage": null,
+                "rackTypeIdLineage": null,
+                "partCount": 4,
+                "partsPerBatch": 1,
+                "relatedPartTransferAccounts": [
+                  {
+                    "id": 40529408,
+                    "partCount": 4
+                  }
+                ]
+              },
+              {
+                "partSetUuid": "b6321790-0647-4976-b592-d8e904dcf56a",
+                "recipeNodeId": 42513362,
+                "partNumberId": 3044551,
+                "rackIdLineage": null,
+                "rackTypeIdLineage": null,
+                "partCount": 1,
+                "partsPerBatch": 1,
+                "relatedPartTransferAccounts": [
+                  {
+                    "id": 40529579,
+                    "partCount": 1
+                  }
+                ]
+              },
+              {
+                "partSetUuid": "ccb3646c-3599-4500-8854-fc5eef696ded",
+                "recipeNodeId": 42630931,
+                "partNumberId": 3668355,
+                "rackIdLineage": null,
+                "rackTypeIdLineage": null,
+                "partCount": 12,
+                "partsPerBatch": 1,
+                "relatedPartTransferAccounts": [
+                  {
+                    "id": 40636807,
+                    "partCount": 12
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "scheduleId": 454,
+          "treatmentId": 91495,
+          "stationId": 12099,
+          "expectedStartTime": "2026-08-01T00:11:56.974Z",
+          "totalTimeMinutes": 645,
+          "cycleTimeMinutes": 15,
+          "treatmentTimeMinutes": 45,
+          "isIntentional": false,
+          "status": "UNSCHEDULED",
+          "scheduleTaskElementsByScheduleTaskId": {
+            "nodes": [
+              {
+                "partSetUuid": "e6f7ef70-c9f5-41c7-a51f-4a65d44d5e68",
+                "recipeNodeId": 42513782,
+                "partNumberId": 3044471,
+                "rackIdLineage": null,
+                "rackTypeIdLineage": null,
+                "partCount": 14,
+                "partsPerBatch": 1,
+                "relatedPartTransferAccounts": [
+                  {
+                    "id": 40529757,
+                    "partCount": 14
+                  }
+                ]
+              },
+              {
+                "partSetUuid": "a30d1f09-e594-4bae-b1e0-20d44960b92f",
+                "recipeNodeId": 42513782,
+                "partNumberId": 3044471,
+                "rackIdLineage": null,
+                "rackTypeIdLineage": null,
+                "partCount": 10,
+                "partsPerBatch": 1,
+                "relatedPartTransferAccounts": [
+                  {
+                    "id": 44953932,
+                    "partCount": 10
+                  }
+                ]
+              },
+              {
+                "partSetUuid": "e65782f9-bef7-4974-8c9c-2f7afea0d6fa",
+                "recipeNodeId": 42513103,
+                "partNumberId": 3020058,
+                "rackIdLineage": null,
+                "rackTypeIdLineage": null,
+                "partCount": 4,
+                "partsPerBatch": 1,
+                "relatedPartTransferAccounts": [
+                  {
+                    "id": 40529408,
+                    "partCount": 4
+                  }
+                ]
+              },
+              {
+                "partSetUuid": "b6321790-0647-4976-b592-d8e904dcf56a",
+                "recipeNodeId": 42513363,
+                "partNumberId": 3044551,
+                "rackIdLineage": null,
+                "rackTypeIdLineage": null,
+                "partCount": 1,
+                "partsPerBatch": 1,
+                "relatedPartTransferAccounts": [
+                  {
+                    "id": 40529579,
+                    "partCount": 1
+                  }
+                ]
+              },
+              {
+                "partSetUuid": "ccb3646c-3599-4500-8854-fc5eef696ded",
+                "recipeNodeId": 42630932,
+                "partNumberId": 3668355,
+                "rackIdLineage": null,
+                "rackTypeIdLineage": null,
+                "partCount": 12,
+                "partsPerBatch": 1,
+                "relatedPartTransferAccounts": [
+                  {
+                    "id": 40636807,
+                    "partCount": 12
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    "scheduleIdFilter": {
+      "equalTo": 454
+    }
+  },
+  "recipeNodesCitados": [
+    {
+      "workOrderId": 1756460,
+      "id": 42513102,
+      "type": "SCANNER_NODE",
+      "name": "T201 Listo para Procesar (Decapado s/Cobre)",
+      "treatmentId": 112435,
+      "treatmentByTreatmentId": {
+        "name": "T201 (DEC)-CU-VARIOS"
+      },
+      "possibleTreatmentTimesByRecipeNodeDefaultTreatment": {
+        "nodes": [
+          {
+            "cycleTime": {
+              "years": 0,
+              "months": 0,
+              "days": 0,
+              "hours": 0,
+              "minutes": 30,
+              "seconds": 0,
+              "__typename": "Interval"
+            },
+            "totalTime": {
+              "years": 0,
+              "months": 0,
+              "days": 0,
+              "hours": 0,
+              "minutes": 45,
+              "seconds": 0,
+              "__typename": "Interval"
+            },
+            "timeType": "PER_PART",
+            "partNumberId": null,
+            "stationId": null
+          }
+        ]
+      }
+    },
+    {
+      "workOrderId": 1756460,
+      "id": 42513103,
+      "type": "SCANNER_NODE",
+      "name": "T201 Listo para Procesar (Estaño s/Cobre)",
+      "treatmentId": 91495,
+      "treatmentByTreatmentId": {
+        "name": "T201 (EST)-CU-VARIOS"
+      },
+      "possibleTreatmentTimesByRecipeNodeDefaultTreatment": {
+        "nodes": [
+          {
+            "cycleTime": {
+              "years": 0,
+              "months": 0,
+              "days": 0,
+              "hours": 0,
+              "minutes": 15,
+              "seconds": 0,
+              "__typename": "Interval"
+            },
+            "totalTime": {
+              "years": 0,
+              "months": 0,
+              "days": 0,
+              "hours": 0,
+              "minutes": 45,
+              "seconds": 0,
+              "__typename": "Interval"
+            },
+            "timeType": "BATCH",
+            "partNumberId": null,
+            "stationId": null
+          }
+        ]
+      }
+    },
+    {
+      "workOrderId": 1756468,
+      "id": 42513362,
+      "type": "SCANNER_NODE",
+      "name": "T201 Listo para Procesar (Decapado s/Cobre)",
+      "treatmentId": 112435,
+      "treatmentByTreatmentId": {
+        "name": "T201 (DEC)-CU-VARIOS"
+      },
+      "possibleTreatmentTimesByRecipeNodeDefaultTreatment": {
+        "nodes": [
+          {
+            "cycleTime": {
+              "years": 0,
+              "months": 0,
+              "days": 0,
+              "hours": 0,
+              "minutes": 30,
+              "seconds": 0,
+              "__typename": "Interval"
+            },
+            "totalTime": {
+              "years": 0,
+              "months": 0,
+              "days": 0,
+              "hours": 0,
+              "minutes": 45,
+              "seconds": 0,
+              "__typename": "Interval"
+            },
+            "timeType": "PER_PART",
+            "partNumberId": null,
+            "stationId": null
+          }
+        ]
+      }
+    },
+    {
+      "workOrderId": 1756468,
+      "id": 42513363,
+      "type": "SCANNER_NODE",
+      "name": "T201 Listo para Procesar (Estaño s/Cobre)",
+      "treatmentId": 91495,
+      "treatmentByTreatmentId": {
+        "name": "T201 (EST)-CU-VARIOS"
+      },
+      "possibleTreatmentTimesByRecipeNodeDefaultTreatment": {
+        "nodes": [
+          {
+            "cycleTime": {
+              "years": 0,
+              "months": 0,
+              "days": 0,
+              "hours": 0,
+              "minutes": 15,
+              "seconds": 0,
+              "__typename": "Interval"
+            },
+            "totalTime": {
+              "years": 0,
+              "months": 0,
+              "days": 0,
+              "hours": 0,
+              "minutes": 45,
+              "seconds": 0,
+              "__typename": "Interval"
+            },
+            "timeType": "BATCH",
+            "partNumberId": null,
+            "stationId": null
+          }
+        ]
+      }
+    },
+    {
+      "workOrderId": 1756482,
+      "id": 42513781,
+      "type": "SCANNER_NODE",
+      "name": "T201 Listo para Procesar (Decapado s/Cobre)",
+      "treatmentId": 112435,
+      "treatmentByTreatmentId": {
+        "name": "T201 (DEC)-CU-VARIOS"
+      },
+      "possibleTreatmentTimesByRecipeNodeDefaultTreatment": {
+        "nodes": [
+          {
+            "cycleTime": {
+              "years": 0,
+              "months": 0,
+              "days": 0,
+              "hours": 0,
+              "minutes": 30,
+              "seconds": 0,
+              "__typename": "Interval"
+            },
+            "totalTime": {
+              "years": 0,
+              "months": 0,
+              "days": 0,
+              "hours": 0,
+              "minutes": 45,
+              "seconds": 0,
+              "__typename": "Interval"
+            },
+            "timeType": "PER_PART",
+            "partNumberId": null,
+            "stationId": null
+          }
+        ]
+      }
+    },
+    {
+      "workOrderId": 1756482,
+      "id": 42513782,
+      "type": "SCANNER_NODE",
+      "name": "T201 Listo para Procesar (Estaño s/Cobre)",
+      "treatmentId": 91495,
+      "treatmentByTreatmentId": {
+        "name": "T201 (EST)-CU-VARIOS"
+      },
+      "possibleTreatmentTimesByRecipeNodeDefaultTreatment": {
+        "nodes": [
+          {
+            "cycleTime": {
+              "years": 0,
+              "months": 0,
+              "days": 0,
+              "hours": 0,
+              "minutes": 15,
+              "seconds": 0,
+              "__typename": "Interval"
+            },
+            "totalTime": {
+              "years": 0,
+              "months": 0,
+              "days": 0,
+              "hours": 0,
+              "minutes": 45,
+              "seconds": 0,
+              "__typename": "Interval"
+            },
+            "timeType": "BATCH",
+            "partNumberId": null,
+            "stationId": null
+          }
+        ]
+      }
+    },
+    {
+      "workOrderId": 1760657,
+      "id": 42630931,
+      "type": "SCANNER_NODE",
+      "name": "T201 Listo para Procesar (Decapado s/Cobre)",
+      "treatmentId": 112435,
+      "treatmentByTreatmentId": {
+        "name": "T201 (DEC)-CU-VARIOS"
+      },
+      "possibleTreatmentTimesByRecipeNodeDefaultTreatment": {
+        "nodes": [
+          {
+            "cycleTime": {
+              "years": 0,
+              "months": 0,
+              "days": 0,
+              "hours": 0,
+              "minutes": 30,
+              "seconds": 0,
+              "__typename": "Interval"
+            },
+            "totalTime": {
+              "years": 0,
+              "months": 0,
+              "days": 0,
+              "hours": 0,
+              "minutes": 45,
+              "seconds": 0,
+              "__typename": "Interval"
+            },
+            "timeType": "PER_PART",
+            "partNumberId": null,
+            "stationId": null
+          }
+        ]
+      }
+    },
+    {
+      "workOrderId": 1760657,
+      "id": 42630932,
+      "type": "SCANNER_NODE",
+      "name": "T201 Listo para Procesar (Estaño s/Cobre)",
+      "treatmentId": 91495,
+      "treatmentByTreatmentId": {
+        "name": "T201 (EST)-CU-VARIOS"
+      },
+      "possibleTreatmentTimesByRecipeNodeDefaultTreatment": {
+        "nodes": [
+          {
+            "cycleTime": {
+              "years": 0,
+              "months": 0,
+              "days": 0,
+              "hours": 0,
+              "minutes": 15,
+              "seconds": 0,
+              "__typename": "Interval"
+            },
+            "totalTime": {
+              "years": 0,
+              "months": 0,
+              "days": 0,
+              "hours": 0,
+              "minutes": 45,
+              "seconds": 0,
+              "__typename": "Interval"
+            },
+            "timeType": "BATCH",
+            "partNumberId": null,
+            "stationId": null
+          }
+        ]
+      }
+    }
+  ]
+}
