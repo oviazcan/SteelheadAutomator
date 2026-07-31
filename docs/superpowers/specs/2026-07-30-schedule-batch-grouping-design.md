@@ -1,7 +1,16 @@
 # Agrupar lote en una tarea del programa — `schedule-batch-highlighter` v0.2.0
 
-**Fecha:** 2026-07-30 · **Estado:** diseño aprobado por el operador · **Origen:** `scan_results_2026-07-30_195800.json`
-(Schedule Board 454, dominio 344, Ecoplating TLC)
+**Fecha:** 2026-07-30 · **Estado:** IMPLEMENTADO y deployado (config 1.11.43, tag `v1.11.43`) · **Origen:**
+`scan_results_2026-07-30_195800.json` (Schedule Board 454, dominio 344, Ecoplating TLC)
+
+> ⚠️ **Dos puntos de este diseño los tumbó la evidencia durante la implementación** (se dejan como
+> registro del razonamiento, con la corrección al lado):
+> 1. **`RackingRecipeNodes` NO se usa.** `treatmentId`, nombre del tratamiento y `possibleTreatmentTimes`
+>    ya viajan en `RelatedSchedulingInformation`, que el board dispara solo ⇒ **cero consultas nuevas**.
+>    Un test se pone rojo si el glue vuelve a nombrarla.
+> 2. **Una orden con dos nodos programables no es un caso ambiguo:** pasa por dos tratamientos y el
+>    nativo crea dos tareas encadenadas. El modelo «una tarea por lote × tratamiento» resultó ser
+>    exactamente lo que hace Steelhead, no un compromiso nuestro.
 
 ## Problema
 
