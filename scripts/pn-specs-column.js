@@ -331,6 +331,14 @@ const PnSpecsColumn = (() => {
     if (!getFlag(NAME_INFO.store)) { if (existing) existing.remove(); return; }
     if (pnId == null) return;
     let box = existing;
+    // Mismo reciclaje de React que en las columnas: si el box quedó de otro NP hay que
+    // re-adoptarlo. No basta con que el texto cambie — el `data-sa-pnid` stale haría que el
+    // resultado del fetch del NP ANTERIOR se pinte aquí (applyToCells busca por ese atributo).
+    if (box && Core().isStaleNode(box.getAttribute('data-sa-pnid'), pnId)) {
+      box.setAttribute('data-sa-pnid', String(pnId));
+      box.removeAttribute('data-sa-txt');   // fuerza el repintado aunque el texto coincida
+      box.textContent = '';
+    }
     if (!box) {
       box = document.createElement('div');
       box.className = NAME_INFO.cls;
@@ -367,6 +375,12 @@ const PnSpecsColumn = (() => {
       COLS.forEach(function (col) {
         let td = tr.querySelector(':scope > .' + col.cls);
         if (!getFlag(col.store)) { if (td) td.remove(); return; }
+        // React RECICLA el <tr> al archivar/filtrar/paginar: la celda nativa del nombre pasa a
+        // otro NP y nuestra celda inyectada sobrevive con el dato del anterior. Antes esto no se
+        // revalidaba (solo se miraba si la celda EXISTÍA) y el renglón mostraba el nombre de un NP
+        // con las columnas de otro — reportado en piso al archivar un NP. La identidad se
+        // revalida en CADA sync, no solo al crear.
+        if (td && Core().isStaleNode(td.getAttribute('data-sa-pnid'), pnId)) { td.remove(); td = null; }
         if (!td) {
           td = document.createElement('td');
           // Hereda la className MUI de una celda nativa (padding/borde/tipografía).
