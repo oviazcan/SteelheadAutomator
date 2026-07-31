@@ -1,6 +1,6 @@
 {
-  "version": "1.11.42",
-  "lastUpdated": "2026-07-30T18:34",
+  "version": "1.11.43",
+  "lastUpdated": "2026-07-30T22:14",
   "extensionVersion": "1.7.1",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -2897,6 +2897,8 @@
     "scripts/receiver-date-override.js": "f18f704138be627db5273e1fbff4b8c9d1884caeafa9d0b2dbd273eb9560ad0b",
     "scripts/report-liberator.js": "3f153fe5f34261ca9b579a14fcd8d00cd205413943534c41ce54116975b25409",
     "scripts/report-regen.js": "9627a12c33346f5c06120098075e5bc6f12054feb64dc9764012157d4e298e92",
+    "scripts/schedule-batch-group-core.js": "7ad3a3db0d5ce8a00b3abf764bf786f3ecd5d23a709715f98406335dd048a461",
+    "scripts/schedule-batch-group.js": "4373ffdeb674e92489b3a6770d005fb1d1472f87d8c1c22da650dba83ffdac19",
     "scripts/schedule-batch-highlighter-core.js": "a11a6ca286e594ad9910719d0a4bbab86c461d28e2adbd3edb369a3603832637",
     "scripts/schedule-batch-highlighter.js": "0cceca941ecddee9f8725443359c678bb53a1b48d0a5cbf14d93195490b450ab",
     "scripts/sensor-graph-hide-all-core.js": "795d1741fc04de7b8a5a111542e36fe53a8b3ee473c3f0b7a457780df3ea213e",
