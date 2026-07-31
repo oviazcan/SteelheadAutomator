@@ -1,7 +1,8 @@
 # schedule-batch-highlighter — Resaltar y Agrupar Lote en Programación
 
-**Versión actual:** 0.2.0 — **SIN DEPLOYAR, sin corrida real.** Core de agrupación 28/28 + cableado 6/6,
-suite 88 archivos verde. La 0.1.4 (config **1.7.178**, tag `v1.7.178`) sigue siendo lo que está vivo.
+**Versión actual:** 0.2.0 — **DEPLOYADA (config 1.11.43, tag `v1.11.43`, firma KMS verificada EN VIVO)**,
+**sin corrida real todavía**. Core de agrupación 28/28 + cableado 6/6, suite 89 archivos verde.
+Rollback: `tools/rollback.sh v1.11.43`.
 
 ## v0.2.0 (2026-07-30) — agrupar el lote en UNA tarea del programa
 
@@ -89,8 +90,11 @@ igual que el nativo: **no fijamos hora**, el planificador la acomoda. Fijarla es
 
 - [ ] **Corrida real**: el glue no se ha ejecutado contra el ERP. Primero un lote chico y verificar
       que el material sale de los candidatos al refrescar el tablero.
-- [ ] Deploy (config + firma KMS) y rebundle Safari/iPad (el applet ya está en la lista blanca;
-      los dos scripts nuevos entran solos al expandir `config.apps[].scripts`).
+- [x] Deploy (config 1.11.43, firma KMS verificada en vivo, tag `v1.11.43`).
+- [ ] **Rebundle Safari/iPad — a propósito NO se hizo todavía.** El applet ya está en la lista blanca
+      y los dos scripts nuevos entrarían solos al expandir `config.apps[].scripts`, pero meter al iPad
+      un applet que escribe el programa **antes** de su primera corrida real amplía la superficie sin
+      necesidad: el iPad es justo el dispositivo del piso. Rebundlear después de validar.
 
 ## v0.1.x — el resaltado (VIVO)
 
