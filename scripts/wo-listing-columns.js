@@ -243,6 +243,11 @@ const WoListingColumns = (() => {
       COLS.forEach(function (col) {
         let td = tr.querySelector(':scope > .' + col.cls);
         if (!col.on()) { if (td) td.remove(); return; }
+        // React RECICLA el <tr> al filtrar/ordenar/paginar: la celda nativa pasa a otra OT y la
+        // nuestra sobrevivía con el dato de la anterior, porque aquí solo se miraba si EXISTÍA.
+        // También rescata la celda que nació SIN `data-sa-woid` (fila que aún no resolvía su link)
+        // y que, sin revalidación, se quedaba huérfana mostrando "—" para siempre.
+        if (td && Core().isStaleNode(td.getAttribute('data-sa-woid'), woIdInDomain)) { td.remove(); td = null; }
         if (!td) {
           td = document.createElement('td');
           const nativeTd = tr.querySelector('td:not(.sa-wocol-pn):not(.sa-wocol-sched):not(.sa-wocol-lote)');
