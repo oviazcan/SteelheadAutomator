@@ -1,5 +1,71 @@
 # `wo-spec-params` — Reaplicar Parámetros en Órdenes de Trabajo
 
+## 2026-07-30 — una orden puede traer VARIAS specs externas (config 1.11.42)
+
+**Reporte del operador:** *«me marca en la WO 16510 que no encuentra el nodo de calidad, pero sí
+lo trae»*. Tenía razón: el nodo estaba a la vista en el árbol.
+
+`findExternalSpec` recorría las specs y hacía `return` con **la primera** externa. Medido en vivo:
+
+```
+OT 16510
+  «48053-001-01 (Deshidrogenado / Endurecido)»  3 campos
+       → NINGÚN nodo de calidad declara sus campos
+  «RC Zn (Zinc)»                                5 campos
+       → T106-IC00-001 Inspeccionando y Empacando declara 5/5
+```
+
+Tomaba la de Deshidrogenado, ningún nodo la tocaba, `findInspectionNode` devolvía cero
+candidatos y **las dos specs quedaban sin atender**. Cuál se elegía dependía del orden de la
+respuesta del ERP: una lotería. En 16433 y 16462 —con una sola externa— funcionó bien (9/9 y
+5/5), y por eso el defecto sobrevivió a la validación.
+
+**Fix:** `findExternalSpecs` devuelve todas y cada una se resuelve con SU nodo. `extFields` pasa
+a ser la unión (con una sola considerada, los campos de las demás se colaban al universo PROCESO
+y se trataban como parámetros de línea). `faltantesSinDestino` ahora dice **de qué spec** es cada
+campo y por qué no hay destino.
+
+**Un test existente atrapó una regresión que metí de paso:** al no encontrar nodo yo cortaba con
+`continue` y mandaba TODOS los campos a faltantes, incluidos los correctamente aplicados. El
+comportamiento correcto —que ese test ya fijaba— es seguir evaluando lo que existe.
+
+Verificado contra la 16510 real después del fix: RC Zn encuentra su nodo, los 3 de Deshidrogenado
+se reportan, y el plan da 0 cambios porque las 5 casillas ya estaban `OK`.
+
+### Modo acotado: escribir solo lo que define el NP
+
+`resolveDesired` tiene dos vías y el preview las mezclaba:
+
+| vía | qué es |
+|---|---|
+| `NP` | el Número de Parte define el campo — la fuente de verdad declarada |
+| `CATALOGO` | el NP no lo define, pero el catálogo ofrece UNA opción → se infiere |
+
+En la corrida de 194 órdenes, **250 de 16 314 casillas** eran de la vía CATALOGO, casi todas
+campos de PROCESO (temperatura de tina, concentración, tiempo de centrifugadora) cuyo único
+parámetro de catálogo se llama literalmente «Pendiente». **No está demostrado que una orden sana
+los tenga llenos.** El modo (opt-in) escribe solo la vía NP; el resumen reporta cuántas dejó
+fuera — un filtro que no se ve engaña sobre lo que se aplicó.
+
+**PENDIENTE de decidir con evidencia:** abrir una OT anterior al daño (p.ej. 16400), nodo
+`T102-SE00-001 Secando Centrífugo`, campo `Tiempo de Centrifugadora`. Si dice «Pendiente», las
+250 se aplican; si está vacío, la vía CATALOGO debe apagarse siempre.
+
+### Lección de método, dos veces el mismo día
+
+Al diagnosticar la 16510 medí dos veces con el **shape equivocado**: primero con `WorkOrder`
+(que no trae `type` de los nodos) y luego buscando los campos de la spec en
+`partNumberWorkOrderSpecFields…` en vez de `spec.specFieldSpecsBySpecId`. En ambos casos la
+señal fue **un cero absurdo** —las 9 specs con cero campos— y lo que lo resolvió fue **copiar el
+acceso exacto del core** en vez de deducirlo del nombre. Mismo patrón que el incidente del shape
+de `AddParamsToPartNumber`.
+
+> El modelo completo de mediciones —los dos ejes, DÓNDE se mide vs BAJO QUÉ CRITERIO— está en
+> [`docs/api/spec-measurement-model.md`](../api/spec-measurement-model.md). Es la causa
+> estructural detrás de estos casos: un campo sin nodo que lo declare nunca se pide.
+
+---
+
 **Versión:** 0.5.0 · **Estado:** ✅ **VIVO (config 1.11.3, tag `v1.11.3`)** · fase 1 validada end-to-end el 2026-07-28; fases 2 y 3 y el modo *migrar* **sin corrida real**
 **Bundle:** 5ª acción de *Ajuste Masivo de Specs* (`spec-migrator`)
 **Diseño:** [`docs/superpowers/specs/2026-07-28-wo-spec-params-reapply-design.md`](../superpowers/specs/2026-07-28-wo-spec-params-reapply-design.md)
