@@ -467,14 +467,32 @@
   // Fail-safe: sin partNumberId no arma nada — el payload de AddParams lo exige y mandar uno
   // incompleto escribiría sobre el NP equivocado.
   function buildWritePlan(classification, opts) {
-    const out = { archiveIds: [], parametersToAdd: [], touched: 0, skipped: [] };
+    const out = { archiveIds: [], parametersToAdd: [], touched: 0, skipped: [], soloNP: 0 };
     const partNumberId = opts && opts.partNumberId;
+    // Modo acotado: escribe SOLO lo que el Número de Parte define, dejando fuera la vía
+    // CATALOGO.
+    //
+    // POR QUÉ (2026-07-30): `resolveDesired` tiene dos vías. La del NP es la fuente de verdad
+    // que este applet declara; la del catálogo es una inferencia — «el NP no dice nada, pero el
+    // catálogo ofrece una sola opción, así que debe ser esa». En la corrida de las 194 órdenes
+    // esa inferencia era 250 de 16 314 casillas, casi todas campos de PROCESO (temperatura de
+    // tina, concentración, tiempo de centrifugadora) que el NP no define porque son de la
+    // receta, no del cliente. No está demostrado que una orden sana los tenga llenos, y una
+    // escritura de más en el criterio de calidad de una orden EN PISO no se corrige sola en la
+    // siguiente corrida. Hasta tener esa evidencia, este modo permite avanzar con lo fundado.
+    //
+    // De paso, en un barrido del dominio completo recorta las escrituras en la misma
+    // proporción (~15 de cada 16 en la muestra medida).
+    const soloNP = !!(opts && opts.soloNP);
     const cells = (classification && classification.cells) || [];
     if (!partNumberId) return out;
 
     for (const c of cells) {
       if (c.status === 'AMBIGUO' || c.status === 'SIN_CATALOGO') { out.skipped.push(c); continue; }
       if (c.status === 'OK') continue;   // MIGRAR sí escribe: archiva en origen y repone en destino
+      // El filtro va DESPUÉS de descartar OK/AMBIGUO para que `soloNP` cuente lo que se dejó
+      // de escribir por el modo, y no lo que ya se omitía de todas formas.
+      if (soloNP && c.via !== 'NP') { out.soloNP++; out.skipped.push(c); continue; }
 
       let changed = false;
       for (const id of (c.toArchiveIds || [])) { out.archiveIds.push(id); changed = true; }
