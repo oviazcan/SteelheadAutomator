@@ -382,3 +382,51 @@ test('slimResult: una orden sin nada que corregir queda mínima', () => {
   assert.equal(slim.tieneTrabajo, false);
   assert.ok(JSON.stringify(slim).length < 400);
 });
+
+// ── CSV: ancho de fila == ancho de encabezado ───────────────────────────────
+// Al agregar las columnas `origen` y `spec` (2026-07-30) una fila quedó en 12 contra 14 del
+// encabezado: la de anomalías. Un CSV desalineado es peor que uno sin la columna — corre los
+// valores de sitio y el analista lee "EXTERNA" donde dice el estado, sin que nada falle.
+test('CSV: todas las filas tienen tantas columnas como el encabezado', () => {
+  const fs = require('node:fs'), path = require('node:path');
+  const src = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'remote', 'scripts', 'wo-spec-params.js'), 'utf8');
+
+  // Cuenta elementos de primer nivel de un array literal, respetando anidamiento.
+  const anchoDe = (txt) => {
+    let d = 0, n = 1;
+    for (const ch of txt) {
+      if ('([{'.includes(ch)) d++;
+      else if (')]}'.includes(ch)) d--;
+      else if (ch === ',' && d === 1) n++;
+    }
+    return n;
+  };
+
+  for (const fn of ['function downloadScanCsv', 'function buildCsv']) {
+    const ini = src.indexOf(fn);
+    assert.ok(ini > 0, 'no encontré ' + fn);
+    const bloque = src.slice(ini, ini + 1900);
+    const head = bloque.match(/const rows = \[\[([\s\S]*?)\]\];/);
+    assert.ok(head, fn + ': no encontré el encabezado');
+    const nh = anchoDe('[' + head[1] + ']');
+    const pushes = bloque.match(/rows\.push\(\[[\s\S]*?\]\);/g) || [];
+    assert.ok(pushes.length > 0, fn + ': no encontré filas');
+    for (const p of pushes) {
+      const arr = p.slice(p.indexOf('['), p.lastIndexOf(']') + 1);
+      assert.equal(anchoDe(arr), nh,
+        fn + ': fila con ancho distinto al encabezado (' + nh + ') → ' + arr.slice(0, 80));
+    }
+  }
+});
+
+test('CSV: el origen del valor viaja en ambos exportadores', () => {
+  // Sin `origen` no se puede separar lo respaldado por el NP de la inferencia del catálogo,
+  // que es justo la decisión sobre las casillas de PROCESO.
+  const fs = require('node:fs'), path = require('node:path');
+  const src = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'remote', 'scripts', 'wo-spec-params.js'), 'utf8');
+  const heads = src.match(/const rows = \[\[[\s\S]*?\]\];/g) || [];
+  assert.equal(heads.length, 2, 'se esperan dos exportadores de CSV');
+  for (const h of heads) assert.match(h, /'origen'/, 'falta la columna origen');
+});
