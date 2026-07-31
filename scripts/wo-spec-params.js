@@ -169,7 +169,10 @@
       nAnomalias: (r.anomalies || []).length,
       nFueraDeInspeccion: (r.fueraDeInspeccion || []).length,
       nForzadas: (r.cells || []).filter(c => c && c.forced).length,
-      nOmitidas: (plan.skipped || []).length
+      nOmitidas: (plan.skipped || []).length,
+      // Cuántas dejó fuera el modo acotado. Va en el slim aunque la orden no tenga trabajo:
+      // si no, un barrido en modo acotado no podría reportar qué se decidió no escribir.
+      soloNP: plan.soloNP || 0
     };
     if (tieneTrabajo) {
       out.tally = { OK: t.OK || 0, VACIO: t.VACIO || 0, DIFIERE: t.DIFIERE || 0,
@@ -179,6 +182,7 @@
         archiveIds: plan.archiveIds || [],
         parametersToAdd: plan.parametersToAdd || [],
         touched: plan.touched || 0,
+        soloNP: plan.soloNP || 0,
         skipped: []
       };
       // Renglones legibles para el preview y el CSV, sin arrastrar los nodos crudos.
@@ -376,7 +380,7 @@
         if (!workOrder) { results.push({ partNumberId, idInDomain, error: 'sin datos de specs' }); continue; }
         const cls = C.classifyWorkOrder({ workOrder, partNumber },
                                         { migrarAInspeccion: _migrarAInspeccion });
-        const plan = C.buildWritePlan(cls, { partNumberId });
+        const plan = C.buildWritePlan(cls, { partNumberId, soloNP: _soloNP });
         workOrder = null;   // EJE A: soltar los 0.87 MB antes de la siguiente vuelta
         results.push({
           partNumberId,
@@ -405,7 +409,7 @@
   }
 
   function summarize(results) {
-    const s = { ordenes: 0, casillas: 0, aCorregir: 0, omitidas: 0, aArchivar: 0, aAgregar: 0,
+    const s = { ordenes: 0, casillas: 0, aCorregir: 0, omitidas: 0, soloNP: 0, aArchivar: 0, aAgregar: 0,
                 forzadas: 0, anomalias: 0, fueraDeInspeccion: 0 };
     for (const r of (results || [])) {
       if (!r || !r.tally) continue;
@@ -415,6 +419,7 @@
       }
       s.aCorregir += (r.plan && r.plan.touched) || 0;
       s.omitidas += (r.plan && r.plan.skipped ? r.plan.skipped.length : 0);
+      s.soloNP += (r.plan && r.plan.soloNP) || 0;
       s.aArchivar += (r.plan && r.plan.archiveIds ? r.plan.archiveIds.length : 0);
       s.aAgregar += (r.plan && r.plan.parametersToAdd ? r.plan.parametersToAdd.length : 0);
       s.forzadas += (r.cells || []).filter(c => c && c.forced).length;
@@ -631,7 +636,21 @@
       'Mover al nodo de Inspección y Empaque los parámetros que hoy viven en otro nodo. '
       + 'Sin esto solo se aplica lo que falta; con esto además se reubica lo existente.');
     migWrap.append(migChk, migTxt);
-    ui.bd.append(tabs, p, ta, hint, migWrap);
+
+    const npWrap = el('label', 'sa-mut');
+    npWrap.style.cssText = 'display:flex;gap:8px;align-items:flex-start;margin-top:10px;cursor:pointer';
+    const npChk = document.createElement('input');
+    npChk.type = 'checkbox';
+    npChk.checked = _soloNP;
+    npChk.addEventListener('change', () => { _soloNP = npChk.checked; });
+    const npTxt = el('span', null,
+      'Escribir SOLO lo que define el Número de Parte. Deja fuera los campos que el NP no '
+      + 'declara y que se deducen porque el catálogo de la spec ofrece una sola opción '
+      + '(típicamente parámetros de proceso: temperatura, concentración, tiempos). '
+      + 'Más conservador y bastante más rápido en corridas grandes.');
+    npWrap.append(npChk, npTxt);
+
+    ui.bd.append(tabs, p, ta, hint, migWrap, npWrap);
 
     const go = el('button', 'sa-go', 'Analizar');
     go.addEventListener('click', () => {
@@ -658,6 +677,8 @@
   let _stopScan = false;
   let _memMonitor = null;
   let _migrarAInspeccion = false;   // lo enciende el operador en el panel
+  // Modo acotado: solo se escribe lo que el NP define (deja fuera la vía CATALOGO).
+  let _soloNP = false;
 
   async function openScan(ui0) {
     const ui = ui0 || buildShell('🔧 Escanear todas las órdenes abiertas');
@@ -1019,6 +1040,9 @@
                               s.casillas + ' casillas · '),
       b,
       document.createTextNode(' por corregir · ' + s.omitidas + ' omitidas'));
+    if (s.soloNP) sum.append(el('div', 'sa-mut',
+      'Modo acotado: ' + s.soloNP + ' casillas quedaron fuera porque su valor no lo define el '
+      + 'Número de Parte, sino el catálogo de la spec.'));
     if (s.forzadas) sum.append(el('div', 'sa-mut',
       s.forzadas + ' de esas casillas son forzadas: el nodo todavía no declara ese campo.'));
     ui.bd.appendChild(sum);
@@ -1219,6 +1243,8 @@
     isWorkOrderDetailPath, parseWorkOrderIdInDomain, parsePastedWorkOrders,
     parsePastedPartNumbers, resolvePartNumbers, findWorkOrdersForPartNumbers,
     runPool, planScanChunks, mergeCheckpoint, slimResult, openScan,
+    setSoloNP: (v) => { _soloNP = !!v; },
+    getSoloNP: () => _soloNP,
     setMigrarAInspeccion: (v) => { _migrarAInspeccion = !!v; },
     getMigrarAInspeccion: () => _migrarAInspeccion,
     analyzeWorkOrder, summarize, applyPlan, buildCsv,
