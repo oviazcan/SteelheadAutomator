@@ -1,6 +1,6 @@
 {
-  "version": "1.11.42",
-  "lastUpdated": "2026-07-30T18:34",
+  "version": "1.11.43",
+  "lastUpdated": "2026-07-30T22:14",
   "extensionVersion": "1.7.1",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -96,6 +96,7 @@
         "SearchStationsForTreatment": "6ce8c070d50c69ee49bdfa77a078012a7f882c7c19760a9ed5e569105ef6e4a2",
         "PartNumbersByWorkOrderIdInDomain": "fda9e55c9e2341c17b6974c66407ac8b4306cab86a1c82ffe00c30133bb784d3",
         "SchedulablePartLocations": "5e9392ef2ce4f88ce08bef1c15dc25bc7abdc391b3339a3687ef1925484ac3fc",
+        "RelatedSchedulingInformation": "05aa9059df4428574e6533679ef0ae9b1f9c48fbe2daf1c72cf0a67015d2e3b3",
         "GetInventoryItem": "0366571ed9796751dee38a9b156735b1247accebb4b01d434cd6e1e64a24c3f0",
         "GetInventoryInputSchema": "f1fd6a00069f86439299080f601c5a4b0e0c4b359c6f8acf1cadd44362766729",
         "ActiveReceivedOrders": "07d3e1947485825b519c2f7755773d28532c313e23fab116f6b656a9f4a960d0",
@@ -771,8 +772,8 @@
     },
     {
       "id": "schedule-batch-highlighter",
-      "name": "Resaltar Lote en Programación",
-      "subtitle": "Resalta y marca todas las tareas de un lote (por nombre) en el Schedule Board",
+      "name": "Resaltar y Agrupar Lote en Programación",
+      "subtitle": "Resalta las tareas de un lote (por nombre) y las agrupa en una tarea del programa",
       "icon": "🏷️",
       "category": "Herramientas",
       "autoInject": true,
@@ -780,8 +781,11 @@
         "^/Schedules/\\d+/ScheduleBoard/\\d+/?(?:[?#]|$)"
       ],
       "scripts": [
+        "scripts/steelhead-api.js",
         "scripts/schedule-batch-highlighter-core.js",
-        "scripts/schedule-batch-highlighter.js"
+        "scripts/schedule-batch-highlighter.js",
+        "scripts/schedule-batch-group-core.js",
+        "scripts/schedule-batch-group.js"
       ],
       "requiredPermissions": []
     },
@@ -2893,6 +2897,8 @@
     "scripts/receiver-date-override.js": "f18f704138be627db5273e1fbff4b8c9d1884caeafa9d0b2dbd273eb9560ad0b",
     "scripts/report-liberator.js": "3f153fe5f34261ca9b579a14fcd8d00cd205413943534c41ce54116975b25409",
     "scripts/report-regen.js": "9627a12c33346f5c06120098075e5bc6f12054feb64dc9764012157d4e298e92",
+    "scripts/schedule-batch-group-core.js": "7ad3a3db0d5ce8a00b3abf764bf786f3ecd5d23a709715f98406335dd048a461",
+    "scripts/schedule-batch-group.js": "4373ffdeb674e92489b3a6770d005fb1d1472f87d8c1c22da650dba83ffdac19",
     "scripts/schedule-batch-highlighter-core.js": "a11a6ca286e594ad9910719d0a4bbab86c461d28e2adbd3edb369a3603832637",
     "scripts/schedule-batch-highlighter.js": "0cceca941ecddee9f8725443359c678bb53a1b48d0a5cbf14d93195490b450ab",
     "scripts/sensor-graph-hide-all-core.js": "795d1741fc04de7b8a5a111542e36fe53a8b3ee473c3f0b7a457780df3ea213e",
