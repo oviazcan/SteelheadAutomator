@@ -1,7 +1,100 @@
-# schedule-batch-highlighter — Resaltar Lote en Programación
+# schedule-batch-highlighter — Resaltar y Agrupar Lote en Programación
 
-**Versión actual:** 0.1.4 (config **1.7.178**, tag `v1.7.178`) — **DEPLOYADO**. Core + golden test 14/14,
-glue firmado (KMS). **Iteraciones sobre feedback del operador:**
+**Versión actual:** 0.2.0 — **SIN DEPLOYAR, sin corrida real.** Core de agrupación 28/28 + cableado 6/6,
+suite 88 archivos verde. La 0.1.4 (config **1.7.178**, tag `v1.7.178`) sigue siendo lo que está vivo.
+
+## v0.2.0 (2026-07-30) — agrupar el lote en UNA tarea del programa
+
+Cierra el paso que el applet dejaba a mano: resaltaba y marcaba las tareas del lote, y ahí terminaba.
+Ahora el botón **📦** junto al 🏷️ crea la tarea agrupada, como el **Task Builder** nativo.
+
+**El mecanismo, capturado en vivo** (scan 2026-07-30, board 454; eventLog 01:56:31 → 01:57:00):
+
+```
+RackingRecipeNodes{workOrderIds:[4 OTs]}   ← el Task Builder abre con lo seleccionado
+   ↓ (Save)
+CreateManyScheduleTasks → 1 scheduleTask con 5 scheduleTaskElements
+```
+
+Una tarea agrupada es **(treatmentId, stationId) + N elementos**, cada elemento
+`(recipeNodeId, partNumberId, partCount, partsPerBatch, relatedPartTransferAccounts[])`.
+
+**Fórmula de duración, verificada 2× contra ese payload (no inferida):**
+`total = treatmentTime + (Σ ceil(partCount_i / partsPerBatch_i) − 1) × cycleTime`
+— #1: `45 + (41−1)×30 = 1245` (real 1245) · #2: `45 + (41−1)×15 = 645` (real 645). Los lotes se
+**SUMAN entre elementos**; calcularlos por elemento da otro número. Es la fórmula de
+`wo-schedule-core` (fase 2b) extendida a N elementos.
+
+### Tres cosas que la evidencia corrigió
+
+1. **«T-2150» no es un lote: son 21 inventory batches DISTINTOS con el mismo nombre** (`ids
+   1439287…1447756`) — el ERP crea uno por orden. Así que la unidad de agrupación es el **NOMBRE**;
+   por id no se agruparía nada. Es el mismo hecho que rompe al filtro nativo (su dropdown solo
+   ofrece un id por nombre) y el que justificó este applet desde el día uno.
+2. **Una orden con DOS nodos programables no es un caso ambiguo:** pasa por dos tratamientos y el
+   nativo crea **dos tareas encadenadas** — el payload real son las mismas 5 piezas en `112435` y
+   luego `91495`. Por eso el modelo es **una tarea por lote × tratamiento**, que es exactamente lo
+   que hace Steelhead, y el preview lo anuncia («este lote sale en 2 tareas») en vez de decidirlo.
+3. **`RackingRecipeNodes` (340 KB) no hace falta:** `treatmentId`, nombre del tratamiento y
+   `possibleTreatmentTimes` ya viajan en **`RelatedSchedulingInformation`**, que el board dispara
+   solo. **Cero consultas nuevas** — mismo patrón que `surtido-guard` 0.4.0 (la fuente ya viajaba
+   gratis). Un test lo fija: si el glue vuelve a nombrar `RackingRecipeNodes`, se pone rojo.
+
+### Se agrupa con DATOS, no con el DOM
+
+El resaltado matchea el **texto** de la celda y la tabla **virtualiza** (34 declaradas, 17 en DOM).
+Para *pintar* basta; para *escribir el programa* no: agrupar «lo que alcanzaste a scrollear» crearía
+una tarea **incompleta en silencio** — el peor modo de falla, porque el resultado se ve exitoso. Los
+grupos salen de `SchedulablePartLocations` + `RelatedSchedulingInformation`, interceptadas del
+propio board. El resaltado y el `cb.click()` quedaron **intactos**.
+
+### Fail-safe: cuándo NO se agrupa
+
+Esto escribe en el programa de producción, así que ante dato ausente el núcleo devuelve `null` en
+vez de completar con un default. Sin `partsPerRack`, `partsPerBatch` caería a **1** y una tarea de
+141 min se vuelve de **~112 días** (medido en `wo-schedule-button` 0.8.0). `diagnoseGroup` bloquea y
+**dice por qué**: sin tiempos de tratamiento · tratamiento que no corre en este tablero · sin piezas
+por carga · duración implausible (>7 días) · material ya programado (agrupar 2× lo duplicaría).
+**Un falso «no puedo» cuesta un clic manual; un falso «sí puedo» ocupa una tina por días.**
+
+### Cobertura medida sobre las 369 órdenes del board (no estimada)
+
+| | |
+|---|---|
+| 1 nodo programable | 325 órdenes |
+| 2 nodos (→ 2 tareas) | 21 |
+| **0 nodos** | **23** → no agrupables |
+| Con tiempos de tratamiento | 335 de 367 (**91%**) — 32 sin tiempos → fail-safe |
+| Nodo programable = `SCANNER_NODE` «Listo para Procesar» | 364 de 367 |
+
+### Arquitectura de la 0.2.0
+
+- **`schedule-batch-group-core.js`** (NUEVO, puro) — `indexBatchesByWorkOrder`,
+  `indexSchedulableNodes`, `indexStations`, `partsPerBatchFor`, `groupedTaskTimes`,
+  `buildBatchGroups`, `diagnoseGroup`, `buildGroupedScheduleTaskInput`. **28 golden** sobre
+  fixtures REALES, incluido el que exige reproducir **byte a byte** el payload que el ERP aceptó.
+- **`schedule-batch-group.js`** (NUEVO, glue) — botón 📦 dentro del widget 🏷️ + modal **dark-mode**
+  (preview → confirmar → crear). Archivo aparte para no inflar el highlighter, que sigue en lo suyo.
+- **`config.json`** — hash nuevo `RelatedSchedulingInformation`
+  (`05aa9059…`, ruta de regeneración agregada a `schedules-detail`, así el trinquete de cobertura
+  queda en su línea base); la app suma `steelhead-api.js` y los dos scripts nuevos.
+- **`schedule-batch-group-wiring.test.js`** (6) — el botón es un contrato entre tres archivos y
+  ninguno falla solo; el recorrido config↔glue↔hashes se fija en test.
+
+**`expectedStartTime`** es el instante actual con `status:UNSCHEDULED` e `isIntentional:false` —
+igual que el nativo: **no fijamos hora**, el planificador la acomoda. Fijarla es otra decisión (el
+📅 de `wo-schedule-button`).
+
+### Pendiente
+
+- [ ] **Corrida real**: el glue no se ha ejecutado contra el ERP. Primero un lote chico y verificar
+      que el material sale de los candidatos al refrescar el tablero.
+- [ ] Deploy (config + firma KMS) y rebundle Safari/iPad (el applet ya está en la lista blanca;
+      los dos scripts nuevos entran solos al expandir `config.apps[].scripts`).
+
+## v0.1.x — el resaltado (VIVO)
+
+**Iteraciones sobre feedback del operador:**
 - **v0.1.4** (2026-07-23) — **fix "aparecen los DOS buscadores"** (panel flotante viejo + inline nuevo a
   la vez, reportado con captura). **Causa raíz:** v0.1.0/0.1.1 montaban un panel FLOTANTE `#sa-sbh-panel`
   (`position:fixed`); v0.1.2+ cambió a inline con otro id (`#sa-sbh-inline`). En la SPA de larga vida el

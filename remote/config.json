@@ -96,6 +96,7 @@
         "SearchStationsForTreatment": "6ce8c070d50c69ee49bdfa77a078012a7f882c7c19760a9ed5e569105ef6e4a2",
         "PartNumbersByWorkOrderIdInDomain": "fda9e55c9e2341c17b6974c66407ac8b4306cab86a1c82ffe00c30133bb784d3",
         "SchedulablePartLocations": "5e9392ef2ce4f88ce08bef1c15dc25bc7abdc391b3339a3687ef1925484ac3fc",
+        "RelatedSchedulingInformation": "05aa9059df4428574e6533679ef0ae9b1f9c48fbe2daf1c72cf0a67015d2e3b3",
         "GetInventoryItem": "0366571ed9796751dee38a9b156735b1247accebb4b01d434cd6e1e64a24c3f0",
         "GetInventoryInputSchema": "f1fd6a00069f86439299080f601c5a4b0e0c4b359c6f8acf1cadd44362766729",
         "ActiveReceivedOrders": "07d3e1947485825b519c2f7755773d28532c313e23fab116f6b656a9f4a960d0",
@@ -771,8 +772,8 @@
     },
     {
       "id": "schedule-batch-highlighter",
-      "name": "Resaltar Lote en Programación",
-      "subtitle": "Resalta y marca todas las tareas de un lote (por nombre) en el Schedule Board",
+      "name": "Resaltar y Agrupar Lote en Programación",
+      "subtitle": "Resalta las tareas de un lote (por nombre) y las agrupa en una tarea del programa",
       "icon": "🏷️",
       "category": "Herramientas",
       "autoInject": true,
@@ -780,8 +781,11 @@
         "^/Schedules/\\d+/ScheduleBoard/\\d+/?(?:[?#]|$)"
       ],
       "scripts": [
+        "scripts/steelhead-api.js",
         "scripts/schedule-batch-highlighter-core.js",
-        "scripts/schedule-batch-highlighter.js"
+        "scripts/schedule-batch-highlighter.js",
+        "scripts/schedule-batch-group-core.js",
+        "scripts/schedule-batch-group.js"
       ],
       "requiredPermissions": []
     },

@@ -1073,6 +1073,7 @@
       "captures": [
         "GetScheduleBoard",
         "GetScheduleBoards",
+        "RelatedSchedulingInformation",
         "RelatedSchedulingTreatments",
         "SchedulablePartLocations",
         "ScheduleDomain",
