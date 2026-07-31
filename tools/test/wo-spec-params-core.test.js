@@ -327,6 +327,59 @@ test('buildWritePlan: Espesor (Intermedio) escribe "No aplica", que es lo que di
   assert.equal(add.specFieldParamId, 32596235);
 });
 
+// ── Modo acotado: escribir solo lo que define el Número de Parte ─────────────
+// resolveDesired tiene dos vías. La del NP es la fuente de verdad que este applet declara; la
+// del catálogo es una INFERENCIA ("el NP no dice nada, pero el catálogo ofrece una sola opción,
+// así que debe ser esa"). En la corrida de 194 órdenes del 2026-07-30 esa inferencia era 250 de
+// 16 314 casillas, casi todas campos de PROCESO —temperatura de tina, concentración, tiempo de
+// centrifugadora— que el NP no define porque son de la receta y no del cliente. Nadie ha
+// demostrado que una orden sana los tenga llenos, y una escritura de más en el criterio de
+// calidad de una orden EN PISO no se corrige sola en la siguiente corrida.
+
+test('modo acotado: deja fuera la vía CATALOGO y lo reporta', () => {
+  const cls = Core.classifyWorkOrder(FIX);
+  const completo = Core.buildWritePlan(cls, { partNumberId: 3044551 });
+  const acotado = Core.buildWritePlan(cls, { partNumberId: 3044551, soloNP: true });
+
+  assert.equal(completo.touched, 3);
+  assert.equal(acotado.touched, 2, 'la casilla de vía CATALOGO no se escribe');
+  assert.equal(acotado.soloNP, 1, 'y se reporta cuántas quedaron fuera');
+  assert.equal(completo.soloNP, 0, 'sin el modo, no se omite nada por esta razón');
+});
+
+test('modo acotado: todo lo que escribe viene del Número de Parte', () => {
+  const cls = Core.classifyWorkOrder(FIX);
+  const acotado = Core.buildWritePlan(cls, { partNumberId: 3044551, soloNP: true });
+  const escritas = new Set(acotado.parametersToAdd.map(a => a.specFieldId));
+  for (const c of cls.cells) {
+    if (escritas.has(c.specFieldId)) {
+      assert.equal(c.via, 'NP', 'el campo ' + c.specFieldId + ' se escribió sin respaldo del NP');
+    }
+  }
+});
+
+test('modo acotado: no cambia lo que ya se omitía por AMBIGUO o SIN_CATALOGO', () => {
+  // El filtro va DESPUÉS de esos descartes, así que `soloNP` cuenta lo que se dejó de escribir
+  // por el modo — no lo que de todos modos no se iba a tocar. Si se mezclaran, el número
+  // diría "el modo te ahorró N" incluyendo casillas que nadie pensaba escribir.
+  const cls = Core.classifyWorkOrder(FIX);
+  const completo = Core.buildWritePlan(cls, { partNumberId: 3044551 });
+  const acotado = Core.buildWritePlan(cls, { partNumberId: 3044551, soloNP: true });
+  const omitidasPorSiempre = completo.skipped.length;
+  assert.equal(acotado.skipped.length, omitidasPorSiempre + acotado.soloNP);
+});
+
+test('modo acotado: es una decisión explícita, no el comportamiento por omisión', () => {
+  // Un applet que en silencio escribiera menos de lo que muestra el preview sería peor que uno
+  // que escribe de más: el operador confirma un conteo y espera que ese conteo se cumpla.
+  const cls = Core.classifyWorkOrder(FIX);
+  for (const opts of [{ partNumberId: 3044551 },
+                      { partNumberId: 3044551, soloNP: false },
+                      { partNumberId: 3044551, soloNP: undefined }]) {
+    assert.equal(Core.buildWritePlan(cls, opts).touched, 3);
+  }
+});
+
 test('buildWritePlan: no incluye AMBIGUO ni SIN_CATALOGO, y los reporta en skipped', () => {
   const cls = Core.classifyWorkOrder(FIX);
   const plan = Core.buildWritePlan(cls, { partNumberId: 3044551 });
