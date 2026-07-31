@@ -51,6 +51,52 @@ fuera — un filtro que no se ve engaña sobre lo que se aplicó.
 `T102-SE00-001 Secando Centrífugo`, campo `Tiempo de Centrifugadora`. Si dice «Pendiente», las
 250 se aplican; si está vacío, la vía CATALOGO debe apagarse siempre.
 
+### El «DUPLICADO» que no existía, y el nodo raíz que sí
+
+Reporte del operador sobre tres casos del escaneo: *«la primera no tiene duplicado sino sigue con
+nodo raíz… ¿puedes checar que no estés contemplando lo archivado?»*.
+
+Medido en la OT **16649** (NP 50087055) bajando el payload real:
+
+```
+ACTIVA     campo 15630 "5 - 12 µm"  →  T104 (EST)-CU/BR-VARIOS   (PROCESS = raíz)
+ARCHIVADA  campo 15630 "5 - 12 µm"  →  T104-IC00-001             (QA = el correcto)
+```
+
+**Una sola fila viva.** Con el core corregido esa orden da `DUPLICADO: 0` y 74 casillas `OK`: el
+CSV que lo reportaba se había exportado **antes** del fix de las varias specs externas. Los 745
+duplicados de aquel escaneo mezclan artefacto con daño real y hay que volver a medirlos.
+
+La intuición del operador apuntaba bien aunque el mecanismo fuera otro: el filtro `archivedAt`
+sí estaba en el código (8 sitios), lo que fallaba era la **selección de la spec externa**.
+
+**Pero su segunda observación sí destapó algo vivo:** los parámetros están en el **nodo raíz** y
+el applet los da por buenos. Es la regla de cobertura POR ORDEN —un campo cuenta como cubierto si
+vive en cualquier nodo— que se puso para no proponer duplicados. Estar en el raíz cuenta.
+
+El core sí lo ve, en `fueraDeInspeccion`:
+
+```
+15630 Espesor · 15820 Adherencia · 19445 Apariencia Homogénea · 22067 Primeras Piezas
+   → los 4 viven en T104 (EST)-CU/BR-VARIOS (PROCESS)
+```
+
+La herramienta es el modo **migrar**, apagado por omisión. Sobre la misma orden produce
+`MIGRAR: 4` — archiva en el raíz y repone en `T104-IC00-001`.
+
+**VALIDADO EN VIVO (2026-07-31):** el operador aplicó esos 4 y confirmó en la UI. El caso reunía
+las tres señales de seguridad que conviene exigir antes de soltar el modo en masa:
+`origen=NP` (el valor sale del Número de Parte, no del catálogo), `tenía == quedará` (no se toca
+ningún criterio, solo el nodo) y `forzada=no` (el nodo destino ya declara esos campos).
+
+### El modelo, corregido por el operador
+
+Una spec puede llegar a la orden **por el NP y además por el tratamiento** — verificado:
+`E27780 (Epóxico MT)` aparece dos veces, `De: TR-PME-007 Curado` y `De: TR-ICA-009 Inspección`.
+**Es CORRECTO que la del tratamiento vaya sin parámetro**: no se puede poner el mismo specField
+con parámetro por cada OT, así que entra el del NP y el del tratamiento se queda vacío. Pasa
+también con Antitarnish. El applet no debe leer esa segunda entrada como un hueco por llenar.
+
 ### Lección de método, dos veces el mismo día
 
 Al diagnosticar la 16510 medí dos veces con el **shape equivocado**: primero con `WorkOrder`
