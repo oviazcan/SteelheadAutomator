@@ -232,6 +232,98 @@ test('classifyWorkOrder: sin nodo de inspección, lo que YA existe se sigue eval
   assert.ok(r.faltantesSinDestino.length > 0);
 });
 
+// ── Varias specs externas en la misma orden ──────────────────────────────────
+// Medido en vivo en la OT 16510 (2026-07-30): trae DOS specs externas —«48053-001-01
+// (Deshidrogenado / Endurecido)» con 3 campos y «RC Zn (Zinc)» con 5— y ningún nodo de calidad
+// declara los campos de la primera, mientras que `T106-IC00-001 Inspeccionando y Empacando`
+// declara los 5 de la segunda. findExternalSpec hacía `return` con la primera que devolviera el
+// ERP, así que la orden reportaba «no encuentra el nodo de calidad» —con el nodo a la vista del
+// operador— y RC Zn se quedaba sin aplicar. Cuál se atendía dependía del orden de la respuesta.
+
+test('findExternalSpecs: devuelve TODAS, no la primera', () => {
+  const wo = JSON.parse(JSON.stringify(FIX.workOrder));
+  const externas = wo.partNumberWorkOrderSpecsByWorkOrderId.nodes
+    .filter(s => s.partNumberSpecByPartNumberSpecId && !s.archivedAt);
+  assert.equal(externas.length, 1, 'el fixture base tiene una sola externa');
+
+  // Se duplica esa spec externa con otros campos: dos externas en la misma orden.
+  const otra = JSON.parse(JSON.stringify(externas[0]));
+  otra.id = 999001;
+  otra.specBySpecId.id = 999002;
+  otra.specBySpecId.name = 'RC Zn (Zinc)';
+  otra.specBySpecId.specFieldSpecsBySpecId.nodes = [{
+    id: 999003, specFieldId: 999004, archivedAt: null,
+    specFieldBySpecFieldId: { name: 'Espesor de Zinc' },
+    specFieldParamsBySpecFieldSpecId: { nodes: [{ id: 999005, name: '5 - 8 µm' }] }
+  }];
+  wo.partNumberWorkOrderSpecsByWorkOrderId.nodes.unshift(otra);
+
+  const todas = Core.findExternalSpecs(wo);
+  assert.equal(todas.length, 2, 'las dos externas');
+  assert.equal(Core.findExternalSpec(wo).specName, 'RC Zn (Zinc)',
+    'el wrapper de compatibilidad sigue dando la primera');
+  // El conteo se deriva del fixture, no se fija a mano: escribirlo de memoria ya costó un
+  // test rojo aquí mismo (la externa del fixture tiene 6 campos, no los 3 que supuse).
+  const camposBase = externas[0].specBySpecId.specFieldSpecsBySpecId.nodes
+    .filter(f => !f.archivedAt && f.specFieldId != null).length;
+  assert.deepEqual(todas.map(s => s.fieldIds.size).sort((a, b) => a - b), [1, camposBase]);
+});
+
+test('REGRESIÓN: una externa sin nodo no deja sin atender a la otra', () => {
+  const wo = JSON.parse(JSON.stringify(FIX.workOrder));
+  const base = wo.partNumberWorkOrderSpecsByWorkOrderId.nodes
+    .find(s => s.partNumberSpecByPartNumberSpecId && !s.archivedAt);
+
+  // Una externa cuyos campos NINGÚN nodo declara ni tiene aplicados — como 48053-001-01 en la
+  // 16510. Va PRIMERA, que es justo el orden que rompía el caso real.
+  const huerfana = JSON.parse(JSON.stringify(base));
+  huerfana.id = 999101;
+  huerfana.specBySpecId.id = 999102;
+  huerfana.specBySpecId.name = '48053-001-01 (Deshidrogenado / Endurecido)';
+  huerfana.specBySpecId.specFieldSpecsBySpecId.nodes = [{
+    id: 999103, specFieldId: 999104, archivedAt: null,
+    specFieldBySpecFieldId: { name: 'Dureza' },
+    specFieldParamsBySpecFieldSpecId: { nodes: [{ id: 999105, name: 'HRC 40' }] }
+  }];
+  wo.partNumberWorkOrderSpecsByWorkOrderId.nodes.unshift(huerfana);
+
+  const r = Core.classifyWorkOrder({ workOrder: wo, partNumber: FIX.partNumber });
+
+  // La spec buena conserva su nodo y sus casillas: la huérfana no la arrastra.
+  const deLaBuena = r.cells.filter(c => c.scope === 'EXTERNA' && c.specFieldId !== 999104);
+  assert.ok(deLaBuena.length > 0, 'la spec con nodo se sigue atendiendo');
+
+  // Y el campo sin destino se reporta diciendo DE QUÉ spec es.
+  const sinDestino = r.faltantesSinDestino.find(f => f.specFieldId === 999104);
+  assert.ok(sinDestino, 'el campo huérfano se reporta');
+  assert.equal(sinDestino.specName, '48053-001-01 (Deshidrogenado / Endurecido)');
+  assert.ok(sinDestino.reason, 'y con el motivo, para saber a qué spec reclamarle');
+});
+
+test('los campos de TODAS las externas se excluyen del universo PROCESO', () => {
+  // extFields es la unión: con una sola spec considerada, los campos de las demás se colaban
+  // al universo de proceso y se trataban como parámetros de línea.
+  const wo = JSON.parse(JSON.stringify(FIX.workOrder));
+  const base = wo.partNumberWorkOrderSpecsByWorkOrderId.nodes
+    .find(s => s.partNumberSpecByPartNumberSpecId && !s.archivedAt);
+  const idsPrimera = new Set(base.specBySpecId.specFieldSpecsBySpecId.nodes
+    .filter(f => !f.archivedAt).map(f => f.specFieldId));
+
+  const otra = JSON.parse(JSON.stringify(base));
+  otra.id = 999201;
+  otra.specBySpecId.id = 999202;
+  otra.specBySpecId.name = 'Segunda externa';
+  wo.partNumberWorkOrderSpecsByWorkOrderId.nodes.unshift(otra);
+
+  const r = Core.classifyWorkOrder({ workOrder: wo, partNumber: FIX.partNumber });
+  for (const c of r.cells) {
+    if (c.scope === 'PROCESO') {
+      assert.ok(!idsPrimera.has(c.specFieldId),
+        'un campo externo no puede clasificarse como de proceso');
+    }
+  }
+});
+
 test('classifyWorkOrder: una casilla VACÍA solo agrega, no archiva', () => {
   const { cells } = Core.classifyWorkOrder(FIX);
   const c = cells.find(x => x.recipeNodeId === 42513364);
