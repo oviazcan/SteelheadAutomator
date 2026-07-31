@@ -120,6 +120,57 @@ Por eso **«no hay placeholder» NO significa «tiene valor»**: es una señal *
 
 Consecuencia práctica: exigir la señal positiva obliga a poder **localizar el combo en cualquier estado** — y sin placeholder ya no se puede buscar por él. La vía que funcionó: hallar el nodo del label y tomar el primer `[class*="-control"]` que lo siga en **orden de documento** con `compareDocumentPosition`, que no depende de la forma del grid (el label vive en un `.css-xd9ivb` y el control es un nodo posterior, no un descendiente).
 
+## Nodo inyectado en una tabla de React: el guard va sobre el DUEÑO, no sobre la existencia (2026-07-31)
+
+React **recicla los `<tr>`**: al archivar, filtrar, ordenar o paginar reusa el nodo y le cambia el
+contenido. Un nodo nuestro inyectado en esa fila **sobrevive al reciclaje**, así que el guard típico
+
+```js
+let td = tr.querySelector(':scope > .' + col.cls);
+if (!td) { …crear, poner data-sa-<entidad>id y pintar… }   // si ya existía, no se toca nunca
+```
+
+deja la celda con el **id y el contenido de la entidad anterior**. Síntoma característico y fácil de
+reconocer: **la celda nativa muestra la entidad correcta y las columnas nuestras muestran otra**,
+coherentes entre sí porque vienen todas del mismo registro viejo. Recargar la página lo "arregla"
+—se reconstruye el DOM— lo que despista: parece un problema de caché de datos y es de identidad de nodo.
+
+**El daño no se queda en el dato viejo.** Si el applet reparte los resultados del fetch con
+`querySelectorAll('[data-sa-…id="' + id + '"]')`, un atributo stale hace que la respuesta de la entidad
+**anterior** se pinte sobre la fila de la **nueva**: la mentira se refresca sola.
+
+**La regla:** todo nodo inyectado lleva **de quién es** y eso se **revalida en cada pasada**, no solo al
+crearlo. La decisión va al core, pura y testeable:
+
+```js
+function isStaleNode(attrValue, id) {
+  if (id == null) return false;                    // fila sin id: no está reciclada, no resuelve aún
+  if (attrValue == null || attrValue === '') return true;   // nodo nuestro sin dueño
+  return String(attrValue) !== String(id);
+}
+```
+
+Dos bordes que importan y no son simétricos:
+- **Sin atributo ⇒ reconstruir.** Un nodo con nuestra clase pero sin dueño no es confiable. En
+  `wo-listing-columns` el atributo se ponía condicionado (`if (woIdInDomain != null)`), así que una
+  celda nacida antes de que la fila resolviera su link quedaba **huérfana mostrando «—» para siempre**.
+- **Sin id actual ⇒ NO reconstruir.** Una fila sin link no está reciclada: todavía no resuelve.
+  Reconstruir ahí borra celdas buenas en cada sync y el `MutationObserver` entra en bucle.
+
+**Es el mismo problema que la virtualización, con otro disfraz.** En `schedule-batch-highlighter` las
+referencias a checkbox guardadas en un `Set` quedaban "muertas" al reciclar filas y el des-marcado por
+referencia fallaba; ahí la salida fue barrer las filas visibles. En las tablas con celdas propias la
+salida es revalidar la identidad. En los dos casos el error de fondo es el mismo: **un guard de
+idempotencia que pregunta «¿ya lo hice?» en vez de «¿sigue siendo del mismo dueño?» no ahorra trabajo,
+conserva una mentira.**
+
+Casos: `pn-specs-column` 0.3.3 (reportado en piso al archivar un NP) y `wo-listing-columns` 0.8.2
+(mismo molde; se encontró porque el operador pidió revisarlo). `isStaleNode` vive en los **dos** cores
+—son applets de rutas distintas sin core común— con un test que corre ambas sobre los mismos casos y
+**falla si divergen**. Los applets que construyen tablas **propias** en sus paneles (`archiver`,
+`bulk-upload`, `cfdi-attacher`, `pn-lifecycle`, `spec-migrator`) **no** tienen este problema: nadie
+recicla sus nodos.
+
 ## Deshabilitar un control de React: listener capture en el nodo, no `disabled` ni `className`
 
 `disabled` y `className` los reescribe React en el siguiente render. Lo que sí sobrevive:

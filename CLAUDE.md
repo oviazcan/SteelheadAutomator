@@ -102,6 +102,19 @@ sesión con WIP en main (regla §"Trabajo paralelo").
   forzar un re-render. Corolario: **no asumas que el DOM ya está pintado cuando corre tu
   `init()`**; ten un reintento (MutationObserver) que NO esté capado por el estado del applet.
   Ver [`docs/architecture/applet-load-gating.md`](docs/architecture/applet-load-gating.md).
+- **Todo nodo que inyectemos en una tabla de React lleva DE QUIÉN ES, y se revalida en cada pasada.**
+  React **recicla los `<tr>`** (archivar/filtrar/ordenar/paginar): reusa el nodo y le cambia el
+  contenido, así que `if (!td) {crear}` —preguntar si nuestra celda EXISTE— la deja con el id y el
+  dato de la entidad anterior. Síntoma: **la celda nativa muestra la entidad correcta y las nuestras
+  otra**, coherentes entre sí; recargar lo "arregla", lo que despista hacia un problema de caché.
+  Y si el applet reparte los fetch con `[data-sa-…id="<id>"]`, el atributo stale hace que la respuesta
+  de la entidad ANTERIOR se pinte sobre la fila NUEVA: la mentira se refresca sola. La decisión va al
+  core (`isStaleNode(attr, id)`, pura y testeada). Pasó en `pn-specs-column` 0.3.3 (reportado en piso)
+  y en `wo-listing-columns` 0.8.2 (mismo molde). **Es la virtualización con otro disfraz**: en
+  `schedule-batch-highlighter` las referencias a checkbox quedaban muertas por el mismo reciclaje.
+  Regla de fondo: **un guard de idempotencia que pregunta «¿ya lo hice?» en vez de «¿sigue siendo del
+  mismo dueño?» no ahorra trabajo, conserva una mentira.** Ver
+  [`docs/architecture/dom-patterns.md`](docs/architecture/dom-patterns.md).
 - **UI propia en DARK MODE (regla de diseño).** Todo modal, panel, popover o tooltip que inyecte la extensión va en **tema oscuro** (base `#1c2430`, texto `#e6e9ee`, inputs `#141a23`, acento verde `#13a36f`) para que el operador distinga **de un vistazo** que es UI de la extensión y NO una pantalla nativa de Steelhead (que son CLARAS). Evita confundir nuestra UI con la de SH. Referencia: `auto-router-batch.js`/`auto-router-panel.js` (modales), `board-metal-tooltip.js` inyecta en el popover nativo y ahí sí respeta el estilo de SH (no es UI nuestra, es enriquecimiento del suyo).
 
 ## Trabajo paralelo (dos instancias de Claude)
