@@ -110,10 +110,22 @@
   // La spec EXTERNA es la del cliente, la que llega por el Número de Parte. Se distingue por
   // estructura: es la única cuyo PartNumberWorkOrderSpec apunta a un partNumberSpec. Las demás
   // son de proceso/línea. Devuelve null si la OT no tiene ninguna.
-  function findExternalSpec(workOrder) {
+  // TODAS las specs externas de la orden, no la primera.
+  //
+  // POR QUÉ (2026-07-30): esto devolvía la primera y hacía `return`. La OT 16510 tiene DOS
+  // —«48053-001-01 (Deshidrogenado / Endurecido)» con 3 campos y «RC Zn (Zinc)» con 5— y el
+  // orden lo decide el ERP, así que cuál se atendía era una lotería. Ahí tocó la de
+  // Deshidrogenado, que NINGÚN nodo de calidad declara, mientras que los 5 campos de RC Zn los
+  // declara entero `T106-IC00-001 Inspeccionando y Empacando`. Resultado: cero candidatos, el
+  // applet reportaba «no encuentra el nodo de calidad» —con el nodo ahí, a la vista del
+  // operador— y la spec del cliente se quedaba sin aplicar.
+  //
+  // Cada spec externa se resuelve por separado: cada una tiene SU nodo.
+  function findExternalSpecs(workOrder) {
     const specs = (workOrder
       && workOrder.partNumberWorkOrderSpecsByWorkOrderId
       && workOrder.partNumberWorkOrderSpecsByWorkOrderId.nodes) || [];
+    const out = [];
     for (const s of specs) {
       if (!s || s.archivedAt || !s.partNumberSpecByPartNumberSpecId) continue;
       const spec = s.specBySpecId;
@@ -125,9 +137,16 @@
         fieldIds.add(f.specFieldId);
         bySpecFieldId.set(f.specFieldId, f);
       }
-      return { pnwosId: s.id, specId: spec.id, specName: spec.name || '', fieldIds, bySpecFieldId };
+      out.push({ pnwosId: s.id, specId: spec.id, specName: spec.name || '', fieldIds, bySpecFieldId });
     }
-    return null;
+    return out;
+  }
+
+  // Compat: la primera externa. Se conserva porque hay consumidores que solo necesitan saber
+  // si la orden tiene spec de cliente; para clasificar se usa findExternalSpecs.
+  function findExternalSpec(workOrder) {
+    const all = findExternalSpecs(workOrder);
+    return all.length ? all[0] : null;
   }
 
   // El nodo donde vive la spec externa: un QUALITY_ASSURANCE_NODE. Pero hay VARIOS por orden
@@ -315,10 +334,19 @@
                externalSpec: null, inspectionNode: null };
     }
 
-    const externalSpec = findExternalSpec(workOrder);
+    // Cada spec externa se resuelve con SU propio nodo de calidad: una orden puede traer
+    // varias (recubrimiento + tratamiento térmico, p.ej.) y cada una la declara un nodo
+    // distinto. `externalSpec`/`inspectionNode` se conservan en el resultado apuntando a la
+    // primera, que es lo que el panel ya mostraba.
+    const externalSpecs = findExternalSpecs(workOrder);
+    const externalSpec = externalSpecs.length ? externalSpecs[0] : null;
     const inspectionNode = findInspectionNode(workOrder, externalSpec);
-    const targetId = (inspectionNode && inspectionNode.node) ? inspectionNode.node.id : null;
-    const extFields = externalSpec ? externalSpec.fieldIds : new Set();
+
+    // Los campos EXTERNOS de la orden son la unión de todas: el universo PROCESO los excluye,
+    // y con una sola spec considerada los de las demás se colaban ahí y se trataban como
+    // parámetros de proceso.
+    const extFields = new Set();
+    for (const es of externalSpecs) for (const id of es.fieldIds) extFields.add(id);
 
     const catalogIndex = buildCatalogIndex(workOrder);
     const pnIndex = buildPartNumberIndex(partNumber);
@@ -330,26 +358,33 @@
     // lo DECLARE —el raíz y el de inspección suelen declarar los mismos— y estar ahí ya cuenta
     // como cubierto. Mirar solo el nodo de inspección hacía proponer duplicados de lo que ya
     // existía en otro lado: en la corrida del 2026-07-29 eran ~7660 de 9551 cambios.
-    if (externalSpec) {
-      // Dónde vive hoy cada campo externo, en toda la orden.
+    for (const thisSpec of externalSpecs) {
+      // El nodo se resuelve POR SPEC: el de RC Zn no es el de Deshidrogenado.
+      const thisNodeInfo = findInspectionNode(workOrder, thisSpec);
+      // Sin nodo identificado NO se corta: los campos que ya viven en algún lado se siguen
+      // evaluando y solo los que faltan quedan sin destino (los reporta el bucle de abajo).
+      // Cortar aquí mandaría a "faltantes" hasta lo que está correctamente aplicado, y el
+      // reporte mentiría sobre lo que hay que hacer.
+      const thisExtFields = thisSpec.fieldIds;
+      // Dónde vive hoy cada campo de ESTA spec, en toda la orden.
       const ubicaciones = new Map();   // specFieldId → [{ node, row }]
       for (const node of nodes) {
         if (!node) continue;
         for (const a of ((node.partNumberRecipeNodeSpecFieldParamsByRecipeNodeId
           && node.partNumberRecipeNodeSpecFieldParamsByRecipeNodeId.nodes) || [])) {
-          if (!a || a.archivedAt || !extFields.has(a.specFieldId)) continue;
+          if (!a || a.archivedAt || !thisExtFields.has(a.specFieldId)) continue;
           if (!ubicaciones.has(a.specFieldId)) ubicaciones.set(a.specFieldId, []);
           ubicaciones.get(a.specFieldId).push({ node, row: a });
         }
       }
 
-      const target = (inspectionNode && inspectionNode.node) || null;
+      const target = (thisNodeInfo && thisNodeInfo.node) || null;
       const declaredTarget = new Set(target ? ((target.recipeNodeSpecFieldsByRecipeNodeId
         && target.recipeNodeSpecFieldsByRecipeNodeId.nodes) || [])
         .map(f => f && f.specFieldId).filter(x => x != null) : []);
 
-      for (const specFieldId of externalSpec.fieldIds) {
-        const f = externalSpec.bySpecFieldId.get(specFieldId);
+      for (const specFieldId of thisSpec.fieldIds) {
+        const f = thisSpec.bySpecFieldId.get(specFieldId);
         const fieldName = (f && f.specFieldBySpecFieldId && f.specFieldBySpecFieldId.name) || '';
         const donde = ubicaciones.get(specFieldId) || [];
         const desired = resolveDesired(specFieldId, catalogIndex, pnIndex);
@@ -358,7 +393,13 @@
           // No está en NINGÚN nodo: es lo único que de verdad falta. Se aplica en el de
           // inspección, forzándolo si ese nodo no declara el campo.
           if (!target) {
-            faltantesSinDestino.push({ specFieldId, fieldName });
+            // Con varias specs externas hay que decir de CUÁL es el campo y por qué no hay
+            // destino: «falta el campo X» sin más no permite saber a qué spec reclamarle.
+            faltantesSinDestino.push({
+              specFieldId, fieldName,
+              specName: thisSpec.specName,
+              reason: (thisNodeInfo && thisNodeInfo.reason) || 'sin nodo de calidad identificable'
+            });
             continue;
           }
           cells.push(buildCell({
@@ -515,7 +556,7 @@
   window.WoSpecParamsCore = {
     rootParamId, normalizeName,
     buildPartNumberIndex, buildCatalogIndex,
-    findExternalSpec, findInspectionNode,
+    findExternalSpec, findExternalSpecs, findInspectionNode,
     resolveDesired, isEquivalent,
     classifyWorkOrder, buildWritePlan
   };
