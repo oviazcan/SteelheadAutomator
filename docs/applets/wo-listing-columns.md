@@ -1,6 +1,43 @@
 # wo-listing-columns — Columnas en el listado de Órdenes de Trabajo
 
-**Versión:** 0.8.0 — **+ toggle "🏷️ Etiquetas"** (VIVO config 1.7.201, 2026-07-24): **2 botones por fila** en la columna Acciones nativa — **🏷️ JobTag** y **📋 Verbose** — que **generan el PDF en un IFRAME OCULTO** dentro del dashboard (sin abrir pestaña → no roba foco; sin throttle → rápido) y **auto-descargan `WO<idInDomain>.pdf`** (verbose: `-verbose`); **retry del iframe** 1 vez y **fallback a pestaña** si SH bloquea el enmarcado. **JobTag validado en vivo** (4/5 iframe, 1 a pestaña bajo carga). Detalle en [`wo-label-pdf-buttons.md`](wo-label-pdf-buttons.md). Commits `a4bff19` (iframe), `736e22b` (verbose+retry).
+**Versión:** 0.8.2 — **VIVO config 1.11.47 (tag `v1.11.47`).**
+
+## v0.8.2 (2026-07-31) — la fila reciclada mostraba los datos de OTRA orden
+
+**No salió de un reporte sobre este applet:** el operador reportó el bug en `pn-specs-column` (al
+archivar un NP, el renglón seguía mostrando la spec del archivado) y **pidió revisar si el tablero de
+Work Orders lo tenía también**. Lo tenía — este applet se hizo con ese molde y arrastró el mismo
+defecto, con el agravante de que aquí el reciclaje ocurre al **filtrar, ordenar o paginar**, que es
+trabajo de todos los días en esa pantalla.
+
+**Causa (idéntica):** React recicla los `<tr>`; el glue solo preguntaba si nuestra celda **existía**:
+
+```js
+let td = tr.querySelector(':scope > .' + col.cls);
+if (!td) { …crear, poner data-sa-woid y pintar… }   // si ya existía, no se tocaba nunca
+```
+
+La celda nativa pasaba a la OT siguiente y la nuestra sobrevivía con el `data-sa-woid` y el contenido
+de la anterior. Y como **`applyToCells` busca por `[data-sa-woid]` en 6 lugares**, el atributo stale
+hace que el resultado del fetch de la orden **anterior** se pinte sobre la fila de la **nueva**: la
+mentira se refresca sola.
+
+**Un segundo modo de falla que este applet tenía y el hermano no:** el atributo se ponía condicionado
+(`if (woIdInDomain != null)`), así que una celda nacida cuando la fila **aún no resolvía su link**
+quedaba **sin `data-sa-woid`** — y, al no revalidarse nunca, se quedaba **huérfana mostrando «—» para
+siempre**. La revalidación también la rescata.
+
+**Fix:** `Core().isStaleNode(td.getAttribute('data-sa-woid'), woIdInDomain)` antes de dar la celda por
+buena, en **cada** sync. La función es pura y vive en `wo-schedule-core` — **gemela** de la de
+`pn-specs-column-core`, porque son applets de rutas distintas que no comparten core. La duplicación
+solo se sostiene mientras no diverjan, así que hay un **test que corre los dos lados sobre los mismos
+casos y falla si difieren**. Core `wo-schedule-core` **94** tests.
+
+**Pendiente:** rebundle Safari/iPad (el applet está en el bundle desde v0.6.0).
+
+## Historial previo
+
+**0.8.0 — + toggle "🏷️ Etiquetas"** (VIVO config 1.7.201, 2026-07-24): **2 botones por fila** en la columna Acciones nativa — **🏷️ JobTag** y **📋 Verbose** — que **generan el PDF en un IFRAME OCULTO** dentro del dashboard (sin abrir pestaña → no roba foco; sin throttle → rápido) y **auto-descargan `WO<idInDomain>.pdf`** (verbose: `-verbose`); **retry del iframe** 1 vez y **fallback a pestaña** si SH bloquea el enmarcado. **JobTag validado en vivo** (4/5 iframe, 1 a pestaña bajo carga). Detalle en [`wo-label-pdf-buttons.md`](wo-label-pdf-buttons.md). Commits `a4bff19` (iframe), `736e22b` (verbose+retry).
 **Previo 0.6.0 (VIVO 1.7.194+):** 3ª columna opt-in "📦 Lote" (tras Programación, al INICIO): nombre del lote **(idInDomain)** link + **PS Cliente** (`DatosRecibo.PackingSlip`) + **fecha de recibido** (del Receptor ligado al lote). Fuente: **1 query `WorkOrder({idInDomain})` por OT** (pesada 1156 campos → extracción **SLIM**). Core `wo-schedule-core` **37/37** golden (+11 lote, +5 impresión). **0.5.0:** Programación muestra TODAS las tareas apiladas + borde punteado derecho. PN con etiquetas como chips; columnas al INICIO. **0.4.1:** fix celdas no visibles al mover al inicio.
 **Categoría:** Órdenes de Trabajo · **autoInject:true** · ruta: `/Domains/<d>/WorkOrders` (index, NO la ficha `/WorkOrders/:id`)
 **Sin hash nuevo ni cambio de `config.json`** en 0.6.0/0.7.0 (WorkOrder ya está; los toggles son in-page; el iframe usa la UI nativa, no llama ops nuevas).
