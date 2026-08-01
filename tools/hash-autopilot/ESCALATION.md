@@ -103,3 +103,34 @@ ruta falló por el blip, las dos cayeron juntas.
 
 Mejora de motor pendiente (no se hizo aquí, es cambio de motor y no de receta): avisar cuando una
 ruta seleccionada **no captura una op que declara**, aunque otra la capture de rebote.
+
+## Actualización 2026-07-31 — el MISMO falso positivo dos veces: la corrida sin datos no es una receta rota
+
+Escalaron `AllSensorDashboards` y `SensorDashboardQuery`. **Las dos capturaron al PRIMER intento
+con la receta del catálogo intacta**, hash idéntico al de `config.json` → vigentes. Segunda falsa
+alarma en cuatro días, por la misma causa: **la red se cayó a media corrida**.
+
+Evidencia (corrida de las 17:23, log del launchd):
+- Las 3 primeras rutas capturaron (`app-home`, `customer-detail`, `customers-list`); fallaron las
+  **2 últimas en orden de ejecución** — `maintenance-sensordashboards-detail` y
+  `sensordashboards-list`. El corte es por POSICIÓN en la corrida, no por pantalla.
+- Probe directo: **0 vigentes / 5 auth-unknown** (un día sano da 5/5 vigente; la corrida de las
+  16:23, una hora antes, capturó las dos ops sin novedad).
+- A las 17:59 `validate-hashes.py` registró **59 UNKNOWN por `NameResolutionError` de DNS** contra
+  `app.gosteelhead.com`, y el refresh ROCP ya había tronado a las 00:46 y 15:27 contra
+  `auth.gosteelhead.com`. El DNS de la Mac estuvo intermitente todo el día.
+
+**Fix de motor (este sí se hizo):** `isProbeSessionDegraded()` en `probe-classify.mjs` — si TODAS
+las ops probadas dan `auth`/`unknown` (mínimo 3), la corrida **no tiene datos** y sus `unconfirmed`
+dejan de escalar. Es la regla que el repo ya pagó en `surtido-guard` 0.4.0 y `report-regen` 0.3.2:
+**«no tengo el dato» ≠ «no existe el dato»**. Acotado a propósito:
+
+- **nunca toca `stale`** — un `stale` exige que el server haya contestado *"Must provide a query
+  string"*, o sea que la sesión SÍ respondió; las rotaciones reales siguen escalando siempre;
+- **no pierde detección, la aplaza**: el motor corre cada hora, una rotación real sobrevive al
+  siguiente tick y un blip de red no;
+- **el fail-safe se DICE** (lección `surtido-guard` 0.4.0): el log lo grita y el correo sigue
+  reportando la sección *"❓ NO CAPTURADAS, PROBE NO CONCLUYENTE"*. Lo único que se suprime es la
+  escalación cara (`needs-attention.json` → un `claude -p` completo).
+
+7 tests nuevos en `probe-classify.test.js`, incluido el veredicto real de las 17:23.
