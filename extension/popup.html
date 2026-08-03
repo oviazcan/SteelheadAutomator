@@ -83,8 +83,14 @@
     .view { display: none; }
     .view.active { display: block; }
 
+    /* El popup de Chromium NO puede pasar de 800x600. Si el documento pide más alto,
+       el navegador deja de ajustar la ventana al ancho preferido (340px) y la abre al
+       MÁXIMO: 800px de ancho con el contenido pegado a la izquierda y el resto vacío.
+       Por eso TODA lista larga lleva tope + scroll propio: cromo fijo del menú = 139px
+       (header 73 + barra de estado 38 + pie 28) y de la vista de acciones = 177px
+       (los anteriores + el encabezado "◀ volver" 38). Ver docs/architecture/popup-sizing.md */
     .app-menu-wrap { position: relative; }
-    .app-menu { padding: 12px 16px 12px; display: flex; flex-direction: column; gap: 8px; max-height: 480px; overflow-y: auto; scroll-behavior: smooth; }
+    .app-menu { padding: 12px 16px 12px; display: flex; flex-direction: column; gap: 8px; max-height: 440px; overflow-y: auto; scroll-behavior: smooth; }
     .app-menu::-webkit-scrollbar { width: 6px; }
     .app-menu::-webkit-scrollbar-thumb { background: #c0c0c0; border-radius: 3px; }
     .app-menu::-webkit-scrollbar-track { background: transparent; }
@@ -114,7 +120,7 @@
     .app-card.disabled:hover { border-color: var(--border-card); box-shadow: none; }
 
     /* Grid view (3 columns) */
-    .app-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; padding: 10px; max-height: 480px; overflow-y: auto; }
+    .app-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; padding: 10px; max-height: 440px; overflow-y: auto; }
     .app-grid::-webkit-scrollbar { width: 6px; }
     .app-grid::-webkit-scrollbar-thumb { background: #c0c0c0; border-radius: 3px; }
     .app-grid::-webkit-scrollbar-track { background: transparent; }
@@ -128,7 +134,7 @@
     .app-tile .tile-name { font-size: 9px; font-weight: 600; color: var(--text-body); margin-top: 3px; line-height: 1.2; }
 
     /* List view (categorized) */
-    .app-list { padding: 8px 12px; max-height: 480px; overflow-y: auto; }
+    .app-list { padding: 8px 12px; max-height: 440px; overflow-y: auto; }
     .app-list::-webkit-scrollbar { width: 6px; }
     .app-list::-webkit-scrollbar-thumb { background: #c0c0c0; border-radius: 3px; }
     .app-list::-webkit-scrollbar-track { background: transparent; }
@@ -168,7 +174,18 @@
       cursor: pointer; font-size: 14px; font-weight: 600; color: var(--text-body);
     }
     .app-view-header:hover { background: var(--bg-app-header-hover); }
-    .app-actions { padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
+    /* Sin tope, un applet de 7 acciones (Ajuste Masivo de Specs) pide 646px de alto
+       y dispara el popup de 800px de ancho. 400 + 177 de cromo fijo = 577. */
+    .app-actions { padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; max-height: 400px; overflow-y: auto; }
+    .app-actions::-webkit-scrollbar { width: 6px; }
+    .app-actions::-webkit-scrollbar-thumb { background: #c0c0c0; border-radius: 3px; }
+    .app-actions::-webkit-scrollbar-track { background: transparent; }
+    /* El banner de actualización suma ~104px: encoge las listas o volvemos a pasar de 600
+       justo cuando el operador abre el popup para actualizar. */
+    body:has(.update-banner.visible) .app-menu,
+    body:has(.update-banner.visible) .app-grid,
+    body:has(.update-banner.visible) .app-list { max-height: 336px; }
+    body:has(.update-banner.visible) .app-actions { max-height: 296px; }
 
     .btn {
       display: flex; align-items: center; gap: 10px;
