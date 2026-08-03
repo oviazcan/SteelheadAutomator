@@ -1,0 +1,329 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>El archivo para dar de alta usuarios en lote — Steelhead Power Tools</title>
+<style>
+:root{
+  --ground:#f7f9fb;--paper:#ffffff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;
+  --hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;
+  --ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;
+  --warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7;
+  --shadow:0 1px 2px rgba(24,34,49,.05),0 6px 20px -8px rgba(24,34,49,.12);
+  --measure:68ch;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){:root{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512;--shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -10px rgba(0,0,0,.5)}}
+:root[data-theme="light"]{--ground:#f7f9fb;--paper:#fff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;--hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;--ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;--warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7}
+:root[data-theme="dark"]{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.62;-webkit-font-smoothing:antialiased}
+.wrap{max-width:920px;margin:0 auto;padding:0 24px 96px}
+.measure{max-width:var(--measure)}
+.masthead{border-bottom:2px solid var(--ku);padding:40px 0 22px}
+.brandbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.brandmark{width:26px;height:26px;border-radius:6px;background:var(--steel);display:grid;place-items:center;flex:0 0 auto}
+.brandmark span{color:#fff;font-weight:800;font-size:.9rem;font-family:var(--mono)}
+.brandname{font-weight:700;letter-spacing:.02em;font-size:.95rem}
+.brandname em{color:var(--accent-ink);font-style:normal}
+.eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.14em;color:var(--ku);font-weight:800;margin:0 0 10px}
+.masthead h1{font-size:clamp(2rem,4.6vw,2.7rem);line-height:1.06;letter-spacing:-.02em;margin:0 0 10px;font-weight:800;text-wrap:balance}
+.masthead .sub{font-size:1.12rem;color:var(--muted);margin:0;max-width:60ch}
+.audchips{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.audchip{font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.05em}
+.audchip.ku{background:var(--ku-wash);color:var(--ku)} .audchip.ti{background:var(--ti-wash);color:var(--ti)}
+.audchip.p{background:var(--ti-wash);color:var(--ti)}
+.tldr{background:var(--paper);border:1px solid var(--hair);border-left:4px solid var(--ku);border-radius:12px;padding:20px 22px;margin:26px 0;box-shadow:var(--shadow)}
+.tldr .ct{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--ku);margin:0 0 8px}
+.tldr p{margin:0;font-size:1.05rem}
+h2.sec{font-size:1.5rem;letter-spacing:-.01em;margin:54px 0 4px;font-weight:800;text-wrap:balance}
+h2.sec .num{font-family:var(--mono);font-size:.85rem;color:var(--ku);font-weight:700;border:1px solid var(--hair-2);border-radius:6px;padding:1px 7px;margin-right:10px;vertical-align:.15em}
+h3.sub{font-size:1.16rem;margin:32px 0 6px;letter-spacing:-.01em;font-weight:700}
+.sec-lead{color:var(--muted);margin:.4rem 0 1.2rem;max-width:var(--measure)}
+p{margin:0 0 1rem;max-width:var(--measure)}
+a{color:var(--accent-ink);text-underline-offset:2px}
+code{font-family:var(--mono);font-size:.85em;background:var(--hair);padding:1px 5px;border-radius:5px;word-break:break-word}
+ul,ol{max-width:var(--measure);padding-left:1.25em} li{margin:.35rem 0}
+strong{font-weight:700}
+figure.diagram{margin:26px 0;background:var(--paper);border:1px solid var(--hair);border-radius:14px;padding:20px 18px 8px;box-shadow:var(--shadow);overflow-x:auto}
+figure.diagram svg{display:block;width:100%;height:auto;min-width:560px;max-width:820px;margin:0 auto}
+figure.diagram figcaption{font-size:.85rem;color:var(--faint);text-align:center;margin-top:10px;padding:0 8px 6px}
+.svg-t{font-family:var(--sans);fill:var(--ink)} .svg-m{font-family:var(--mono)} .svg-mut{fill:var(--muted)}
+.callout{border-radius:10px;padding:15px 17px 15px 48px;position:relative;margin:22px 0;font-size:.95rem;border:1px solid var(--hair);background:var(--paper);max-width:none}
+.callout .ct{font-weight:800;margin:0 0 4px;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em}
+.callout p{max-width:none;margin:.3rem 0 0}
+.callout::before{position:absolute;left:15px;top:14px;font-size:1.15rem;line-height:1}
+.callout.meta{border-left:4px solid var(--steel);background:color-mix(in srgb,var(--steel) 6%,var(--paper))} .callout.meta .ct{color:var(--steel)} .callout.meta::before{content:"💡"}
+.callout.info{border-left:4px solid var(--ti);background:var(--ti-wash)} .callout.info .ct{color:var(--ti)} .callout.info::before{content:"ℹ";color:var(--ti);font-weight:800}
+.callout.warn{border-left:4px solid var(--warn);background:var(--warn-wash)} .callout.warn .ct{color:var(--warn)} .callout.warn::before{content:"⚠"}
+.callout.danger{border-left:4px solid var(--danger);background:var(--danger-wash)} .callout.danger .ct{color:var(--danger)} .callout.danger::before{content:"⛔"}
+.callout.tip{border-left:4px solid var(--accent);background:var(--accent-wash)} .callout.tip .ct{color:var(--accent-ink)} .callout.tip::before{content:"✓";color:var(--accent-ink);font-weight:800}
+.stages{list-style:none;padding:0;margin:24px 0;display:flex;flex-direction:column;gap:2px}
+.stages li{display:grid;grid-template-columns:44px 1fr;gap:16px;padding:16px 0;border-bottom:1px solid var(--hair);align-items:start}
+.stages li:last-child{border-bottom:none}
+.stages .k{width:38px;height:38px;border-radius:9px;background:var(--ku);color:#fff;display:grid;place-items:center;font-weight:800;font-family:var(--mono);font-size:1rem}
+.stages h4{margin:0 0 3px;font-size:1.08rem}
+.stages p{margin:0;font-size:.94rem;color:var(--muted);max-width:none}
+.tablewrap{overflow-x:auto;border:1px solid var(--hair);border-radius:12px;box-shadow:var(--shadow);margin:20px 0}
+table{border-collapse:collapse;width:100%;font-size:.9rem;background:var(--paper);min-width:560px}
+thead th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:700;padding:11px 14px;border-bottom:2px solid var(--hair-2);background:var(--ground)}
+tbody td{padding:11px 14px;border-bottom:1px solid var(--hair);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+td code{white-space:nowrap}
+.req{display:inline-block;font-size:.66rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;padding:2px 7px;border-radius:5px;background:var(--danger-wash);color:var(--danger);white-space:nowrap}
+.opt{display:inline-block;font-size:.66rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:2px 7px;border-radius:5px;background:var(--hair);color:var(--muted);white-space:nowrap}
+.na{display:inline-block;font-size:.66rem;font-weight:800;text-transform:uppercase;letter-spacing:.06em;padding:2px 7px;border-radius:5px;background:var(--warn-wash);color:var(--warn);white-space:nowrap}
+.roles{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:26px 0}
+@media (max-width:760px){.roles{grid-template-columns:1fr}}
+.role{border-radius:12px;padding:20px;border:1px solid var(--hair);background:var(--paper);box-shadow:var(--shadow)}
+.role.si{border-top:4px solid var(--accent)} .role.no{border-top:4px solid var(--danger)}
+.role .who{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;margin-bottom:6px}
+.role.si .who{color:var(--accent-ink)} .role.no .who{color:var(--danger)}
+.role p{margin:0;font-size:.93rem;max-width:none}
+.role ul{margin:.4rem 0 0;font-size:.93rem}
+.codeblock{margin:20px 0}
+.codeblock .bar{display:flex;justify-content:flex-end;margin-bottom:7px}
+.codeblock pre{background:var(--paper);border:1px solid var(--hair);border-radius:12px;padding:16px 18px;overflow-x:auto;box-shadow:var(--shadow);font-family:var(--mono);font-size:.82rem;line-height:1.7;margin:0}
+.copybtn{font:600 .72rem var(--sans);padding:5px 11px;border-radius:7px;border:1px solid var(--hair-2);background:var(--ground);color:var(--muted);cursor:pointer}
+.copybtn:hover{color:var(--ink);border-color:var(--faint)}
+.foot{margin-top:64px;padding-top:22px;border-top:1px solid var(--hair-2);color:var(--faint);font-size:.85rem;display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:999px}
+.badge.perenne{background:var(--ti-wash);color:var(--ti)} .badge.perenne::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+@media print{:root{--ground:#fff;--paper:#fff;--shadow:none}body{font-size:11.5pt}.wrap{max-width:none;padding:0}figure.diagram,.callout,.tablewrap,.role,.stages li,.codeblock{break-inside:avoid}figure.diagram svg{min-width:0}h2.sec,h3.sub{break-after:avoid}a{color:var(--ink);text-decoration:none}.copybtn{display:none}}
+</style>
+
+<style>
+.doc-credit{margin-top:10px;padding-top:12px;border-top:1px solid var(--hair);display:flex;align-items:center;gap:12px;font-size:.78rem;color:var(--faint)}
+.doc-credit a{color:var(--accent-ink);text-decoration:none} .doc-credit a.name{font-weight:600}
+.doc-credit img{height:30px;width:auto;display:block}
+.logo-chip{background:#fff;border:1px solid #dbe1e8;border-radius:9px;padding:6px 12px;display:inline-flex;align-items:center;box-shadow:0 1px 3px rgba(24,34,49,.12)}
+.logo-chip img{height:40px;width:auto;display:block}
+</style>
+
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brandbar">
+      <span class="brandmark"><span>PT</span></span>
+      <span class="brandname">Steelhead <em>Power Tools</em> · Guía de layout</span>
+      <a href="00-mapa-empieza-aqui.html" style="margin-left:auto;font-size:.82rem;color:var(--faint);text-decoration:none;white-space:nowrap">← Índice del paquete</a>
+    </div>
+    <p class="eyebrow">Carga masiva · ventanilla de usuarios</p>
+    <h1>El archivo para dar de alta usuarios en lote</h1>
+    <p class="sub">Cómo se arma el archivo, qué escribir en cada columna y qué te va a contestar el sistema cuando lo subas.</p>
+    <div class="audchips"><span class="audchip ku">Key User</span><span class="audchip p">Documento perenne</span></div>
+  </header>
+
+  <div class="callout warn">
+    <p class="ct">Estado al 28 de julio de 2026</p>
+    <p>La ventanilla ya está <strong>publicada en las dos plantas</strong> (mismo código en Toluca y Monterrey), pero <strong>aún no se ha hecho una carga real de principio a fin</strong>. Un diagnóstico contra Toluca confirmó qué catálogos entrega el sistema: <strong>Perfil de acceso, Departamento, Puesto y Estación sí llegan</strong>; <strong>Código de labor llega vacío</strong> y <strong>el catálogo de usuarios no llega</strong> —por eso la columna Supervisor no se puede usar (sección 06). También se probó qué pasa al cargar dos veces el mismo correo: Steelhead lo rechaza sin duplicar. Falta confirmar el <strong>formato de la fecha</strong> y verificar en Monterrey que los nombres de departamentos y perfiles estén escritos igual que en Toluca.</p>
+  </div>
+
+  <div class="tldr">
+    <p class="ct">Lo esencial</p>
+    <p>Un archivo con <strong>encabezado</strong>, un renglón por persona y dos columnas obligatorias: <strong>Nombre</strong> y <strong>Correo</strong>. Todo lo demás es opcional, y todo se escribe con el <strong>nombre tal como aparece en Steelhead</strong> — nunca con números internos.</p>
+  </div>
+
+  <!-- 01 -->
+  <h2 class="sec"><span class="num">01</span>Para qué sirve esta ventanilla y para qué no</h2>
+  <p class="sec-lead">Es la diferencia que más tiempo ahorra entenderla desde el principio.</p>
+
+  <div class="roles">
+    <div class="role si">
+      <div class="who">Sí hace</div>
+      <ul>
+        <li><strong>Da de alta</strong> usuarios que todavía no existen.</li>
+        <li>Les asigna perfil, departamento, puesto, supervisor, estación, código de labor y fecha de ingreso.</li>
+        <li>Procesa cientos de renglones de un jalón.</li>
+      </ul>
+    </div>
+    <div class="role no">
+      <div class="who">No hace</div>
+      <ul>
+        <li><strong>No modifica</strong> usuarios que ya existen: no hay manera de decirle "a esta persona cámbiale el departamento".</li>
+        <li>No archiva ni desactiva a nadie.</li>
+        <li>No toca sueldos, horarios ni vacaciones.</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout tip">
+    <p class="ct">Recargar un archivo es inofensivo</p>
+    <p>Si vuelves a subir una lista que ya cargaste, Steelhead <strong>rechaza</strong> a los que ya existen —los verás como «fallidos» en su resumen, con la nota <em>«already exists»</em>— y da de alta sólo a los que faltaban. No se duplica nadie ni se sobrescriben datos. Probado el 28/07/2026 con un usuario de prueba.</p>
+  </div>
+
+  <div class="callout info">
+    <p class="ct">Vas a ver dos resúmenes, no uno</p>
+    <p>Primero el de la <strong>carga</strong> (lo que revisó antes de mandar nada: renglones leídos, omitidos y por qué). Después el de <strong>Steelhead</strong>, titulado «Resultados de importación de usuarios», con el marcador de <strong>exitosos y fallidos</strong> y el detalle persona por persona. El segundo es el que manda.</p>
+  </div>
+
+  <!-- 02 -->
+  <h2 class="sec"><span class="num">02</span>Las columnas del archivo</h2>
+  <p class="sec-lead">El encabezado es obligatorio y se reconoce por el <strong>nombre</strong> de cada columna, no por su posición: puedes moverlas de orden o quitar las que no uses.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Columna</th><th></th><th>Qué escribir</th><th>Ejemplo</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Nombre</strong></td><td><span class="req">Obligatoria</span></td><td>Nombre completo de la persona.</td><td>Juan Pérez Muñoz</td></tr>
+        <tr><td><strong>Correo</strong></td><td><span class="req">Obligatoria</span></td><td>Su correo. Es con lo que entra al sistema y no se puede repetir.</td><td>juan.perez@ecoplating.com</td></tr>
+        <tr><td><strong>Tipo</strong></td><td><span class="opt">Opcional</span></td><td>Uno de estos cinco: <strong>Por hora</strong>, <strong>Asalariado</strong>, <strong>Agencia por hora</strong>, <strong>Agencia asalariado</strong>, <strong>Otro</strong>.</td><td>Por hora</td></tr>
+        <tr><td><strong>PIN</strong></td><td><span class="opt">Opcional</span></td><td>Clave numérica de acceso en piso. Respeta los ceros a la izquierda.</td><td>0042</td></tr>
+        <tr><td><strong>Perfil de acceso</strong></td><td><span class="opt">Opcional</span></td><td>Nombre del perfil de permisos, idéntico al de Steelhead.</td><td>Operador</td></tr>
+        <tr><td><strong>Departamento</strong></td><td><span class="opt">Opcional</span></td><td>Nombre del departamento.</td><td>Producción</td></tr>
+        <tr><td><strong>Puesto</strong></td><td><span class="opt">Opcional</span></td><td>Nombre del puesto.</td><td>Ingeniero de Producto</td></tr>
+        <tr><td><strong>Supervisor</strong></td><td><span class="na">No disponible</span></td><td>El sistema no entrega el catálogo de usuarios: <strong>no se puede resolver</strong>. Asigna supervisores desde Steelhead.</td><td>—</td></tr>
+        <tr><td><strong>Estación</strong></td><td><span class="opt">Opcional</span></td><td>Nombre de la estación donde trabaja normalmente.</td><td>T101-LI Prelimpieza (4 - 5)</td></tr>
+        <tr><td><strong>Código de labor</strong></td><td><span class="na">No disponible</span></td><td>El catálogo llega <strong>vacío</strong> en Toluca. Si algún día se captura, la columna empieza a funcionar sola.</td><td>—</td></tr>
+        <tr><td><strong>Fecha de ingreso</strong></td><td><span class="opt">Opcional</span></td><td>Formato <strong>dd/mm/aaaa</strong>. También acepta aaaa-mm-dd.</td><td>28/07/2026</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout info">
+    <p class="ct">Si omites la columna Tipo</p>
+    <p>Todos entran como <strong>Por hora</strong> y el sistema te lo avisa una vez. Si en tu lista hay asalariados o gente de agencia, incluye la columna: ese campo influye en cómo se registra su tiempo.</p>
+  </div>
+
+  <!-- 03 -->
+  <h2 class="sec"><span class="num">03</span>Por qué se escriben nombres y no números</h2>
+  <p class="sec-lead">Es la misma regla que gobierna todo el sistema, y aquí se nota más que en ningún otro lado.</p>
+
+  <div class="callout meta">
+    <p class="ct">El letrero y el número de casillero</p>
+    <p>Cada catálogo de Steelhead —perfiles, departamentos, puestos— tiene un <strong>letrero</strong> (su nombre) y un <strong>número de casillero</strong> (un número interno). El letrero «Producción» dice lo mismo en Toluca y en Monterrey. El número de casillero <strong>no</strong>: el mismo número apunta a un departamento en una planta y a otro distinto en la otra.</p>
+  </div>
+
+  <figure class="diagram">
+    <svg viewBox="0 0 800 230" role="img" aria-label="El mismo letrero apunta a números internos distintos en cada planta">
+      <rect x="20" y="30" width="340" height="170" rx="12" fill="none" stroke="var(--hair-2)" stroke-width="1.5"/>
+      <text class="svg-t" x="190" y="60" text-anchor="middle" font-size="15" font-weight="700">Toluca</text>
+      <rect x="55" y="80" width="270" height="40" rx="8" fill="var(--ku-wash)" stroke="var(--ku)" stroke-width="1.6"/>
+      <text x="190" y="106" text-anchor="middle" font-size="13.5" font-weight="700" fill="var(--ku)">«Producción»</text>
+      <text class="svg-m svg-mut" x="190" y="150" text-anchor="middle" font-size="13">casillero interno · 201</text>
+      <text class="svg-mut" x="190" y="176" text-anchor="middle" font-size="11.5">el letrero es el mismo…</text>
+
+      <rect x="440" y="30" width="340" height="170" rx="12" fill="none" stroke="var(--hair-2)" stroke-width="1.5"/>
+      <text class="svg-t" x="610" y="60" text-anchor="middle" font-size="15" font-weight="700">Monterrey</text>
+      <rect x="475" y="80" width="270" height="40" rx="8" fill="var(--ku-wash)" stroke="var(--ku)" stroke-width="1.6"/>
+      <text x="610" y="106" text-anchor="middle" font-size="13.5" font-weight="700" fill="var(--ku)">«Producción»</text>
+      <text class="svg-m svg-mut" x="610" y="150" text-anchor="middle" font-size="13">casillero interno · 950</text>
+      <text class="svg-mut" x="610" y="176" text-anchor="middle" font-size="11.5">…el número, no</text>
+
+      <path d="M368 115 L432 115" stroke="var(--hair-2)" stroke-width="1.5" stroke-dasharray="4 4"/>
+    </svg>
+    <figcaption>Por eso el archivo se llena con letreros. El sistema busca el número correcto en la planta donde estés cargando.</figcaption>
+  </figure>
+
+  <div class="callout tip">
+    <p class="ct">Regla práctica</p>
+    <p>Copia y pega el nombre <strong>desde el catálogo de Steelhead</strong>. Acentos y mayúsculas no importan —«producción» y «Producción» son lo mismo—, pero una palabra de más o de menos sí: «Producción A» no es «Producción».</p>
+  </div>
+
+  <!-- 04 -->
+  <h2 class="sec"><span class="num">04</span>Ejemplo completo</h2>
+  <p class="sec-lead">Así se ve un archivo de tres personas. La primera trae todo; las otras dos, sólo lo indispensable.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Nombre</th><th>Correo</th><th>Tipo</th><th>PIN</th><th>Perfil de acceso</th><th>Departamento</th><th>Puesto</th><th>Fecha de ingreso</th></tr></thead>
+      <tbody>
+        <tr><td>Juan Pérez Muñoz</td><td>juan.perez@ecoplating.com</td><td>Por hora</td><td>0042</td><td>Producción Operativo</td><td>Contabilidad</td><td>Ingeniero de Producto</td><td>28/07/2026</td></tr>
+        <tr><td>Ana Ruiz</td><td>ana.ruiz@ecoplating.com</td><td>Asalariado</td><td></td><td>Calidad Administrativo</td><td>Planificación</td><td></td><td>01/06/2026</td></tr>
+        <tr><td>Luis Soto</td><td>luis.soto@ecoplating.com</td><td>Agencia por hora</td><td></td><td></td><td>Contabilidad</td><td></td><td></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 class="sub">El encabezado, listo para pegar</h3>
+  <p>Pégalo en la primera fila de tu hoja y guarda el archivo como <strong>CSV</strong>.</p>
+
+  <div class="codeblock">
+    <div class="bar"><button class="copybtn" type="button" data-copy>Copiar encabezado</button></div>
+<pre id="encabezado">Nombre,Correo,Tipo,PIN,Perfil de acceso,Departamento,Puesto,Estación,Fecha de ingreso</pre>
+  </div>
+
+  <div class="callout info">
+    <p class="ct">Al guardar desde Excel</p>
+    <p>Elige <strong>CSV UTF-8</strong> si tu Excel lo ofrece. Si los acentos llegaran mal, el sistema los repara solo —la ventanilla ya trae ese arreglo—, pero guardar en UTF-8 evita el rodeo.</p>
+  </div>
+
+  <!-- 05 -->
+  <h2 class="sec"><span class="num">05</span>Qué te va a contestar el sistema</h2>
+  <p class="sec-lead">Cuando subes el archivo, antes de crear a nadie verás un resumen y, si hay algo que revisar, el detalle renglón por renglón.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Mensaje</th><th>Qué significa</th><th>Qué hacer</th></tr></thead>
+      <tbody>
+        <tr><td>«12 renglones leídos, 12 usuarios por dar de alta, 0 omitidos»</td><td>Todo limpio del lado de la carga.</td><td>Revisa luego el resumen de Steelhead: ahí salen los exitosos y fallidos.</td></tr>
+        <tr><td>«Esta carga no puede avisarte por adelantado si un correo ya existe…»</td><td>Sale <strong>siempre</strong>. Es informativo: el filtro lo hace Steelhead al final.</td><td>Nada. Revisa el resumen de Steelhead al terminar.</td></tr>
+        <tr><td>«Renglón 9: el correo … viene repetido en el archivo»</td><td>El mismo correo aparece dos veces en tu lista.</td><td>Deja un solo renglón por persona.</td></tr>
+        <tr><td>Steelhead: «… already exists»</td><td>Esa persona ya estaba dada de alta.</td><td>Nada. No se duplicó ni se modificó.</td></tr>
+        <tr><td>«Renglón 4: Departamento «Contabilidd» no existe en este dominio»</td><td>Un letrero mal escrito. La persona <strong>sí</strong> se crea, pero sin departamento.</td><td>Corrige el nombre y vuelve a subir sólo ese renglón.</td></tr>
+        <tr><td>«Renglón 5: tipo de usuario no reconocido»</td><td>El Tipo no es ninguno de los cinco válidos. Ese renglón <strong>no</strong> se crea.</td><td>Usa exactamente uno de los cinco.</td></tr>
+        <tr><td>«El ERP no envió estos catálogos…»</td><td>Alguna columna de catálogo no se puede resolver en esta planta.</td><td>Avisa a Sistemas: ese dato quedará vacío en todos.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout tip">
+    <p class="ct">Un renglón malo no tumba el archivo</p>
+    <p>Los renglones correctos se cargan y los problemáticos se reportan. No tienes que rehacer la lista completa por una errata: corriges lo señalado y vuelves a subir <strong>sólo</strong> esos renglones — los que ya se crearon se detectan por correo y se omiten solos.</p>
+  </div>
+
+  <!-- 06 -->
+  <h2 class="sec"><span class="num">06</span>Detalles que evitan sustos</h2>
+
+  <ol class="stages">
+    <li><span class="k">1</span><div><h4>Un renglón vacío a media lista no corta el archivo</h4><p>Se salta y sigue con los de abajo. Puedes dejar separaciones entre bloques sin perder gente.</p></div></li>
+    <li><span class="k">2</span><div><h4>El correo se guarda en minúsculas</h4><p>«Juan@Ecoplating.com» y «juan@ecoplating.com» son la misma persona; sólo entra una vez. Eso aplica <strong>dentro de tu archivo</strong>; a los que ya existen en Steelhead los filtra el propio sistema al final.</p></div></li>
+    <li><span class="k">3</span><div><h4>Supervisor y Código de labor no se pueden llenar hoy</h4><p>Steelhead no le pasa a la carga el catálogo de usuarios, y el de códigos de labor está vacío en Toluca. Si incluyes esas columnas, se ignoran y te lo avisa. Los supervisores se asignan desde Steelhead.</p></div></li>
+    <li><span class="k">4</span><div><h4>La fecha es dd/mm/aaaa</h4><p>07/28/2026 no se interpreta como 28 de julio: se marca como error para no inventar fechas. Si una fecha no se entiende, la persona <strong>sí</strong> se crea, sin fecha de ingreso.</p></div></li>
+    <li><span class="k">5</span><div><h4>Sin perfil de acceso, el usuario queda sin perfil</h4><p>El sistema <strong>no</strong> le asigna uno por su cuenta. Es a propósito: un perfil puesto al azar puede dar permisos que no corresponden.</p></div></li>
+    <li><span class="k">6</span><div><h4>El PIN es dato sensible</h4><p>Si tu archivo lleva PINs, bórralo de tu equipo y de la carpeta compartida en cuanto termine la carga.</p></div></li>
+  </ol>
+
+  <!-- 07 -->
+  <h2 class="sec"><span class="num">07</span>Antes de subir</h2>
+
+  <ul>
+    <li>La primera fila es el <strong>encabezado</strong> con los nombres de columna.</li>
+    <li>Cada persona tiene <strong>nombre y correo</strong>, y ningún correo se repite.</li>
+    <li>Los letreros de Perfil de acceso, Departamento, Puesto y Estación están <strong>copiados de Steelhead</strong>.</li>
+    <li>El archivo <strong>no</strong> trae columnas de Supervisor ni de Código de labor (hoy no se pueden resolver).</li>
+    <li>Si alguno de la lista ya estaba dado de alta, no pasa nada: Steelhead lo rechaza y sigue con los demás.</li>
+    <li>Las fechas están en <strong>dd/mm/aaaa</strong>.</li>
+    <li>Estás en la <strong>planta correcta</strong> — el archivo carga en la que tengas abierta.</li>
+    <li>Guardado como <strong>CSV</strong>.</li>
+  </ul>
+
+  <footer class="foot">
+    <div><span class="badge perenne">Perenne</span> &nbsp; Layout de carga masiva de usuarios · Steelhead Power Tools</div>
+    <div>Corte de referencia: 28/07/2026 · catálogos y duplicados verificados contra Toluca</div>
+    <div class="doc-credit">
+      <a href="https://capazconsultoria.com" target="_blank" rel="noopener" aria-label="Capaz Consultoría" style="flex:0 0 auto;display:inline-flex"><img src="assets/capaz-c.png" alt="Capaz Consultoría"></a>
+      <span>Documento elaborado por <a class="name" href="mailto:oviazcan@capazconsultoria.com">Omar Viazcán</a> · <a href="https://capazconsultoria.com" target="_blank" rel="noopener">Capaz Consultoría</a></span>
+    </div>
+  </footer>
+
+</div>
+<script>
+document.querySelectorAll('[data-copy]').forEach(function (btn) {
+  btn.addEventListener('click', function () {
+    var pre = btn.closest('.codeblock').querySelector('pre');
+    if (!pre) return;
+    navigator.clipboard.writeText(pre.textContent).then(function () {
+      var previo = btn.textContent;
+      btn.textContent = 'Copiado';
+      setTimeout(function () { btn.textContent = previo; }, 1600);
+    });
+  });
+});
+</script>
+</body>
+</html>

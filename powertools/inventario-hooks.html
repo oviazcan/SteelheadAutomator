@@ -106,14 +106,16 @@ td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:now
   <div class="freshness">
     <span class="ic" aria-hidden="true">🟢</span>
     <div>
-      <b>Documento vivo — corte del 27 de julio de 2026.</b> Los ids de versión activa que ves abajo se leyeron directamente del ERP ese día, en <strong>los dos dominios</strong> (Toluca y Monterrey). Cada vez que alguien publica un hook, el id cambia: <strong>verifica la versión viva antes de asumir vigencia</strong>.
+      <b>Documento vivo — corte del 3 de agosto de 2026.</b> Los ids de versión activa que ves abajo se leyeron directamente del ERP ese día, en <strong>los dos dominios</strong> (Toluca y Monterrey). Cada vez que alguien publica un hook, el id cambia: <strong>verifica la versión viva antes de asumir vigencia</strong>.
       <p>Comando que reproduce esta tabla: <code>python3 sync/lowcode_sync.py list</code> — y con <code>STEELHEAD_DEFAULT_DOMAIN=mty</code> delante para la columna de Monterrey.</p>
     </div>
   </div>
 
   <div class="callout warn">
     <p class="ct">Cambios de este corte respecto al anterior</p>
-    <p><strong>Toluca pasó de 19 a 21 ventanillas con código, más 2 que quedaron listas para estrenarse.</strong> Los dos renglones nuevos —<em>orden de venta</em> y <em>embarque</em>— no son ventanillas recién abiertas por el ERP: existían desde mayo de 2026 y estaban <strong>fuera del radar de la herramienta de sincronización</strong>, que solo buscaba los tipos que tenía en su lista. Al ampliarla aparecieron. Ambas están en formato de fábrica. Aparte, Steelhead <strong>liberó en julio la ventanilla de carga masiva de usuarios</strong>, que aún está por llenarse: aparece en la tabla marcada <span class="st free">Sin estrenar</span>, sin id de versión porque todavía no hay ninguna.</p>
+    <p><strong>El certificado de calidad afinó la medición de tamaño de grano</strong> (Toluca versión 11372, Monterrey 11373, mismo código en ambas). Dos ajustes: la revisión que compara el cálculo contra el valor que teclea el inspector era tan estricta que descartaba mediciones buenas por diferencias de centésimas —ya se le dio el margen que corresponde al redondeo—; y cuando falta capturar uno de los cuatro campos de la fórmula, el sistema ahora <strong>lo dice y nombra el campo faltante</strong> en lugar de quedarse callado. Antes, esa captura incompleta desaparecía sin dejar rastro y nadie se enteraba.</p>
+    <p><strong>Sigue firme el criterio de siempre:</strong> si la medición capturada no cuadra con la fórmula, el dato <em>no</em> sale en el certificado del cliente. Eso es deliberado — un certificado con un tamaño de grano que no cuadra es peor que un certificado sin él.</p>
+    <p>Los ids de las otras 21 ventanillas se releyeron el mismo día y <strong>no cambiaron</strong>. Del corte anterior sigue vigente: la carga masiva de usuarios estrenada en las dos plantas (versiones 722 y 725), y los renglones de <em>orden de venta</em> y <em>embarque</em> en formato de fábrica.</p>
   </div>
 
   <div class="callout meta">
@@ -123,7 +125,7 @@ td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:now
 
   <!-- ============ 01 VENTANILLAS ============ -->
   <h2 class="sec"><span class="num">01</span>Las ventanillas de Power Tools</h2>
-  <p class="sec-lead">Ordenadas por el momento del proceso en que se disparan. Al corte: <strong>16 atendidas</strong> (hay código de Ecoplating corriendo ahí) · <strong>4 en formato de fábrica</strong> (la ventanilla existe pero se usa lo que trae Steelhead) · <strong>1 en diagnóstico</strong> · <strong>2 sin estrenar</strong> (el ERP las admite pero no tienen ninguna versión guardada — por eso van sin id).</p>
+  <p class="sec-lead">Ordenadas por el momento del proceso en que se disparan. Al corte: <strong>17 atendidas</strong> (hay código de Ecoplating corriendo ahí) · <strong>4 en formato de fábrica</strong> (la ventanilla existe pero se usa lo que trae Steelhead) · <strong>1 en diagnóstico</strong> · <strong>1 sin estrenar</strong> (el ERP la admite pero no tiene ninguna versión guardada — por eso va sin id).</p>
 
   <div class="search noprint">
     <input id="q" type="search" placeholder="Filtrar por nombre, documento o palabra clave…" aria-label="Filtrar ventanillas">
@@ -211,7 +213,7 @@ td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:now
           <td><code>pdf:CERTIFICATION_TEMPLATE</code></td>
           <td>Aplana mediciones y fotos por grupo de especificación, reconstruye el tamaño de grano y expone los datos del número de parte en campos planos —con su imagen de display— para que la plantilla los pueda pintar.</td>
           <td><span class="st on">Atendida</span></td>
-          <td class="num">11319</td><td class="num">11320</td>
+          <td class="num">11372</td><td class="num">11373</td>
         </tr>
         <tr>
           <td><strong>Embarque — remisión</strong><br><span style="color:var(--faint);font-size:.82rem">PDF de packing slip</span></td>
@@ -223,9 +225,9 @@ td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:now
         <tr>
           <td><strong>Facturación — cálculo</strong><br><span style="color:var(--faint);font-size:.82rem">Editor de factura</span></td>
           <td><code>invoice</code></td>
-          <td>Arma el contenido de cada renglón de la factura: tipo de cambio del día, precio por producto, cantidad convertida, cargo de lote mínimo y la descripción que viaja al CFDI. Antes de guardar avisa —en mensajes <strong>separados</strong>— si a algún renglón le falta el precio o si la cantidad quedó en cero, diciendo en cuál renglón y de qué número de parte.</td>
+          <td>Arma el contenido de cada renglón de la factura: tipo de cambio del día, precio por producto, cantidad convertida, cargo de lote mínimo y la descripción que viaja al CFDI. Antes de guardar avisa —en mensajes <strong>separados</strong>— si a algún renglón le falta el precio o si la cantidad quedó en cero, diciendo en cuál renglón y de qué número de parte. También anuncia en claro qué remisiones adjuntó a la referencia fiscal de la factura.</td>
           <td><span class="st on">Atendida</span></td>
-          <td class="num">5363</td><td class="num">5364</td>
+          <td class="num">5372</td><td class="num">5373</td>
         </tr>
         <tr>
           <td><strong>Facturación — imprimir</strong><br><span style="color:var(--faint);font-size:.82rem">PDF de factura</span></td>
@@ -286,9 +288,9 @@ td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:now
         <tr>
           <td><strong>Administración — alta de usuarios</strong><br><span style="color:var(--faint);font-size:.82rem">Importación masiva de usuarios</span></td>
           <td><code>file-import:USER_IMPORT</code></td>
-          <td>Dar de alta usuarios en bloque desde un archivo, en vez de uno por uno — igual que hoy se importan cotizaciones. <strong>Liberada por Steelhead en julio de 2026 y todavía sin estrenar:</strong> la ventanilla existe y el sincronizador ya la reconoce, falta escribir el hook.</td>
-          <td><span class="st free">Sin estrenar</span></td>
-          <td>—</td><td>—</td>
+          <td>Da de alta usuarios en bloque desde un archivo, en vez de uno por uno. El archivo se llena con <strong>nombres</strong> de perfil, departamento, puesto y estación —nunca con números internos— y la carga resuelve el número que corresponde a cada planta. Revisa el archivo antes de mandar nada y reporta renglón por renglón. <strong>Sólo da de alta: no modifica a quien ya existe</strong> (probado). Guía del archivo: <a href="layout-carga-usuarios.html">layout de carga de usuarios</a>.</td>
+          <td><span class="st on">Atendida</span></td>
+          <td class="num">722</td><td class="num">725</td>
         </tr>
         <tr>
           <td><strong>Ingeniería — transformación de partes</strong><br><span style="color:var(--faint);font-size:.82rem">Importación de transformaciones</span></td>
@@ -386,7 +388,7 @@ td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:now
 
   <footer class="foot">
     <div><span class="badge vivo dot">Vivo</span> &nbsp; Inventario de ventanillas · Steelhead Power Tools</div>
-    <div>Corte de referencia: 27 jul 2026 · 21 ventanillas en Toluca, 19 en Monterrey · verificado contra el ERP en ambos dominios</div>
+    <div>Corte de referencia: 31 jul 2026 · 22 ventanillas con código en Toluca, 20 en Monterrey · verificado contra el ERP en ambos dominios</div>
     <div class="doc-credit">
       <a href="https://capazconsultoria.com" target="_blank" rel="noopener" aria-label="Capaz Consultoría" style="flex:0 0 auto;display:inline-flex"><img src="assets/capaz-c.png" alt="Capaz Consultoría"></a>
       <span>Documento elaborado por <a class="name" href="mailto:oviazcan@capazconsultoria.com">Omar Viazcán</a> · <a href="https://capazconsultoria.com" target="_blank" rel="noopener">Capaz Consultoría</a></span>
