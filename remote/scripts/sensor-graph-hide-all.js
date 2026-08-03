@@ -42,7 +42,13 @@ const SensorGraphHideAll = (() => {
       )
     );
     if (byAria.length) return byAria;
+    // Fallback por icono. El `data-testid` dejó de existir el 2026-08-03 (SH lo quitó de todos
+    // los iconos MUI) → se pasa por el núcleo compartido, que además intenta por FORMA y por
+    // aria bilingüe. Aquí el aria primario (arriba) sigue siendo la vía principal: este applet
+    // ya estaba bien diseñado y el testid nunca fue su única señal.
+    const Icons = window.MuiIconAnchorCore;
     return Array.prototype.slice.call(document.querySelectorAll('button')).filter(function (b) {
+      if (Icons) return !!Icons.hasAnyIcon(b, ['VisibilityIcon', 'VisibilityOffIcon']);
       return b.querySelector('svg[data-testid="VisibilityIcon"], svg[data-testid="VisibilityOffIcon"]');
     });
   }
@@ -50,12 +56,16 @@ const SensorGraphHideAll = (() => {
     const aria = btn.getAttribute('aria-label');
     if (aria === HIDE_ARIA) return true;
     if (aria === SHOW_ARIA) return false;
+    const Icons = window.MuiIconAnchorCore;
+    if (Icons) return !!Icons.findIcon(btn, 'VisibilityIcon');
     return !!btn.querySelector('svg[data-testid="VisibilityIcon"]');   // fallback por testid
   }
   function isHiddenToggle(btn) {
     const aria = btn.getAttribute('aria-label');
     if (aria === SHOW_ARIA) return true;
     if (aria === HIDE_ARIA) return false;
+    const Icons = window.MuiIconAnchorCore;
+    if (Icons) return !!Icons.findIcon(btn, 'VisibilityOffIcon');
     return !!btn.querySelector('svg[data-testid="VisibilityOffIcon"]');
   }
   function getVisibleToggles() { return getToggles().filter(isVisibleToggle); }
