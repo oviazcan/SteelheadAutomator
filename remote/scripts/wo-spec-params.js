@@ -6,7 +6,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '0.5.0';
+  const VERSION = '0.6.0';
   const PANEL_ID = 'sa-wo-spec-params-panel';
   const STYLE_ID = 'sa-wo-spec-params-style';
   const FAB_ID = 'sa-wo-spec-params-fab';
@@ -170,6 +170,13 @@
       nFueraDeInspeccion: (r.fueraDeInspeccion || []).length,
       nForzadas: (r.cells || []).filter(c => c && c.forced).length,
       nOmitidas: (plan.skipped || []).length,
+      // Campos de la spec del cliente que NO se pudieron colocar porque ningún nodo de la
+      // orden los declara. Va en el slim aunque la orden no tenga trabajo — de hecho SOBRE
+      // TODO entonces: una orden así reporta `touched: 0` y sin este conteo es indistinguible
+      // de una orden sana. Es el caso de la OT 10837 (GDE1214700 Antitarnish): nació con una
+      // copia de receta cuyo nodo de calidad aún no declaraba los campos, y el operador vio
+      // «0 cambios» donde en realidad quedaron 3 criterios de calidad sin aplicar.
+      nSinDestino: (r.faltantesSinDestino || []).length,
       // Cuántas dejó fuera el modo acotado. Va en el slim aunque la orden no tenga trabajo:
       // si no, un barrido en modo acotado no podría reportar qué se decidió no escribir.
       soloNP: plan.soloNP || 0
@@ -288,6 +295,14 @@
       const d = await api().query('GetPartNumber', { partNumberId }, 'GetPartNumber');
       return d && d.partNumberById;
     },
+    // El nodo de la RECETA (no el de la orden). Las tres variables son obligatorias: pedirlo
+    // sólo con `id` responde con un error de variables faltantes, no con datos parciales.
+    // `rootId` es el maestro del nodo PROCESS de la orden.
+    async getProcessNode(id, processNodeOccurrence, rootId) {
+      const d = await api().query('GetProcessNode',
+        { id, processNodeOccurrence: processNodeOccurrence || 1, rootId }, 'GetProcessNode');
+      return d && d.processNodeById;
+    },
     // Nombre → NPs. searchQuery hace match PARCIAL; el filtro exacto lo pone resolvePartNumbers.
     async searchPartNumbers(name) {
       const d = await api().query('SearchPartNumbers',
@@ -356,9 +371,61 @@
   // GetPartNumber repetido es una consulta tirada. Se limpia al terminar (EJE A).
   let _pnCache = null;
   function pnCacheOn() { _pnCache = new Map(); }
-  function pnCacheOff() { if (_pnCache) _pnCache.clear(); _pnCache = null; }
+  function pnCacheOff() { if (_pnCache) _pnCache.clear(); _pnCache = null; _masterCache.clear(); }
+
+  // Caché de recetas maestras (processNodeId → Set<specFieldId>). En un barrido todas las
+  // órdenes del mismo proceso comparten maestros, así que la consulta se paga una vez por
+  // proceso. Se vacía al EMPEZAR cada corrida, no sólo al terminar: corregir la receta y
+  // volver a correr es justo el flujo esperado, y una caché viva devolvería el estado viejo.
+  const _masterCache = new Map();
+  function resetMasterCache() { _masterCache.clear(); }
+  // Rescate por receta maestra. Encendido por omisión: sin él, las órdenes que nacieron con la
+  // receta incompleta no se pueden reparar con esta herramienta (caso OT 10837). El interruptor
+  // existe para poder apagarlo si alguna vez hiciera falta escanear sin consultas extra.
+  let _rescateReceta = true;
 
   // Analiza UNA orden. Devuelve un resultado por cada NP de la orden.
+  // Los processNode MAESTROS que hacen falta para rescatar UNA orden: los de sus nodos de
+  // calidad. Se piden EN SERIE (son pocos, y el /graphql se cuelga en ráfaga alrededor de las
+  // 40-45 peticiones, sin devolver 429 y tumbando también la pantalla nativa).
+  //
+  // Se cachean por id de processNode: en un barrido, todas las órdenes del mismo proceso
+  // comparten maestros, así que la consulta se paga una vez por proceso y no por orden.
+  // Un maestro que no se pueda leer se cachea como Set vacío — reintentarlo en cada orden de
+  // un barrido de 4284 multiplicaría el tráfico sin cambiar el resultado.
+  async function fetchMasterFields(workOrder, deps) {
+    const D = deps || realDeps;
+    const C = core();
+    const nodes = (workOrder && workOrder.recipeNodesByWorkOrderId
+      && workOrder.recipeNodesByWorkOrderId.nodes) || [];
+    // El rootId que pide GetProcessNode es el maestro del nodo PROCESS de la orden.
+    let rootId = null;
+    for (const n of nodes) {
+      if (n && n.type === 'PROCESS' && n.processNodeByDerivedFrom) {
+        rootId = n.processNodeByDerivedFrom.id; break;
+      }
+    }
+    if (rootId == null) return null;
+
+    const out = new Map();
+    for (const n of nodes) {
+      if (!n || n.type !== 'QUALITY_ASSURANCE_NODE') continue;
+      const masterId = n.processNodeByDerivedFrom && n.processNodeByDerivedFrom.id;
+      if (masterId == null || out.has(masterId)) continue;
+      if (_masterCache && _masterCache.has(masterId)) { out.set(masterId, _masterCache.get(masterId)); continue; }
+      let fields = new Set();
+      try {
+        const pnode = await D.getProcessNode(masterId, n.processNodeOccurrence || 1, rootId);
+        fields = C.masterDeclaredFields(pnode);
+      } catch (e) {
+        console.warn('[wo-spec-params] no pude leer la receta del nodo ' + masterId + ':', e);
+      }
+      if (_masterCache) _masterCache.set(masterId, fields);
+      out.set(masterId, fields);
+    }
+    return out;
+  }
+
   // Destila y descarta: la respuesta de getSpecsInfo pesa ~0.87 MB y NO se guarda.
   async function analyzeWorkOrder(idInDomain, deps) {
     const D = deps || realDeps;
@@ -386,8 +453,19 @@
           if (_pnCache) _pnCache.set(partNumberId, partNumber);
         }
         if (!workOrder) { results.push({ partNumberId, idInDomain, error: 'sin datos de specs' }); continue; }
-        const cls = C.classifyWorkOrder({ workOrder, partNumber },
-                                        { migrarAInspeccion: _migrarAInspeccion });
+        let cls = C.classifyWorkOrder({ workOrder, partNumber },
+                                      { migrarAInspeccion: _migrarAInspeccion });
+        // RESCATE POR RECETA MAESTRA. Sólo si la orden dejó campos sin destino: la consulta a
+        // los processNode maestros es cara y la inmensa mayoría de las órdenes no la necesita.
+        // Se reclasifica con `masterFields` en vez de parchear el resultado — así el estado
+        // de cada casilla lo sigue decidiendo el núcleo puro, en un solo lugar.
+        if (_rescateReceta && cls.faltantesSinDestino && cls.faltantesSinDestino.length) {
+          const masterFields = await fetchMasterFields(workOrder, D);
+          if (masterFields && masterFields.size) {
+            cls = C.classifyWorkOrder({ workOrder, partNumber },
+                                      { migrarAInspeccion: _migrarAInspeccion, masterFields });
+          }
+        }
         const plan = C.buildWritePlan(cls, { partNumberId, soloNP: _soloNP });
         workOrder = null;   // EJE A: soltar los 0.87 MB antes de la siguiente vuelta
         results.push({
@@ -418,7 +496,7 @@
 
   function summarize(results) {
     const s = { ordenes: 0, casillas: 0, aCorregir: 0, omitidas: 0, soloNP: 0, aArchivar: 0, aAgregar: 0,
-                forzadas: 0, anomalias: 0, fueraDeInspeccion: 0 };
+                forzadas: 0, anomalias: 0, fueraDeInspeccion: 0, sinDestino: 0 };
     for (const r of (results || [])) {
       if (!r || !r.tally) continue;
       s.ordenes++;
@@ -433,6 +511,9 @@
       s.forzadas += (r.cells || []).filter(c => c && c.forced).length;
       s.anomalias += (r.anomalies || []).length;
       s.fueraDeInspeccion += (r.fueraDeInspeccion || []).length;
+      // Suma tanto la lista cruda (resultado completo) como el conteo del slim: el barrido de
+      // fase 3 sólo conserva el slim, y ahí es donde este dato hace más falta.
+      s.sinDestino += (r.faltantesSinDestino || []).length || (r.nSinDestino || 0);
     }
     return s;
   }
@@ -768,6 +849,7 @@
 
     // EJE A — caché de NP durante la corrida
     pnCacheOn();
+    resetMasterCache();   // la receta pudo corregirse entre corridas
 
     let todas = [];
     try {
@@ -858,6 +940,17 @@
     sum.appendChild(linea);
     if (anomalias) sum.appendChild(el('div', 'sa-mut',
       anomalias + ' anomalías detectadas (no se tocan)'));
+    // Órdenes que NO se pueden reparar desde aquí. Van en el resumen del barrido porque ahí
+    // sólo sobrevive el slim, y sin este conteo se leen como órdenes sanas (reportan 0 cambios).
+    const sinDestino = hallazgos.reduce((a, h) => a + (h.nSinDestino || 0), 0);
+    const ordSinDestino = hallazgos.filter(h => (h.nSinDestino || 0) > 0);
+    if (sinDestino) {
+      const d = el('div', 'sa-mut');
+      d.textContent = sinDestino + ' campos de la especificación del cliente quedaron SIN ' +
+        'aplicar en ' + ordSinDestino.length + ' órdenes (ningún nodo los declara — se ' +
+        'corrige en la receta del proceso, no desde aquí)';
+      sum.appendChild(d);
+    }
     if (detenido) sum.appendChild(el('div', 'sa-mut',
       'Se detuvo antes de terminar: el avance quedó guardado y puedes reanudar.'));
     ui.bd.appendChild(sum);
@@ -956,6 +1049,10 @@
       }
       if (h.nAnomalias) rows.push([h.idInDomain, h.partNumberName, '', '', 'EXTERNA', '', '', 'no',
                                    'ANOMALIAS:' + h.nAnomalias, '', '']);
+      // Una orden sin destino no genera renglones de `cambios` (no hay nada que escribir), así
+      // que sin este renglón desaparecería del reporte justo siendo la que necesita atención.
+      if (h.nSinDestino) rows.push([h.idInDomain, h.partNumberName, '', '', 'EXTERNA', '', '', 'no',
+                                    'SIN_DESTINO:' + h.nSinDestino, '', '']);
     }
     try {
       const blob = new Blob([rows.map(r => r.map(csvCell).join(',')).join('\n') + '\n'],
@@ -1120,6 +1217,29 @@
       ui.bd.appendChild(w);
     }
 
+    // Sin destino — la orden NO se puede reparar desde aquí, y hay que decirlo.
+    // Sin este bloque la orden reporta «0 cambios» y se ve idéntica a una sana: es el modo de
+    // falla silenciosa que ya costó caro en `price-confirm-guard`. Caso real: OT 10837
+    // (GDE1214700 Antitarnish), 3 criterios de calidad del cliente sin aplicar y ni un aviso.
+    if (s.sinDestino) {
+      const w = el('div', 'sa-warn');
+      w.appendChild(el('h3', null, 'Sin destino — quedaron SIN aplicar'));
+      w.appendChild(el('div', 'sa-mut',
+        'Ningún nodo de estas órdenes declara estos campos de la especificación del cliente, ' +
+        'así que no hay dónde ponerlos y no se escribe nada. Se corrige en la RECETA del ' +
+        'proceso (declarar el campo en el nodo de calidad); las órdenes ya creadas conservan ' +
+        'la copia vieja aunque la receta ya esté arreglada.'));
+      let n = 0;
+      for (const r of results) for (const f of (r.faltantesSinDestino || [])) {
+        if (n++ >= 40) break;
+        w.appendChild(el('div', null,
+          'OT ' + r.idInDomain + ' · ' + f.specName + ' · ' + f.fieldName + ' — ' + f.reason));
+      }
+      if (s.sinDestino > 40) w.appendChild(el('div', 'sa-mut',
+        '… y ' + (s.sinDestino - 40) + ' más (van en el CSV)'));
+      ui.bd.appendChild(w);
+    }
+
     // Anomalías
     if (s.anomalias) {
       const w = el('div', 'sa-warn');
@@ -1261,6 +1381,9 @@
     getSoloNP: () => _soloNP,
     setMigrarAInspeccion: (v) => { _migrarAInspeccion = !!v; },
     getMigrarAInspeccion: () => _migrarAInspeccion,
+    setRescateReceta: (v) => { _rescateReceta = !!v; },
+    getRescateReceta: () => _rescateReceta,
+    resetMasterCache,
     analyzeWorkOrder, summarize, applyPlan, buildCsv,
     open, openFromPopup, closePanel, init,
     _realDeps: realDeps, _writeDeps: writeDeps
