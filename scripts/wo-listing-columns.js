@@ -19,6 +19,25 @@
 const WoListingColumns = (() => {
   'use strict';
 
+  // ── Iconos de MUI sin `data-testid` ─────────────────────────────────────────────────
+  // SH publicó el 2026-08-03 un build que ELIMINA los `data-testid` de todos los iconos MUI
+  // (medido: 0 ocurrencias en tres pantallas distintas). Estos helpers pasan por el núcleo
+  // compartido, que resuelve testid (si SH lo repone) → FORMA del icono (medida en vivo) →
+  // aria-label bilingüe. Sin el core, se conserva el comportamiento anterior.
+  function saHasIcon(root, name) {
+    if (!root) return false;
+    const Icons = window.MuiIconAnchorCore;
+    if (Icons) return !!Icons.findIcon(root, name);
+    return !!(root.querySelector && root.querySelector('svg[data-testid="' + name + '"]'));
+  }
+  function saFindIconNode(root, name) {
+    if (!root) return null;
+    const Icons = window.MuiIconAnchorCore;
+    if (Icons) { const h = Icons.findIcon(root, name); return h ? h.node : null; }
+    return root.querySelector ? root.querySelector('svg[data-testid="' + name + '"]') : null;
+  }
+
+
   const Core = () => window.WoScheduleCore;
   const Cleanup = () => window.SteelheadHostCleanup;
 
@@ -630,8 +649,8 @@ const WoListingColumns = (() => {
   // → sin el techo ~16-20 de PDFGeneratorAPI en batch). Re-inyecta en cada sync (idempotente).
   function findActionsCell(tr) {
     // Celda de Acciones = la que tiene el botón Editar/Archivar (testids idioma-agnósticos).
-    const icon = tr.querySelector('td svg[data-testid="EditIcon"], td svg[data-testid="ArchiveIcon"]');
-    if (icon && icon.closest('td')) return icon.closest('td');
+    const icon = saFindIconNode(tr, 'EditIcon') || saFindIconNode(tr, 'ArchiveIcon');
+    if (icon && icon.closest && icon.closest('td')) return icon.closest('td');
     // Fallback: última td que no sea nuestra.
     const tds = tr.querySelectorAll('td:not(.sa-wocol-pn):not(.sa-wocol-sched):not(.sa-wocol-lote)');
     return tds.length ? tds[tds.length - 1] : null;
@@ -675,7 +694,7 @@ const WoListingColumns = (() => {
     const a = doc.querySelector(PRINT_ANCHOR_SEL);
     if (a) {
       const btn = Array.prototype.slice.call(a.querySelectorAll('button')).find(isVis); if (btn) return btn;
-      const ic = Array.prototype.slice.call(a.querySelectorAll('[aria-label]')).find(function (e) { return isVis(e) && e.querySelector && e.querySelector('svg[data-testid="QrCode2Icon"]'); }); if (ic) return ic;
+      const ic = Array.prototype.slice.call(a.querySelectorAll('[aria-label]')).find(function (e) { return isVis(e) && saHasIcon(e, 'QrCode2Icon'); }); if (ic) return ic;
       if (isVis(a)) return a;
     }
     return null;
@@ -686,13 +705,13 @@ const WoListingColumns = (() => {
     for (let i = 0; i < dgs.length; i++) {
       const d = dgs[i]; const h = d.querySelector('h2,h6');
       if (/imprimir\s+etiqueta\s+de\s+trabajo|print\s+(?:multiple\s+)?job\s+tag/i.test(txtOf(h))) return d;
-      if (d.querySelector('button.MuiButton-contained svg[data-testid="QrCode2Icon"]')) return d;
+      if (Array.prototype.slice.call(d.querySelectorAll('button.MuiButton-contained')).some(function (b) { return saHasIcon(b, 'QrCode2Icon'); })) return d;
     }
     return null;
   }
   function findModalBtnIn(dlg, typeKey) {
     const t = Core().printType(typeKey); if (!dlg || !t) return null;
-    const bs = Array.prototype.slice.call(dlg.querySelectorAll('button.MuiButton-contained')).filter(function (b) { return b.querySelector('svg[data-testid="QrCode2Icon"]'); });
+    const bs = Array.prototype.slice.call(dlg.querySelectorAll('button.MuiButton-contained')).filter(function (b) { return saHasIcon(b, 'QrCode2Icon'); });
     const byText = bs.find(function (b) { return txtOf(b).toLowerCase() === t.buttonTextEs.toLowerCase(); });
     return byText || bs[t.order] || null;
   }

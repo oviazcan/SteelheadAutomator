@@ -807,14 +807,32 @@ const InvoiceAutoRegen = (() => {
 
   // ── Regen DOM-driven ──
 
-  const REGEN_ICON_SELECTOR = 'svg[data-testid="RestorePageOutlinedIcon"]';
+  // El icono de "regenerar" de la ficha de factura. Era `svg[data-testid="RestorePageOutlinedIcon"]`
+  // hasta que SH publicó un build que ELIMINA los `data-testid` de todos los iconos MUI
+  // (2026-08-03, medido: 0 en tres pantallas distintas). Ahora lo resuelve el núcleo
+  // compartido: testid (si SH lo repone) → FORMA del icono → aria-label bilingüe.
+  // ⚠️ `RestorePageOutlinedIcon` es de los que TODAVÍA no tienen forma medida ni patrón de
+  // aria — hay que abrir el listado de facturas con las filas cargadas y leer su `d` real.
+  // Mientras tanto esto devuelve null, que es exactamente el estado de hoy: nunca peor.
+  const REGEN_ICON_SELECTOR = () => {
+    const Icons = window.MuiIconAnchorCore;
+    if (Icons) { const h = Icons.findIcon(document, 'RestorePageOutlinedIcon'); return h ? h.node : null; }
+    return document.querySelector('svg[data-testid="RestorePageOutlinedIcon"]');
+  };
+
+  // `target` puede ser un selector CSS o una FUNCIÓN que devuelva el nodo. Lo segundo hace
+  // falta desde que SH quitó los `data-testid` (2026-08-03): el icono de regenerar ya no se
+  // puede expresar como un selector y hay que resolverlo con el núcleo compartido.
+  function _resolveTarget(target) {
+    return typeof target === 'function' ? target() : document.querySelector(target);
+  }
 
   function _waitForElement(selector, timeoutMs = 8000) {
     return new Promise(resolve => {
-      const found = document.querySelector(selector);
+      const found = _resolveTarget(selector);
       if (found) return resolve(found);
       const obs = new MutationObserver(() => {
-        const el = document.querySelector(selector);
+        const el = _resolveTarget(selector);
         if (el) { obs.disconnect(); resolve(el); }
       });
       obs.observe(document.body, { childList: true, subtree: true });
@@ -824,9 +842,9 @@ const InvoiceAutoRegen = (() => {
 
   function _waitForElementGone(selector, timeoutMs = 5000) {
     return new Promise(resolve => {
-      if (!document.querySelector(selector)) return resolve(true);
+      if (!_resolveTarget(selector)) return resolve(true);
       const obs = new MutationObserver(() => {
-        if (!document.querySelector(selector)) { obs.disconnect(); resolve(true); }
+        if (!_resolveTarget(selector)) { obs.disconnect(); resolve(true); }
       });
       obs.observe(document.body, { childList: true, subtree: true });
       setTimeout(() => { obs.disconnect(); resolve(false); }, timeoutMs);
@@ -984,7 +1002,7 @@ const InvoiceAutoRegen = (() => {
   // Asume modal/página de factura abierta. Click programático al icono regenerar
   // + CONFIRMAR + espera respuesta de CreateInvoicePdf.
   async function testRegenInOpenModal(timeoutMs = 30000) {
-    const svg = document.querySelector(REGEN_ICON_SELECTOR);
+    const svg = _resolveTarget(REGEN_ICON_SELECTOR);
     if (!svg) throw new Error('No se encontró el icono RestorePageOutlinedIcon — modal cerrado o no es invoice modal');
     const waitPromise = _waitForCreateInvoicePdf(timeoutMs);
     svg.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, view: window }));

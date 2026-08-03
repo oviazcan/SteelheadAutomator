@@ -7,6 +7,20 @@
 const CfdiAttacher = (() => {
   'use strict';
 
+  // ¿Hay un icono de Enviar o de Correo dentro de `root`? Es una de las dos señales que
+  // identifican el modal de envío de factura (la otra son los ≥2 MuiSwitch).
+  // SH quitó los `data-testid` de los iconos MUI el 2026-08-03, así que el selector directo
+  // dejó de encontrar nada; el núcleo compartido reintenta por FORMA del icono y por
+  // aria-label bilingüe. `EmailOutlinedIcon` ya tiene forma medida; `SendIcon` todavía no,
+  // y por eso el aria («Enviar»/«Send») es lo que lo sostiene mientras tanto.
+  function hasSendOrEmailIcon(root) {
+    if (!root) return false;
+    const Icons = window.MuiIconAnchorCore;
+    if (Icons) return Icons.hasAnyIcon(root, ['SendIcon', 'EmailOutlinedIcon']);
+    return !!(root.querySelector && root.querySelector('[data-testid="SendIcon"], [data-testid="EmailOutlinedIcon"]'));
+  }
+
+
   const api = () => window.SteelheadAPI;
   const invoiceCache = new Map(); // idInDomain → { xmlBase64, linkxml, filename }
   let enabled = true;
@@ -126,7 +140,7 @@ const CfdiAttacher = (() => {
           // Idioma-independiente: el modal de email de factura tiene ≥2 toggles MuiSwitch
           // (Logo/Attach PDF/Visible) + un icono Send o Email. Sobrevive la traducción.
           const structMatch = (node.querySelectorAll?.('tr .MuiSwitch-root, tr [class*="Switch-root"]').length || 0) >= 2
-            && !!node.querySelector?.('[data-testid="SendIcon"], [data-testid="EmailOutlinedIcon"]');
+            && hasSendOrEmailIcon(node);
           if (headingMatch || structMatch) {
             injectCheckbox(node);
             return;
@@ -139,7 +153,7 @@ const CfdiAttacher = (() => {
             // Mismo structMatch idioma-independiente que los otros dos paths (≥2 MuiSwitch +
             // icono Send/Email por data-testid) — sobrevive la traducción del heading.
             const dStructMatch = (dialog.querySelectorAll('tr .MuiSwitch-root, tr [class*="Switch-root"]').length || 0) >= 2
-              && !!dialog.querySelector('[data-testid="SendIcon"], [data-testid="EmailOutlinedIcon"]');
+              && hasSendOrEmailIcon(dialog);
             if (dHeadingMatch || dStructMatch) {
               injectCheckbox(dialog);
               return;
@@ -157,7 +171,7 @@ const CfdiAttacher = (() => {
       const h = existing.querySelector('h2, h3, h4, h5, h6, [class*="heading"]');
       const headingMatch = h && /send\s+(invoice|.*invoices)/i.test(h.textContent);
       const structMatch = (existing.querySelectorAll('tr .MuiSwitch-root, tr [class*="Switch-root"]').length || 0) >= 2
-        && !!existing.querySelector('[data-testid="SendIcon"], [data-testid="EmailOutlinedIcon"]');
+        && hasSendOrEmailIcon(existing);
       if (headingMatch || structMatch) injectCheckbox(existing);
     }
   }

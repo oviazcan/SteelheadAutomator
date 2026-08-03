@@ -1,6 +1,6 @@
 {
-  "version": "1.11.54",
-  "lastUpdated": "2026-08-03T17:40",
+  "version": "1.11.55",
+  "lastUpdated": "2026-08-03T17:58",
   "extensionVersion": "1.7.3",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -680,6 +680,7 @@
       "scripts": [
         "scripts/steelhead-api.js",
         "scripts/wo-schedule-core.js",
+        "scripts/mui-icon-anchor-core.js",
         "scripts/wo-schedule-button.js",
         "scripts/auto-router-engine.js",
         "scripts/auto-router-api.js"
@@ -749,6 +750,7 @@
       ],
       "scripts": [
         "scripts/steelhead-api.js",
+        "scripts/mui-icon-anchor-core.js",
         "scripts/proceso-calculator.js"
       ],
       "requiredPermissions": []
@@ -783,6 +785,7 @@
       "scripts": [
         "scripts/steelhead-api.js",
         "scripts/schedule-batch-highlighter-core.js",
+        "scripts/mui-icon-anchor-core.js",
         "scripts/schedule-batch-highlighter.js",
         "scripts/schedule-batch-group-core.js",
         "scripts/schedule-batch-group.js"
@@ -1310,6 +1313,7 @@
       "category": "Facturación",
       "scripts": [
         "scripts/steelhead-api.js",
+        "scripts/mui-icon-anchor-core.js",
         "scripts/cfdi-attacher.js"
       ],
       "autoInject": true,
@@ -1339,6 +1343,7 @@
       "category": "Facturación",
       "scripts": [
         "scripts/steelhead-api.js",
+        "scripts/mui-icon-anchor-core.js",
         "scripts/invoice-auto-regen.js"
       ],
       "autoInject": true,
@@ -1392,6 +1397,7 @@
       "icon": "🎯",
       "category": "Facturación",
       "scripts": [
+        "scripts/mui-icon-anchor-core.js",
         "scripts/invoice-listing-marker.js"
       ],
       "autoInject": true,
@@ -1839,6 +1845,7 @@
       "scripts": [
         "scripts/steelhead-api.js",
         "scripts/sensor-graph-hide-all-core.js",
+        "scripts/mui-icon-anchor-core.js",
         "scripts/sensor-graph-hide-all.js"
       ],
       "requiredPermissions": [],
@@ -1901,6 +1908,7 @@
         "scripts/steelhead-api.js",
         "scripts/host-cleanup-shared.js",
         "scripts/wo-schedule-core.js",
+        "scripts/mui-icon-anchor-core.js",
         "scripts/wo-listing-columns.js"
       ],
       "requiredPermissions": [
@@ -2860,7 +2868,7 @@
     "scripts/bulk-upload-parse.js": "e7c6bb1f97d336c85295764d0d4707723c06bac2b7c9ae3c03f703bf38e3ab15",
     "scripts/bulk-upload.js": "6a0396ac92c9858fabb643b433285e028506dcb43ac4dca06e712aa8cf6e2732",
     "scripts/catalog-fetcher.js": "48f3f8a55ea94e7fa8626c95688cb7e9de7877fa14f7e5a52dda1490731cca63",
-    "scripts/cfdi-attacher.js": "de1c2c4d530434be501fee9978c7945e681c62f10c23abbd6ad98aa925a485c8",
+    "scripts/cfdi-attacher.js": "5eb2ef0570e68ec4e81cc1a0e495628b14787f5a7dbcb29193ed04fecc24a6f4",
     "scripts/claude-api.js": "15e112fd05c69ffa54b0f43752cb636b7c057e08e7953b7d5134534a9728cf7c",
     "scripts/create-order-autofill-core.js": "188557e7ecf9759423ec54d4d0364dc33bf1303006b518c491e10ecabd7d0484",
     "scripts/create-order-autofill.js": "0981d9c51fa47fbab3ced3850af0c06dd429454eda3340b0da7b8330ee7327d7",
@@ -2870,17 +2878,17 @@
     "scripts/hash-scanner.js": "0852ce20287049e7042c90f775a6b75c9df3ac7455bcf0f3ab44847452327cc7",
     "scripts/host-cleanup-shared.js": "08a289903b13c93408163a11882ff6fc4f58021401846ba360c7501ba9ebb34e",
     "scripts/inventory-reset.js": "3440af034dd81af0ff0ad9ee140c3b44130d704c648c1a5639dd73acc6ff5e60",
-    "scripts/invoice-auto-regen.js": "1b9270137b711a54e9aa2864bea18ac5718d20a4f61544ab2ccb61546d9a9955",
+    "scripts/invoice-auto-regen.js": "3d5063691fb7db8d0cf8ed70c055b75f8e0a7f2c7c61dec2dd989332aac3bf67",
     "scripts/invoice-autofill.js": "213d12dfd344675508a8a261133dd577ac9acbabce8cf4ae1ac135683aa7c5fa",
     "scripts/invoice-default-tab.js": "5ed3e6bf3adac75fe987dbec360e041db6b16b4d9084894a68a0c9b8a4570a52",
-    "scripts/invoice-listing-marker.js": "c2edcceddbfc662c76a165368a63c97cc9c14fbfe97e522d7c4e5e55ff723862",
+    "scripts/invoice-listing-marker.js": "e7508e97d7b44d04ef5a7543954e9f696fbda7785d7e695f6ff04c882c03d652",
     "scripts/lib/pdf.min.js": "978fd1b2d134a98e98966186a97777bebf87d8e770dadab1ece3687e21a5aa6c",
     "scripts/lib/xlsx.full.min.js": "c9506197caf809a075b6dee1da0d36fb19da7158ffe8a88e7b0c96c5d8623c99",
     "scripts/load-calculator-engine.js": "87983ec94eb5cbb48570cff4e8c92cbf03511cd25c762cd16eb3047f6b9ed671",
     "scripts/load-calculator-modal.js": "eb9c4252ce583e0a4939fedff018cdf30f057e1dc4f7bc99e917ddb2464c428a",
     "scripts/load-calculator-stations.js": "417ebe274fd3a649fcc70c02bc122afb3d57db5e2c53a9cb9bb24e0ecf43ef06",
     "scripts/load-calculator.js": "bf06e3cd6ed5063b62b5b62c9ef13ecf9546b2093d40320f450058576658b111",
-    "scripts/mui-icon-anchor-core.js": "135dc9ca8676800b79d4dc69e5b7116c8fdc35e3ba13b24f2e300495eafb4421",
+    "scripts/mui-icon-anchor-core.js": "05a2096b0a0094df0803a10460391962b3c50088f45735adbbe503bcfa43cecc",
     "scripts/ov-operations.js": "58f2fed723ba81a1f73c0bb58da934293aec5cda6cde81494682be4d9910989c",
     "scripts/paros-linea.js": "ccf14c09e6886c1eb480014de75c86c2a54fb1f10787aeb92409c4f12ed6c126",
     "scripts/pn-lifecycle-core.js": "81a8e694132873e3176eab07167324abfa77c616adac0690e6cbbfc8b39ff0c9",
@@ -2894,7 +2902,7 @@
     "scripts/portal-importer.js": "c14d8ad3441f8fe087988d7a3b542cc51f075358ad3935b4f1df2af8ea57652a",
     "scripts/price-confirm-core.js": "af61b1024e4229ed015c35d56d6e7d5943b0fa2da83f85abb08018fdcc48e998",
     "scripts/price-confirm-guard.js": "59d25c7840b36c5b1016dd0a122146de50dd5fbd2c001b40091cc43cd18098ad",
-    "scripts/proceso-calculator.js": "09425a2473f8bfcf681c86378168f0a0f5cfd39e247b3e3510debdd91bc17739",
+    "scripts/proceso-calculator.js": "03836a67469b897bfe3734a4f63bbe1c0a0df43d2e9087dd8851154eae3a604b",
     "scripts/process-canon.js": "9d82354d4e914ccdf1f96c9eb89fd5789c522c880dd544963b648db2abf5b16a",
     "scripts/process-deep-audit.js": "4345457ec845f95b46975f86cb4405de404a59f63d2322b8a74fb6ee97114dc5",
     "scripts/process-shared.js": "4b67a9cdc261aeb7cde1498d6399af288b883b6537de0a80b41dd16f1060a1fb",
@@ -2905,9 +2913,9 @@
     "scripts/schedule-batch-group-core.js": "7ad3a3db0d5ce8a00b3abf764bf786f3ecd5d23a709715f98406335dd048a461",
     "scripts/schedule-batch-group.js": "4373ffdeb674e92489b3a6770d005fb1d1472f87d8c1c22da650dba83ffdac19",
     "scripts/schedule-batch-highlighter-core.js": "a11a6ca286e594ad9910719d0a4bbab86c461d28e2adbd3edb369a3603832637",
-    "scripts/schedule-batch-highlighter.js": "0cceca941ecddee9f8725443359c678bb53a1b48d0a5cbf14d93195490b450ab",
+    "scripts/schedule-batch-highlighter.js": "98d7e25c789518368c8b6dd53f448724afeb8aa0c2f55fd69dc00f22f69745e2",
     "scripts/sensor-graph-hide-all-core.js": "795d1741fc04de7b8a5a111542e36fe53a8b3ee473c3f0b7a457780df3ea213e",
-    "scripts/sensor-graph-hide-all.js": "3da2ad449d6792035a8ae952cc829ad7d6b5dd598b7281799b473cea5087ca6f",
+    "scripts/sensor-graph-hide-all.js": "25363a918b3743fce72011286ac27bdcb7fd4db1e0d7ee7fc4fbab1839326103",
     "scripts/sensor-status-autofill.js": "e19d6183c84c1cdd153110bdd31b3eb95b1973b089210182a177937a11f2b6bd",
     "scripts/spec-migrator-normalize.js": "55e77558ab7a8019265a80e873ce3b99d5bebe0d4d61e3c6020c2cf2d162b216",
     "scripts/spec-migrator.js": "0f07cd579b65e7cefa13c31376ba571d0e9944a12beaa748d1c86c0dc2e75301",
@@ -2927,9 +2935,9 @@
     "scripts/wo-completer-engine.js": "3101a9c8f718f9469e005a02498a89d6467b8f7c49583d7bb6f96f55a5bdfc83",
     "scripts/wo-completer.js": "d2879a8daf876ff2956dfeadcba673ab082f3b28c9bb7fbabb0c00db92f487e9",
     "scripts/wo-deadline-changer.js": "169d0dc0c60030398a108ea73747848071159b7d4664305ad66833a0fe67265b",
-    "scripts/wo-listing-columns.js": "a97e01b68ad68a247082390b403391fe5c6a7a9f2ad478ad7d456ffa97e0c999",
+    "scripts/wo-listing-columns.js": "ba440b4906cb0d9b1c3af0f39f119d971761c3a0c1df3b86b4d364d3ed448905",
     "scripts/wo-mover.js": "e924dfd9fb5d82ed65ab75151adcdc32cd4a94e950b8fcc2add9a9a65c78aefd",
-    "scripts/wo-schedule-button.js": "cd1b7a6f51d86a0d25e208f2bb85fe18654153b0ba5ab183081c6c6e223e331c",
+    "scripts/wo-schedule-button.js": "5d5ef5f16431cad2d8ab353bf43691a36f9e4a1c308683bbf19fb1c69838e54d",
     "scripts/wo-schedule-core.js": "9e646f5122536e6a36a8bc603e8b21d67cf25ebae959eb9e7d8b71353e3df219",
     "scripts/wo-spec-params-core.js": "d27ab9db19b662eab9144a0dd0659ba5ffc07a63ee81b79de66183e5813bcdea",
     "scripts/wo-spec-params.js": "fadcfe9a09bd0650098f6883354453c7029dd784c6c51e7c225931b02e011b41"

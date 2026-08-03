@@ -85,10 +85,17 @@
   }
 
   // ── anclaje: barra de filtros de columna del Schedule Board ──
-  // FilterListIcon (data-testid, estable ante idioma) → su <button> → contenedor (padre) de filtros.
+  // FilterListIcon → su <button> → contenedor (padre) de filtros.
+  // El 2026-08-03 SH publicó un build que QUITA los `data-testid` de los iconos MUI, así que
+  // este `querySelector` pasó a devolver null siempre y la barra no se encontraba nunca. Se
+  // resuelve por el núcleo compartido: testid (si SH lo repone) → FORMA del icono (medida en
+  // vivo) → aria-label bilingüe. Sin el core se conserva el comportamiento viejo.
   function findFilterBar() {
-    const icon = document.querySelector('svg[data-testid="FilterListIcon"]');
-    const btn = icon && icon.closest('button');
+    const Icons = window.MuiIconAnchorCore;
+    const hit = Icons
+      ? Icons.findIcon(document, 'FilterListIcon')
+      : (() => { const n = document.querySelector('svg[data-testid="FilterListIcon"]'); return n ? { node: n } : null; })();
+    const btn = hit && hit.node && hit.node.closest('button');
     return btn ? btn.parentElement : null;
   }
 
