@@ -153,9 +153,18 @@ receta, cuenta cuántas veces ha capturado: el log lo dice gratis.
 vecina `sensordashboards-list` solo necesita que la **RED** conteste, y por eso capturó los cuatro
 días en que ésta falló. El presupuesto es 25 s del `goto` + 25 s del `clickFirst`; cuando la lista
 tarda más, no hay `<a>` que clicar y la ruta termina en cero capturas **sin error y sin ruido**.
-La repetición 1 reprodujo el modo de falla: a los 25 s la página seguía siendo el cascarón del SPA
+La repetición 1 lo demostró alcanzable: a los 25 s la página seguía siendo el cascarón del SPA
 (`rows=0`, `bodyLen=342`) y la captura llegó hasta los **74 535 ms**; las repeticiones 2 y 3, con
 el SPA caliente, vieron el ancla a los **97 ms** y **179 ms**.
+
+**Calibración honesta de esto último:** lo *medido* es que el modo de falla EXISTE y se alcanza; que
+las 34 fallas de producción sean todas ése es la **hipótesis mejor soportada**, no un hecho
+verificado — encaja con que la vecina, que no depende del render, no falló ninguno de esos días,
+pero el log del motor **no registra si hubo ancla** cuando el `clickFirst` no logra clicar, así que
+la atribución es inferida. **Cómo cerrarla de verdad (cambio de motor de 5 líneas):** que
+`clickFirstMatching` registre `rows`/`anchors`/`bodyLen` al vencer sin clic. Con eso la PRÓXIMA
+falla trae evidencia directa en vez de obligar a re-derivarla, y decide si la mejora (1) es la
+correcta antes de gastarla.
 
 **Por qué escaló HOY y no las otras tres veces — hicieron falta DOS fallas simultáneas:** además
 de no capturar, el probe de confirmación **tronó** (`page.evaluate: Execution context was
