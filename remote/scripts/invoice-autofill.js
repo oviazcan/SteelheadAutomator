@@ -6,6 +6,53 @@
 //   - Divisa+TC: solo si la factura es manual (sin packing slip ni OV)
 // Depends on: SteelheadAPI
 
+// ── Núcleo puro: reconocer la columna de cuenta de ingreso en el editor de factura ──
+// Vive FUERA del IIFE para poder testearlo con `require()` sin DOM.
+// Golden tests: tools/test/invoice-autofill-income-column.test.js
+//
+// 2026-08-03: Steelhead RENOMBRÓ la columna de "Income Account" a "Income/Liability
+// Account". El match EXACTO anterior dejó de encontrarla y el applet descartaba TODAS
+// las líneas en silencio (el panel se veía sano, sin la sección "Cuenta por línea").
+// Por eso el reconocedor se ANCLA POR TOKENS y no por la cadena completa, y hay un
+// fallback por POSICIÓN para el próximo rename.
+function isIncomeAccountHeader(text) {
+  if (!text) return false;
+  const t = String(text)
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')  // quita acentos: "Línea" → "Linea"
+    .toLowerCase()
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (!t) return false;
+  // EN: el token "income" en el encabezado de una columna de esta tabla es inequívoco
+  // ("Income Account", "Income/Liability Account", "Income").
+  if (/(^|[^a-z])income([^a-z]|$)/.test(t)) return true;
+  // ES: "ingreso" solo NO basta (podría ser "Fecha de Ingreso") → se exige que además
+  // hable de la cuenta contable ("cuenta" o su par "pasivo").
+  if (/(^|[^a-z])ingresos?([^a-z]|$)/.test(t) && /(^|[^a-z])(cuenta|pasivos?)([^a-z]|$)/.test(t)) return true;
+  return false;
+}
+
+// Devuelve { index, by } con la columna donde va la cuenta de ingreso.
+//   by='text'         → la reconoció por su encabezado (camino normal)
+//   by='last-column'  → nadie matcheó por texto y se usó la ÚLTIMA columna, que en los
+//                       dos layouts observados es la de ingreso Y trae react-select.
+//   by=null           → no hay evidencia suficiente; NO se adivina (escribir la cuenta
+//                       contable en la columna equivocada es peor que no escribirla).
+// `hasComboByColumn` es un array paralelo a los encabezados: true si el <td> de esa
+// columna en la fila de datos contiene un combobox.
+function findIncomeAccountColumn(headerTexts, hasComboByColumn) {
+  const headers = Array.isArray(headerTexts) ? headerTexts : [];
+  if (!headers.length) return { index: -1, by: null };
+  const byText = headers.findIndex(isIncomeAccountHeader);
+  if (byText >= 0) return { index: byText, by: 'text' };
+  const combos = Array.isArray(hasComboByColumn) ? hasComboByColumn : null;
+  if (combos && combos.length === headers.length) {
+    const last = headers.length - 1;
+    if (combos[last]) return { index: last, by: 'last-column' };
+  }
+  return { index: -1, by: null };
+}
+
 const InvoiceAutofill = (() => {
   'use strict';
 
@@ -1056,9 +1103,11 @@ const InvoiceAutofill = (() => {
 
   // Cada línea se renderiza con dos sub-tables dentro de un wrapper:
   //   1. Header table: <th>Line #N - PN</th> <th>Description:</th> <th>Total: $X</th>
-  //   2. Data table: <thead> con 11 columnas (Include, Product, ..., Income Account);
-  //      <tbody> con un row de datos (cells.length === 11) + sub-row con colspan=11
-  //      que contiene Part Numbers/Locations.
+  //   2. Data table: <thead> con N columnas (Include, Product, …, Income/Liability
+  //      Account); <tbody> con un row de datos (cells.length === N) + sub-row con
+  //      colspan=N que contiene Part Numbers/Locations.
+  //      El número de columnas NO se hardcodea: medido en vivo el 2026-08-03 son 11
+  //      (SH agregó `Línea` y `Departamento`), y volverá a cambiar.
   // El layout legacy usaba subtítulos italics (<p>INCOME</p>) junto al combobox; lo
   // mantenemos como fallback.
   function extractLinesFromDOM() {
@@ -1080,35 +1129,41 @@ const InvoiceAutofill = (() => {
       let lineWrapper = th.parentElement;
       let dataTable = null;
       let columnHeaders = null;
+      let dataRow = null;
       let incomeIdx = -1;
+      let incomeBy = null;
       for (let d = 0; d < 12 && lineWrapper; d++) {
         const tables = lineWrapper.querySelectorAll('table');
         for (const tbl of tables) {
           const colThs = [...tbl.querySelectorAll(':scope > thead > tr > th')];
           if (colThs.length < 5) continue;
-          const idx = colThs.findIndex(h => /^\s*income\s+account\s*$/i.test(h.textContent?.trim() || ''));
-          if (idx >= 0) {
+          // Data row: primer <tr> del <tbody> con cells.length === número de columnas
+          // (la sub-row de Part Numbers tiene 1 cell con colspan=N, no matchea).
+          // Se resuelve ANTES de elegir la columna porque el fallback por posición
+          // necesita saber qué celdas traen react-select.
+          let row = null;
+          for (const tr of tbl.querySelectorAll(':scope > tbody > tr')) {
+            if (tr.cells && tr.cells.length === colThs.length) { row = tr; break; }
+          }
+          if (!row) continue;
+          const hasCombo = [...row.cells].map(td => !!td.querySelector('[role="combobox"]'));
+          const found = findIncomeAccountColumn(colThs.map(h => h.textContent?.trim() || ''), hasCombo);
+          if (found.index >= 0) {
             dataTable = tbl;
             columnHeaders = colThs;
-            incomeIdx = idx;
+            dataRow = row;
+            incomeIdx = found.index;
+            incomeBy = found.by;
             break;
           }
         }
         if (dataTable) break;
         lineWrapper = lineWrapper.parentElement;
       }
-      if (!dataTable || incomeIdx < 0) continue;
-
-      // Data row: primer <tr> del <tbody> con cells.length === número de columnas
-      // (la sub-row de Part Numbers tiene 1 cell con colspan=11, no matchea).
-      let dataRow = null;
-      for (const tr of dataTable.querySelectorAll(':scope > tbody > tr')) {
-        if (tr.cells && tr.cells.length === columnHeaders.length) {
-          dataRow = tr;
-          break;
-        }
+      if (!dataTable || incomeIdx < 0 || !dataRow) continue;
+      if (incomeBy === 'last-column') {
+        warn(`Columna de cuenta de ingreso NO reconocida por texto ("${columnHeaders[incomeIdx].textContent?.trim()}"); se usó la última columna. Revisar si Steelhead la renombró de nuevo.`);
       }
-      if (!dataRow) continue;
 
       const incomeCell = dataRow.cells[incomeIdx];
       if (!incomeCell) continue;
@@ -2513,4 +2568,9 @@ const InvoiceAutofill = (() => {
 if (typeof window !== 'undefined') {
   window.InvoiceAutofill = InvoiceAutofill;
   InvoiceAutofill.init();
+}
+
+// Núcleo puro expuesto para los golden tests (en el navegador esto es un no-op).
+if (typeof module !== 'undefined' && module.exports) {
+  module.exports = { isIncomeAccountHeader, findIncomeAccountColumn };
 }

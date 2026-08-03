@@ -1,6 +1,6 @@
 {
-  "version": "1.11.47",
-  "lastUpdated": "2026-07-31T16:18",
+  "version": "1.11.48",
+  "lastUpdated": "2026-08-03T09:24",
   "extensionVersion": "1.7.1",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -2868,7 +2868,7 @@
     "scripts/host-cleanup-shared.js": "08a289903b13c93408163a11882ff6fc4f58021401846ba360c7501ba9ebb34e",
     "scripts/inventory-reset.js": "3440af034dd81af0ff0ad9ee140c3b44130d704c648c1a5639dd73acc6ff5e60",
     "scripts/invoice-auto-regen.js": "1b9270137b711a54e9aa2864bea18ac5718d20a4f61544ab2ccb61546d9a9955",
-    "scripts/invoice-autofill.js": "cb67f9103ef102cdc37ed15770f0cb4a90d8d39d8380407b8a9601a0ed1cd458",
+    "scripts/invoice-autofill.js": "213d12dfd344675508a8a261133dd577ac9acbabce8cf4ae1ac135683aa7c5fa",
     "scripts/invoice-default-tab.js": "5ed3e6bf3adac75fe987dbec360e041db6b16b4d9084894a68a0c9b8a4570a52",
     "scripts/invoice-listing-marker.js": "c2edcceddbfc662c76a165368a63c97cc9c14fbfe97e522d7c4e5e55ff723862",
     "scripts/lib/pdf.min.js": "978fd1b2d134a98e98966186a97777bebf87d8e770dadab1ece3687e21a5aa6c",
