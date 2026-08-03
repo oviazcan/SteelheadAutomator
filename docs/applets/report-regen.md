@@ -1,9 +1,23 @@
 # Applet: `report-regen` (Regenerar Reportes)
 
-**Versión actual:** 0.3.4
-**Archivo:** `remote/scripts/report-regen.js`
+**Versión actual:** 0.3.5
+**Archivo:** `remote/scripts/report-regen.js` (+ núcleo compartido `mui-icon-anchor-core.js`)
 **Tipo:** `autoInject` + acción de popup. Inyecta un botón en el header secundario de Steelhead.
-**Permiso requerido:** `MANAGE_REPORTING` (gating en runtime, no sólo popup).
+**Permiso requerido:** `MANAGE_REPORTING_SETTINGS` (gating en runtime, no sólo popup).
+
+## 0.3.5 (2026-08-03) — SH quitó los `data-testid`, y el ancla al ▶ era un bug nuestro
+
+**Reporte de piso: «el que no me carga es el botón de regenerar reportes».** Llegó justo después de arreglar el modal de recepción, y resultó ser **el mismo despliegue de SH** con otra cara.
+
+- **El gate de permisos NO era la causa, y esta vez se supo en la primera medición.** El applet ya expone `debug()` —justo la lección que dejó la 0.3.4: *cuando tres arreglos plausibles no mueven el síntoma, deja de proponer arreglos y haz OBSERVABLE el estado interno*— y dijo de inmediato: `allowed: true`, `booted: true`, `observer: true`, **`anclaEncontrada: false`**. Tres cuartas partes del árbol de causas se cortaron con una sola llamada. **Esa inversión se pagó sola.**
+- **Causa raíz: Steelhead publicó un build que ELIMINA los `data-testid` de los iconos MUI.** Medido en tres pantallas distintas, todas cargadas y con contenido real: `/Reporting/View` (189 svg), `/Receiving/CustomerParts` (159 svg) y la lista de reportes → **0 `[data-testid]` y 0 `[data-steelhead-component-id]`** en cada una. Los únicos dos testid que sobreviven en toda la app (`sentinelStart`/`sentinelEnd`) los pone **react-virtuoso**, no SH.
+- **Es el MISMO evento que rehasheó las clases de emotion** y tumbó a `receiver-date-override` y `warehouse-location-prefill` el mismo día: un solo despliegue de SH que se llevó **dos de los tres niveles de anclaje estructural** del repo.
+- **El modo de falla vuelve a ser mudo, y aquí por una razón de diseño legítima:** `findAnchor()` devolviendo `null` significa «esta vista no tiene el header», que es el caso normal en casi toda la app. Así que el applet no tenía por qué quejarse — y no se quejó. Ahora hay un `warnOnce` para el caso en que falte el core.
+- **EL FIX ANCLA AL CORREO, NO AL PLAY — y eso corrige un bug ANTERIOR al cambio de SH.** El diseño inicial de este fix seguía exigiendo el ▶, hasta que el operador corrigió el modelo: **«el botón de play a veces cambia por uno de pausa, cuando tienes un timer activo; mejor ánclalo al del correo o al de ver documentos, más estable»**. Tenía razón, y la consecuencia es retroactiva: el `findAnchor` original exigía `PlayArrowIcon`, así que **el botón ya desaparecía cuando había un timer corriendo**, desde antes. Un bug latente que sólo se ve desde el piso, no desde el código.
+- **Se ancla por la FORMA del icono (`path d`), con el `data-testid` como primera opción.** Un anclaje no se cambia, se **AMPLÍA**: si SH repone los testid, el applet los usa; si no, cae a la forma. Lo que SH no puede quitar sin cambiar lo que el operador VE es el dibujo del icono. El `by` (`'testid'` \| `'shape'`) se devuelve y se puede leer desde `debug()` — así se sabe **por qué** se encontró, y se detecta el día que SH reponga o vuelva a quitar los atributos.
+- **El correo es requisito; breadcrumb y play/pausa sólo CONFIRMAN.** Medido: hay **un solo sobre en toda la página**, así que identifica el header sin ambigüedad. La confirmación evita montar el botón en cualquier header que tenga un sobre, y usa `nav[aria-label="breadcrumb"]` — valor técnico que SH **no traduce** (verificado con la UI en español). Ninguna de las dos señales puede NEGAR: si faltan ambas no se monta (fail-safe), pero un ⏸ en lugar de ▶ ya no apaga nada.
+- **El path del ⏸ es el canónico de MUI, NO medido en vivo** (al inspeccionar no había ningún timer corriendo). Por eso el pausa entra sólo como señal que afirma: si su path fuera otro, el breadcrumb sostiene el anclaje igual. Queda anotado como lo único de este fix que no se verificó contra el DOM real.
+- **VALIDADO END-TO-END EN VIVO con el código deployado** (config 1.11.54, tag `v1.11.54`): `version: 0.3.5 · allowed: true · anclaEncontrada: true · botonEnDOM: true`, **`by: 'shape'`** (confirmando que el testid ya no está y que es el fix lo que lo salva), botón visible de 62×20 con su countdown real `02:22` y el tooltip *«Última regeneración: 03 ago 2026, 05:29 p.m. (hace 12 min)»*. Orden final del header: `NAV │ Ver Documentos │ ▶ │ NUESTRO │ ✉ 99+`. Núcleo `mui-icon-anchor-core.js` **15 golden**; suite 92 archivos verdes. Bundle iPad **0.6.21** (verificado en el artefacto; falta recompilar en Xcode).
 
 ## Qué hace
 
