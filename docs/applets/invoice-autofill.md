@@ -1,6 +1,72 @@
 # `invoice-autofill` — bitácora completa
 
-Ciclos documentados: 0.5.26 → 0.5.34 (modal manual) + 0.5.60 → 0.5.63 (PS-embedded) + 0.5.64 (modal OV/PS rediseñado: AR Account label, income commit, gate del panel) + 0.5.65 (AR matcher: divisa "M.N."). Para deploy y reglas generales, ver `../../CLAUDE.md`. Para patrones de DOM, ver `../architecture/dom-patterns.md`.
+Ciclos documentados: 0.5.26 → 0.5.34 (modal manual) + 0.5.60 → 0.5.63 (PS-embedded) + 0.5.64 (modal OV/PS rediseñado: AR Account label, income commit, gate del panel) + 0.5.65 (AR matcher: divisa "M.N.") + 0.5.66 (SH renombró la columna de ingreso). Para deploy y reglas generales, ver `../../CLAUDE.md`. Para patrones de DOM, ver `../architecture/dom-patterns.md`.
+
+## Lección 0.5.66 (2026-08-03) — SH RENOMBRÓ la columna y el applet dejó de ver TODAS las líneas
+
+**VIVO config 1.11.48.** Reporte del operador, con captura: *«no está jalando la cuenta de income
+correctamente… ahora pareciera que ni intenta encontrarla»*. La distinción que hizo es exactamente
+la correcta y es la que apunta al bug: **no fallaba el llenado, fallaba la EXTRACCIÓN**.
+
+**Causa medida en vivo** (editor real reproducido: dominio 344 → `/Invoices` → pestaña *Packing
+Slips* → PS #001550 → CREAR FACTURA), no inferida de la captura. El `<thead>` de la tabla de datos
+de la línea trae hoy **11 columnas**:
+
+```
+Include | Product | Línea | Departamento | Description | Quantity | Price |
+Subtotal | Tax Code | Close SO Line | Income/Liability Account
+```
+
+La columna se buscaba con `/^\s*income\s+account\s*$/i` — **match exacto**. Contra el texto real
+`"Income/Liability Account"` da `false` ⇒ `incomeIdx = -1` ⇒ la línea se descarta con `continue`
+⇒ `lines = []`. Como el panel sólo pinta la sección *«Cuenta por línea»* con
+`state.lineAccounts.length > 0`, **la sección desaparece entera**: de ahí que se lea como *«ni
+intenta»* y no como *«lo intentó y falló»*. Y **la falla es SILENCIOSA** — Cliente, Tipo de
+factura, Divisa, TC y Cuenta CXC seguían en verde, así que el panel se veía sano.
+
+De paso: **`Línea` y `Departamento` también son nuevas** (SH metió las dimensiones contables en esa
+tabla). El código de 0.5.63 documentaba "11 columnas" contando otras; el conteo ya no se hardcodea
+en ningún lado — se deriva del `thead`.
+
+**Fix** — núcleo puro `isIncomeAccountHeader` / `findIncomeAccountColumn`, **fuera del IIFE** para
+poder `require()`-lo sin DOM (el archivo ya era requerible en node; el IIFE se auto-inicia sólo si
+`typeof window !== 'undefined'`). Se ancla **por tokens, no por la cadena completa**:
+
+- **EN**: el token `income` basta — `Income`, `Income Account`, `Income/Liability Account`.
+- **ES**: se exige `ingreso` **+** (`cuenta` | `pasivo`), para no morder un eventual *«Fecha de
+  Ingreso»*. El ES **no es hipotético**: ese mismo `thead` ya viene mezclado (`Línea`,
+  `Departamento` en español junto a `Close SO Line` en inglés).
+- El nombre legado `Income Account` sigue matcheando: **un anclaje no se cambia, se AMPLÍA.**
+
+**Red de seguridad para el próximo rename** (porque va a haber uno): si **nadie** matchea por
+texto, se usa la **última columna** y **sólo si su celda trae react-select** — cierto en los dos
+layouts observados —, con `warn()` que lo delata en el log. Sin esa **evidencia positiva no se
+adivina**: escribir la cuenta contable en la columna equivocada es peor que no escribirla (misma
+lógica que `warehouse-location-prefill` con las ubicaciones ambiguas). Y **el texto siempre gana
+sobre la posición**, para que agregar una columna después de la de ingreso no desvíe el fill.
+
+Detalle de implementación: la fila de datos se resuelve **antes** de elegir la columna, porque el
+fallback necesita saber qué celdas traen combobox. El anclaje del fill (`incomeCell.firstElementChild`
+⇒ `host = <td>`) se conserva sin cambios — es lo que impide que `tryFillIncomeInLine` alcance los
+combos de `Product` o `Tax Code`, que están en el mismo `<tr>`.
+
+**Verificación contra el DOM real**, con la extracción ya corregida corriendo sobre el editor
+abierto: **1 línea (antes 0)**, `by='text'`, `colName="Income/Liability Account"`, `amount=511.6`
+(coincide con el `Total: $511.60` del reporte) y `hostIsIncomeTd=true`. 13 golden nuevos en
+`tools/test/invoice-autofill-income-column.test.js`; suite 91 archivos, 0 rojos.
+
+**Lección general — la que conviene no volver a pagar:** un applet que ancla a la UI por **texto
+exacto** no se degrada, **se apaga**; y si lo que se apaga es la *extracción* y no el *llenado*, el
+panel no muestra error: muestra **menos filas**. Es la misma familia que `price-confirm-guard`
+0.1.5 (gate por texto que llevaba semanas sin disparar) y que `batch-name-filter` 0.3.0 (validado
+con el dato favorable). Aquí no había ancla estructural que usar — se midió: los `<th>` sólo traen
+`class`, `scope` y `style`, **ningún `data-steelhead-component-id`** —, así que el nivel 1 de la
+jerarquía no estaba disponible y el camino correcto era texto por tokens **+ un fallback
+estructural acotado**, no texto exacto.
+
+**Pendiente:** el operador debe confirmar en vivo que el panel ya pinta la sección *«Cuenta por
+línea»* y que la cuenta queda puesta en el combo (lo verificado aquí es la extracción y el anclaje
+del `<td>`, no el `mousedown` de la opción). Y rebundle iPad si se quiere allá.
 
 ## Lección 0.5.65 (AR matcher reconoce "M.N." = Moneda Nacional, no solo el código ISO)
 Bug reportado 2026-07-15: al facturar a **Hubbell** el applet marcaba "sin cuenta AR para MXN" y no resolvía la CXC. Root cause: `findBestARAccount` filtraba las cuentas AR con un **filtro DURO** `/\bMXN\b/i` sobre el `name`. La cuenta de Hubbell se llama `0105-0001-0001-0204 · Hubbell Products Mexico S. de R.L. 1177 M.N.` — el catálogo **no es uniforme**: la mayoría de cuentas traen el código ISO ("... 1140 USD", "... 1200 MXN"), pero otras usan la nomenclatura contable mexicana **"M.N."** (Moneda Nacional = pesos). `/\bMXN\b/` no matchea "M.N." → `byCurrency` vacío → `sin_cuenta_AR_para_MXN`.
