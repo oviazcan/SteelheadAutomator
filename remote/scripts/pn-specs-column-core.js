@@ -472,6 +472,24 @@
     }).join(' · ');
   }
 
+  // ¿La celda/box que YA existe en esta fila sigue siendo del mismo número de parte?
+  //
+  // React RECICLA los <tr> al filtrar, paginar o archivar: la celda nativa del nombre pasa a
+  // otro NP pero NUESTRO nodo inyectado sobrevive con el dato del anterior. Sin revalidar la
+  // identidad, la fila muestra el nombre de un NP y las columnas de otro — reportado en piso
+  // (2026-07-31): al archivar un NP, su renglón seguía mostrando la spec del archivado, y solo
+  // recargando la página se recomponía. Peor que el dato viejo es que el atributo stale hace
+  // que el resultado del fetch del NP ANTERIOR se pinte sobre la fila del NUEVO
+  // (`applyToCells` busca por [data-sa-pnid]).
+  //
+  // Devuelve true cuando hay que RECONSTRUIR el nodo. Sin id actual no se reconstruye nada:
+  // una fila sin link de NP no es una fila reciclada, es una fila que todavía no resuelve.
+  function isStaleNode(attrValue, pnId) {
+    if (pnId == null) return false;
+    if (attrValue == null || attrValue === '') return true;   // nodo nuestro sin dueño: reconstruir
+    return String(attrValue) !== String(pnId);
+  }
+
   const api = {
     PN_INDEX_RE,
     PN_ID_RE,
@@ -501,6 +519,7 @@
     formatNameInfo,
     formatRackTypesText,
     formatUnitFactorsText,
+    isStaleNode,
   };
   if (typeof window !== 'undefined') window.PnSpecsColumnCore = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

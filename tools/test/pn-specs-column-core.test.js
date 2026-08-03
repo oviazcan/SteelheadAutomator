@@ -563,3 +563,31 @@ test('unidades del fixture REAL salen en el orden del ERP', () => {
   assert.strictEqual(Core.formatUnitFactorsText(row.units),
     'KGM 0.376 · LBR 0.829 · DMK 1.162 · FTK 0.130 · CMK 120.580');
 });
+
+// ---------- isStaleNode: el nodo inyectado que quedó de OTRO número de parte ----------
+// Bug reportado en piso (2026-07-31): al archivar un NP, su renglón seguía mostrando la spec
+// del archivado —nombre de un NP, columnas de otro— y solo recargando se recomponía. React
+// recicla el <tr>; nuestra celda inyectada sobrevivía porque el glue solo miraba si EXISTÍA.
+
+test('isStaleNode: el id cambió → hay que reconstruir', () => {
+  assert.equal(Core.isStaleNode('123', 456), true);
+  assert.equal(Core.isStaleNode(123, 456), true);
+});
+
+test('isStaleNode: mismo id → se conserva (compara como texto, no por tipo)', () => {
+  assert.equal(Core.isStaleNode('456', 456), false);
+  assert.equal(Core.isStaleNode(456, '456'), false);
+});
+
+test('isStaleNode: nodo nuestro sin dueño → reconstruir', () => {
+  // Un nodo con nuestra clase pero sin data-sa-pnid no se puede confiar: no sabemos de quién es.
+  assert.equal(Core.isStaleNode(null, 456), true);
+  assert.equal(Core.isStaleNode('', 456), true);
+});
+
+test('isStaleNode: fila sin id resuelto NO se reconstruye', () => {
+  // Sin link de NP la fila no está reciclada: todavía no resuelve. Reconstruir ahí borraría
+  // celdas buenas en cada sync y el observer entraría en bucle.
+  assert.equal(Core.isStaleNode('123', null), false);
+  assert.equal(Core.isStaleNode(null, null), false);
+});

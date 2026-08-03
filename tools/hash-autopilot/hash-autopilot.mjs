@@ -17,7 +17,7 @@ import { syncExternalToSinks } from './external-sync.mjs';
 import { selectRoutes, opsToCapture, staleMutations, maskedQueries, maskedMutations, mutationsToCapture } from './route-planner.mjs';
 import { pendingRepairs, journalClose } from './sentinels.mjs';
 import { appletsForOp, formatOpLine } from './applet-attribution.mjs';
-import { classifyProbe, summarizeProbes, gateByProbe } from './probe-classify.mjs';
+import { classifyProbe, summarizeProbes, gateByProbe, isProbeSessionDegraded } from './probe-classify.mjs';
 import { probeOnPage } from './probe-run.mjs';
 import { fetchProductUpdates, formatUpdatesContext } from './product-updates.mjs';
 
@@ -399,11 +399,19 @@ async function main() {
   // = fail-open (todo se escala como antes). Las 'stale' que no capturamos son las
   // ROTACIONES REALES que urge atender (habrían cazado SearchUnits/GetInventoryItem).
   const gate = gateByProbe(notCapturedNew.map((r) => r.op), probeVerdicts);
-  const escalateSet = new Set([...gate.realStale, ...gate.unconfirmed]);
+  // Sesión/red degradada (TODAS las probadas auth/unknown): la corrida no tiene datos, así
+  // que `unconfirmed` no es evidencia de receta rota → no se ESCALA (el Nivel B gastó dos
+  // `claude -p` completos, 07-28 y 07-31, re-descubriendo recetas sanas). Sigue saliendo en
+  // el correo como "❓ probe no concluyente": se suprime la escalación, NO el aviso.
+  const sessionDegraded = isProbeSessionDegraded(probeVerdicts);
+  const escalateSet = new Set(sessionDegraded ? gate.realStale : [...gate.realStale, ...gate.unconfirmed]);
   const notCapturedEscalate = notCapturedNew.filter((r) => escalateSet.has(r.op));
   const realStaleRows = notCapturedNew.filter((r) => gate.realStale.includes(r.op));
   const unconfirmedRows = notCapturedNew.filter((r) => gate.unconfirmed.includes(r.op));
   if (gate.falseAlarms.length) console.log(`  (falsas alarmas suprimidas — probe=vigente: ${gate.falseAlarms.join(', ')})`);
+  if (sessionDegraded && gate.unconfirmed.length) {
+    console.log(`  ⚠️ sesión/red DEGRADADA (probe 0 concluyentes de ${Object.keys(probeVerdicts).length}) — NO escalo las no concluyentes (${gate.unconfirmed.join(', ')}); el motor reintenta en el próximo tick.`);
+  }
 
   // Mutations stale que el ciclo centinela NO resolvió (sin handler DOM, o el ciclo
   // no capturó el hash) → siguen requiriendo captura manual. Las que Fase C SÍ

@@ -175,7 +175,12 @@ muestra `+creadas ~actualizadas -eliminadas`. Validado end-to-end con el shape r
     y limpieza al cambiar de board (reset en `MutationObserver` por cambio de `location.pathname`).
 
 ## Diagnóstico del query pesado del Scheduling board (para un "Programador rápido")
-`RelatedSchedulingInformation` (hash `3d2f8583…`) es **el query más pesado** (~87 MB / 7 llamadas). El **98% del
+`RelatedSchedulingInformation` (hash `3d2f8583…` → **rotó a `05aa9059…`**, ya en `config.json` con ruta de
+regeneración) es **el query más pesado** (~87 MB / 7 llamadas). ⚠️ **Ese 87 MB es el ACUMULADO de las 7
+llamadas, no el peso de una respuesta** — medido el 2026-07-30 sobre el board 454: **1.58 MB** con 369
+órdenes y **5.46 MB** con las 1 234 del dominio. La distinción importa porque el número unitario se citó
+en `wo-schedule-button` para DESCARTAR la query, y resultó ser la fuente barata de `treatmentId` + tiempos
+(ver `schedule-batch-highlighter` 0.2.0, que la intercepta sin pedirla). El **98% del
 peso es `allWorkOrders` = 54 MB**: trae **las ~1,751 órdenes del dominio sin paginar**, cada una ~30 KB porque
 eager-carga ~10 relaciones anidadas (`receivedBatches`, `currentPartsTransferAccounts`, `recipeNodeByRecipeId`,
 `incompleteRecipeNodesByWorkOrderId`, `customerByCustomerId`, labels, `partNumberWorkOrders`, plan-before/after).

@@ -73,3 +73,30 @@ export function gateByProbe(notCapturedOps, probeVerdicts) {
   }
   return { realStale: realStale.sort(), falseAlarms: falseAlarms.sort(), unconfirmed: unconfirmed.sort() };
 }
+
+// isProbeSessionDegraded(probeVerdicts, {minProbed}) → true si NINGUNA op probada dio
+// veredicto concluyente (todas 'auth'/'unknown'). Eso NO dice "las recetas se rompieron":
+// dice "esta corrida no tiene datos" — la red/sesión se cayó a media corrida.
+//
+// Por qué existe (2026-07-28 y 2026-07-31, el MISMO falso positivo dos veces): el Nivel B
+// gastó dos `claude -p` completos re-descubriendo recetas que estaban SANAS. El 07-31 el
+// motor de las 17:23 capturó las 3 primeras rutas y falló las 2 ÚLTIMAS en orden de corrida
+// (maintenance-sensordashboards-detail, sensordashboards-list), con el probe en 0 vigentes /
+// 5 auth-unknown; minutos después validate-hashes.py registraba NameResolutionError de DNS
+// contra app.gosteelhead.com (59 unknown) y el refresh ROCP ya había tronado a las 15:27.
+// Al día siguiente esas dos recetas capturaron al PRIMER intento, con hash == config.
+//
+// La regla es la misma que el repo ya pagó en surtido-guard 0.4.0 y report-regen 0.3.2:
+// **«no tengo el dato» no es «no existe el dato»**. Con la sesión caída, `unconfirmed` no es
+// evidencia de nada, y el motor corre CADA HORA: una rotación real sobrevive al siguiente
+// tick, un blip de red no. Suprimir aquí no pierde detección, la aplaza 60 minutos.
+//
+// Acotada a propósito: exige un mínimo de ops probadas (una sola muestra no es señal) y
+// NO toca 'stale' — un 'stale' requiere que el server conteste "Must provide a query string",
+// o sea que la sesión SÍ respondió. El correo sigue reportando las no concluyentes; lo único
+// que se suprime es la escalación cara.
+export function isProbeSessionDegraded(probeVerdicts, { minProbed = 3 } = {}) {
+  const vals = Object.values(probeVerdicts || {});
+  if (vals.length < minProbed) return false;
+  return vals.every((v) => v === 'auth' || v === 'unknown');
+}

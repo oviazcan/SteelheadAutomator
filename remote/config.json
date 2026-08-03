@@ -1,6 +1,6 @@
 {
-  "version": "1.11.21",
-  "lastUpdated": "2026-07-29T22:47",
+  "version": "1.11.47",
+  "lastUpdated": "2026-07-31T16:18",
   "extensionVersion": "1.7.1",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -96,6 +96,7 @@
         "SearchStationsForTreatment": "6ce8c070d50c69ee49bdfa77a078012a7f882c7c19760a9ed5e569105ef6e4a2",
         "PartNumbersByWorkOrderIdInDomain": "fda9e55c9e2341c17b6974c66407ac8b4306cab86a1c82ffe00c30133bb784d3",
         "SchedulablePartLocations": "5e9392ef2ce4f88ce08bef1c15dc25bc7abdc391b3339a3687ef1925484ac3fc",
+        "RelatedSchedulingInformation": "05aa9059df4428574e6533679ef0ae9b1f9c48fbe2daf1c72cf0a67015d2e3b3",
         "GetInventoryItem": "0366571ed9796751dee38a9b156735b1247accebb4b01d434cd6e1e64a24c3f0",
         "GetInventoryInputSchema": "f1fd6a00069f86439299080f601c5a4b0e0c4b359c6f8acf1cadd44362766729",
         "ActiveReceivedOrders": "07d3e1947485825b519c2f7755773d28532c313e23fab116f6b656a9f4a960d0",
@@ -196,8 +197,8 @@
         "CreateEditTreatmentTimesDialogQuery": "3c4989bbeba90b2429776f3ab4aa375d7785749c705fe0c8d701da0b4ac06eca",
         "StationsByTreatmentId": "dd7f6764a9dc3adde9cef6eb205ad28658c1de8fdbdb2c8527786d97b33c50f2",
         "GetProcessNodeParents": "3c205d1210c0a0a24bc39d338b8ed9c6cf63e756c3ad4b57abf09b3d85d95bec",
-        "AllSensorDashboards": "0c5ec2fba6a1b1b3dbdd3f9c6c3d188981bb6b21abb1234ac67ce582d051e3f9",
-        "SensorDashboardQuery": "29c9033ecaa2021c75f7f2b728785ebf8e1d5de8196731c79b9f8a68f3363aa0",
+        "AllSensorDashboards": "c24cba05d77e2f01216a68aa3d73854feb3dc736d7c01c6d183d6d12a5834da9",
+        "SensorDashboardQuery": "50993c3348f2dd8e6c61e4d58b01eaa3c26f205f1844c2ef351b0ca9a4296313",
         "AllGeometryTypes": "d0fa543dcdb0c4d682d710fcb7c14472ec2e6c0e7a7a292a506c1b95c1256705",
         "GetRecomputableAt": "c2483e87e8a5a0a2fe62e401bfd18506f05c0ee73c9905522e5e11053b7c3d05",
         "JobQuery": "86432972dfe6ea75c523515801993374044dc99e909778024904a02e9ef1b4e3",
@@ -771,8 +772,8 @@
     },
     {
       "id": "schedule-batch-highlighter",
-      "name": "Resaltar Lote en Programación",
-      "subtitle": "Resalta y marca todas las tareas de un lote (por nombre) en el Schedule Board",
+      "name": "Resaltar y Agrupar Lote en Programación",
+      "subtitle": "Resalta las tareas de un lote (por nombre) y las agrupa en una tarea del programa",
       "icon": "🏷️",
       "category": "Herramientas",
       "autoInject": true,
@@ -780,8 +781,11 @@
         "^/Schedules/\\d+/ScheduleBoard/\\d+/?(?:[?#]|$)"
       ],
       "scripts": [
+        "scripts/steelhead-api.js",
         "scripts/schedule-batch-highlighter-core.js",
-        "scripts/schedule-batch-highlighter.js"
+        "scripts/schedule-batch-highlighter.js",
+        "scripts/schedule-batch-group-core.js",
+        "scripts/schedule-batch-group.js"
       ],
       "requiredPermissions": []
     },
@@ -1058,10 +1062,7 @@
         "scripts/wo-spec-params-core.js",
         "scripts/wo-spec-params.js"
       ],
-      "requiredPermissions": [
-        "READ_SPECS",
-        "WRITE_SPECS"
-      ],
+      "requiredPermissions": [],
       "actions": [
         {
           "id": "run-spec-migrator",
@@ -2004,6 +2005,7 @@
       "scripts": [
         "scripts/steelhead-api.js",
         "scripts/surtido-guard-core.js",
+        "scripts/surtido-guard-filter-core.js",
         "scripts/surtido-guard.js"
       ],
       "requiredPermissions": [],
@@ -2879,8 +2881,8 @@
     "scripts/paros-linea.js": "ccf14c09e6886c1eb480014de75c86c2a54fb1f10787aeb92409c4f12ed6c126",
     "scripts/pn-lifecycle-core.js": "81a8e694132873e3176eab07167324abfa77c616adac0690e6cbbfc8b39ff0c9",
     "scripts/pn-lifecycle.js": "2b4693608fa23ecda32bd5dd6a31b988914b6c784cb6fce9100f75a457f54c52",
-    "scripts/pn-specs-column-core.js": "43056107026482b3f2ab8de2d8e1c0a2c0afc7719738ab7d6a61fb5ee91c349b",
-    "scripts/pn-specs-column.js": "853166ae2fd534f6a56290d2570555b5160fd8de3c6bdd4c318469d87f4773ea",
+    "scripts/pn-specs-column-core.js": "73837ef8f975c393920769e57c55ad29d6cb771dc32890f873e24e14795e6f29",
+    "scripts/pn-specs-column.js": "5e7b5a4640dbf8254134adb11342a35946aa42d7e0a6a77be7b6967ece222237",
     "scripts/po-comparator.js": "4e3d620cc06665c8a6b29626ec113874f150c5f7d4472978095a25d2fc53fb1f",
     "scripts/po-listing-filters-core.js": "4393baa884364235b99b445f9a9a3273143f37b8d8137b4f35c44bd152957ca1",
     "scripts/po-listing-filters.js": "307ac1f2b232f54689f8854cceb0cda2ec7191ebf5514ee16dfc821e4e42e5f2",
@@ -2895,33 +2897,36 @@
     "scripts/receiver-date-override.js": "f18f704138be627db5273e1fbff4b8c9d1884caeafa9d0b2dbd273eb9560ad0b",
     "scripts/report-liberator.js": "3f153fe5f34261ca9b579a14fcd8d00cd205413943534c41ce54116975b25409",
     "scripts/report-regen.js": "9627a12c33346f5c06120098075e5bc6f12054feb64dc9764012157d4e298e92",
+    "scripts/schedule-batch-group-core.js": "7ad3a3db0d5ce8a00b3abf764bf786f3ecd5d23a709715f98406335dd048a461",
+    "scripts/schedule-batch-group.js": "4373ffdeb674e92489b3a6770d005fb1d1472f87d8c1c22da650dba83ffdac19",
     "scripts/schedule-batch-highlighter-core.js": "a11a6ca286e594ad9910719d0a4bbab86c461d28e2adbd3edb369a3603832637",
     "scripts/schedule-batch-highlighter.js": "0cceca941ecddee9f8725443359c678bb53a1b48d0a5cbf14d93195490b450ab",
     "scripts/sensor-graph-hide-all-core.js": "795d1741fc04de7b8a5a111542e36fe53a8b3ee473c3f0b7a457780df3ea213e",
     "scripts/sensor-graph-hide-all.js": "3da2ad449d6792035a8ae952cc829ad7d6b5dd598b7281799b473cea5087ca6f",
     "scripts/sensor-status-autofill.js": "e19d6183c84c1cdd153110bdd31b3eb95b1973b089210182a177937a11f2b6bd",
-    "scripts/spec-migrator-normalize.js": "a3c37c7b0c7bc471790ae1184b56ebc75647862f6b925286b45007b92f06ee28",
-    "scripts/spec-migrator.js": "cb64545d2f65ec598728ec2c5544960ab2b35e055a888b18f2181709c1c3e55e",
+    "scripts/spec-migrator-normalize.js": "55e77558ab7a8019265a80e873ce3b99d5bebe0d4d61e3c6020c2cf2d162b216",
+    "scripts/spec-migrator.js": "0f07cd579b65e7cefa13c31376ba571d0e9944a12beaa748d1c86c0dc2e75301",
     "scripts/spec-params-bulk.js": "f49affd0af9c7aa11fd8ab586b4a2b70c71e34405796f5d136909db0184a929b",
     "scripts/spec-shared.js": "9a4adf965ffac349fdc69dd05b6bc1c50bb4dcc298333c7ff245acd955d0b255",
     "scripts/steelhead-api.js": "9377271a0ee2dd11b2a17908717575951b904c0ce6184ef07819d90b93c5de32",
-    "scripts/surtido-guard-core.js": "8bca9a296283d83d1ae99b13b33e159455203a199063c04227de2e4d09cce85c",
-    "scripts/surtido-guard.js": "bea2066eab13530839e241503e5355e12ee1b206605357e3d9a924124d085780",
+    "scripts/surtido-guard-core.js": "fa957a4f4fc55bf9f66a716c10644c281265f3d3f272d9e6afd459bd97f41478",
+    "scripts/surtido-guard-filter-core.js": "13c1d64d5a0dbc2201461b2e69ceddcd96761707291034022147205698700790",
+    "scripts/surtido-guard.js": "3354c8a8027d094dc41d7f2062b1a0755906326649055939558b527cd748d0a1",
     "scripts/unit-autoconvert-core.js": "4c43e041cc6a1c249ab1f20c0a9c089bf1a38929d82a1b5f03c89814a113d633",
     "scripts/unit-autoconvert.js": "886b971f171619e74bb250a0c076b67b7aca12006fed195a4c2c9f50d827ef11",
     "scripts/vale-almacen-engine.js": "36241da082a58d03241068bcec6fcde2131eb69a9871eb9cd2f8bce21ccdd1a0",
     "scripts/vale-almacen.js": "cbd6bc27c493cb703d4125211bc33ff510a15ed5061d31770cf2b128e8ea3985",
-    "scripts/warehouse-location-guard-core.js": "a9111468ac9e45264cb828709bc499e2b552f6b74f3c958bc8543b09c840a709",
-    "scripts/warehouse-location-prefill.js": "d053d41343324591849e7e4baa6a4b83251d0bd8ed8e14d48f5ece107480f6a2",
-    "scripts/weight-quick-entry.js": "9710caa9ecc4e81f97b6aa2e68565e0de2abf720ccd7cdf7ef8e30ac5f8a2b42",
+    "scripts/warehouse-location-guard-core.js": "3731a74bc7c319e31b9768c042111c3c55709d115a318c9c1c1a699489423151",
+    "scripts/warehouse-location-prefill.js": "1402950200d420f4e8b496762e9989e59ce89d74b89dfc0cc557da8b914878dc",
+    "scripts/weight-quick-entry.js": "6ad401522329aabaccfa1cf5ed0649e9c36965d4bb4bcd219b9f9ea81c8ca413",
     "scripts/wo-completer-engine.js": "3101a9c8f718f9469e005a02498a89d6467b8f7c49583d7bb6f96f55a5bdfc83",
     "scripts/wo-completer.js": "d2879a8daf876ff2956dfeadcba673ab082f3b28c9bb7fbabb0c00db92f487e9",
     "scripts/wo-deadline-changer.js": "169d0dc0c60030398a108ea73747848071159b7d4664305ad66833a0fe67265b",
-    "scripts/wo-listing-columns.js": "7f3e11886246b828ceefb89a974670265ec3507d48465822cb15e1599c63583e",
+    "scripts/wo-listing-columns.js": "a97e01b68ad68a247082390b403391fe5c6a7a9f2ad478ad7d456ffa97e0c999",
     "scripts/wo-mover.js": "e924dfd9fb5d82ed65ab75151adcdc32cd4a94e950b8fcc2add9a9a65c78aefd",
     "scripts/wo-schedule-button.js": "cd1b7a6f51d86a0d25e208f2bb85fe18654153b0ba5ab183081c6c6e223e331c",
-    "scripts/wo-schedule-core.js": "e36c4e61b973298c95a0094508101760f1d9f54548fdcb865be6646844de78b1",
-    "scripts/wo-spec-params-core.js": "007bcedf3418fe2ff635f3586e14e4b5cd0beadf954bde374b1ad307e800a493",
-    "scripts/wo-spec-params.js": "bd6c237e5e10856710fed945516413e73f0c347523353385b9ca4a4b38b52e9f"
+    "scripts/wo-schedule-core.js": "9e646f5122536e6a36a8bc603e8b21d67cf25ebae959eb9e7d8b71353e3df219",
+    "scripts/wo-spec-params-core.js": "58b8d61c481d10e7724e3fd8e3b9387d44a1726824b4edd9f96f915a573b7b15",
+    "scripts/wo-spec-params.js": "37a99ba6c8d01241ea1ed1ae0dd109ce61a720633b205fbc53dde1ffe521202a"
   }
 }

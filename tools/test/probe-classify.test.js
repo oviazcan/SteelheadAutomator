@@ -3,7 +3,7 @@
 // contra app.gosteelhead.com/graphql el 2026-07-10 (dominio 344/TLC).
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { classifyProbe, summarizeProbes, buildProbeBody, gateByProbe } = require('../hash-autopilot/probe-classify.mjs');
+const { classifyProbe, summarizeProbes, buildProbeBody, gateByProbe, isProbeSessionDegraded } = require('../hash-autopilot/probe-classify.mjs');
 
 test('STALE: "Must provide a query string." (SearchUnits real, hash muerto)', () => {
   assert.equal(classifyProbe({ http: 400, message: 'Must provide a query string.' }), 'stale');
@@ -86,6 +86,49 @@ test('gateByProbe: auth/unknown NO se suprimen (se escalan por si acaso)', () =>
 test('gateByProbe: lista vacía → todo vacío', () => {
   const g = gateByProbe([], { A: 'stale' });
   assert.deepEqual(g, { realStale: [], falseAlarms: [], unconfirmed: [] });
+});
+
+// ── isProbeSessionDegraded — el guard anti-falsa-alarma del Nivel B ────────────
+// Caso REAL reproducido: corrida de las 17:23 del 2026-07-31. Las 5 enmascaradas
+// probadas dieron auth/unknown (0 vigentes) porque el DNS de la Mac se cayó a media
+// corrida; las 2 ÚLTIMAS rutas en orden de ejecución no capturaron y escalaron. Al
+// día siguiente ambas capturaron al PRIMER intento con hash == config.
+
+test('degradada: TODAS las probadas auth/unknown → true (la corrida no tiene datos)', () => {
+  assert.equal(isProbeSessionDegraded({
+    AllCustomers: 'auth', AllSensorDashboards: 'unknown', CurrentUser: 'auth',
+    Customer: 'unknown', SensorDashboardQuery: 'unknown',
+  }), true);
+});
+
+test('degradada: UN solo vigente ya prueba que la sesión responde → false', () => {
+  assert.equal(isProbeSessionDegraded({ A: 'auth', B: 'unknown', C: 'vigente' }), false);
+});
+
+test('degradada: un stale exige que el server haya contestado → false (no suprime rotaciones)', () => {
+  assert.equal(isProbeSessionDegraded({ A: 'auth', B: 'unknown', C: 'stale' }), false);
+});
+
+test('degradada: día sano (5/5 vigente) → false', () => {
+  assert.equal(isProbeSessionDegraded({ A: 'vigente', B: 'vigente', C: 'vigente' }), false);
+});
+
+test('degradada: probe vacío o muy chico → false (fail-open, una muestra no es señal)', () => {
+  assert.equal(isProbeSessionDegraded({}), false);
+  assert.equal(isProbeSessionDegraded({ A: 'auth' }), false);
+  assert.equal(isProbeSessionDegraded({ A: 'auth', B: 'unknown' }), false);
+  assert.equal(isProbeSessionDegraded(null), false);
+});
+
+test('degradada: minProbed configurable', () => {
+  assert.equal(isProbeSessionDegraded({ A: 'auth', B: 'unknown' }, { minProbed: 2 }), true);
+});
+
+test('degradada + gateByProbe: se suprime unconfirmed pero NUNCA realStale', () => {
+  const verdicts = { A: 'auth', B: 'unknown', C: 'unknown' };
+  const g = gateByProbe(['A', 'B', 'C'], verdicts);
+  assert.deepEqual(g.unconfirmed, ['A', 'B', 'C']);   // el gate no cambia…
+  assert.equal(isProbeSessionDegraded(verdicts), true); // …el guard decide si escalan
 });
 
 test('buildProbeBody arma el APQ con hash del config + vars vacías', () => {

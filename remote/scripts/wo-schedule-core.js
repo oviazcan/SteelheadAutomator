@@ -1043,6 +1043,28 @@
     return /vista\s+previa\s+de\s+etiqueta/i.test(text);
   }
 
+  // ¿El nodo que YA existe en esta fila sigue siendo de la misma orden?
+  //
+  // React RECICLA los <tr> al filtrar, ordenar o paginar el listado: reusa el nodo y le cambia el
+  // contenido. Si nuestra celda inyectada no revalida de QUIÉN es, sobrevive con el dato de la orden
+  // anterior — el renglón muestra el número de una OT con las columnas de otra. Reportado en piso
+  // el 2026-07-31 sobre el applet hermano `pn-specs-column` (al archivar un NP), mismo molde.
+  // Peor que el dato viejo: `applyToCells` busca por [data-sa-woid], así que un atributo stale hace
+  // que el resultado del fetch de la orden ANTERIOR se pinte sobre la fila de la NUEVA.
+  //
+  // Devuelve true cuando hay que RECONSTRUIR. Un nodo nuestro SIN atributo también se reconstruye:
+  // en este applet la celda podía nacer sin `data-sa-woid` (cuando la fila aún no resolvía su link)
+  // y, al no revalidarse nunca, se quedaba huérfana mostrando "—" para siempre.
+  // Sin id actual NO se reconstruye: una fila sin link no está reciclada, todavía no resuelve.
+  //
+  // Gemela de `pn-specs-column-core.isStaleNode`: son applets de rutas distintas y no comparten core,
+  // así que la función vive en los dos, con la MISMA semántica fijada por tests en ambos lados.
+  function isStaleNode(attrValue, id) {
+    if (id == null) return false;
+    if (attrValue == null || attrValue === '') return true;
+    return String(attrValue) !== String(id);
+  }
+
   const api = {
     WO_INDEX_RE, WO_DETAIL_RE, DOMAIN_RE,
     PRINT_TYPES, printTypeList, printType, parsePrintParam,
@@ -1063,6 +1085,7 @@
     buildTreatmentTimeCreateInput,
     isoToLocalInput, localInputToIso,
     parseIsoParts, formatShortDateTime, formatScheduleCell,
+    isStaleNode,
   };
   if (typeof window !== 'undefined') window.WoScheduleCore = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

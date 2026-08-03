@@ -17,6 +17,13 @@
 // 0.6.1 — el renglón se juzga por señal POSITIVA (hay un valor elegido), no por ausencia de
 // placeholder: al TECLEAR en el combo sin elegir nada react-select retira el placeholder, y
 // el criterio anterior daba el renglón por resuelto. Ver rowHasLocation() en el núcleo.
+//
+// 0.6.2 — la MISMA trampa, ahora en NUESTRO combo del encabezado: acepta texto libre, así que
+// al teclear la ubicación y seguir adelante (Tab, o clic directo en GUARDAR) el campo la
+// mostraba pero no había selección → el candado bloqueaba y el operador veía la ubicación
+// puesta. Reproducido en vivo 2026-07-30. Ahora Enter/Tab/blur RESUELVEN el texto contra el
+// catálogo (commitTypedLocation) y, si no resuelve a una sola ubicación, el campo se VACÍA
+// con el motivo a la vista: un campo con texto que no se aplicó es una mentira visible.
 
 const WarehouseLocationPrefill = (() => {
   'use strict';
@@ -254,6 +261,7 @@ const WarehouseLocationPrefill = (() => {
     if (state?.rowObserver) state.rowObserver.disconnect();
     if (state?.clearRowTimeout) state.clearRowTimeout();
     if (state?.gateTimer) { clearInterval(state.gateTimer); state.gateTimer = null; }
+    if (state?.typedWarnTimer) { clearTimeout(state.typedWarnTimer); state.typedWarnTimer = null; }
     if (state?.docClickHandler) document.removeEventListener('mousedown', state.docClickHandler);
     document.getElementById('sa-wlp-gatetip')?.remove();
     modalStates.delete(modal);
@@ -303,7 +311,7 @@ const WarehouseLocationPrefill = (() => {
   // Versión del <style>: el remote loader puede reinyectar el script SIN recargar la SPA, y
   // un <style> viejo con el mismo id se quedaría sin las reglas nuevas. Se compara y se
   // escribe el MISMO número (el bug de pn-specs-column 0.3.1 fue subirlo en un solo lado).
-  const STYLE_VERSION = '2';
+  const STYLE_VERSION = '3';
 
   function injectStyles() {
     const existing = document.getElementById('sa-wlp-styles');
@@ -344,6 +352,16 @@ const WarehouseLocationPrefill = (() => {
         box-shadow: 0 4px 12px rgba(0,0,0,0.12);
       }
       .sa-wlp-dropdown[hidden] { display: none; }
+      /* Texto tecleado que no llegó a ser una selección: el campo se vacía y el aviso
+         dice por qué. Naranja, el mismo color con el que el candado marca lo que falta. */
+      .sa-wlp-combo[data-sa-wlp-typed="true"] {
+        border-color: #f08c2e; box-shadow: 0 0 0 1px #f08c2e;
+      }
+      .sa-wlp-typed-warn {
+        margin-top: 4px; font-size: 12px; line-height: 1.3; color: #8a4b06;
+        background: rgba(240,140,46,0.12); border: 1px solid #f08c2e;
+        border-radius: 4px; padding: 4px 8px; max-width: 320px;
+      }
       .sa-wlp-option {
         padding: 8px 14px; cursor: pointer; font-size: 14px;
       }
@@ -1125,6 +1143,10 @@ const WarehouseLocationPrefill = (() => {
         state.gateTimer = null;
         return;
       }
+      // Red para el texto tecleado: si el operador dejó una ubicación escrita y ya no
+      // está en el campo, se resuelve aquí. Mientras TIENE el foco no se toca (estaría
+      // escribiendo). Cubre el caso en que va directo del teclado al botón de guardar.
+      if (state.input && document.activeElement !== state.input) commitTypedLocation(state);
       evaluateSaveGate(modal);
     }, GATE_POLL_MS);
   }
@@ -1155,6 +1177,75 @@ const WarehouseLocationPrefill = (() => {
     }
   }
 
+  // ── Texto tecleado sin elegir de la lista ────────────────────────────────────
+  // El combo acepta texto libre. Si el operador escribe la ubicación y sigue adelante
+  // (Tab, o clic en GUARDAR) el input la MUESTRA pero no hay selección: el candado
+  // bloquea con razón y el campo lleno lo desmiente. Aquí se cierra ese hueco:
+  //   · si el texto resuelve a UNA ubicación, se selecciona de verdad;
+  //   · si no, el campo se VACÍA y se dice por qué — un campo con texto que no se
+  //     aplicó es una mentira visible, y es justo la que hacía ver el bloqueo
+  //     como una falla de la extensión.
+  // Nunca adivina: con varias candidatas no elige ninguna (mandar material a la
+  // ubicación equivocada es peor que pedir un clic más).
+  function commitTypedLocation(state) {
+    if (!state || !state.input) return;
+    const raw = (state.input.value || '').trim();
+    if (state.selectedLocation && raw === state.selectedLocation.path) { setTypedWarning(state, null); return; }
+    if (!raw) {
+      // Sin texto no hay nada que resolver, pero NO se retira el aviso: el campo pudo
+      // quedar vacío justo porque este mismo aviso explica que lo tecleado no se aplicó
+      // (y el poll re-entra aquí cada 900 ms, así que borrarlo lo haría parpadear).
+      if (state.selectedLocation) clearSelection(state);
+      return;
+    }
+    const cache = state.aduanaFilterActive ? state.aduanaCache : state.fullCache;
+    // Sin catálogo no hay con qué decidir: se respeta lo tecleado y se avisa (borrarlo
+    // aquí castigaría al operador por una demora de la consulta).
+    if (!cache) { setTypedWarning(state, 'loading'); return; }
+
+    const G = guard();
+    const res = G ? G.resolveTypedLocation(raw, cache) : { kind: 'none', match: null, candidates: 0 };
+    if ((res.kind === 'exact' || res.kind === 'unique') && res.match) {
+      setTypedWarning(state, null);
+      selectLocation(state, res.match);
+      return;
+    }
+    state.input.value = '';
+    if (state.selectedLocation) clearSelection(state);
+    setTypedWarning(state, res.kind === 'ambiguous' ? 'ambiguous' : 'none', raw, res.candidates);
+  }
+
+  const TYPED_WARN_TEXT = {
+    loading: '⏳ Cargando ubicaciones… vuelve a intentar en un momento.',
+    ambiguous: (t, n) => `⚠️ «${t}» coincide con ${n} ubicaciones — elige una de la lista.`,
+    none: (t) => `⚠️ «${t}» no es una ubicación — elígela de la lista.`,
+  };
+
+  const TYPED_WARN_TTL_MS = 15000;
+
+  function setTypedWarning(state, kind, typed, count) {
+    if (!state || !state.combo) return;
+    let el = state.typedWarn;
+    if (state.typedWarnTimer) { clearTimeout(state.typedWarnTimer); state.typedWarnTimer = null; }
+    if (!kind) {
+      if (el) { el.remove(); state.typedWarn = null; }
+      state.combo.dataset.saWlpTyped = 'false';
+      return;
+    }
+    if (!el) {
+      el = document.createElement('div');
+      el.className = 'sa-wlp-typed-warn';
+      el.dataset.saWlpField = 'true';
+      state.combo.parentElement?.appendChild(el);
+      state.typedWarn = el;
+    }
+    const tpl = TYPED_WARN_TEXT[kind];
+    const txt = typeof tpl === 'function' ? tpl(typed, count) : tpl;
+    if (el.textContent !== txt) el.textContent = txt;
+    state.combo.dataset.saWlpTyped = 'true';
+    state.typedWarnTimer = setTimeout(() => setTypedWarning(state, null), TYPED_WARN_TTL_MS);
+  }
+
   function wireCombobox(modal) {
     const state = modalStates.get(modal);
     if (!state?.input) return;
@@ -1165,6 +1256,7 @@ const WarehouseLocationPrefill = (() => {
       renderDropdown(state);
     });
     input.addEventListener('input', () => {
+      setTypedWarning(state, null);
       if (state.selectedLocation) {
         // El usuario está editando — invalidar selección y limpiar canal de intercepción
         state.selectedLocation = null;
@@ -1178,11 +1270,29 @@ const WarehouseLocationPrefill = (() => {
       dropdown.hidden = false;
       renderDropdown(state);
     });
+    // Enter y Tab son la forma natural de "ya quedó" en un formulario: aquí RESUELVEN
+    // el texto en vez de dejarlo colgando.
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        commitTypedLocation(state);
+        dropdown.hidden = true;
+      } else if (e.key === 'Escape') {
+        input.value = state.selectedLocation ? state.selectedLocation.path : '';
+        setTypedWarning(state, null);
+        dropdown.hidden = true;
+      } else if (e.key === 'Tab') {
+        commitTypedLocation(state);
+      }
+    });
     input.addEventListener('blur', () => {
       // Pequeño delay para permitir click en option (mousedown corre antes que blur)
-      setTimeout(() => { dropdown.hidden = true; }, 150);
+      setTimeout(() => {
+        dropdown.hidden = true;
+        commitTypedLocation(state);
+      }, 150);
     });
-    clearBtn.addEventListener('click', () => clearSelection(state));
+    clearBtn.addEventListener('click', () => { setTypedWarning(state, null); clearSelection(state); });
 
     // Cerrar dropdown si click fuera — guardamos el listener para cleanup
     const docClickHandler = (e) => {

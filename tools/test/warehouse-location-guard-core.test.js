@@ -311,3 +311,89 @@ test('payloadMissingLocations: accounts con entradas no-objeto se ignoran sin tr
   assert.equal(r.total, 1);
   assert.deepEqual(r.missing, []);
 });
+
+// ── resolveTypedLocation ─────────────────────────────────────────────────────
+// El combo del ENCABEZADO acepta texto libre. Reproducido en vivo (2026-07-30):
+// teclear «A2Aduana» y salir del campo dejaba el input lleno SIN selección, así que
+// el candado bloqueaba mientras el operador veía la ubicación puesta.
+// Las ubicaciones reales del dominio 344 sirven de fixture.
+const LOCS = [
+  { id: 3301, name: 'A2Aduana', path: 'Ecoplating.N2.A2.A2Aduana' },
+  { id: 3302, name: 'A3Aduana', path: 'Ecoplating.N3.A3.A3Aduana' },
+  { id: 3303, name: 'A4Aduana', path: 'Ecoplating.N4.A4.A4Aduana' },
+  { id: 3304, name: 'A5Aduana', path: 'Ecoplating.N5.A5.A5Aduana' },
+  { id: 3305, name: 'A1Aduana', path: 'Proquipa.N1.A1.A1Aduana' },
+];
+
+test('resolveTypedLocation: EL CASO DEL BUG — el name exacto resuelve a esa ubicación', () => {
+  const r = Core.resolveTypedLocation('A2Aduana', LOCS);
+  assert.equal(r.kind, 'exact');
+  assert.equal(r.match.id, 3301);
+});
+
+test('resolveTypedLocation: el path completo también resuelve', () => {
+  const r = Core.resolveTypedLocation('Ecoplating.N5.A5.A5Aduana', LOCS);
+  assert.equal(r.kind, 'exact');
+  assert.equal(r.match.id, 3304);
+});
+
+test('resolveTypedLocation: mayúsculas y espacios de sobra no impiden el match', () => {
+  for (const t of ['  a2aduana ', 'A2ADUANA', 'a2Aduana']) {
+    const r = Core.resolveTypedLocation(t, LOCS);
+    assert.equal(r.kind, 'exact', `«${t}» debe resolver`);
+    assert.equal(r.match.id, 3301);
+  }
+});
+
+test('resolveTypedLocation: un fragmento que deja UNA sola candidata resuelve', () => {
+  const r = Core.resolveTypedLocation('Proquipa', LOCS);
+  assert.equal(r.kind, 'unique');
+  assert.equal(r.match.id, 3305);
+});
+
+test('resolveTypedLocation: NO ADIVINA — con varias candidatas no elige ninguna', () => {
+  const r = Core.resolveTypedLocation('Aduana', LOCS);
+  assert.equal(r.kind, 'ambiguous');
+  assert.equal(r.match, null);
+  assert.equal(r.candidates, 5);
+});
+
+test('resolveTypedLocation: texto que no existe no inventa ubicación', () => {
+  const r = Core.resolveTypedLocation('bodega 7', LOCS);
+  assert.equal(r.kind, 'none');
+  assert.equal(r.match, null);
+  assert.equal(r.candidates, 0);
+});
+
+test('resolveTypedLocation: sin texto no hay nada que resolver', () => {
+  for (const t of ['', '   ', null, undefined]) {
+    assert.equal(Core.resolveTypedLocation(t, LOCS).kind, 'empty');
+  }
+});
+
+test('resolveTypedLocation: catálogo vacío o inválido → none, sin truenar', () => {
+  for (const c of [[], null, undefined, 'x', [null, {}]]) {
+    const r = Core.resolveTypedLocation('A2Aduana', c);
+    assert.equal(r.kind, 'none');
+    assert.equal(r.match, null);
+  }
+});
+
+test('resolveTypedLocation: el match EXACTO gana aunque el texto sea prefijo de otras', () => {
+  // «A2Aduana» es substring de «A2AduanaBis»: sin la pasada exacta serían 2 candidatas
+  // y el operador se quedaría sin resolver justo el nombre que escribió completo.
+  const locs = LOCS.concat([{ id: 9, name: 'A2AduanaBis', path: 'Ecoplating.N2.A2.A2AduanaBis' }]);
+  const r = Core.resolveTypedLocation('A2Aduana', locs);
+  assert.equal(r.kind, 'exact');
+  assert.equal(r.match.id, 3301);
+});
+
+test('resolveTypedLocation: dos ubicaciones con el MISMO name no se resuelven solas', () => {
+  const locs = [
+    { id: 1, name: 'A2Aduana', path: 'Ecoplating.N2.A2.A2Aduana' },
+    { id: 2, name: 'A2Aduana', path: 'Proquipa.N9.A2.A2Aduana' },
+  ];
+  const r = Core.resolveTypedLocation('A2Aduana', locs);
+  assert.equal(r.kind, 'ambiguous');
+  assert.equal(r.match, null);
+});

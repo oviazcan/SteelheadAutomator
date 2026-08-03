@@ -1001,3 +1001,43 @@ test('lineCodeOf saca la línea de estaciones y de tratamientos', () => {
   assert.equal(Core.lineCodeOf('TR-PRM-001 Antitarnish'), null);
   assert.equal(Core.lineCodeOf(null), null);
 });
+
+// ---------- isStaleNode: la celda inyectada que quedó de OTRA orden ----------
+// React recicla los <tr> al filtrar/ordenar/paginar. El glue solo miraba si nuestra celda
+// EXISTÍA, así que sobrevivía con el dato de la orden anterior — el mismo bug que se reportó
+// en piso el 2026-07-31 sobre el applet hermano pn-specs-column (al archivar un NP).
+
+test('isStaleNode: el id cambió → reconstruir', () => {
+  assert.equal(Core.isStaleNode('15074', 15075), true);
+});
+
+test('isStaleNode: mismo id → conservar (compara como texto, no por tipo)', () => {
+  assert.equal(Core.isStaleNode('15074', 15074), false);
+  assert.equal(Core.isStaleNode(15074, '15074'), false);
+});
+
+test('isStaleNode: celda nuestra sin data-sa-woid → reconstruir', () => {
+  // En wo-listing-columns la celda podía nacer sin atributo (fila que aún no resolvía su link)
+  // y, sin revalidación, quedarse huérfana mostrando "—" para siempre.
+  assert.equal(Core.isStaleNode(null, 15074), true);
+  assert.equal(Core.isStaleNode('', 15074), true);
+});
+
+test('isStaleNode: fila sin id resuelto NO se reconstruye', () => {
+  // No está reciclada: todavía no resuelve. Reconstruir ahí borraría celdas buenas en cada sync
+  // y el MutationObserver entraría en bucle.
+  assert.equal(Core.isStaleNode('15074', null), false);
+  assert.equal(Core.isStaleNode(null, null), false);
+});
+
+test('isStaleNode: la gemela de pn-specs-column NO diverge', () => {
+  // Vive en los dos cores porque son applets de rutas distintas que no comparten core. La
+  // duplicación solo es aceptable mientras se comporten igual: este test lo obliga.
+  const Pn = require('../../remote/scripts/pn-specs-column-core.js');
+  const casos = [['1', 2], ['2', 2], [2, '2'], [null, 2], ['', 2], ['1', null], [null, null],
+                 [undefined, 5], ['0', 0], [0, '0']];
+  for (const [attr, id] of casos) {
+    assert.equal(Core.isStaleNode(attr, id), Pn.isStaleNode(attr, id),
+      `divergen en (${JSON.stringify(attr)}, ${JSON.stringify(id)})`);
+  }
+});

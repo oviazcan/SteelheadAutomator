@@ -228,6 +228,21 @@ totalTimeMinutes = treatmentTimeMinutes + (lotes - 1) × cycleTimeMinutes
 **Validada contra 4 tareas reales independientes:** 13504/1501→9 lotes→45+8×12=**141** (el CREATE
 capturado); 9000/1686→6→50+5×50=**300**; 1/120→1→**66**; 12/49→1→**30**.
 
+**Generalización a tareas AGRUPADAS (2026-07-30, `schedule-batch-highlighter` 0.2.0):** cuando la tarea
+lleva **varios** `scheduleTaskElements` —lo que hace el Task Builder al juntar órdenes— los lotes se
+**SUMAN entre elementos** antes de aplicar la fórmula:
+```
+lotes = Σ ceil(partCount_i / partsPerBatch_i)      ← sobre TODOS los elementos
+totalTimeMinutes = treatmentTimeMinutes + (lotes − 1) × cycleTimeMinutes
+```
+Verificada 2× contra el `CreateManyScheduleTasks` capturado con 5 elementos (14+10+4+1+12 = 41 lotes):
+45+40×30=**1245** (real 1245) y 45+40×15=**645** (real 645). Calcular los lotes por elemento y sumar
+las duraciones da otro número. Implementada en `schedule-batch-group-core.groupedTaskTimes`.
+
+⚠️ **`partsPerBatch` sigue sin resolver el «producto vs identidad»**: en los datos del 2026-07-30 la
+estación 12093 también declara `rackCount = 1`, así que un segundo caso tampoco distingue
+`partsPerRack × rackCount` de `partsPerRack` a secas. Hace falta una estación con `rackCount > 1`.
+
 ### `TreatmentTime` es un sistema de OVERRIDES
 `possibleTreatmentTimesByRecipeNodeDefaultTreatment` es una **lista**: `partNumberId`,
 `stationId`, `processNodeId` y `processNodeOccurrence` son nullable y **null = comodín**. Gana el
@@ -354,8 +369,13 @@ próxima vez que alguien programe ese PN en esa línea, el dato ya está.
   modal el campo es editable y el resultado se ve antes de confirmar, así que un valor equivocado
   se nota en pantalla (cargas y horas) antes de escribir.
 - El modal asume **rackCount = 1**; cuando la estación declare varios racks hay que leer
-  `stationTreatmentRackTypes` de esa estación (hoy solo se ha visto dentro de
-  `RelatedSchedulingInformation`, que son ~87 MB).
+  `stationTreatmentRackTypes` de esa estación, que vive en `RelatedSchedulingInformation`.
+  ⚠️ **CORRECCIÓN (2026-07-30):** el «~87 MB» con que se descartó esa query es el **ACUMULADO de 7
+  llamadas** que midió el auto-router, **no el peso de una respuesta**: medida sobre el board 454 da
+  **1.58 MB** (369 órdenes) y **5.46 MB** (las 1 234 del dominio). Y sobre todo: **el board la dispara
+  solo**, así que INTERCEPTARLA no cuesta nada — es lo que hace `schedule-batch-highlighter` 0.2.0 para
+  sacar `treatmentId`, nombre del tratamiento, `possibleTreatmentTimes` y `stationTreatmentRackTypes`
+  sin una sola consulta extra. Este pendiente se puede cerrar por esa vía.
 
 
 ## Correcciones del primer uso en vivo (2026-07-28, v0.9.0)

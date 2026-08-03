@@ -1,0 +1,778 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Manual técnico de arquitectura — Sistemas adyacentes a Steelhead</title>
+<style>
+:root{
+  --ground:#f7f9fb; --paper:#ffffff; --ink:#182231; --muted:#55677a;
+  --faint:#7b8a99; --hair:#e2e8ee; --hair-2:#cdd7e0; --steel:#2b3f52;
+  --accent:#0f8f61; --accent-ink:#0b6f4b; --accent-wash:#e7f5ee;
+  --ku:#c0632e; --ku-wash:#f8ede6; --ti:#2f6f9f; --ti-wash:#e8f0f7;
+  --bi:#7d4f9c; --bi-wash:#f0e9f6;
+  --warn:#a9640c; --warn-wash:#fbf1e0; --danger:#b5372b; --danger-wash:#fbe9e7;
+  --shadow:0 1px 2px rgba(24,34,49,.05), 0 6px 20px -8px rgba(24,34,49,.12);
+  --measure:70ch;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --ground:#0f141a; --paper:#161d26; --ink:#e6ecf2; --muted:#9fb0c0; --faint:#7d8ea0;
+    --hair:#26303c; --hair-2:#33404e; --steel:#b9c6d3; --accent:#25b884; --accent-ink:#3fd39c;
+    --accent-wash:#12211b; --ku:#e08a55; --ku-wash:#241a13; --ti:#63a3d4; --ti-wash:#121e28;
+    --bi:#b58fd6; --bi-wash:#1d1626; --warn:#d69838; --warn-wash:#241c10;
+    --danger:#e0655a; --danger-wash:#251512;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px -10px rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="light"]{
+  --ground:#f7f9fb; --paper:#ffffff; --ink:#182231; --muted:#55677a; --faint:#7b8a99;
+  --hair:#e2e8ee; --hair-2:#cdd7e0; --steel:#2b3f52; --accent:#0f8f61; --accent-ink:#0b6f4b;
+  --accent-wash:#e7f5ee; --ku:#c0632e; --ku-wash:#f8ede6; --ti:#2f6f9f; --ti-wash:#e8f0f7;
+  --bi:#7d4f9c; --bi-wash:#f0e9f6; --warn:#a9640c; --warn-wash:#fbf1e0;
+  --danger:#b5372b; --danger-wash:#fbe9e7;
+}
+:root[data-theme="dark"]{
+  --ground:#0f141a; --paper:#161d26; --ink:#e6ecf2; --muted:#9fb0c0; --faint:#7d8ea0;
+  --hair:#26303c; --hair-2:#33404e; --steel:#b9c6d3; --accent:#25b884; --accent-ink:#3fd39c;
+  --accent-wash:#12211b; --ku:#e08a55; --ku-wash:#241a13; --ti:#63a3d4; --ti-wash:#121e28;
+  --bi:#b58fd6; --bi-wash:#1d1626; --warn:#d69838; --warn-wash:#241c10;
+  --danger:#e0655a; --danger-wash:#251512;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%; scroll-behavior:smooth}
+body{margin:0; background:var(--ground); color:var(--ink);
+  font-family:var(--sans); font-size:16.5px; line-height:1.62;
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility}
+.wrap{max-width:1010px; margin:0 auto; padding:0 24px 96px}
+.measure{max-width:var(--measure)}
+
+.masthead{border-bottom:2px solid var(--steel); padding:40px 0 22px; margin-bottom:10px}
+.brandbar{display:flex; align-items:center; gap:10px; margin-bottom:18px}
+.brandmark{width:26px; height:26px; border-radius:6px; background:var(--steel);
+  display:grid; place-items:center; flex:0 0 auto}
+.brandmark span{color:#fff; font-weight:800; font-size:.9rem; font-family:var(--mono)}
+@media (prefers-color-scheme:dark){ .brandmark span{color:#0f141a} }
+:root[data-theme="dark"] .brandmark span{color:#0f141a}
+.brandname{font-weight:700; letter-spacing:.02em; font-size:.95rem}
+.brandname em{color:var(--accent-ink); font-style:normal}
+.eyebrow{font-size:.72rem; text-transform:uppercase; letter-spacing:.14em;
+  color:var(--faint); font-weight:700; margin:0 0 10px}
+.masthead h1{font-size:clamp(1.8rem,4.3vw,2.5rem); line-height:1.08; letter-spacing:-.02em;
+  margin:0 0 10px; text-wrap:balance; font-weight:800}
+.masthead .sub{font-size:1.08rem; color:var(--muted); margin:0; max-width:62ch}
+.meta{margin-top:18px; font-size:.85rem; color:var(--faint); display:flex; flex-wrap:wrap; gap:6px 20px}
+.meta b{color:var(--muted); font-weight:600}
+
+nav.toc{background:var(--paper); border:1px solid var(--hair); border-radius:12px;
+  padding:18px 22px; margin:26px 0 8px; box-shadow:var(--shadow)}
+nav.toc p{margin:0 0 10px; font-size:.72rem; text-transform:uppercase; letter-spacing:.12em;
+  color:var(--faint); font-weight:700}
+nav.toc ol{margin:0; padding-left:1.3em; columns:2; column-gap:32px}
+@media (max-width:680px){ nav.toc ol{columns:1} }
+nav.toc li{margin:.28em 0; font-size:.95rem}
+nav.toc a{color:var(--ink); text-decoration:none; border-bottom:1px solid transparent}
+nav.toc a:hover{color:var(--accent-ink); border-bottom-color:var(--accent)}
+
+h2{font-size:1.42rem; letter-spacing:-.015em; margin:52px 0 8px; font-weight:780;
+  padding-bottom:9px; border-bottom:1px solid var(--hair-2); scroll-margin-top:20px}
+h2 .num{color:var(--faint); font-weight:700; font-size:.85em; margin-right:.45em;
+  font-variant-numeric:tabular-nums}
+h3{font-size:1.08rem; margin:30px 0 6px; font-weight:700}
+h4{font-size:.97rem; margin:20px 0 4px; font-weight:700; color:var(--steel)}
+p{margin:.7em 0}
+ul,ol{padding-left:1.25em} li{margin:.32em 0}
+
+.lede{font-size:1.06rem; color:var(--muted); max-width:64ch}
+
+/* diagramas */
+figure{margin:24px 0 8px; background:var(--paper); border:1px solid var(--hair);
+  border-radius:12px; padding:22px 22px 14px; box-shadow:var(--shadow); overflow-x:auto}
+figure svg{display:block; width:100%; height:auto; min-width:600px}
+figcaption{margin-top:14px; font-size:.87rem; color:var(--faint); border-top:1px solid var(--hair);
+  padding-top:11px; line-height:1.5}
+figcaption b{color:var(--muted)}
+.svg-box{fill:var(--paper); stroke:var(--hair-2); stroke-width:1.5}
+.svg-box-erp{fill:var(--accent-wash); stroke:var(--accent); stroke-width:2}
+.svg-box-ext{fill:var(--ti-wash); stroke:var(--ti); stroke-width:1.5}
+.svg-box-warn{fill:var(--warn-wash); stroke:var(--warn); stroke-width:1.5}
+.svg-t{fill:var(--ink); font-family:var(--sans); font-size:13px; font-weight:650}
+.svg-t-sm{fill:var(--muted); font-family:var(--sans); font-size:11px; font-weight:500}
+.svg-t-mono{fill:var(--faint); font-family:var(--mono); font-size:10.5px}
+.svg-t-lane{fill:var(--faint); font-family:var(--sans); font-size:10.5px; font-weight:700;
+  letter-spacing:.1em; text-transform:uppercase}
+.svg-arrow{stroke:var(--hair-2); stroke-width:1.8; fill:none}
+.svg-arrow-acc{stroke:var(--accent); stroke-width:2; fill:none}
+.svg-lane{fill:none; stroke:var(--hair); stroke-width:1; stroke-dasharray:4 4}
+
+/* tablas */
+.tablewrap{overflow-x:auto; margin:16px 0 8px; border:1px solid var(--hair);
+  border-radius:12px; background:var(--paper); box-shadow:var(--shadow)}
+table{border-collapse:collapse; width:100%; min-width:700px; font-size:.92rem}
+thead th{background:var(--steel); color:var(--paper); text-align:left; padding:11px 14px;
+  font-weight:650; font-size:.76rem; text-transform:uppercase; letter-spacing:.07em}
+tbody td{padding:11px 14px; border-top:1px solid var(--hair); vertical-align:top; color:var(--muted)}
+tbody td:first-child{color:var(--ink); font-weight:600}
+tbody tr:nth-child(even) td{background:color-mix(in srgb, var(--ground) 45%, transparent)}
+.nowrap{white-space:nowrap}
+
+.badge{display:inline-flex; align-items:center; gap:5px; font-size:.69rem; font-weight:700;
+  text-transform:uppercase; letter-spacing:.05em; padding:2px 8px; border-radius:999px;
+  border:1px solid transparent; white-space:nowrap}
+.badge::before{content:""; width:6px; height:6px; border-radius:50%; background:currentColor; flex:0 0 auto}
+.b-ok{background:var(--accent-wash); color:var(--accent-ink); border-color:color-mix(in srgb,var(--accent) 35%,transparent)}
+.b-cli{background:var(--ti-wash); color:var(--ti); border-color:color-mix(in srgb,var(--ti) 32%,transparent)}
+.b-warn{background:var(--warn-wash); color:var(--warn); border-color:color-mix(in srgb,var(--warn) 35%,transparent)}
+.b-ext{background:var(--bi-wash); color:var(--bi); border-color:color-mix(in srgb,var(--bi) 32%,transparent)}
+
+.callout{background:var(--paper); border:1px solid var(--hair); border-left:4px solid var(--ti);
+  border-radius:10px; padding:17px 21px; margin:22px 0; box-shadow:var(--shadow)}
+.callout.warn{border-left-color:var(--warn)}
+.callout.acc{border-left-color:var(--accent)}
+.callout h4{margin:0 0 6px; font-size:1rem; color:var(--ink)}
+.callout p{margin:.45em 0; color:var(--muted); font-size:.97rem}
+.callout p:last-child{margin-bottom:0}
+
+.tiles{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin:22px 0 4px}
+@media (max-width:760px){ .tiles{grid-template-columns:1fr} }
+.tile{background:var(--paper); border:1px solid var(--hair); border-radius:12px;
+  padding:18px 20px; box-shadow:var(--shadow)}
+.tile .k{font-size:.7rem; text-transform:uppercase; letter-spacing:.1em; font-weight:700;
+  color:var(--faint); margin-bottom:8px}
+.tile .n{font-size:1.6rem; font-weight:800; letter-spacing:-.02em; line-height:1.15;
+  font-variant-numeric:tabular-nums; margin-bottom:6px}
+.tile.a .n{color:var(--accent-ink)} .tile.b .n{color:var(--ti)} .tile.c .n{color:var(--bi)}
+.tile p{margin:0; font-size:.9rem; color:var(--muted); line-height:1.5}
+
+code{font-family:var(--mono); font-size:.85em; background:color-mix(in srgb,var(--steel) 10%,transparent);
+  padding:1.5px 5px; border-radius:4px; color:var(--ink)}
+.path{font-family:var(--mono); font-size:.84em; color:var(--muted); word-break:break-all}
+
+footer{margin-top:60px; padding-top:22px; border-top:1px solid var(--hair);
+  font-size:.85rem; color:var(--faint)}
+footer b{color:var(--muted)}
+
+@media print{
+  body{background:#fff; font-size:11pt}
+  .wrap{max-width:none; padding:0}
+  nav.toc{break-inside:avoid}
+  h2{break-after:avoid} figure,.callout,.tablewrap{break-inside:avoid}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="masthead">
+  <div class="brandbar">
+    <div class="brandmark"><span>C</span></div>
+    <div class="brandname">Capaz <em>Consultoría</em></div>
+  </div>
+  <p class="eyebrow">Documento técnico · Perenne</p>
+  <h1>Manual técnico de arquitectura</h1>
+  <p class="sub">Cómo están construidos, cómo se ejecutan y de qué dependen los tres sistemas
+  adyacentes a Steelhead desarrollados para Ecoplating. Incluye los diagramas de arquitectura y el
+  inventario consolidado de dependencias externas.</p>
+  <div class="meta">
+    <span><b>Autor:</b> Omar Viazcán Gómez · Capaz Consultoría</span>
+    <span><b>Audiencia:</b> Jefe de TI y equipo técnico</span>
+    <span><b>Fecha:</b> 30 de julio de 2026</span>
+  </div>
+</header>
+
+<nav class="toc">
+  <p>Contenido</p>
+  <ol>
+    <li><a href="#s1">Panorama: qué es cada sistema</a></li>
+    <li><a href="#s2">Diagrama de ejecución</a></li>
+    <li><a href="#s3">Diagrama de publicación</a></li>
+    <li><a href="#s4">SteelheadAutomator</a></li>
+    <li><a href="#s5">Reportes SH</a></li>
+    <li><a href="#s6">Steelhead Power Tools</a></li>
+    <li><a href="#s7">Modelo de seguridad</a></li>
+    <li><a href="#s8">Dependencias externas</a></li>
+    <li><a href="#s9">Procesos automáticos programados</a></li>
+    <li><a href="#s10">Puntos de decisión para Ecoplating</a></li>
+  </ol>
+</nav>
+
+<!-- ============ 1 ============ -->
+<h2 id="s1"><span class="num">1</span>Panorama: qué es cada sistema</h2>
+
+<p class="lede">Los tres sistemas comparten un rasgo que explica casi todas sus decisiones de diseño:
+<strong>ninguno tiene servidor propio</strong>. No hay backend de Capaz Consultoría, ni base de datos
+propia, ni servicio que Ecoplating deba hospedar o pagar. Los tres se apoyan sobre el ERP Steelhead y
+sobre la sesión del propio usuario.</p>
+
+<div class="tiles">
+  <div class="tile a">
+    <div class="k">Captura</div>
+    <div class="n">SteelheadAutomator</div>
+    <p>Extensión de navegador que automatiza la captura repetitiva dentro del ERP.
+    <strong>44 automatizaciones</strong> registradas, 28 de ellas se activan solas según la pantalla.</p>
+  </div>
+  <div class="tile b">
+    <div class="k">Análisis</div>
+    <div class="n">Reportes SH</div>
+    <p>Reportes y tableros analíticos sobre los datos del ERP.
+    <strong>111 reportes</strong> publicados en Toluca y <strong>103</strong> en Monterrey.</p>
+  </div>
+  <div class="tile c">
+    <div class="k">Plataforma</div>
+    <div class="n">Power Tools</div>
+    <p>Automatizaciones de bajo código que corren <em>dentro</em> del ERP.
+    <strong>24 hooks</strong> en TypeScript: facturación, PDF, importaciones.</p>
+  </div>
+</div>
+
+<div class="callout acc">
+  <h4>La consecuencia práctica de no tener servidor</h4>
+  <p>No hay que administrar infraestructura, no hay costo recurrente de hospedaje, no hay superficie
+  de ataque propia y no hay respaldos de base de datos que mantener: <strong>el dato siempre vive en
+  Steelhead</strong>, que es quien responde por él. A cambio, los tres sistemas heredan la
+  disponibilidad del ERP: si Steelhead está caído, ninguno funciona.</p>
+</div>
+
+<!-- ============ 2 ============ -->
+<h2 id="s2"><span class="num">2</span>Diagrama de ejecución</h2>
+<p class="measure">Quién habla con quién <strong>mientras alguien trabaja</strong>. Todo ocurre en el
+navegador del usuario y contra el ERP; no hay tráfico hacia servidores de Capaz Consultoría.</p>
+
+<figure>
+<svg viewBox="0 0 900 500" role="img" aria-label="Diagrama de arquitectura de ejecución">
+  <defs>
+    <marker id="ar" markerWidth="9" markerHeight="9" refX="7.5" refY="3.2" orient="auto">
+      <path d="M0,0 L7,3.2 L0,6.4 z" fill="var(--hair-2)"/>
+    </marker>
+    <marker id="ara" markerWidth="9" markerHeight="9" refX="7.5" refY="3.2" orient="auto">
+      <path d="M0,0 L7,3.2 L0,6.4 z" fill="var(--accent)"/>
+    </marker>
+  </defs>
+
+  <!-- carril: personas -->
+  <text class="svg-t-lane" x="8" y="26">Personas</text>
+  <rect class="svg-box" x="70"  y="38" width="200" height="62" rx="9"/>
+  <text class="svg-t"    x="170" y="63" text-anchor="middle">Key User · oficina</text>
+  <text class="svg-t-sm" x="170" y="81" text-anchor="middle">Chrome en PC</text>
+
+  <rect class="svg-box" x="350" y="38" width="200" height="62" rx="9"/>
+  <text class="svg-t"    x="450" y="63" text-anchor="middle">Operador · piso</text>
+  <text class="svg-t-sm" x="450" y="81" text-anchor="middle">Safari en iPad</text>
+
+  <rect class="svg-box" x="630" y="38" width="200" height="62" rx="9"/>
+  <text class="svg-t"    x="730" y="63" text-anchor="middle">Dirección y análisis</text>
+  <text class="svg-t-sm" x="730" y="81" text-anchor="middle">Navegador, sin extensión</text>
+
+  <!-- carril: nuestras herramientas -->
+  <text class="svg-t-lane" x="8" y="150">Herramientas</text>
+  <rect class="svg-box-ext" x="70"  y="162" width="200" height="66" rx="9"/>
+  <text class="svg-t"    x="170" y="187" text-anchor="middle">Extensión Chrome</text>
+  <text class="svg-t-sm" x="170" y="205" text-anchor="middle">44 automatizaciones</text>
+  <text class="svg-t-mono" x="170" y="220" text-anchor="middle">SteelheadAutomator</text>
+
+  <rect class="svg-box-ext" x="350" y="162" width="200" height="66" rx="9"/>
+  <text class="svg-t"    x="450" y="187" text-anchor="middle">Extensión Safari</text>
+  <text class="svg-t-sm" x="450" y="205" text-anchor="middle">32 automatizaciones</text>
+  <text class="svg-t-mono" x="450" y="220" text-anchor="middle">bundle iPad</text>
+
+  <rect class="svg-box-ext" x="630" y="162" width="200" height="66" rx="9"/>
+  <text class="svg-t"    x="730" y="187" text-anchor="middle">Reportes y tableros</text>
+  <text class="svg-t-sm" x="730" y="205" text-anchor="middle">se ven dentro del ERP</text>
+  <text class="svg-t-mono" x="730" y="220" text-anchor="middle">Reportes SH</text>
+
+  <!-- ERP -->
+  <text class="svg-t-lane" x="8" y="296">Plataforma</text>
+  <rect class="svg-box-erp" x="70" y="300" width="760" height="86" rx="11"/>
+  <text class="svg-t"    x="450" y="329" text-anchor="middle" style="font-size:15px">ERP Steelhead</text>
+  <text class="svg-t-mono" x="450" y="347" text-anchor="middle">app.gosteelhead.com</text>
+  <text class="svg-t-sm" x="450" y="368" text-anchor="middle">Dominio TLC (Toluca) · Dominio MTY (Monterrey) — datos, permisos y sesión del usuario</text>
+
+  <!-- Power tools dentro del ERP -->
+  <rect class="svg-box-ext" x="300" y="416" width="300" height="58" rx="9"/>
+  <text class="svg-t"    x="450" y="440" text-anchor="middle">Power Tools · 24 hooks</text>
+  <text class="svg-t-sm" x="450" y="458" text-anchor="middle">corren DENTRO del ERP, no en el navegador</text>
+
+  <!-- flechas personas -> herramientas -->
+  <line class="svg-arrow" x1="170" y1="100" x2="170" y2="158" marker-end="url(#ar)"/>
+  <line class="svg-arrow" x1="450" y1="100" x2="450" y2="158" marker-end="url(#ar)"/>
+  <line class="svg-arrow" x1="730" y1="100" x2="730" y2="158" marker-end="url(#ar)"/>
+  <!-- herramientas -> ERP -->
+  <line class="svg-arrow-acc" x1="170" y1="228" x2="170" y2="296" marker-end="url(#ara)"/>
+  <line class="svg-arrow-acc" x1="450" y1="228" x2="450" y2="296" marker-end="url(#ara)"/>
+  <line class="svg-arrow-acc" x1="730" y1="228" x2="730" y2="296" marker-end="url(#ara)"/>
+  <!-- ERP -> power tools -->
+  <line class="svg-arrow-acc" x1="450" y1="386" x2="450" y2="412" marker-end="url(#ara)"/>
+
+  <text class="svg-t-mono" x="196" y="268">sesión del usuario</text>
+  <text class="svg-t-mono" x="756" y="268" text-anchor="end">consultas</text>
+</svg>
+<figcaption><b>Lectura:</b> las tres herramientas actúan siempre <b>con la sesión y los permisos del
+usuario que las usa</b>. Ninguna tiene credenciales propias ni puede hacer nada que ese usuario no
+pudiera hacer a mano en el ERP. Los Power Tools son la excepción de ubicación: no viven en el
+navegador, se ejecutan dentro de Steelhead.</figcaption>
+</figure>
+
+<!-- ============ 3 ============ -->
+<h2 id="s3"><span class="num">3</span>Diagrama de publicación</h2>
+<p class="measure">Cómo llega un cambio a producción. Esta es la parte que más suele sorprender en una
+auditoría, porque cada sistema se publica por una vía distinta y con un mecanismo de control distinto.</p>
+
+<figure>
+<svg viewBox="0 0 900 470" role="img" aria-label="Diagrama de la cadena de publicación">
+  <defs>
+    <marker id="ar2" markerWidth="9" markerHeight="9" refX="7.5" refY="3.2" orient="auto">
+      <path d="M0,0 L7,3.2 L0,6.4 z" fill="var(--hair-2)"/>
+    </marker>
+    <marker id="ar2a" markerWidth="9" markerHeight="9" refX="7.5" refY="3.2" orient="auto">
+      <path d="M0,0 L7,3.2 L0,6.4 z" fill="var(--accent)"/>
+    </marker>
+  </defs>
+
+  <!-- origen -->
+  <rect class="svg-box" x="20" y="30" width="180" height="76" rx="9"/>
+  <text class="svg-t"    x="110" y="56" text-anchor="middle">Repositorios Git</text>
+  <text class="svg-t-sm" x="110" y="74" text-anchor="middle">código fuente + historial</text>
+  <text class="svg-t-mono" x="110" y="92" text-anchor="middle">GitHub (3 repos)</text>
+
+  <!-- fila 1: extension -->
+  <text class="svg-t-lane" x="248" y="24">Ruta 1 — Extensión</text>
+  <rect class="svg-box-warn" x="250" y="30" width="150" height="76" rx="9"/>
+  <text class="svg-t"    x="325" y="56" text-anchor="middle">Firma digital</text>
+  <text class="svg-t-sm" x="325" y="74" text-anchor="middle">ECDSA P-256</text>
+  <text class="svg-t-mono" x="325" y="92" text-anchor="middle">Google Cloud KMS</text>
+
+  <rect class="svg-box" x="450" y="30" width="180" height="76" rx="9"/>
+  <text class="svg-t"    x="540" y="56" text-anchor="middle">GitHub Pages</text>
+  <text class="svg-t-sm" x="540" y="74" text-anchor="middle">89 scripts + configuración</text>
+  <text class="svg-t-mono" x="540" y="92" text-anchor="middle">rama gh-pages</text>
+
+  <rect class="svg-box-erp" x="680" y="30" width="200" height="76" rx="9"/>
+  <text class="svg-t"    x="780" y="56" text-anchor="middle">Navegador del usuario</text>
+  <text class="svg-t-sm" x="780" y="74" text-anchor="middle">verifica la firma</text>
+  <text class="svg-t-mono" x="780" y="92" text-anchor="middle">y sólo entonces ejecuta</text>
+
+  <line class="svg-arrow" x1="200" y1="68" x2="246" y2="68" marker-end="url(#ar2)"/>
+  <line class="svg-arrow" x1="400" y1="68" x2="446" y2="68" marker-end="url(#ar2)"/>
+  <line class="svg-arrow-acc" x1="630" y1="68" x2="676" y2="68" marker-end="url(#ar2a)"/>
+
+  <!-- fila 2: reportes -->
+  <text class="svg-t-lane" x="248" y="164">Ruta 2 — Reportes</text>
+  <rect class="svg-box" x="250" y="170" width="150" height="76" rx="9"/>
+  <text class="svg-t"    x="325" y="196" text-anchor="middle">SQL versionado</text>
+  <text class="svg-t-sm" x="325" y="214" text-anchor="middle">probado contra</text>
+  <text class="svg-t-mono" x="325" y="232" text-anchor="middle">copia local DuckDB</text>
+
+  <rect class="svg-box" x="450" y="170" width="180" height="76" rx="9"/>
+  <text class="svg-t"    x="540" y="196" text-anchor="middle">Publicación por script</text>
+  <text class="svg-t-sm" x="540" y="214" text-anchor="middle">TLC y MTY en paralelo</text>
+  <text class="svg-t-mono" x="540" y="232" text-anchor="middle">push_query.py</text>
+
+  <rect class="svg-box-erp" x="680" y="170" width="200" height="76" rx="9"/>
+  <text class="svg-t"    x="780" y="196" text-anchor="middle">Módulo de reportes</text>
+  <text class="svg-t-sm" x="780" y="214" text-anchor="middle">del propio ERP</text>
+  <text class="svg-t-mono" x="780" y="232" text-anchor="middle">visible al instante</text>
+
+  <line class="svg-arrow" x1="110" y1="106" x2="110" y2="200" marker-end="url(#ar2)"/>
+  <line class="svg-arrow" x1="130" y1="208" x2="246" y2="208" marker-end="url(#ar2)"/>
+  <line class="svg-arrow" x1="400" y1="208" x2="446" y2="208" marker-end="url(#ar2)"/>
+  <line class="svg-arrow-acc" x1="630" y1="208" x2="676" y2="208" marker-end="url(#ar2a)"/>
+
+  <!-- fila 3: power tools -->
+  <text class="svg-t-lane" x="248" y="304">Ruta 3 — Power Tools</text>
+  <rect class="svg-box" x="250" y="310" width="150" height="76" rx="9"/>
+  <text class="svg-t"    x="325" y="336" text-anchor="middle">TypeScript + pruebas</text>
+  <text class="svg-t-sm" x="325" y="354" text-anchor="middle">lógica probada aparte</text>
+  <text class="svg-t-mono" x="325" y="372" text-anchor="middle">24 hooks</text>
+
+  <rect class="svg-box" x="450" y="310" width="180" height="76" rx="9"/>
+  <text class="svg-t"    x="540" y="336" text-anchor="middle">Publicación por script</text>
+  <text class="svg-t-sm" x="540" y="354" text-anchor="middle">compila y sube</text>
+  <text class="svg-t-mono" x="540" y="372" text-anchor="middle">lowcode_sync.py</text>
+
+  <rect class="svg-box-erp" x="680" y="310" width="200" height="76" rx="9"/>
+  <text class="svg-t"    x="780" y="336" text-anchor="middle">Editor low-code</text>
+  <text class="svg-t-sm" x="780" y="354" text-anchor="middle">del propio ERP</text>
+  <text class="svg-t-mono" x="780" y="372" text-anchor="middle">la última versión corre</text>
+
+  <line class="svg-arrow" x1="110" y1="106" x2="110" y2="340" marker-end="url(#ar2)"/>
+  <line class="svg-arrow" x1="130" y1="348" x2="246" y2="348" marker-end="url(#ar2)"/>
+  <line class="svg-arrow" x1="400" y1="348" x2="446" y2="348" marker-end="url(#ar2)"/>
+  <line class="svg-arrow-acc" x1="630" y1="348" x2="676" y2="348" marker-end="url(#ar2a)"/>
+
+  <text class="svg-t-mono" x="20" y="440">Las tres rutas parten del mismo origen versionado y terminan dentro del ERP.</text>
+  <text class="svg-t-mono" x="20" y="458">Sólo la ruta 1 pasa por infraestructura externa (GitHub Pages) — por eso es la única firmada.</text>
+</svg>
+<figcaption><b>Por qué tres rutas distintas.</b> Los reportes y los Power Tools se guardan
+<b>dentro</b> de Steelhead, así que basta con subirlos por su interfaz. La extensión no: el navegador
+tiene que descargar su código de algún lado, y ese "algún lado" es infraestructura externa. Esa
+diferencia es la que obliga a firmar criptográficamente la ruta 1.</figcaption>
+</figure>
+
+<!-- ============ 4 ============ -->
+<h2 id="s4"><span class="num">4</span>SteelheadAutomator — extensión de navegador</h2>
+
+<h3>Qué resuelve</h3>
+<p class="measure">Automatiza captura repetitiva que el ERP exige hacer a mano: cargas masivas de
+cotizaciones y números de parte, autollenado de facturas y recepciones, candados que impiden guardar
+datos incompletos, columnas de información adicional en los listados y generación de etiquetas.</p>
+
+<h3>La decisión de diseño que hay que entender</h3>
+<p class="measure">La extensión es un <strong>cascarón</strong>. El código que se publica en la tienda
+de Chrome casi no contiene lógica: al abrirse, descarga las automatizaciones desde GitHub Pages y las
+ejecuta. Es lo que en la documentación se llama «cascarón y cerebro remoto».</p>
+
+<div class="callout">
+  <h4>Por qué se construyó así, y qué precio tiene</h4>
+  <p><strong>El beneficio:</strong> corregir un error o publicar una automatización nueva toma minutos
+  y no requiere que nadie actualice nada en su equipo. Sin esto, cada ajuste exigiría republicar en la
+  tienda de Chrome, esperar su revisión y perseguir a cada usuario para que actualice. Con más de 40
+  automatizaciones sobre un ERP que cambia por su cuenta, ese ritmo sería inviable.</p>
+  <p><strong>El precio:</strong> si alguien lograra alterar el código publicado en GitHub Pages, ese
+  código se ejecutaría en el navegador de todos los usuarios. Es un riesgo real y es la razón de ser
+  del modelo de firma digital de la sección 7. <strong>Es también la razón por la que la extensión no
+  se distribuye públicamente en la Chrome Web Store</strong>, sino en modo no listado.</p>
+</div>
+
+<h3>Cifras verificadas</h3>
+<div class="tablewrap">
+<table>
+<thead><tr><th>Concepto</th><th>Valor</th><th>Significado</th></tr></thead>
+<tbody>
+  <tr><td>Automatizaciones registradas</td><td class="nowrap">44</td><td>Entradas en el catálogo <code>config.json</code>.</td></tr>
+  <tr><td>Se activan solas</td><td class="nowrap">28</td><td>Se cargan según la pantalla del ERP, sin que el usuario haga nada.</td></tr>
+  <tr><td>Con acción en el menú</td><td class="nowrap">39</td><td>Se disparan desde el ícono de la extensión.</td></tr>
+  <tr><td>Archivos de código</td><td class="nowrap">89</td><td>Scripts únicos servidos desde GitHub Pages.</td></tr>
+  <tr><td>Archivos firmados</td><td class="nowrap">89</td><td><span class="badge b-ok">cobertura 100 %</span> Todos verifican firma antes de ejecutarse.</td></tr>
+  <tr><td>Versión del catálogo</td><td class="nowrap">1.11.38</td><td>Se incrementa en cada publicación; es el mecanismo de actualización.</td></tr>
+  <tr><td>Versión de la extensión</td><td class="nowrap">1.7.1</td><td>Sólo cambia cuando se modifica el cascarón (poco frecuente).</td></tr>
+</tbody>
+</table>
+</div>
+
+<h3>Variante para iPad</h3>
+<p class="measure">El piso de planta usa iPads, donde Chrome no admite extensiones. Existe una versión
+para Safari que empaqueta 32 de las automatizaciones en un solo archivo y se instala como app,
+compilada con Xcode. A diferencia de la de Chrome, <strong>esta versión no se actualiza sola</strong>:
+cada cambio exige recompilar y redistribuir. Es una diferencia operativa importante para planear
+cualquier ajuste que afecte al piso.</p>
+
+<!-- ============ 5 ============ -->
+<h2 id="s5"><span class="num">5</span>Reportes SH — analítica</h2>
+
+<h3>Qué resuelve</h3>
+<p class="measure">Los reportes que Operaciones y Dirección consultan: producción, OEE, facturación,
+cuentas por cobrar y pagar, inventario, consumo de metales y tableros directivos. Se ven dentro del
+propio módulo de reportes del ERP; el usuario final no sale de Steelhead ni instala nada.</p>
+
+<h3>Cómo se desarrolla un reporte, y por qué hay una copia local</h3>
+<p class="measure">Escribir consultas directamente contra el ERP productivo sería lento y arriesgado.
+En su lugar existe una <strong>copia local de sólo lectura</strong> de los datos, en formato DuckDB,
+contra la que se desarrolla y prueba. Cuando la consulta está lista, se publica al ERP y a partir de
+ahí corre contra los datos reales y en vivo.</p>
+
+<div class="callout acc">
+  <h4>La copia local no es un sistema paralelo</h4>
+  <p>Conviene decirlo explícitamente porque suele malinterpretarse en auditorías: la copia DuckDB es
+  un <strong>banco de pruebas del desarrollador</strong>, no una fuente de datos para nadie. Ningún
+  usuario la consulta, ningún reporte productivo la usa y ninguna decisión de negocio sale de ella.
+  Los reportes que ve la gente corren <strong>siempre</strong> contra los datos vivos del ERP. Si la
+  copia local se perdiera por completo, no se perdería ningún dato: se regenera desde el ERP.</p>
+</div>
+
+<h3>Los dos dominios</h3>
+<p class="measure">Ecoplating opera dos dominios en Steelhead: <strong>TLC</strong> (Toluca, en
+operación) y <strong>MTY</strong> (Monterrey). La regla del proyecto es que todo reporte se publica en
+ambos. Hoy hay <strong>111 reportes en Toluca y 103 en Monterrey</strong>; la diferencia corresponde a
+reportes cuyo equivalente en Monterrey aún no aplica por falta de datos de operación.</p>
+
+<!-- ============ 6 ============ -->
+<h2 id="s6"><span class="num">6</span>Steelhead Power Tools — automatizaciones internas</h2>
+
+<h3>Qué resuelve</h3>
+<p class="measure">Steelhead permite insertar código propio en ciertos puntos de su flujo — lo que su
+documentación llama <em>low-code</em>. Ahí viven <strong>24 automatizaciones</strong> que actúan al
+crear una factura, generar un PDF, importar un archivo o registrar consumo de inventario. Corren
+dentro del ERP, en el servidor de Steelhead, no en el navegador del usuario.</p>
+
+<h3>La regla que gobierna todo el repositorio</h3>
+<div class="callout warn">
+  <h4>El mismo código debe funcionar en Toluca y en Monterrey, sin editarlo</h4>
+  <p>Los identificadores internos del ERP <strong>son distintos en cada dominio</strong>: la unidad
+  «KGM Kilogramo» tiene un número en Toluca y otro en Monterrey. Un hook que se refiera a esos números
+  directamente funciona en una planta y falla en la otra, <strong>en silencio</strong>.</p>
+  <p>Por eso la regla es referirse a las entidades <strong>por su nombre</strong>, que sí es estable
+  entre dominios, y nunca por su número. Cada módulo lleva una prueba automática que verifica
+  precisamente esto. Es el punto que hay que revisar con más cuidado en cualquier modificación futura.</p>
+</div>
+
+<h3>Cómo se prueba algo que corre dentro del ERP</h3>
+<p class="measure">El editor de Steelhead recibe un archivo único y no permite dividir el código en
+módulos, lo que impediría probarlo. La solución adoptada: la lógica se escribe y se prueba <em>fuera</em>,
+en una biblioteca con pruebas automáticas, y luego se copia dentro del archivo que se sube.
+<strong>Consecuencia para quien mantenga esto:</strong> al cambiar la lógica hay que cambiarla en los
+dos lugares. Está documentado en el repositorio y es la causa más probable de un error futuro.</p>
+
+<!-- ============ 7 ============ -->
+<h2 id="s7"><span class="num">7</span>Modelo de seguridad</h2>
+
+<h3>Autenticación: no hay credenciales que administrar</h3>
+<p class="measure">Ninguno de los tres sistemas guarda usuarios, contraseñas ni tokens propios. Todos
+actúan con la <strong>sesión del usuario que ya inició sesión en Steelhead</strong> y quedan sujetos a
+sus permisos. Un operador sin permiso para editar precios tampoco puede editarlos a través de la
+extensión: el ERP lo rechaza igual. Para efectos de control de accesos, <strong>administrar quién
+puede hacer qué se sigue haciendo en Steelhead</strong>, exactamente como antes.</p>
+
+<h3>Integridad del código remoto: la firma digital</h3>
+<p class="measure">Como la extensión descarga su código de GitHub Pages, hizo falta un mecanismo que
+garantice que ese código es el legítimo. La solución es una <strong>firma criptográfica ECDSA
+P-256</strong>:</p>
+
+<ol class="measure">
+  <li>Al publicar, cada archivo se firma con una <strong>llave privada</strong> que nunca sale de
+  Google Cloud KMS.</li>
+  <li>La <strong>llave pública</strong> viene incrustada en la extensión instalada en cada equipo.</li>
+  <li>Antes de ejecutar cualquier archivo descargado, la extensión verifica la firma. Si no coincide,
+  <strong>no lo ejecuta</strong>.</li>
+</ol>
+
+<div class="callout warn">
+  <h4>Por qué esto importa para la continuidad</h4>
+  <p>La llave privada vive en el proyecto de Google Cloud <span class="path">steelhead-ecoplating</span>,
+  que <strong>es de Ecoplating</strong>. Transferir la capacidad de publicar no requiere mover ni copiar
+  la llave: <strong>basta con cambiar quién tiene permiso de usarla</strong> en la consola de Google
+  Cloud. Es una operación de minutos y es el mecanismo de handoff previsto por diseño.</p>
+  <p>El corolario también es cierto y hay que decirlo: <strong>quien tenga ese permiso puede publicar
+  código que se ejecutará en el navegador de todos los usuarios.</strong> Es el permiso más sensible de
+  todo el conjunto y debe tratarse como tal en la matriz de responsabilidades.</p>
+</div>
+
+<!-- ============ 8 ============ -->
+<h2 id="s8"><span class="num">8</span>Dependencias externas</h2>
+<p class="measure">Inventario consolidado de todo componente de terceros del que dependen los tres
+sistemas, con su titular actual y el efecto concreto de que falle. Es la tabla que solicitó la
+revisión de recepción.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Dependencia</th><th>Para qué sirve</th><th>Titular hoy</th><th>Si se cae o se pierde</th></tr></thead>
+<tbody>
+  <tr>
+    <td>ERP Steelhead<br><span class="path">app.gosteelhead.com</span></td>
+    <td>La plataforma. Origen y destino de todos los datos.</td>
+    <td><span class="badge b-cli">Ecoplating</span><br><span style="font-size:.85em">contrato con Steelhead</span></td>
+    <td><b>Todo se detiene</b>, incluida la operación normal del ERP. Nada que los tres sistemas puedan mitigar.</td>
+  </tr>
+  <tr>
+    <td>GitHub<br><span style="font-size:.85em">repositorios de código</span></td>
+    <td>Guarda el código fuente y su historial completo.</td>
+    <td><span class="badge b-warn">Consultor</span><br><span style="font-size:.85em">cuenta personal</span></td>
+    <td>Lo instalado <b>sigue funcionando</b>. Se pierde la capacidad de hacer cambios hasta restaurar desde una copia local. <b>Punto de decisión (§10).</b></td>
+  </tr>
+  <tr>
+    <td>GitHub Pages<br><span class="path">oviazcan.github.io/SteelheadAutomator</span></td>
+    <td>Sirve los 89 archivos de la extensión, el catálogo, el instalador y las plantillas de carga masiva.</td>
+    <td><span class="badge b-warn">Consultor</span><br><span style="font-size:.85em">misma cuenta</span></td>
+    <td><b>La extensión deja de cargar sus automatizaciones.</b> El ERP sigue operando normal; se pierde la automatización hasta restaurar. <b>Punto de decisión (§10).</b></td>
+  </tr>
+  <tr>
+    <td>Google Cloud KMS<br><span class="path">proyecto steelhead-ecoplating</span></td>
+    <td>Custodia la llave privada que firma el código de la extensión.</td>
+    <td><span class="badge b-ok">Ecoplating</span></td>
+    <td>No se puede <b>publicar</b> hasta restablecerlo; lo ya publicado sigue funcionando. La llave no se puede extraer ni copiar, por diseño.</td>
+  </tr>
+  <tr>
+    <td>Google Chrome<br><span style="font-size:.85em">y Chrome Web Store</span></td>
+    <td>Navegador donde corre la extensión; la tienda la distribuye en modo <b>no listado</b>.</td>
+    <td><span class="badge b-ext">Google</span></td>
+    <td>Un cambio de reglas de la tienda podría obligar a cambiar el método de distribución. Riesgo conocido, sin impacto operativo inmediato.</td>
+  </tr>
+  <tr>
+    <td>Apple<br><span style="font-size:.85em">Xcode y cuenta de desarrollador</span></td>
+    <td>Compila y firma la extensión de Safari para las iPads de piso.</td>
+    <td><span class="badge b-warn">Consultor</span><br><span style="font-size:.85em">equipo y cuenta</span></td>
+    <td>Lo instalado en las iPads sigue funcionando; <b>no se pueden publicar cambios</b> para piso. <b>Punto de decisión (§10).</b></td>
+  </tr>
+  <tr>
+    <td>PDFGeneratorAPI</td>
+    <td>Servicio que arma los PDF (certificados, listas de empaque, cotizaciones) que alimentan los hooks.</td>
+    <td><span class="badge b-cli">Ecoplating</span><br><span style="font-size:.85em">vía Steelhead</span></td>
+    <td>Los PDF dejan de generarse. Los hooks siguen calculando bien: es la plantilla la que falta, no el dato.</td>
+  </tr>
+  <tr>
+    <td>DuckDB<br><span style="font-size:.85em">biblioteca local</span></td>
+    <td>Motor de la copia local de datos para desarrollar reportes.</td>
+    <td><span class="badge b-ok">Sin titular</span><br><span style="font-size:.85em">software libre</span></td>
+    <td><b>Ningún efecto en producción.</b> Sólo afecta la comodidad de desarrollar reportes nuevos.</td>
+  </tr>
+  <tr>
+    <td>GitHub Actions<br><span style="font-size:.85em">vigía del latido</span></td>
+    <td>Hospeda en la nube el proceso que vigila que la vigilancia de compatibilidad siga viva.</td>
+    <td><span class="badge b-warn">Consultor</span><br><span style="font-size:.85em">mismo repositorio</span></td>
+    <td>Se pierde la detección de que la vigilancia principal se detuvo. Se resuelve junto con la titularidad del repositorio (10.1).</td>
+  </tr>
+  <tr>
+    <td>Equipo que corre los procesos automáticos</td>
+    <td>Ejecuta los tres trabajos programados de la sección 9.</td>
+    <td><span class="badge b-warn">Consultor</span><br><span style="font-size:.85em">equipo personal</span></td>
+    <td>Se detienen los tres procesos locales. La detención de la vigilancia <b>sí se detecta</b> por el vigía en la nube; la de los otros dos no. <b>Punto de decisión (§10).</b></td>
+  </tr>
+</tbody>
+</table>
+</div>
+
+<div class="callout">
+  <h4>Lectura de conjunto</h4>
+  <p>De diez dependencias, <strong>tres están a nombre de Ecoplating</strong> (el ERP, la llave de
+  firma, el generador de PDF), <strong>dos son de proveedores globales</strong> sin alternativa
+  práctica (Google, Apple) y <strong>cinco están hoy a nombre del consultor</strong>: los
+  repositorios, el sitio que sirve la extensión, el vigía en la nube, la cuenta de compilación para
+  iPad y el equipo que corre los procesos automáticos.</p>
+  <p>Esas cinco son migrables y ninguna requiere reescribir código. Las trato una por una en la
+  sección 10, porque <strong>son exactamente las decisiones que corresponden a Ecoplating</strong> y no
+  al proveedor.</p>
+</div>
+
+<!-- ============ 9 ============ -->
+<h2 id="s9"><span class="num">9</span>Procesos automáticos programados</h2>
+<p class="measure">Cuatro trabajos corren sin intervención humana. Conviene conocerlos porque su ausencia
+no produce una falla visible de inmediato: produce <strong>deterioro silencioso</strong>.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>Proceso</th><th>Frecuencia</th><th>Qué hace</th><th>Si deja de correr</th></tr></thead>
+<tbody>
+  <tr>
+    <td>Vigilancia de compatibilidad<br><span style="font-size:.85em;color:var(--faint)">hash-autopilot</span></td>
+    <td class="nowrap">Cada hora<br><span style="font-size:.85em">al minuto 23</span></td>
+    <td>Verifica que la extensión siga hablando el mismo idioma que el ERP. Cuando Steelhead cambia algo por su cuenta, lo detecta, se corrige solo y avisa por correo.</td>
+    <td>Las automatizaciones fallan una por una conforme Steelhead se actualiza, sin aviso previo. <b>Es el proceso más importante de los tres.</b></td>
+  </tr>
+  <tr>
+    <td>Escalamiento<br><span style="font-size:.85em;color:var(--faint)">escalation</span></td>
+    <td class="nowrap">Cada hora<br><span style="font-size:.85em">al minuto 53</span></td>
+    <td>Atiende los casos que la vigilancia no pudo resolver sola y prepara el diagnóstico para una persona.</td>
+    <td>Los casos difíciles quedan sin diagnóstico previo; se resuelven igual, pero más lento.</td>
+  </tr>
+  <tr>
+    <td>Actualización de la copia de datos<br><span style="font-size:.85em;color:var(--faint)">weekly-snapshot</span></td>
+    <td class="nowrap">Lunes 07:00</td>
+    <td>Baja los datos del ERP a la copia local de desarrollo, en los dos dominios, y reporta si Steelhead cambió su estructura de datos.</td>
+    <td><b>Ningún efecto en los reportes productivos.</b> Sólo envejece el banco de pruebas del desarrollador.</td>
+  </tr>
+  <tr>
+    <td>Vigía del latido<br><span style="font-size:.85em;color:var(--faint)">corre en la nube</span></td>
+    <td class="nowrap">Cada 2 horas</td>
+    <td>Comprueba que la vigilancia de compatibilidad siga viva. Si lleva más de 3 horas sin dar señales, levanta un aviso automático; cuando revive, lo cierra solo.</td>
+    <td>Se pierde la única señal capaz de detectar que la vigilancia principal <b>dejó de correr</b>.</td>
+  </tr>
+</tbody>
+</table>
+</div>
+
+<div class="callout acc">
+  <h4>El punto ciego que ya está resuelto: quién vigila al vigilante</h4>
+  <p>Los avisos de la vigilancia horaria son <strong>reactivos</strong>: sólo salen cuando el proceso
+  corre. Si el proceso se detuviera, sus avisos simplemente dejarían de llegar — y un buzón en silencio
+  es indistinguible de un sistema sano. Es el modo de falla más traicionero de cualquier esquema
+  automático, y aquí <strong>está cubierto</strong>.</p>
+  <p>El mecanismo: en cada corrida, la vigilancia <strong>deja constancia de vida</strong>, y un vigía
+  independiente comprueba cada dos horas que esa constancia siga fresca. Lo que lo hace confiable es
+  <strong>dónde vive: en la nube de GitHub, no en el equipo que vigila</strong> — un vigilante
+  hospedado en la misma máquina moriría junto con lo que debe cuidar. Verificado al redactar este
+  documento: el último latido tenía nueve minutos.</p>
+</div>
+
+<div class="callout warn">
+  <h4>Los tres procesos locales corren hoy en el equipo del consultor</h4>
+  <p>Están configurados como tareas programadas del sistema operativo en la Mac de Capaz Consultoría.
+  Si ese equipo se apaga, se reemplaza o deja de estar disponible, los tres se detienen. <strong>La
+  detención del más importante sí se detecta</strong>, por el vigía descrito arriba; la de los otros
+  dos no, y por eso hay una verificación mensual en el catálogo de mantenimiento.</p>
+  <p>Queda un matiz que conviene resolver: <strong>el aviso del vigía llega hoy al consultor</strong>,
+  porque va dirigido al titular del repositorio. Redirigirlo o duplicarlo a un buzón de Ecoplating es
+  el punto 10.6 y es cuestión de minutos.</p>
+  <p>El traslado del equipo también está previsto en el código: los scripts detectan automáticamente su
+  ubicación y su intérprete, y contemplan tanto macOS como Windows con el Programador de tareas.
+  <strong>Mudarlos a un equipo o servidor de Ecoplating es configuración, no desarrollo.</strong>
+  Es el punto 10.4.</p>
+</div>
+
+<!-- ============ 10 ============ -->
+<h2 id="s10"><span class="num">10</span>Puntos de decisión para Ecoplating</h2>
+<p class="measure">Cuatro elementos están hoy a nombre del consultor. Ninguno es un obstáculo técnico
+y ninguno requiere reescribir código; los cuatro son <strong>decisiones de titularidad</strong> que
+corresponden a Ecoplating. Los enumero con el esfuerzo estimado para que puedan priorizarse.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr><th>#</th><th>Decisión</th><th>Qué implica</th><th>Esfuerzo</th><th>Urgencia</th></tr></thead>
+<tbody>
+  <tr>
+    <td class="nowrap">10.1</td>
+    <td>Titularidad de los repositorios de código</td>
+    <td>Crear una organización de GitHub a nombre de Ecoplating y transferir los tres repositorios. El historial completo se conserva.</td>
+    <td class="nowrap">Bajo<br><span style="font-size:.85em">1–2 h</span></td>
+    <td><span class="badge b-warn">Alta</span></td>
+  </tr>
+  <tr>
+    <td class="nowrap">10.2</td>
+    <td>Titularidad del sitio que sirve la extensión</td>
+    <td>Se resuelve con 10.1: al transferir el repositorio, GitHub Pages lo sigue. Requiere actualizar una dirección en la extensión y republicarla una vez.</td>
+    <td class="nowrap">Bajo<br><span style="font-size:.85em">medio día</span></td>
+    <td><span class="badge b-warn">Alta</span></td>
+  </tr>
+  <tr>
+    <td class="nowrap">10.3</td>
+    <td>Permiso de firma en Google Cloud</td>
+    <td>Designar dentro de Ecoplating quién puede publicar y otorgarle el permiso en la consola. <b>El proyecto ya es de Ecoplating</b>; sólo se ajusta quién lo usa.</td>
+    <td class="nowrap">Muy bajo<br><span style="font-size:.85em">minutos</span></td>
+    <td><span class="badge b-warn">Alta</span></td>
+  </tr>
+  <tr>
+    <td class="nowrap">10.4</td>
+    <td>Sede de los procesos automáticos</td>
+    <td>Mudar los tres trabajos programados a un equipo o servidor de Ecoplating que permanezca encendido. Los scripts ya son portátiles entre macOS y Windows.</td>
+    <td class="nowrap">Medio<br><span style="font-size:.85em">1 día + pruebas</span></td>
+    <td><span class="badge b-warn">Alta</span></td>
+  </tr>
+  <tr>
+    <td class="nowrap">10.5</td>
+    <td>Cuenta de desarrollador Apple para las iPads</td>
+    <td>Sólo aplica si Ecoplating quiere publicar cambios a piso por su cuenta. Requiere cuenta propia y un equipo con Xcode.</td>
+    <td class="nowrap">Medio</td>
+    <td><span class="badge b-cli">Media</span></td>
+  </tr>
+  <tr>
+    <td class="nowrap">10.6</td>
+    <td>Destinatario de los avisos automáticos</td>
+    <td>Hoy tanto los correos de la vigilancia horaria como los avisos del vigía llegan al consultor. Agregar o sustituir por un buzón de Ecoplating es un cambio de configuración.</td>
+    <td class="nowrap">Muy bajo<br><span style="font-size:.85em">minutos</span></td>
+    <td><span class="badge b-warn">Alta</span></td>
+  </tr>
+</tbody>
+</table>
+</div>
+
+<div class="callout acc">
+  <h4>Recomendación de secuencia</h4>
+  <p>Si hubiera que hacer sólo dos cosas, serían <strong>10.6 y 10.4</strong>: que los avisos lleguen a
+  Ecoplating y que la vigilancia automática corra en un equipo de la empresa. Con esas dos, Ecoplating
+  se entera de cualquier problema y el mecanismo que lo previene deja de depender de un equipo ajeno.
+  El resto son transferencias de titularidad que pueden hacerse con calma.</p>
+  <p>Ninguna de las seis requiere trabajo de desarrollo. Todas son configuración, permisos o
+  titularidad — es decir, <strong>decisiones administrativas de Ecoplating</strong>, que es
+  precisamente por lo que aparecen en este documento y no resueltas de antemano.</p>
+</div>
+
+<footer>
+  <p><b>Capaz Consultoría</b> · Omar Viazcán Gómez · Manual técnico de arquitectura, 30 de julio de 2026.<br>
+  Documento perenne: describe decisiones de arquitectura, no versiones. Los conteos de la sección 4
+  corresponden al catálogo 1.11.38 y se actualizan solos en el inventario de automatizaciones.<br>
+  Complementos: <b>Catálogo de actividades de mantenimiento</b> · <b>Matriz de alcance documental</b>.</p>
+</footer>
+
+</div>
+</body>
+</html>

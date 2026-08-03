@@ -1,0 +1,550 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Catálogo de actividades de mantenimiento — Sistemas adyacentes a Steelhead</title>
+<style>
+:root{
+  --ground:#f7f9fb; --paper:#ffffff; --ink:#182231; --muted:#55677a;
+  --faint:#7b8a99; --hair:#e2e8ee; --hair-2:#cdd7e0; --steel:#2b3f52;
+  --accent:#0f8f61; --accent-ink:#0b6f4b; --accent-wash:#e7f5ee;
+  --ku:#c0632e; --ku-wash:#f8ede6; --ti:#2f6f9f; --ti-wash:#e8f0f7;
+  --bi:#7d4f9c; --bi-wash:#f0e9f6;
+  --warn:#a9640c; --warn-wash:#fbf1e0; --danger:#b5372b; --danger-wash:#fbe9e7;
+  --shadow:0 1px 2px rgba(24,34,49,.05), 0 6px 20px -8px rgba(24,34,49,.12);
+  --measure:70ch;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){
+  :root{
+    --ground:#0f141a; --paper:#161d26; --ink:#e6ecf2; --muted:#9fb0c0; --faint:#7d8ea0;
+    --hair:#26303c; --hair-2:#33404e; --steel:#b9c6d3; --accent:#25b884; --accent-ink:#3fd39c;
+    --accent-wash:#12211b; --ku:#e08a55; --ku-wash:#241a13; --ti:#63a3d4; --ti-wash:#121e28;
+    --bi:#b58fd6; --bi-wash:#1d1626; --warn:#d69838; --warn-wash:#241c10;
+    --danger:#e0655a; --danger-wash:#251512;
+    --shadow:0 1px 2px rgba(0,0,0,.3), 0 8px 24px -10px rgba(0,0,0,.5);
+  }
+}
+:root[data-theme="light"]{
+  --ground:#f7f9fb; --paper:#ffffff; --ink:#182231; --muted:#55677a; --faint:#7b8a99;
+  --hair:#e2e8ee; --hair-2:#cdd7e0; --steel:#2b3f52; --accent:#0f8f61; --accent-ink:#0b6f4b;
+  --accent-wash:#e7f5ee; --ku:#c0632e; --ku-wash:#f8ede6; --ti:#2f6f9f; --ti-wash:#e8f0f7;
+  --bi:#7d4f9c; --bi-wash:#f0e9f6; --warn:#a9640c; --warn-wash:#fbf1e0;
+  --danger:#b5372b; --danger-wash:#fbe9e7;
+}
+:root[data-theme="dark"]{
+  --ground:#0f141a; --paper:#161d26; --ink:#e6ecf2; --muted:#9fb0c0; --faint:#7d8ea0;
+  --hair:#26303c; --hair-2:#33404e; --steel:#b9c6d3; --accent:#25b884; --accent-ink:#3fd39c;
+  --accent-wash:#12211b; --ku:#e08a55; --ku-wash:#241a13; --ti:#63a3d4; --ti-wash:#121e28;
+  --bi:#b58fd6; --bi-wash:#1d1626; --warn:#d69838; --warn-wash:#241c10;
+  --danger:#e0655a; --danger-wash:#251512;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%; scroll-behavior:smooth}
+body{margin:0; background:var(--ground); color:var(--ink);
+  font-family:var(--sans); font-size:16.5px; line-height:1.62;
+  -webkit-font-smoothing:antialiased; text-rendering:optimizeLegibility}
+.wrap{max-width:1080px; margin:0 auto; padding:0 24px 96px}
+.measure{max-width:var(--measure)}
+
+.masthead{border-bottom:2px solid var(--steel); padding:40px 0 22px; margin-bottom:10px}
+.brandbar{display:flex; align-items:center; gap:10px; margin-bottom:18px}
+.brandmark{width:26px; height:26px; border-radius:6px; background:var(--steel);
+  display:grid; place-items:center; flex:0 0 auto}
+.brandmark span{color:#fff; font-weight:800; font-size:.9rem; font-family:var(--mono)}
+@media (prefers-color-scheme:dark){ .brandmark span{color:#0f141a} }
+:root[data-theme="dark"] .brandmark span{color:#0f141a}
+.brandname{font-weight:700; letter-spacing:.02em; font-size:.95rem}
+.brandname em{color:var(--accent-ink); font-style:normal}
+.eyebrow{font-size:.72rem; text-transform:uppercase; letter-spacing:.14em;
+  color:var(--faint); font-weight:700; margin:0 0 10px}
+.masthead h1{font-size:clamp(1.8rem,4.3vw,2.5rem); line-height:1.08; letter-spacing:-.02em;
+  margin:0 0 10px; text-wrap:balance; font-weight:800}
+.masthead .sub{font-size:1.08rem; color:var(--muted); margin:0; max-width:64ch}
+.meta{margin-top:18px; font-size:.85rem; color:var(--faint); display:flex; flex-wrap:wrap; gap:6px 20px}
+.meta b{color:var(--muted); font-weight:600}
+
+h2{font-size:1.4rem; letter-spacing:-.015em; margin:50px 0 8px; font-weight:780;
+  padding-bottom:9px; border-bottom:1px solid var(--hair-2)}
+h2 .num{color:var(--faint); font-weight:700; font-size:.85em; margin-right:.45em;
+  font-variant-numeric:tabular-nums}
+h3{font-size:1.06rem; margin:28px 0 6px; font-weight:700}
+p{margin:.7em 0}
+ul{padding-left:1.25em} li{margin:.32em 0}
+.lede{font-size:1.05rem; color:var(--muted); max-width:64ch}
+
+/* perfiles */
+.profiles{display:grid; grid-template-columns:repeat(3,1fr); gap:14px; margin:20px 0 4px}
+@media (max-width:820px){ .profiles{grid-template-columns:1fr} }
+.pf{background:var(--paper); border:1px solid var(--hair); border-radius:12px;
+  padding:17px 19px; box-shadow:var(--shadow)}
+.pf.a{border-left:4px solid var(--ku)} .pf.b{border-left:4px solid var(--ti)}
+.pf.c{border-left:4px solid var(--bi)}
+.pf .tag{display:inline-block; font-family:var(--mono); font-weight:800; font-size:1.05rem;
+  margin-bottom:6px}
+.pf.a .tag{color:var(--ku)} .pf.b .tag{color:var(--ti)} .pf.c .tag{color:var(--bi)}
+.pf h4{margin:0 0 6px; font-size:1rem}
+.pf p{margin:0; font-size:.9rem; color:var(--muted); line-height:1.5}
+
+.tablewrap{overflow-x:auto; margin:16px 0 8px; border:1px solid var(--hair);
+  border-radius:12px; background:var(--paper); box-shadow:var(--shadow)}
+table{border-collapse:collapse; width:100%; min-width:900px; font-size:.9rem}
+thead th{background:var(--steel); color:var(--paper); text-align:left; padding:11px 13px;
+  font-weight:650; font-size:.74rem; text-transform:uppercase; letter-spacing:.06em}
+tbody td{padding:11px 13px; border-top:1px solid var(--hair); vertical-align:top; color:var(--muted)}
+tbody td.act{color:var(--ink); font-weight:600; width:22%}
+tbody tr:nth-child(even) td{background:color-mix(in srgb, var(--ground) 45%, transparent)}
+td.fill{background:color-mix(in srgb, var(--warn) 7%, transparent) !important;
+  border-left:2px dashed color-mix(in srgb,var(--warn) 45%,transparent); min-width:130px}
+.nowrap{white-space:nowrap}
+.id{font-family:var(--mono); font-size:.85em; color:var(--faint); font-weight:700}
+
+.chip{display:inline-block; font-family:var(--mono); font-weight:800; font-size:.82rem;
+  padding:1px 7px; border-radius:5px; border:1px solid transparent}
+.c-a{background:var(--ku-wash); color:var(--ku); border-color:color-mix(in srgb,var(--ku) 30%,transparent)}
+.c-b{background:var(--ti-wash); color:var(--ti); border-color:color-mix(in srgb,var(--ti) 30%,transparent)}
+.c-c{background:var(--bi-wash); color:var(--bi); border-color:color-mix(in srgb,var(--bi) 30%,transparent)}
+.c-auto{background:var(--accent-wash); color:var(--accent-ink); border-color:color-mix(in srgb,var(--accent) 32%,transparent)}
+
+.sev{display:inline-flex; align-items:center; gap:5px; font-size:.69rem; font-weight:700;
+  text-transform:uppercase; letter-spacing:.05em; padding:2px 8px; border-radius:999px;
+  border:1px solid transparent; white-space:nowrap}
+.sev::before{content:""; width:6px; height:6px; border-radius:50%; background:currentColor}
+.s-alta{background:var(--danger-wash); color:var(--danger); border-color:color-mix(in srgb,var(--danger) 30%,transparent)}
+.s-media{background:var(--warn-wash); color:var(--warn); border-color:color-mix(in srgb,var(--warn) 32%,transparent)}
+.s-baja{background:var(--accent-wash); color:var(--accent-ink); border-color:color-mix(in srgb,var(--accent) 30%,transparent)}
+
+.callout{background:var(--paper); border:1px solid var(--hair); border-left:4px solid var(--ti);
+  border-radius:10px; padding:17px 21px; margin:22px 0; box-shadow:var(--shadow)}
+.callout.warn{border-left-color:var(--warn)}
+.callout.acc{border-left-color:var(--accent)}
+.callout h4{margin:0 0 6px; font-size:1rem; color:var(--ink)}
+.callout p{margin:.45em 0; color:var(--muted); font-size:.97rem}
+.callout p:last-child{margin-bottom:0}
+
+.effort{display:grid; grid-template-columns:repeat(4,1fr); gap:12px; margin:20px 0 4px}
+@media (max-width:760px){ .effort{grid-template-columns:repeat(2,1fr)} }
+.et{background:var(--paper); border:1px solid var(--hair); border-radius:11px;
+  padding:15px 17px; box-shadow:var(--shadow)}
+.et .n{font-size:1.55rem; font-weight:800; letter-spacing:-.02em; line-height:1.1;
+  font-variant-numeric:tabular-nums; color:var(--accent-ink)}
+.et .l{font-size:.79rem; color:var(--muted); margin-top:6px; line-height:1.4}
+
+code{font-family:var(--mono); font-size:.85em; background:color-mix(in srgb,var(--steel) 10%,transparent);
+  padding:1.5px 5px; border-radius:4px; color:var(--ink)}
+
+footer{margin-top:60px; padding-top:22px; border-top:1px solid var(--hair);
+  font-size:.85rem; color:var(--faint)}
+footer b{color:var(--muted)}
+
+@media print{
+  body{background:#fff; font-size:10.5pt}
+  .wrap{max-width:none; padding:0}
+  h2{break-after:avoid} .callout,.tablewrap{break-inside:avoid}
+  table{min-width:0}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="masthead">
+  <div class="brandbar">
+    <div class="brandmark"><span>C</span></div>
+    <div class="brandname">Capaz <em>Consultoría</em></div>
+  </div>
+  <p class="eyebrow">Insumo para la matriz de responsabilidades</p>
+  <h1>Catálogo de actividades de mantenimiento</h1>
+  <p class="sub">Todas las actividades que exige mantener vivos los tres sistemas adyacentes a
+  Steelhead: qué hay que hacer, con qué frecuencia, qué perfil se necesita, cuánto toma y qué ocurre si
+  se omite. <strong>La columna de responsable se deja en blanco a propósito</strong>: asignarla es
+  decisión de Ecoplating.</p>
+  <div class="meta">
+    <span><b>Preparado por:</b> Omar Viazcán Gómez · Capaz Consultoría</span>
+    <span><b>Para:</b> Operaciones, TI y SGC</span>
+    <span><b>Fecha:</b> 30 de julio de 2026</span>
+  </div>
+</header>
+
+<h2><span class="num">1</span>Cómo usar este documento</h2>
+<p class="lede">Este catálogo <strong>no es</strong> la matriz de responsabilidades: es su materia
+prima. Aporta el lado verificable —qué actividades existen y qué exige cada una— para que Ecoplating
+complete el lado que sólo Ecoplating puede completar: quién responde y en cuánto tiempo.</p>
+
+<div class="callout acc">
+  <h4>Por qué se entrega así y no ya resuelto</h4>
+  <p>Una matriz de responsabilidades obliga a personas concretas a plazos concretos. Redactada por un
+  proveedor externo, sería una recomendación que nadie firmó. El reparto correcto es:
+  <strong>Capaz aporta el inventario técnico</strong> —completo y verificable contra el código— y
+  <strong>Ecoplating asigna y firma</strong>. Llenar las celdas sombreadas convierte este catálogo en
+  la matriz solicitada.</p>
+</div>
+
+<h3>Los tres perfiles</h3>
+<p class="measure">Cada actividad indica el perfil mínimo que la puede ejecutar. Sirve para saber a
+qué área asignarla y, si hiciera falta, qué perfil contratar.</p>
+
+<div class="profiles">
+  <div class="pf a">
+    <span class="tag">A</span>
+    <h4>Usuario clave</h4>
+    <p>Conoce la operación y el ERP. No necesita conocimientos técnicos. Detecta y reporta;
+    no publica cambios.</p>
+  </div>
+  <div class="pf b">
+    <span class="tag">B</span>
+    <h4>TI generalista</h4>
+    <p>Administra equipos, cuentas, permisos y navegadores. Verifica que los procesos corran y
+    atiende accesos. No programa.</p>
+  </div>
+  <div class="pf c">
+    <span class="tag">C</span>
+    <h4>Desarrollo</h4>
+    <p>Lee y escribe código, ejecuta las herramientas de publicación y firma. Es el único que puede
+    modificar el comportamiento del sistema.</p>
+  </div>
+</div>
+
+<div class="callout warn">
+  <h4>El punto que conviene resolver primero</h4>
+  <p>De las 23 actividades del catálogo, <strong>11 requieren perfil C</strong> y hoy no hay nadie con
+  ese perfil dentro de Ecoplating. Es la brecha real de continuidad, y admite tres salidas legítimas:
+  formar a alguien de TI, contratar el perfil, o mantener un contrato de soporte con el consultor.
+  <strong>La decisión es de Ecoplating; señalarla es mi responsabilidad.</strong></p>
+  <p>Vale la pena notar la contraparte: <strong>de esas 11, sólo una tiene frecuencia fija</strong>
+  —una verificación trimestral de diez minutos (O-06)—. Las otras diez son reactivas o eventuales,
+  porque la vigilancia rutinaria está automatizada. Eso hace viable la tercera salida sin dependencia
+  diaria.</p>
+</div>
+
+<!-- ===================== 2 ===================== -->
+<h2><span class="num">2</span>Vigilancia y supervisión</h2>
+<p class="measure">Lo que mantiene el sistema compatible con un ERP que cambia por su cuenta. Es la
+sección más importante del catálogo: su omisión no produce una falla inmediata, produce
+<strong>deterioro silencioso</strong>.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr>
+  <th>Actividad</th><th>Frecuencia</th><th>Perfil</th><th>Tiempo</th>
+  <th>Si se omite</th><th>Impacto</th><th>Responsable asignado</th>
+</tr></thead>
+<tbody>
+  <tr>
+    <td class="act"><span class="id">V-01</span><br>Vigilancia de compatibilidad con el ERP</td>
+    <td class="nowrap">Cada hora</td>
+    <td><span class="chip c-auto">AUTO</span></td>
+    <td class="nowrap">—</td>
+    <td>Las automatizaciones se rompen una a una conforme Steelhead se actualiza. <b>Su propia detención sí se detecta</b>, por V-06.</td>
+    <td><span class="sev s-alta">Alto</span></td>
+    <td class="fill"></td>
+  </tr>
+  <tr>
+    <td class="act"><span class="id">V-02</span><br>Revisar los avisos automáticos<br><span style="font-size:.9em;color:var(--faint)">correo de la vigilancia y aviso del vigía</span></td>
+    <td class="nowrap">Diaria<br><span style="font-size:.9em">(sólo si llega)</span></td>
+    <td><span class="chip c-b">B</span></td>
+    <td class="nowrap">5 min</td>
+    <td>Un aviso de algo que la vigilancia no pudo resolver sola, o de que dejó de correr, pasa desapercibido. <b>Es la única actividad que sostiene todo el esquema automático.</b></td>
+    <td><span class="sev s-alta">Alto</span></td>
+    <td class="fill"></td>
+  </tr>
+  <tr>
+    <td class="act"><span class="id">V-03</span><br>Verificar los dos procesos que no tienen vigía</td>
+    <td class="nowrap">Mensual</td>
+    <td><span class="chip c-b">B</span></td>
+    <td class="nowrap">10 min</td>
+    <td>Sólo aplica al escalamiento (V-04) y a la copia de datos (V-05): <b>esos dos sí se detienen en silencio</b>. La vigilancia principal no lo necesita — V-06 la cubre.</td>
+    <td><span class="sev s-media">Medio</span></td>
+    <td class="fill"></td>
+  </tr>
+  <tr>
+    <td class="act"><span class="id">V-04</span><br>Escalamiento de casos no resueltos</td>
+    <td class="nowrap">Cada hora</td>
+    <td><span class="chip c-auto">AUTO</span></td>
+    <td class="nowrap">—</td>
+    <td>Los casos difíciles llegan sin diagnóstico previo; se resuelven más lento.</td>
+    <td><span class="sev s-media">Medio</span></td>
+    <td class="fill"></td>
+  </tr>
+  <tr>
+    <td class="act"><span class="id">V-05</span><br>Actualización de la copia local de datos</td>
+    <td class="nowrap">Lunes 07:00</td>
+    <td><span class="chip c-auto">AUTO</span></td>
+    <td class="nowrap">—</td>
+    <td>Sólo envejece el banco de pruebas del desarrollador. <b>Ningún efecto en producción.</b></td>
+    <td><span class="sev s-baja">Bajo</span></td>
+    <td class="fill"></td>
+  </tr>
+  <tr>
+    <td class="act"><span class="id">V-06</span><br>Vigía del latido<br><span style="font-size:.9em;color:var(--faint)">vigila a V-01 desde fuera</span></td>
+    <td class="nowrap">Cada 2 horas</td>
+    <td><span class="chip c-auto">AUTO</span></td>
+    <td class="nowrap">—</td>
+    <td>Sin él, la vigilancia principal sería <b>ciega a su propia muerte</b>: sus avisos son reactivos y sólo salen cuando corre. <b>Corre en la nube, fuera del equipo que vigila</b>, precisamente para sobrevivirle.</td>
+    <td><span class="sev s-alta">Alto</span></td>
+    <td class="fill"></td>
+  </tr>
+</tbody>
+</table>
+</div>
+
+<div class="callout acc">
+  <h4>Quién vigila al vigilante</h4>
+  <p>La vigilancia horaria (V-01) sólo puede avisar de un problema <strong>cuando corre</strong>. Si el
+  equipo se apagara o el proceso se descargara, sus avisos simplemente dejarían de llegar — y un buzón
+  en silencio es indistinguible de un sistema sano. Ese punto ciego está resuelto: en cada corrida
+  V-01 <strong>deja constancia de vida</strong>, y un vigía independiente (V-06) revisa cada dos horas
+  que esa constancia siga fresca. Si pasan más de tres horas sin ella, <strong>levanta un aviso
+  automático</strong>; cuando el latido vuelve, lo cierra solo.</p>
+  <p>Lo que hace confiable al esquema es <strong>dónde vive el vigía: en la nube, no en el equipo que
+  vigila</strong>. Un vigilante hospedado en la misma máquina moriría junto con lo que debe cuidar.
+  Por eso V-03 se limita a los otros dos procesos, que no tienen esta cobertura.</p>
+</div>
+
+<!-- ===================== 3 ===================== -->
+<h2><span class="num">3</span>Operación rutinaria</h2>
+<p class="measure">Tareas periódicas de administración. No requieren tocar código.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr>
+  <th>Actividad</th><th>Frecuencia</th><th>Perfil</th><th>Tiempo</th>
+  <th>Si se omite</th><th>Impacto</th><th>Responsable asignado</th>
+</tr></thead>
+<tbody>
+  <tr>
+    <td class="act"><span class="id">O-01</span><br>Confirmar que los equipos tienen la versión vigente de la extensión</td>
+    <td class="nowrap">Trimestral<br><span style="font-size:.9em">y en cada alta</span></td>
+    <td><span class="chip c-b">B</span></td>
+    <td class="nowrap">15 min</td>
+    <td>Equipos rezagados no reciben correcciones de seguridad ni automatizaciones nuevas.</td>
+    <td><span class="sev s-media">Medio</span></td>
+    <td class="fill"></td>
+  </tr>
+  <tr>
+    <td class="act"><span class="id">O-02</span><br>Instalar la extensión en un equipo nuevo</td>
+    <td class="nowrap">Por evento<br><span style="font-size:.9em">(alta de personal)</span></td>
+    <td><span class="chip c-b">B</span></td>
+    <td class="nowrap">10 min</td>
+    <td>El usuario captura a mano lo que debería estar automatizado.</td>
+    <td><span class="sev s-baja">Bajo</span></td>
+    <td class="fill"></td>
+  </tr>
+  <tr>
+    <td class="act"><span class="id">O-03</span><br>Configurar una iPad de piso</td>
+    <td class="nowrap">Por evento</td>
+    <td><span class="chip c-b">B</span></td>
+    <td class="nowrap">30 min</td>
+    <td>La tableta queda sin las automatizaciones de piso. <b>Ojo:</b> el Modo de Aislamiento de iPadOS debe quedar apagado o el ERP ni siquiera carga.</td>
+    <td><span class="sev s-media">Medio</span></td>
+    <td class="fill"></td>
+  </tr>
+  <tr>
+    <td class="act"><span class="id">O-04</span><br>Revisar permisos de publicación tras un cambio de personal</td>
+    <td class="nowrap">Por evento<br><span style="font-size:.9em">(baja o cambio)</span></td>
+    <td><span class="chip c-b">B</span></td>
+    <td class="nowrap">20 min</td>
+    <td><b>Alguien que ya no colabora conserva la capacidad de publicar código a todos los usuarios.</b> Es el riesgo de seguridad más alto del conjunto.</td>
+    <td><span class="sev s-alta">Alto</span></td>
+    <td class="fill"></td>
+  </tr>
+  <tr>
+    <td class="act"><span class="id">O-05</span><br>Revisar la vigencia de la cuenta de desarrollador Apple</td>
+    <td class="nowrap">Anual</td>
+    <td><span class="chip c-b">B</span></td>
+    <td class="nowrap">15 min</td>
+    <td>Al vencer, las automatizaciones de las iPads dejan de funcionar y no se pueden reinstalar.</td>
+    <td><span class="sev s-media">Medio</span></td>
+    <td class="fill"></td>
+  </tr>
+  <tr>
+    <td class="act"><span class="id">O-06</span><br>Verificar que lo publicado coincide con el código fuente</td>
+    <td class="nowrap">Trimestral</td>
+    <td><span class="chip c-c">C</span></td>
+    <td class="nowrap">10 min</td>
+    <td>Una diferencia entre el código y lo publicado indica una publicación incompleta o una alteración. Hay una herramienta que lo verifica automáticamente.</td>
+    <td><span class="sev s-alta">Alto</span></td>
+    <td class="fill"></td>
+  </tr>
+</tbody>
+</table>
+</div>
+
+<!-- ===================== 4 ===================== -->
+<h2><span class="num">4</span>Reacción ante incidentes</h2>
+<p class="measure">No tienen frecuencia: ocurren cuando ocurren. La columna de tiempo indica cuánto
+toma resolverlas, no cada cuándo se presentan.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr>
+  <th>Actividad</th><th>Disparador</th><th>Perfil</th><th>Tiempo</th>
+  <th>Si no se atiende</th><th>Impacto</th><th>Responsable asignado</th>
+</tr></thead>
+<tbody>
+  <tr>
+    <td class="act"><span class="id">I-01</span><br>Atender una incompatibilidad que la vigilancia no resolvió sola</td>
+    <td>Correo de escalamiento</td>
+    <td><span class="chip c-c">C</span></td>
+    <td class="nowrap">1–3 h</td>
+    <td>Una o varias automatizaciones quedan fuera de servicio indefinidamente.</td>
+    <td><span class="sev s-alta">Alto</span></td>
+    <td class="fill"></td>
+  </tr>
+  <tr>
+    <td class="act"><span class="id">I-02</span><br>Revertir una publicación defectuosa</td>
+    <td>Falla tras publicar</td>
+    <td><span class="chip c-c">C</span></td>
+    <td class="nowrap">15 min</td>
+    <td>El defecto permanece en producción. <b>Existe herramienta de reversión;</b> no revierte la extensión empaquetada, que exige republicar.</td>
+    <td><span class="sev s-alta">Alto</span></td>
+    <td class="fill"></td>
+  </tr>
+  <tr>
+    <td class="act"><span class="id">I-03</span><br>Diagnosticar un reporte que dejó de mostrar datos</td>
+    <td>Reporte del usuario</td>
+    <td><span class="chip c-c">C</span></td>
+    <td class="nowrap">1–4 h</td>
+    <td>Operaciones o Dirección se quedan sin ese indicador. Las causas frecuentes están documentadas.</td>
+    <td><span class="sev s-media">Medio</span></td>
+    <td class="fill"></td>
+  </tr>
+  <tr>
+    <td class="act"><span class="id">I-04</span><br>Atender una automatización que dejó de aparecer</td>
+    <td>Reporte del usuario</td>
+    <td><span class="chip c-c">C</span></td>
+    <td class="nowrap">1–3 h</td>
+    <td>Se vuelve a capturar a mano. Causa frecuente documentada: Steelhead reorganizó sus permisos.</td>
+    <td><span class="sev s-media">Medio</span></td>
+    <td class="fill"></td>
+  </tr>
+  <tr>
+    <td class="act"><span class="id">I-05</span><br>Restablecer un proceso automático detenido</td>
+    <td>Hallazgo de V-03</td>
+    <td><span class="chip c-b">B</span></td>
+    <td class="nowrap">30 min</td>
+    <td>La vigilancia sigue apagada y el deterioro continúa acumulándose.</td>
+    <td><span class="sev s-alta">Alto</span></td>
+    <td class="fill"></td>
+  </tr>
+  <tr>
+    <td class="act"><span class="id">I-06</span><br>Reponer el acceso a Steelhead de los procesos automáticos</td>
+    <td>Error de autenticación</td>
+    <td><span class="chip c-c">C</span></td>
+    <td class="nowrap">30 min</td>
+    <td>La vigilancia queda ciega aunque el proceso siga corriendo. Procedimiento documentado.</td>
+    <td><span class="sev s-alta">Alto</span></td>
+    <td class="fill"></td>
+  </tr>
+</tbody>
+</table>
+</div>
+
+<!-- ===================== 5 ===================== -->
+<h2><span class="num">5</span>Evolución y cambios</h2>
+<p class="measure">Actividades que modifican el comportamiento del sistema. Todas requieren perfil C
+y ninguna es obligatoria para mantenerlo funcionando: son mejoras, no mantenimiento.</p>
+
+<div class="tablewrap">
+<table>
+<thead><tr>
+  <th>Actividad</th><th>Frecuencia</th><th>Perfil</th><th>Tiempo</th>
+  <th>Consideración</th><th>Impacto</th><th>Responsable asignado</th>
+</tr></thead>
+<tbody>
+  <tr>
+    <td class="act"><span class="id">E-01</span><br>Modificar o crear una automatización de la extensión</td>
+    <td class="nowrap">Por solicitud</td>
+    <td><span class="chip c-c">C</span></td>
+    <td class="nowrap">4 h – 3 días</td>
+    <td>Publicación en minutos, sin que nadie actualice nada. Toda modificación exige correr la batería de pruebas antes de publicar.</td>
+    <td><span class="sev s-media">Medio</span></td>
+    <td class="fill"></td>
+  </tr>
+  <tr>
+    <td class="act"><span class="id">E-02</span><br>Modificar o crear un reporte</td>
+    <td class="nowrap">Por solicitud</td>
+    <td><span class="chip c-c">C</span></td>
+    <td class="nowrap">2 h – 2 días</td>
+    <td><b>Regla del proyecto:</b> todo reporte se publica en Toluca y Monterrey. Publicar en uno solo genera divergencia entre plantas.</td>
+    <td><span class="sev s-media">Medio</span></td>
+    <td class="fill"></td>
+  </tr>
+  <tr>
+    <td class="act"><span class="id">E-03</span><br>Modificar una automatización interna del ERP</td>
+    <td class="nowrap">Por solicitud</td>
+    <td><span class="chip c-c">C</span></td>
+    <td class="nowrap">4 h – 2 días</td>
+    <td><b>El punto crítico:</b> los identificadores internos difieren entre Toluca y Monterrey. Referirse a ellos por número rompe la otra planta <b>en silencio</b>.</td>
+    <td><span class="sev s-alta">Alto</span></td>
+    <td class="fill"></td>
+  </tr>
+  <tr>
+    <td class="act"><span class="id">E-04</span><br>Llevar un cambio a las iPads de piso</td>
+    <td class="nowrap">Por solicitud</td>
+    <td><span class="chip c-c">C</span></td>
+    <td class="nowrap">2–4 h</td>
+    <td>Requiere recompilar con Xcode y redistribuir. <b>No se actualiza solo</b>, a diferencia de la versión de Chrome.</td>
+    <td><span class="sev s-media">Medio</span></td>
+    <td class="fill"></td>
+  </tr>
+  <tr>
+    <td class="act"><span class="id">E-05</span><br>Republicar la extensión empaquetada</td>
+    <td class="nowrap">Poco frecuente</td>
+    <td><span class="chip c-c">C</span></td>
+    <td class="nowrap">2 h</td>
+    <td>Sólo si cambia el cascarón. Cada equipo la activa al aceptar el aviso de actualización.</td>
+    <td><span class="sev s-baja">Bajo</span></td>
+    <td class="fill"></td>
+  </tr>
+</tbody>
+</table>
+</div>
+
+<!-- ===================== 6 ===================== -->
+<h2><span class="num">6</span>Resumen de carga de trabajo</h2>
+
+<div class="effort">
+  <div class="et"><div class="n">23</div><div class="l">Actividades<br>en el catálogo</div></div>
+  <div class="et"><div class="n">4</div><div class="l">Automáticas<br>sin intervención</div></div>
+  <div class="et"><div class="n">&lt;1 h</div><div class="l">Carga mensual<br>de perfil B (8 actividades)</div></div>
+  <div class="et"><div class="n">11</div><div class="l">Requieren perfil C<br>10 de ellas reactivas</div></div>
+</div>
+
+<div class="callout">
+  <h4>Lo que dicen estos números</h4>
+  <p>El mantenimiento rutinario es <strong>ligero</strong>: alrededor de una hora al mes de perfil B,
+  concentrada en revisar avisos y confirmar que los procesos automáticos siguen vivos. No hay ninguna
+  actividad diaria obligatoria.</p>
+  <p>La carga real es <strong>reactiva y de perfil C</strong>: cuando Steelhead cambia algo que la
+  vigilancia no resuelve sola. Es imposible calendarizarla porque depende del ritmo de actualización
+  del ERP, no del nuestro. Por eso el mecanismo automático importa tanto: <strong>es lo que convierte
+  la mayoría de esos eventos en algo que se corrige solo</strong> antes de que nadie los note.</p>
+</div>
+
+<div class="callout warn">
+  <h4>Para completar la matriz hacen falta tres decisiones</h4>
+  <p><strong>1. Quién cubre el perfil C.</strong> Formar a alguien de TI, contratarlo, o mantener
+  soporte con el consultor. Sin esta decisión, nueve actividades quedan sin dueño.</p>
+  <p><strong>2. Qué tiempo de respuesta se compromete</strong> para cada nivel de impacto. Sugerencia
+  como punto de partida, no como compromiso: impacto alto, mismo día hábil; medio, tres días; bajo,
+  siguiente ciclo de mantenimiento.</p>
+  <p><strong>3. A qué buzón llegan los avisos automáticos.</strong> Hoy llegan al consultor. Es un
+  cambio de configuración de minutos y probablemente el de mejor relación entre esfuerzo y beneficio
+  de toda la lista.</p>
+</div>
+
+<footer>
+  <p><b>Capaz Consultoría</b> · Omar Viazcán Gómez · Catálogo de actividades de mantenimiento,
+  30 de julio de 2026.<br>
+  Las frecuencias de la sección 2 corresponden a la configuración verificada de los procesos
+  programados. Los tiempos son estimaciones de esfuerzo basadas en incidentes reales atendidos, no
+  compromisos de servicio.<br>
+  Complementos: <b>Manual técnico de arquitectura</b> · <b>Matriz de alcance documental</b>.</p>
+</footer>
+
+</div>
+</body>
+</html>

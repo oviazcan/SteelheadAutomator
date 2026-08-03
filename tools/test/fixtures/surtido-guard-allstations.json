@@ -1,0 +1,12 @@
+{
+  "_comment": "Recorte de AllStations (hash 834516258e… ya en config) → stationId → name. Nombres con la forma real observada en el board: líneas '-LI', células '-CExx-xxx', y ubicaciones de almacén sin código de línea (esas son lo que filtra el nativo de SH: 'Estación: Proquipa.N1.A1').",
+  "allStations": {
+    "nodes": [
+      { "id": 12090, "name": "T204-LI Plata y Estaño s/Cobre Colgado (16.1)" },
+      { "id": 12091, "name": "T205-LI Estaño s/Aluminio (16.3)" },
+      { "id": 12092, "name": "T300-CE03-002 Célula de Antitarnish" },
+      { "id": 12093, "name": "Proquipa.N1.A1" },
+      { "id": 12094, "name": null }
+    ]
+  }
+}

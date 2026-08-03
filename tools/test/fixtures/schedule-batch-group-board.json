@@ -1,0 +1,1168 @@
+{
+  "_origen": "scan_results_2026-07-30_195800.json — Schedule Board 454 / dominio 344 (Ecoplating TLC). Extracto REAL recortado a los campos que consume el core: RelatedSchedulingInformation (allStations + allWorkOrders con receivedBatches e incompleteRecipeNodes) y SchedulablePartLocations (allPartLocations). No es una deduccion.",
+  "_casos": {
+    "1917243": "lote homonimo T-2150 (21 lotes distintos con el mismo nombre)",
+    "1917244": "lote homonimo T-2150 (21 lotes distintos con el mismo nombre)",
+    "1917245": "lote homonimo T-2150 (21 lotes distintos con el mismo nombre)",
+    "1917246": "lote homonimo T-2150 (21 lotes distintos con el mismo nombre)",
+    "1917297": "lote homonimo T-2150 (21 lotes distintos con el mismo nombre)",
+    "1877811": "lote homonimo RG-M379522 (9 lotes)",
+    "1877813": "lote homonimo RG-M379522 (9 lotes)",
+    "1878002": "lote homonimo RG-M379522 (9 lotes)",
+    "1740281": "lote de una sola orden",
+    "1740282": "lote de una sola orden",
+    "1913027": "SIN nodo programable -> no agrupable",
+    "1868763": "DOS nodos programables -> ambiguo",
+    "1838072": "nodo programable SIN tiempos -> fail-safe"
+  },
+  "relatedSchedulingInformation": {
+    "allStations": {
+      "nodes": [
+        {
+          "id": 12093,
+          "name": "T114-LI Fosfato de Manganeso (7.1)",
+          "loadType": "CONSTANT_LOAD_RATE",
+          "stationTreatmentsByStationId": {
+            "nodes": [
+              {
+                "treatmentId": 82793
+              },
+              {
+                "treatmentId": 91401
+              },
+              {
+                "treatmentId": 91402
+              },
+              {
+                "treatmentId": 99431
+              },
+              {
+                "treatmentId": 100486
+              },
+              {
+                "treatmentId": 100489
+              }
+            ]
+          },
+          "stationTreatmentRackTypesByStationId": {
+            "nodes": [
+              {
+                "stationId": 12093,
+                "treatmentId": null,
+                "treatmentGroupId": null,
+                "rackCount": 1,
+                "rackTypeId": 2701,
+                "rackTypeByRackTypeId": {
+                  "id": 2701,
+                  "name": "T114-FL01"
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": 12105,
+          "name": "T116-LI Fosfato de Zinc y Pavón (7.2)",
+          "loadType": "CONSTANT_LOAD_RATE",
+          "stationTreatmentsByStationId": {
+            "nodes": [
+              {
+                "treatmentId": 82795
+              },
+              {
+                "treatmentId": 91403
+              },
+              {
+                "treatmentId": 91404
+              },
+              {
+                "treatmentId": 106154
+              },
+              {
+                "treatmentId": 106155
+              }
+            ]
+          },
+          "stationTreatmentRackTypesByStationId": {
+            "nodes": []
+          }
+        }
+      ]
+    },
+    "allWorkOrders": {
+      "nodes": [
+        {
+          "id": 1917243,
+          "name": "",
+          "idInDomain": 15652,
+          "receivedBatches": {
+            "nodes": [
+              {
+                "id": 1439287,
+                "idInDomain": 17315,
+                "name": "T-2150"
+              }
+            ]
+          },
+          "incompleteRecipeNodesByWorkOrderId": {
+            "nodes": [
+              {
+                "id": 46956577,
+                "type": "SCANNER_NODE",
+                "name": "T110 Listo para Procesar (Plata Flash s/Cobre)",
+                "treatmentId": 112753,
+                "treatmentByTreatmentId": {
+                  "name": "T110 (PLF)-CU-VARIOS"
+                },
+                "possibleTreatmentTimesByRecipeNodeDefaultTreatment": {
+                  "nodes": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": 1917244,
+          "name": "",
+          "idInDomain": 15653,
+          "receivedBatches": {
+            "nodes": [
+              {
+                "id": 1439288,
+                "idInDomain": 17316,
+                "name": "T-2150"
+              }
+            ]
+          },
+          "incompleteRecipeNodesByWorkOrderId": {
+            "nodes": [
+              {
+                "id": 46956607,
+                "type": "SCANNER_NODE",
+                "name": "T110 Listo para Procesar (Plata Flash s/Cobre)",
+                "treatmentId": 112753,
+                "treatmentByTreatmentId": {
+                  "name": "T110 (PLF)-CU-VARIOS"
+                },
+                "possibleTreatmentTimesByRecipeNodeDefaultTreatment": {
+                  "nodes": []
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": 1917245,
+          "name": "",
+          "idInDomain": 15654,
+          "receivedBatches": {
+            "nodes": [
+              {
+                "id": 1439289,
+                "idInDomain": 17317,
+                "name": "T-2150"
+              }
+            ]
+          },
+          "incompleteRecipeNodesByWorkOrderId": {
+            "nodes": [
+              {
+                "id": 46956637,
+                "type": "SCANNER_NODE",
+                "name": "T204 Listo para Procesar (Plata Flash s/Cobre)",
+                "treatmentId": 112623,
+                "treatmentByTreatmentId": {
+                  "name": "T204 (PLF)-CU-VARIOS"
+                },
+                "possibleTreatmentTimesByRecipeNodeDefaultTreatment": {
+                  "nodes": [
+                    {
+                      "cycleTime": {
+                        "years": 0,
+                        "months": 0,
+                        "days": 0,
+                        "hours": 0,
+                        "minutes": 6,
+                        "seconds": 0,
+                        "__typename": "Interval"
+                      },
+                      "totalTime": {
+                        "years": 0,
+                        "months": 0,
+                        "days": 0,
+                        "hours": 0,
+                        "minutes": 15,
+                        "seconds": 0,
+                        "__typename": "Interval"
+                      },
+                      "timeType": "BATCH",
+                      "partNumberId": null,
+                      "stationId": null
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": 1917246,
+          "name": "",
+          "idInDomain": 15655,
+          "receivedBatches": {
+            "nodes": [
+              {
+                "id": 1439290,
+                "idInDomain": 17318,
+                "name": "T-2150"
+              }
+            ]
+          },
+          "incompleteRecipeNodesByWorkOrderId": {
+            "nodes": [
+              {
+                "id": 46956667,
+                "type": "SCANNER_NODE",
+                "name": "T204 Listo para Procesar (Plata Flash s/Cobre)",
+                "treatmentId": 112623,
+                "treatmentByTreatmentId": {
+                  "name": "T204 (PLF)-CU-VARIOS"
+                },
+                "possibleTreatmentTimesByRecipeNodeDefaultTreatment": {
+                  "nodes": [
+                    {
+                      "cycleTime": {
+                        "years": 0,
+                        "months": 0,
+                        "days": 0,
+                        "hours": 0,
+                        "minutes": 6,
+                        "seconds": 0,
+                        "__typename": "Interval"
+                      },
+                      "totalTime": {
+                        "years": 0,
+                        "months": 0,
+                        "days": 0,
+                        "hours": 0,
+                        "minutes": 15,
+                        "seconds": 0,
+                        "__typename": "Interval"
+                      },
+                      "timeType": "BATCH",
+                      "partNumberId": null,
+                      "stationId": null
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": 1917297,
+          "name": "",
+          "idInDomain": 15695,
+          "receivedBatches": {
+            "nodes": [
+              {
+                "id": 1439333,
+                "idInDomain": 17358,
+                "name": "T-2150"
+              }
+            ]
+          },
+          "incompleteRecipeNodesByWorkOrderId": {
+            "nodes": [
+              {
+                "id": 46958326,
+                "type": "SCANNER_NODE",
+                "name": "T204 Listo para Procesar (Plata Flash s/Cobre)",
+                "treatmentId": 112623,
+                "treatmentByTreatmentId": {
+                  "name": "T204 (PLF)-CU-VARIOS"
+                },
+                "possibleTreatmentTimesByRecipeNodeDefaultTreatment": {
+                  "nodes": [
+                    {
+                      "cycleTime": {
+                        "years": 0,
+                        "months": 0,
+                        "days": 0,
+                        "hours": 0,
+                        "minutes": 6,
+                        "seconds": 0,
+                        "__typename": "Interval"
+                      },
+                      "totalTime": {
+                        "years": 0,
+                        "months": 0,
+                        "days": 0,
+                        "hours": 0,
+                        "minutes": 15,
+                        "seconds": 0,
+                        "__typename": "Interval"
+                      },
+                      "timeType": "BATCH",
+                      "partNumberId": null,
+                      "stationId": null
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": 1877811,
+          "name": "",
+          "idInDomain": 13073,
+          "receivedBatches": {
+            "nodes": [
+              {
+                "id": 1399731,
+                "idInDomain": 14579,
+                "name": "RG-M379522"
+              }
+            ]
+          },
+          "incompleteRecipeNodesByWorkOrderId": {
+            "nodes": [
+              {
+                "id": 45874289,
+                "type": "SCANNER_NODE",
+                "name": "T201 Listo para Procesar (Decapado s/Cobre)",
+                "treatmentId": 112435,
+                "treatmentByTreatmentId": {
+                  "name": "T201 (DEC)-CU-VARIOS"
+                },
+                "possibleTreatmentTimesByRecipeNodeDefaultTreatment": {
+                  "nodes": [
+                    {
+                      "cycleTime": {
+                        "years": 0,
+                        "months": 0,
+                        "days": 0,
+                        "hours": 0,
+                        "minutes": 30,
+                        "seconds": 0,
+                        "__typename": "Interval"
+                      },
+                      "totalTime": {
+                        "years": 0,
+                        "months": 0,
+                        "days": 0,
+                        "hours": 0,
+                        "minutes": 45,
+                        "seconds": 0,
+                        "__typename": "Interval"
+                      },
+                      "timeType": "PER_PART",
+                      "partNumberId": null,
+                      "stationId": null
+                    }
+                  ]
+                }
+              },
+              {
+                "id": 45874290,
+                "type": "SCANNER_NODE",
+                "name": "T201 Listo para Procesar (Estaño s/Cobre)",
+                "treatmentId": 91495,
+                "treatmentByTreatmentId": {
+                  "name": "T201 (EST)-CU-VARIOS"
+                },
+                "possibleTreatmentTimesByRecipeNodeDefaultTreatment": {
+                  "nodes": [
+                    {
+                      "cycleTime": {
+                        "years": 0,
+                        "months": 0,
+                        "days": 0,
+                        "hours": 0,
+                        "minutes": 15,
+                        "seconds": 0,
+                        "__typename": "Interval"
+                      },
+                      "totalTime": {
+                        "years": 0,
+                        "months": 0,
+                        "days": 0,
+                        "hours": 0,
+                        "minutes": 45,
+                        "seconds": 0,
+                        "__typename": "Interval"
+                      },
+                      "timeType": "BATCH",
+                      "partNumberId": null,
+                      "stationId": null
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": 1877813,
+          "name": "",
+          "idInDomain": 13075,
+          "receivedBatches": {
+            "nodes": [
+              {
+                "id": 1399733,
+                "idInDomain": 14581,
+                "name": "RG-M379522"
+              }
+            ]
+          },
+          "incompleteRecipeNodesByWorkOrderId": {
+            "nodes": [
+              {
+                "id": 45874393,
+                "type": "SCANNER_NODE",
+                "name": "T201 Listo para Procesar (Decapado s/Cobre)",
+                "treatmentId": 112435,
+                "treatmentByTreatmentId": {
+                  "name": "T201 (DEC)-CU-VARIOS"
+                },
+                "possibleTreatmentTimesByRecipeNodeDefaultTreatment": {
+                  "nodes": [
+                    {
+                      "cycleTime": {
+                        "years": 0,
+                        "months": 0,
+                        "days": 0,
+                        "hours": 0,
+                        "minutes": 30,
+                        "seconds": 0,
+                        "__typename": "Interval"
+                      },
+                      "totalTime": {
+                        "years": 0,
+                        "months": 0,
+                        "days": 0,
+                        "hours": 0,
+                        "minutes": 45,
+                        "seconds": 0,
+                        "__typename": "Interval"
+                      },
+                      "timeType": "PER_PART",
+                      "partNumberId": null,
+                      "stationId": null
+                    }
+                  ]
+                }
+              },
+              {
+                "id": 45874394,
+                "type": "SCANNER_NODE",
+                "name": "T201 Listo para Procesar (Estaño s/Cobre)",
+                "treatmentId": 91495,
+                "treatmentByTreatmentId": {
+                  "name": "T201 (EST)-CU-VARIOS"
+                },
+                "possibleTreatmentTimesByRecipeNodeDefaultTreatment": {
+                  "nodes": [
+                    {
+                      "cycleTime": {
+                        "years": 0,
+                        "months": 0,
+                        "days": 0,
+                        "hours": 0,
+                        "minutes": 15,
+                        "seconds": 0,
+                        "__typename": "Interval"
+                      },
+                      "totalTime": {
+                        "years": 0,
+                        "months": 0,
+                        "days": 0,
+                        "hours": 0,
+                        "minutes": 45,
+                        "seconds": 0,
+                        "__typename": "Interval"
+                      },
+                      "timeType": "BATCH",
+                      "partNumberId": null,
+                      "stationId": null
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": 1878002,
+          "name": "",
+          "idInDomain": 13083,
+          "receivedBatches": {
+            "nodes": [
+              {
+                "id": 1399883,
+                "idInDomain": 14589,
+                "name": "RG-M379522"
+              }
+            ]
+          },
+          "incompleteRecipeNodesByWorkOrderId": {
+            "nodes": [
+              {
+                "id": 45878631,
+                "type": "SCANNER_NODE",
+                "name": "T201 Listo para Procesar (Decapado s/Cobre)",
+                "treatmentId": 112435,
+                "treatmentByTreatmentId": {
+                  "name": "T201 (DEC)-CU-VARIOS"
+                },
+                "possibleTreatmentTimesByRecipeNodeDefaultTreatment": {
+                  "nodes": [
+                    {
+                      "cycleTime": {
+                        "years": 0,
+                        "months": 0,
+                        "days": 0,
+                        "hours": 0,
+                        "minutes": 30,
+                        "seconds": 0,
+                        "__typename": "Interval"
+                      },
+                      "totalTime": {
+                        "years": 0,
+                        "months": 0,
+                        "days": 0,
+                        "hours": 0,
+                        "minutes": 45,
+                        "seconds": 0,
+                        "__typename": "Interval"
+                      },
+                      "timeType": "PER_PART",
+                      "partNumberId": null,
+                      "stationId": null
+                    }
+                  ]
+                }
+              },
+              {
+                "id": 45878632,
+                "type": "SCANNER_NODE",
+                "name": "T201 Listo para Procesar (Estaño s/Cobre)",
+                "treatmentId": 91495,
+                "treatmentByTreatmentId": {
+                  "name": "T201 (EST)-CU-VARIOS"
+                },
+                "possibleTreatmentTimesByRecipeNodeDefaultTreatment": {
+                  "nodes": [
+                    {
+                      "cycleTime": {
+                        "years": 0,
+                        "months": 0,
+                        "days": 0,
+                        "hours": 0,
+                        "minutes": 15,
+                        "seconds": 0,
+                        "__typename": "Interval"
+                      },
+                      "totalTime": {
+                        "years": 0,
+                        "months": 0,
+                        "days": 0,
+                        "hours": 0,
+                        "minutes": 45,
+                        "seconds": 0,
+                        "__typename": "Interval"
+                      },
+                      "timeType": "BATCH",
+                      "partNumberId": null,
+                      "stationId": null
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": 1740281,
+          "name": "",
+          "idInDomain": 5131,
+          "receivedBatches": {
+            "nodes": [
+              {
+                "id": 1264503,
+                "idInDomain": 5969,
+                "name": "1928-66-1-8272"
+              }
+            ]
+          },
+          "incompleteRecipeNodesByWorkOrderId": {
+            "nodes": [
+              {
+                "id": 42072792,
+                "type": "SCANNER_NODE",
+                "name": "T116 Listo para Procesar (Fosfato de Zinc s/Fierro-Acero)",
+                "treatmentId": 106154,
+                "treatmentByTreatmentId": {
+                  "name": "T116 (FZI)-FE/AC-VARIOS"
+                },
+                "possibleTreatmentTimesByRecipeNodeDefaultTreatment": {
+                  "nodes": [
+                    {
+                      "cycleTime": {
+                        "years": 0,
+                        "months": 0,
+                        "days": 0,
+                        "hours": 0,
+                        "minutes": 20,
+                        "seconds": 0,
+                        "__typename": "Interval"
+                      },
+                      "totalTime": {
+                        "years": 0,
+                        "months": 0,
+                        "days": 0,
+                        "hours": 0,
+                        "minutes": 30,
+                        "seconds": 0,
+                        "__typename": "Interval"
+                      },
+                      "timeType": "BATCH",
+                      "partNumberId": null,
+                      "stationId": null
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": 1740282,
+          "name": "",
+          "idInDomain": 5132,
+          "receivedBatches": {
+            "nodes": [
+              {
+                "id": 1264504,
+                "idInDomain": 5970,
+                "name": "1928-66-2-8272"
+              }
+            ]
+          },
+          "incompleteRecipeNodesByWorkOrderId": {
+            "nodes": [
+              {
+                "id": 42072825,
+                "type": "SCANNER_NODE",
+                "name": "T116 Listo para Procesar (Fosfato de Zinc s/Fierro-Acero)",
+                "treatmentId": 106154,
+                "treatmentByTreatmentId": {
+                  "name": "T116 (FZI)-FE/AC-VARIOS"
+                },
+                "possibleTreatmentTimesByRecipeNodeDefaultTreatment": {
+                  "nodes": [
+                    {
+                      "cycleTime": {
+                        "years": 0,
+                        "months": 0,
+                        "days": 0,
+                        "hours": 0,
+                        "minutes": 20,
+                        "seconds": 0,
+                        "__typename": "Interval"
+                      },
+                      "totalTime": {
+                        "years": 0,
+                        "months": 0,
+                        "days": 0,
+                        "hours": 0,
+                        "minutes": 30,
+                        "seconds": 0,
+                        "__typename": "Interval"
+                      },
+                      "timeType": "BATCH",
+                      "partNumberId": null,
+                      "stationId": null
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": 1913027,
+          "name": "",
+          "idInDomain": 15244,
+          "receivedBatches": {
+            "nodes": [
+              {
+                "id": 1435459,
+                "idInDomain": 16879,
+                "name": "4501082321"
+              }
+            ]
+          },
+          "incompleteRecipeNodesByWorkOrderId": {
+            "nodes": []
+          }
+        },
+        {
+          "id": 1868763,
+          "name": "",
+          "idInDomain": 12382,
+          "receivedBatches": {
+            "nodes": [
+              {
+                "id": 1390564,
+                "idInDomain": 13873,
+                "name": "427712"
+              }
+            ]
+          },
+          "incompleteRecipeNodesByWorkOrderId": {
+            "nodes": [
+              {
+                "id": 45618306,
+                "type": "SCANNER_NODE",
+                "name": "T201 Listo para Procesar (Decapado s/Cobre)",
+                "treatmentId": 112435,
+                "treatmentByTreatmentId": {
+                  "name": "T201 (DEC)-CU-VARIOS"
+                },
+                "possibleTreatmentTimesByRecipeNodeDefaultTreatment": {
+                  "nodes": [
+                    {
+                      "cycleTime": {
+                        "years": 0,
+                        "months": 0,
+                        "days": 0,
+                        "hours": 0,
+                        "minutes": 30,
+                        "seconds": 0,
+                        "__typename": "Interval"
+                      },
+                      "totalTime": {
+                        "years": 0,
+                        "months": 0,
+                        "days": 0,
+                        "hours": 0,
+                        "minutes": 45,
+                        "seconds": 0,
+                        "__typename": "Interval"
+                      },
+                      "timeType": "PER_PART",
+                      "partNumberId": null,
+                      "stationId": null
+                    }
+                  ]
+                }
+              },
+              {
+                "id": 45618307,
+                "type": "SCANNER_NODE",
+                "name": "T201 Listo para Procesar (Estaño s/Cobre)",
+                "treatmentId": 91495,
+                "treatmentByTreatmentId": {
+                  "name": "T201 (EST)-CU-VARIOS"
+                },
+                "possibleTreatmentTimesByRecipeNodeDefaultTreatment": {
+                  "nodes": [
+                    {
+                      "cycleTime": {
+                        "years": 0,
+                        "months": 0,
+                        "days": 0,
+                        "hours": 0,
+                        "minutes": 15,
+                        "seconds": 0,
+                        "__typename": "Interval"
+                      },
+                      "totalTime": {
+                        "years": 0,
+                        "months": 0,
+                        "days": 0,
+                        "hours": 0,
+                        "minutes": 45,
+                        "seconds": 0,
+                        "__typename": "Interval"
+                      },
+                      "timeType": "BATCH",
+                      "partNumberId": null,
+                      "stationId": null
+                    }
+                  ]
+                }
+              }
+            ]
+          }
+        },
+        {
+          "id": 1838072,
+          "name": "",
+          "idInDomain": 10445,
+          "receivedBatches": {
+            "nodes": [
+              {
+                "id": 1358330,
+                "idInDomain": 11779,
+                "name": "B-02713"
+              }
+            ]
+          },
+          "incompleteRecipeNodesByWorkOrderId": {
+            "nodes": [
+              {
+                "id": 44762130,
+                "type": "SCANNER_NODE",
+                "name": "T111 Listo para Procesar (Estaño Mate s/Aluminio)",
+                "treatmentId": 96342,
+                "treatmentByTreatmentId": {
+                  "name": "T111 (ESM)-AL-VARIOS"
+                },
+                "possibleTreatmentTimesByRecipeNodeDefaultTreatment": {
+                  "nodes": []
+                }
+              }
+            ]
+          }
+        }
+      ]
+    }
+  },
+  "schedulablePartLocations": {
+    "allPartLocations": {
+      "nodes": [
+        {
+          "accountId": 45210642,
+          "partCount": 2,
+          "partNumberId": 3015192,
+          "partGroupId": null,
+          "workOrderId": 1917243,
+          "recipeNodeId": 46956575,
+          "partNumberByPartNumberId": {
+            "id": 3015192,
+            "name": "SWB-00000-84150",
+            "partNumberRackTypesByPartNumberId": {
+              "nodes": [
+                {
+                  "partsPerRack": 1,
+                  "rackTypeId": 2706,
+                  "rackTypeByRackTypeId": {
+                    "id": 2706,
+                    "name": "T205-FL01"
+                  }
+                },
+                {
+                  "partsPerRack": 12,
+                  "rackTypeId": 2699,
+                  "rackTypeByRackTypeId": {
+                    "id": 2699,
+                    "name": "T110-FL01"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "accountId": 44946845,
+          "partCount": 2,
+          "partNumberId": 3015094,
+          "partGroupId": null,
+          "workOrderId": 1917244,
+          "recipeNodeId": 46956604,
+          "partNumberByPartNumberId": {
+            "id": 3015094,
+            "name": "80255-204-01",
+            "partNumberRackTypesByPartNumberId": {
+              "nodes": [
+                {
+                  "partsPerRack": 1,
+                  "rackTypeId": 2706,
+                  "rackTypeByRackTypeId": {
+                    "id": 2706,
+                    "name": "T205-FL01"
+                  }
+                },
+                {
+                  "partsPerRack": 4,
+                  "rackTypeId": 2699,
+                  "rackTypeByRackTypeId": {
+                    "id": 2699,
+                    "name": "T110-FL01"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "accountId": 44946612,
+          "partCount": 1,
+          "partNumberId": 3014646,
+          "partGroupId": null,
+          "workOrderId": 1917245,
+          "recipeNodeId": 46956634,
+          "partNumberByPartNumberId": {
+            "id": 3014646,
+            "name": "80095-402-01",
+            "partNumberRackTypesByPartNumberId": {
+              "nodes": [
+                {
+                  "partsPerRack": 1,
+                  "rackTypeId": 2706,
+                  "rackTypeByRackTypeId": {
+                    "id": 2706,
+                    "name": "T205-FL01"
+                  }
+                },
+                {
+                  "partsPerRack": 6,
+                  "rackTypeId": 2705,
+                  "rackTypeByRackTypeId": {
+                    "id": 2705,
+                    "name": "T204-FL01"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "accountId": 44946928,
+          "partCount": 1,
+          "partNumberId": 3015115,
+          "partGroupId": null,
+          "workOrderId": 1917246,
+          "recipeNodeId": 46956664,
+          "partNumberByPartNumberId": {
+            "id": 3015115,
+            "name": "SCB-00000-12684",
+            "partNumberRackTypesByPartNumberId": {
+              "nodes": [
+                {
+                  "partsPerRack": 1,
+                  "rackTypeId": 2706,
+                  "rackTypeByRackTypeId": {
+                    "id": 2706,
+                    "name": "T205-FL01"
+                  }
+                },
+                {
+                  "partsPerRack": 4,
+                  "rackTypeId": 2705,
+                  "rackTypeByRackTypeId": {
+                    "id": 2705,
+                    "name": "T204-FL01"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "accountId": 44947752,
+          "partCount": 2,
+          "partNumberId": 3015666,
+          "partGroupId": null,
+          "workOrderId": 1917297,
+          "recipeNodeId": 46958323,
+          "partNumberByPartNumberId": {
+            "id": 3015666,
+            "name": "SWB-00436535",
+            "partNumberRackTypesByPartNumberId": {
+              "nodes": [
+                {
+                  "partsPerRack": 1,
+                  "rackTypeId": 2706,
+                  "rackTypeByRackTypeId": {
+                    "id": 2706,
+                    "name": "T205-FL01"
+                  }
+                },
+                {
+                  "partsPerRack": 12,
+                  "rackTypeId": 2705,
+                  "rackTypeByRackTypeId": {
+                    "id": 2705,
+                    "name": "T204-FL01"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "accountId": 43792694,
+          "partCount": 1,
+          "partNumberId": 3019761,
+          "partGroupId": null,
+          "workOrderId": 1877811,
+          "recipeNodeId": 45874278,
+          "partNumberByPartNumberId": {
+            "id": 3019761,
+            "name": "80255-115-01",
+            "partNumberRackTypesByPartNumberId": {
+              "nodes": [
+                {
+                  "partsPerRack": 15,
+                  "rackTypeId": 2703,
+                  "rackTypeByRackTypeId": {
+                    "id": 2703,
+                    "name": "T201-FL01"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "accountId": 43792696,
+          "partCount": 1,
+          "partNumberId": 3019763,
+          "partGroupId": null,
+          "workOrderId": 1877813,
+          "recipeNodeId": 45874382,
+          "partNumberByPartNumberId": {
+            "id": 3019763,
+            "name": "80255-115-03",
+            "partNumberRackTypesByPartNumberId": {
+              "nodes": [
+                {
+                  "partsPerRack": 15,
+                  "rackTypeId": 2703,
+                  "rackTypeByRackTypeId": {
+                    "id": 2703,
+                    "name": "T201-FL01"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "accountId": 43795256,
+          "partCount": 2,
+          "partNumberId": 3019760,
+          "partGroupId": null,
+          "workOrderId": 1878002,
+          "recipeNodeId": 45878620,
+          "partNumberByPartNumberId": {
+            "id": 3019760,
+            "name": "80255-114-02",
+            "partNumberRackTypesByPartNumberId": {
+              "nodes": [
+                {
+                  "partsPerRack": 15,
+                  "rackTypeId": 2703,
+                  "rackTypeByRackTypeId": {
+                    "id": 2703,
+                    "name": "T201-FL01"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "accountId": 40132753,
+          "partCount": 2,
+          "partNumberId": 3027568,
+          "partGroupId": null,
+          "workOrderId": 1740281,
+          "recipeNodeId": 42072781,
+          "partNumberByPartNumberId": {
+            "id": 3027568,
+            "name": "S75B1544A1",
+            "partNumberRackTypesByPartNumberId": {
+              "nodes": [
+                {
+                  "partsPerRack": 2,
+                  "rackTypeId": 3050,
+                  "rackTypeByRackTypeId": {
+                    "id": 3050,
+                    "name": "T116-FL01"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "accountId": 40132754,
+          "partCount": 2,
+          "partNumberId": 3027568,
+          "partGroupId": null,
+          "workOrderId": 1740282,
+          "recipeNodeId": 42072814,
+          "partNumberByPartNumberId": {
+            "id": 3027568,
+            "name": "S75B1544A1",
+            "partNumberRackTypesByPartNumberId": {
+              "nodes": [
+                {
+                  "partsPerRack": 2,
+                  "rackTypeId": 3050,
+                  "rackTypeByRackTypeId": {
+                    "id": 3050,
+                    "name": "T116-FL01"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "accountId": 43543190,
+          "partCount": 1,
+          "partNumberId": 3017876,
+          "partGroupId": null,
+          "workOrderId": 1868763,
+          "recipeNodeId": 45618295,
+          "partNumberByPartNumberId": {
+            "id": 3017876,
+            "name": "80255-724-01",
+            "partNumberRackTypesByPartNumberId": {
+              "nodes": [
+                {
+                  "partsPerRack": 15,
+                  "rackTypeId": 2703,
+                  "rackTypeByRackTypeId": {
+                    "id": 2703,
+                    "name": "T201-FL01"
+                  }
+                }
+              ]
+            }
+          }
+        },
+        {
+          "accountId": 42766275,
+          "partCount": 60,
+          "partNumberId": 3026395,
+          "partGroupId": null,
+          "workOrderId": 1838072,
+          "recipeNodeId": 44762127,
+          "partNumberByPartNumberId": {
+            "id": 3026395,
+            "name": "208C4151P7",
+            "partNumberRackTypesByPartNumberId": {
+              "nodes": [
+                {
+                  "partsPerRack": 40,
+                  "rackTypeId": 2703,
+                  "rackTypeByRackTypeId": {
+                    "id": 2703,
+                    "name": "T201-FL01"
+                  }
+                }
+              ]
+            }
+          }
+        }
+      ]
+    }
+  }
+}

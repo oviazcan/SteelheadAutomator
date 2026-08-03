@@ -1,0 +1,33 @@
+{
+  "_comment": "Filas de la tabla 'Tareas Programadas:' capturadas EN VIVO del board /Domains/344/Workboards/6234 (2026-07-29). Cada fila es [tratamiento, estación, fecha] = td[0], td[1], td[2]. La línea destino se lee de td[1]; NUNCA del textContent de la tarjeta (que trae 'Proceso: T400…' con otro código) ni de td[0] (que a veces no trae código).",
+  "programadaCelula": {
+    "wo": "12831",
+    "_comment": "Caso REAL: el 'Proceso:' de esta tarjeta dice T400 y su estación destino es T300.",
+    "rows": [
+      ["TR-PRM-001 Antitarnish Manual", "at T300-CE03-002 Célula de Antitarnish", "23/7/2026 - 11:14:20 p.m."]
+    ],
+    "expectedLines": ["T300"]
+  },
+  "programadaLinea": {
+    "wo": "15246",
+    "rows": [
+      ["T204 (PLA)-CU/BR-VARIOS", "at T204-LI Plata y Estaño s/Cobre Colgado (16.1)", "24/7/2026 - 5:00:00 p.m."]
+    ],
+    "expectedLines": ["T204"]
+  },
+  "multiLinea": {
+    "_comment": "Una orden puede correr en varias líneas → la tabla trae N filas.",
+    "rows": [
+      ["T204 (PLA)-CU/BR-VARIOS", "at T204-LI Plata y Estaño s/Cobre Colgado (16.1)", "24/7/2026 - 5:00:00 p.m."],
+      ["T205 (EST)-AL-VARIOS", "at T205-LI Estaño s/Aluminio (16.3)", "25/7/2026 - 8:00:00 a.m."]
+    ],
+    "expectedLines": ["T204", "T205"]
+  },
+  "sinCodigoEnEstacion": {
+    "_comment": "Estación sin código de línea reconocible → no se puede clasificar.",
+    "rows": [
+      ["TR-PRM-001 Antitarnish Manual", "at Célula Manual Sin Código", "23/7/2026 - 11:14:20 p.m."]
+    ],
+    "expectedLines": []
+  }
+}

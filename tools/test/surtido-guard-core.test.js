@@ -73,7 +73,12 @@ function buildCtx() {
   for (const c of fx('surtido-guard-movevars.json').moveDataCalls) {
     accountNode = Core.indexAccountNodeFromMoveVars(c.op, c.vars, accountNode);
   }
-  return { scheduledAccountIds, accountNode, surtidoNodeIds };
+  // Quien NIEGA la programación es el mapa por cuenta (GetPartsInProcessNode4), no el Set de
+  // GetRelatedScheduleData: ése viene filtrado por las estaciones del board, así que la ausencia
+  // de una cuenta ahí no prueba nada. Antes estos escenarios negaban con el Set —esa premisa era
+  // justo el bug de piso del 2026-07-30—, así que el estado "no programada" se declara aquí.
+  const accountScheduled = new Map([[1001, true], [1002, false], [1003, false]]);
+  return { scheduledAccountIds, accountScheduled, accountNode, surtidoNodeIds };
 }
 
 test('evaluateMove: NO bloquea mover una pieza de surtido PROGRAMADA', () => {
@@ -110,6 +115,117 @@ test('evaluateMove: enforcement OFF deja pasar todo', () => {
   const r = Core.evaluateMove(muts.moveNotScheduled, buildCtx(), { enforcementEnabled: false });
   assert.strictEqual(r.block, false);
   assert.strictEqual(r.reason, 'disabled');
+});
+
+// ── Fuente REAL de "programada": GetPartsInProcessNode4 ────────────────────
+// Contexto (bug de piso 2026-07-30): GetRelatedScheduleData se pide filtrada por las
+// stationIds del WORKBOARD ({stationIds:[13785,-1]}). Un board de ALMACÉN no tiene tareas
+// programadas en sus propias estaciones —las tareas viven en estaciones de LÍNEA (T204-LI…)—
+// así que esa query devuelve validScheduleTasks:[] SIEMPRE y el set salía vacío. Con el set
+// vacío, todo lo que estuviera en un nodo de surtido se bloqueaba, incluidas las programadas.
+// La señal correcta viaja POR CUENTA en la query que el board ya pide para pintar las tarjetas.
+test('buildAccountScheduleMap: mapea account -> programada desde GetPartsInProcessNode4', () => {
+  const m = Core.buildAccountScheduleMap(fx('surtido-guard-partlocations.json'));
+  assert.strictEqual(m.get(44812076), true);   // WO 1913029 — la del reporte, programada en T204-LI
+  assert.strictEqual(m.get(45222065), true);
+  assert.strictEqual(m.get(45101981), false);  // sin tareas asociadas
+  assert.strictEqual(m.get(45320050), true);
+  assert.strictEqual(m.size, 4);
+});
+
+test('buildAccountScheduleMap: acumula sobre un mapa previo (la query llega por lotes)', () => {
+  const prev = new Map([[999, true]]);
+  const m = Core.buildAccountScheduleMap(fx('surtido-guard-partlocations.json'), prev);
+  assert.strictEqual(m, prev);                 // muta el mismo Map
+  assert.strictEqual(m.get(999), true);        // no pierde lo anterior
+  assert.strictEqual(m.get(44812076), true);
+});
+
+test('buildAccountScheduleMap: dato ausente/basura => mapa vacío, no truena', () => {
+  assert.strictEqual(Core.buildAccountScheduleMap(null).size, 0);
+  assert.strictEqual(Core.buildAccountScheduleMap({}).size, 0);
+  assert.strictEqual(Core.buildAccountScheduleMap({ allPartLocations: { nodes: [{}] } }).size, 0);
+});
+
+// Reproducción del bug de piso, con los ids REALES del board 10922.
+const REAL = {
+  surtidoNodeIds: new Set([46068088, 46836961, 46837220]),
+  accountNode: {
+    44812076: { recipeNodeId: 46836961, workOrderId: 1913029 },  // programada (T204-LI)
+    45101981: { recipeNodeId: 46068088, workOrderId: 1884951 }   // NO programada
+  }
+};
+const mutMove = (accId) => ({
+  partsTransferEventsPayload: {
+    partsTransferEvents: [{ partsTransfers: [{ type: 'STEP', fromAccountId: accId }] }]
+  }
+});
+
+test('REGRESIÓN: con GetRelatedScheduleData vacío, NO bloquea una orden que SÍ está programada', () => {
+  const ctx = {
+    scheduledAccountIds: new Set(),                                   // lo que devuelve la fuente legada
+    accountScheduled: Core.buildAccountScheduleMap(fx('surtido-guard-partlocations.json')),
+    accountNode: REAL.accountNode,
+    surtidoNodeIds: REAL.surtidoNodeIds
+  };
+  const r = Core.evaluateMove(mutMove(44812076), ctx, { enforcementEnabled: true });
+  assert.strictEqual(r.block, false, 'la WO 1913029 está programada en T204-LI: no se debe bloquear');
+  assert.strictEqual(r.reason, 'scheduled');
+});
+
+test('el candado SIGUE bloqueando una orden de surtido realmente NO programada', () => {
+  const ctx = {
+    scheduledAccountIds: new Set(),
+    accountScheduled: Core.buildAccountScheduleMap(fx('surtido-guard-partlocations.json')),
+    accountNode: REAL.accountNode,
+    surtidoNodeIds: REAL.surtidoNodeIds
+  };
+  const r = Core.evaluateMove(mutMove(45101981), ctx, { enforcementEnabled: true });
+  assert.strictEqual(r.block, true);
+  assert.deepStrictEqual(r.blocked, [{ accountId: 45101981, workOrderId: 1884951 }]);
+});
+
+test('FAIL-SAFE: sin dato de programación para ese account, NO bloquea', () => {
+  // El account tiene puente y está en scope, pero ninguna fuente sabe si está programado.
+  const ctx = {
+    scheduledAccountIds: new Set(),
+    accountScheduled: new Map(),      // GetPartsInProcessNode4 nunca llegó
+    accountNode: REAL.accountNode,
+    surtidoNodeIds: REAL.surtidoNodeIds
+  };
+  const r = Core.evaluateMove(mutMove(45101981), ctx, { enforcementEnabled: true });
+  assert.strictEqual(r.block, false, 'sin evidencia no se frena el piso');
+  assert.strictEqual(r.reason, 'out-of-scope-or-unknown');
+});
+
+test('la fuente legada solo AFIRMA: basta que una diga "programada" para no bloquear', () => {
+  // GetRelatedScheduleData no puede NEGAR (sale vacía por diseño en boards de almacén), pero
+  // cuando trae un account, ese dato es válido y debe absolver.
+  const ctx = {
+    scheduledAccountIds: new Set([45101981]),
+    accountScheduled: new Map([[45101981, false]]),
+    accountNode: REAL.accountNode,
+    surtidoNodeIds: REAL.surtidoNodeIds
+  };
+  const r = Core.evaluateMove(mutMove(45101981), ctx, { enforcementEnabled: true });
+  assert.strictEqual(r.block, false);
+  assert.strictEqual(r.reason, 'scheduled');
+});
+
+test('isPartsInProcessOp: sobrevive a que Steelhead suba la versión del nombre', () => {
+  assert.strictEqual(Core.isPartsInProcessOp('GetPartsInProcessNode4'), true);
+  assert.strictEqual(Core.isPartsInProcessOp('GetPartsInProcessNode5'), true);
+  assert.strictEqual(Core.isPartsInProcessOp('GetPartsInProcessNode'), true);
+  assert.strictEqual(Core.isPartsInProcessOp('GetPartsInProcessNodeXY'), false);
+  assert.strictEqual(Core.isPartsInProcessOp('GetRelatedScheduleData'), false);
+  assert.strictEqual(Core.isPartsInProcessOp(null), false);
+});
+
+test('hasScheduleEvidence: distingue "no hay programadas" de "no tengo el dato"', () => {
+  assert.strictEqual(Core.hasScheduleEvidence({ accountScheduled: new Map(), scheduledAccountIds: new Set() }), false);
+  assert.strictEqual(Core.hasScheduleEvidence({ accountScheduled: new Map([[1, false]]) }), true);
+  assert.strictEqual(Core.hasScheduleEvidence({ scheduledAccountIds: new Set([1]) }), true);
+  assert.strictEqual(Core.hasScheduleEvidence(null), false);
 });
 
 // ── Capa 4: marcado naranja de tarjetas NO movibles (bilingüe + salvaguarda) ──
