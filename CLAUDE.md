@@ -116,6 +116,18 @@ sesión con WIP en main (regla §"Trabajo paralelo").
   mismo dueño?» no ahorra trabajo, conserva una mentira.** Ver
   [`docs/architecture/dom-patterns.md`](docs/architecture/dom-patterns.md).
 - **UI propia en DARK MODE (regla de diseño).** Todo modal, panel, popover o tooltip que inyecte la extensión va en **tema oscuro** (base `#1c2430`, texto `#e6e9ee`, inputs `#141a23`, acento verde `#13a36f`) para que el operador distinga **de un vistazo** que es UI de la extensión y NO una pantalla nativa de Steelhead (que son CLARAS). Evita confundir nuestra UI con la de SH. Referencia: `auto-router-batch.js`/`auto-router-panel.js` (modales), `board-metal-tooltip.js` inyecta en el popover nativo y ahí sí respeta el estilo de SH (no es UI nuestra, es enriquecimiento del suyo).
+- **El popup NUNCA debe pedir más de 600px de alto (regla de layout).** Un popup de extensión
+  no tiene tamaño propio: Chromium lo ajusta a lo que pide el documento con un tope duro de
+  **800×600**. Si el alto se pasa, el navegador **deja de ajustar el ancho al preferido (340px)
+  y abre la ventana al MÁXIMO**: el `body` a la izquierda y ~460px vacíos a la derecha — que se
+  ven oscuros porque el `background` del body **se propaga al canvas**. Reportado en piso el
+  2026-08-03 (*"¿por qué se hace así el panel?"*) y medido: menú principal 618px, `Ajuste Masivo
+  de Specs` 646px. La causa: `.app-menu`/`.app-grid`/`.app-list`/`.results-panel`/`.app-perms-editor`
+  ya tenían tope + scroll y **`.app-actions` no tenía ninguno** — cruzó el umbral el 2026-07-29 al
+  pasar de 5 a 7 acciones. **Al agregar acciones a un applet o piezas fijas al popup, rehacer la
+  cuenta `cromo fijo + max-height ≤ 600`** (cromo fijo: 139px en el menú, 177px en la vista de
+  acciones, +104px si el banner de actualización está visible).
+  Ver [`docs/architecture/popup-sizing.md`](docs/architecture/popup-sizing.md).
 
 ## Trabajo paralelo (dos instancias de Claude)
 Para correr dos sesiones de Claude sobre este repo sin pisarse, usa **git worktrees**. Cada worktree es un directorio aislado en su propia rama; los commits no chocan hasta que mergees.
