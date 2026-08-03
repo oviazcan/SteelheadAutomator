@@ -146,13 +146,42 @@ tarjeta (requiere el HTML de una tarjeta con "Tareas Programadas") o agregar el 
 | ~~price-confirm-core~~ **CERRADO v0.1.5 (2026-07-28)** | `:78` | `/saving\s+price\|guardar\s+el\s+precio/i` | ambos | string real: **«Error al guardar el precio»** (el alert es BLOQUEANTE) |
 | price-confirm-core | `:94` | `"/ part:"` | solo EN | **SH no traduce ese panel** (visto en sesión ES, 2026-07-27) → no está roto hoy; deuda de menor urgencia |
 | invoice-autofill | `:1020`, `:1092`, `:1712` | `"Line #N"`, `"Line #N - PN"` | solo EN | ¿"Línea #N"? |
-| invoice-autofill | `:1036`, `:1102` | `/income account/i`, `/^income$/i` | solo EN | ¿"Cuenta de Ingresos"/"Ingresos"? |
+| ~~invoice-autofill `:1036`~~ **CERRADO 0.5.66 (2026-08-03) — ROMPIÓ EN PRODUCCIÓN** | `isIncomeAccountHeader` | era `/^\s*income\s+account\s*$/i` (exacto) → hoy **por tokens**: EN `income`; ES `ingreso`+(`cuenta`\|`pasivo`) | ambos + fallback estructural | **No lo tumbó el locale: lo tumbó un RENAME EN→EN** — SH pasó la columna a **`Income/Liability Account`**. Ver nota abajo. |
+| invoice-autofill | `:1102` | `/^income$/i` (subtítulo del layout LEGADO, modal manual) | solo EN | ¿"Ingresos"? — sigue abierta; es el fallback Layout B, sólo se usa si el A no encontró nada |
 | invoice-autofill | `:2005` | `/accounts?_?receivable/i` | solo EN | constante — confirmar si SH la traduce |
 | cfdi-attacher | `:167` | `/^(Logo\|Attach PDFs?\|Visible to Others)$/` | solo EN | ¿traducciones de las filas? |
 | invoice-auto-regen | `:930` | `=== 'Close'` (botón) | solo EN | ¿"Cerrar"? |
 | invoice-default-tab | `invoice-default-tab.js:12` | `/packing slips/i` | solo EN | ¿"Notas de Empaque"? |
 | load-calculator-modal | `:251` | `/rack type/i` (título modal) | solo EN | ¿"Tipo de Rack"? |
 | **warehouse-location-guard-core** `ROW_LOCATION_LABEL_RE` **(NUEVO 2026-07-29)** | `warehouse-location-guard-core.js` | `/^(?:ubicaci[oó]n\s+inicial\|initial\s+location)\s*:?$/i` | ES **verificado en vivo** («Ubicación Inicial:»); **EN es HIPÓTESIS mía** | ¿«Initial Location:»? — **no observado**, lo escribí por simetría. Ver la nota de abajo: el fallo **degrada, no apaga**. |
+
+### 🔥 2026-08-03 — la deuda de PRIORIDAD 3 que rompió producción, y por un motivo que este documento NO contemplaba
+
+`invoice-autofill` `:1036` estaba aquí abajo, en «menor impacto», con la hipótesis «¿Cuenta de
+Ingresos?». **Se rompió** — y **no por traducción**: Steelhead renombró la columna de
+`Income Account` a **`Income/Liability Account`**, **inglés a inglés**. El anclaje era
+`/^\s*income\s+account\s*$/i`, match **exacto**, así que el rename lo dejó en cero y el applet
+**descartó TODAS las líneas de factura en silencio** (reporte del operador el 2026-08-03; detalle
+completo en [`../applets/invoice-autofill.md`](../applets/invoice-autofill.md) §0.5.66).
+
+**Dos correcciones al modelo de este documento:**
+
+1. **La priorización estaba sesgada.** Todo aquí se ordena por *«¿qué tan probable es que SH
+   traduzca este string?»*. Pero un anclaje por texto exacto tiene **dos** formas de morir:
+   traducción **y rename dentro del mismo idioma** — y la segunda no depende del locale del
+   usuario, así que le pega a **todos a la vez**. Un ancla exacta sobre un encabezado de tabla es
+   frágil aunque el string nunca se traduzca.
+2. **«Menor impacto» se midió por el string, no por lo que cuelga de él.** Ese anclaje no
+   decoraba: **decidía si la línea existía**. Al no matchear, el extractor hacía `continue` y la
+   sección entera del panel desaparecía — sin error, sin advertencia. El impacto de una deuda de
+   anclaje es el de **la decisión que gobierna**, no el del texto que compara.
+
+**Regla que sale de aquí:** cuando no haya ancla estructural disponible (aquí se midió: los `<th>`
+sólo traen `class`/`scope`/`style`, **ningún `data-steelhead-component-id`**), el anclaje por texto
+se escribe **por TOKENS y no por la cadena completa**, y se le pone un **fallback estructural
+acotado con evidencia positiva** (en 0.5.66: la última columna, y sólo si su celda trae
+react-select, con `warn()` que lo delata). Traducir el string a ES+EN habría sido **insuficiente**:
+el fix real es dejar de exigir la cadena completa.
 
 ### 🆕 2026-07-29 — el candado de `warehouse-location-prefill` 0.6.x y la deuda que sí admite
 

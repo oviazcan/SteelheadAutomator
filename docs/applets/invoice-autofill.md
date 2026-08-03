@@ -64,9 +64,15 @@ con el dato favorable). Aquí no había ancla estructural que usar — se midió
 jerarquía no estaba disponible y el camino correcto era texto por tokens **+ un fallback
 estructural acotado**, no texto exacto.
 
-**Pendiente:** el operador debe confirmar en vivo que el panel ya pinta la sección *«Cuenta por
-línea»* y que la cuenta queda puesta en el combo (lo verificado aquí es la extracción y el anclaje
-del `<td>`, no el `mousedown` de la opción). Y rebundle iPad si se quiere allá.
+**✅ VALIDADO END-TO-END EN VIVO por el operador** (2026-08-03, config 1.11.48): *«ya jala»* — con
+el applet publicado el panel vuelve a pintar la sección *«Cuenta por línea»* y la cuenta queda
+puesta. Esto cierra lo único que la verificación por automatización no podía cubrir: el `mousedown`
+que confirma la opción en el react-select (lo medido aquí fue la extracción y el anclaje del `<td>`).
+
+**Pendiente real:** rebundle iPad si se quiere el fix allá — `invoice-autofill` está en el bundle
+Safari, así que el iPad sigue con el applet ciego a las líneas hasta reconstruir. Y queda **abierta**
+la deuda bilingüe del Layout B (`/^income$/i`, el subtítulo del modal manual): no se tocó porque es
+el fallback que sólo corre si el Layout A no encontró nada, y no hay evidencia del string en ES.
 
 ## Lección 0.5.65 (AR matcher reconoce "M.N." = Moneda Nacional, no solo el código ISO)
 Bug reportado 2026-07-15: al facturar a **Hubbell** el applet marcaba "sin cuenta AR para MXN" y no resolvía la CXC. Root cause: `findBestARAccount` filtraba las cuentas AR con un **filtro DURO** `/\bMXN\b/i` sobre el `name`. La cuenta de Hubbell se llama `0105-0001-0001-0204 · Hubbell Products Mexico S. de R.L. 1177 M.N.` — el catálogo **no es uniforme**: la mayoría de cuentas traen el código ISO ("... 1140 USD", "... 1200 MXN"), pero otras usan la nomenclatura contable mexicana **"M.N."** (Moneda Nacional = pesos). `/\bMXN\b/` no matchea "M.N." → `byCurrency` vacío → `sin_cuenta_AR_para_MXN`.
