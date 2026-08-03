@@ -1,0 +1,3750 @@
+{
+ "workOrder": {
+  "id": 1844453,
+  "idInDomain": 10837,
+  "partNumberWorkOrderSpecsByWorkOrderId": {
+   "nodes": [
+    {
+     "id": 5407298,
+     "partNumberId": 3016541,
+     "archivedAt": null,
+     "partNumberSpecByPartNumberSpecId": {
+      "id": 1155160,
+      "partNumberByPartNumberId": {
+       "id": 3016541,
+       "name": "PHA20842"
+      }
+     },
+     "treatmentSpecByTreatmentSpecId": null,
+     "classificationSetByClassificationSetId": null,
+     "specBySpecId": {
+      "id": 18452,
+      "domainId": 344,
+      "idInDomain": 65,
+      "revisionNumber": 1,
+      "revisionName": null,
+      "name": "GDE1214700 (Antitarnish)",
+      "specLabelsBySpecId": {
+       "nodes": [
+        {
+         "labelByLabelId": {
+          "id": 11102,
+          "color": "#3e2723",
+          "name": "Schneider"
+         }
+        },
+        {
+         "labelByLabelId": {
+          "id": 10707,
+          "color": "#f06292",
+          "name": "Antitarnish"
+         }
+        }
+       ]
+      },
+      "specFieldSpecsBySpecId": {
+       "nodes": [
+        {
+         "id": 149308,
+         "archivedAt": null,
+         "orderIndex": 0,
+         "specId": 18452,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 17824087,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldId": 20570,
+         "specFieldBySpecFieldId": {
+          "id": 20570,
+          "name": "Protección - Sulfuro de sodio al 2.5%",
+          "type": "BOOLEAN",
+          "scheduleBy": false,
+          "descriptionMarkdown": "Sin coloración café",
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 150208,
+         "archivedAt": "2025-12-10T23:47:58.21459+00:00",
+         "orderIndex": 1,
+         "specId": 18452,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 17954940,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldId": 19445,
+         "specFieldBySpecFieldId": {
+          "id": 19445,
+          "name": "Apariencia Homogénea",
+          "type": "BOOLEAN",
+          "scheduleBy": false,
+          "descriptionMarkdown": "* Brillo indistinto\n* Areas sin falta de recubrimiento\n* Libre de burbujas\n* Libre de manchas\n* Libre de ataque\n* Libre de grumos\n* Libre de puntos negros\n* Libre de manchas blancas\n* Libre de grasa o aceite\n* Libre de oxidación\n* Libre de contaminación ",
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 166976,
+         "archivedAt": null,
+         "orderIndex": 1,
+         "specId": 18452,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 19391314,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldId": 25415,
+         "specFieldBySpecFieldId": {
+          "id": 25415,
+          "name": "Apariencia Homogénea - Antitarnish",
+          "type": "BOOLEAN",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 149700,
+         "archivedAt": null,
+         "orderIndex": 2,
+         "specId": 18452,
+         "isGeneric": true,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 17854562,
+            "name": "Sí o No (ambos pasan)"
+           }
+          ]
+         },
+         "specFieldId": 22546,
+         "specFieldBySpecFieldId": {
+          "id": 22546,
+          "name": "Primeras Piezas Antitarnish",
+          "type": "DROPDOWN",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 149307,
+         "archivedAt": "2025-11-04T17:52:41.704589+00:00",
+         "orderIndex": null,
+         "specId": 18452,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": []
+         },
+         "specFieldId": 20562,
+         "specFieldBySpecFieldId": {
+          "id": 20562,
+          "name": "Protección - Polisulfuro de amonio al 5%",
+          "type": "BOOLEAN",
+          "scheduleBy": false,
+          "descriptionMarkdown": "Sin coloración café",
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 149313,
+         "archivedAt": "2025-11-05T00:41:17.046906+00:00",
+         "orderIndex": null,
+         "specId": 18452,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 17826195,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldId": 22067,
+         "specFieldBySpecFieldId": {
+          "id": 22067,
+          "name": "Primeras Piezas",
+          "type": "DROPDOWN",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": null
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": 5407299,
+     "partNumberId": 3016541,
+     "archivedAt": null,
+     "partNumberSpecByPartNumberSpecId": null,
+     "treatmentSpecByTreatmentSpecId": {
+      "id": 7099,
+      "treatmentByTreatmentId": {
+       "id": 82071,
+       "name": "TR-ICA-002 Inspección de Producto al Recibo"
+      }
+     },
+     "classificationSetByClassificationSetId": null,
+     "specBySpecId": {
+      "id": 16165,
+      "domainId": 344,
+      "idInDomain": 22,
+      "revisionNumber": 1,
+      "revisionName": null,
+      "name": "Inspección Recibo",
+      "specLabelsBySpecId": {
+       "nodes": [
+        {
+         "labelByLabelId": {
+          "id": 9428,
+          "color": "#ffeb3b",
+          "name": "Inspección"
+         }
+        }
+       ]
+      },
+      "specFieldSpecsBySpecId": {
+       "nodes": [
+        {
+         "id": 117478,
+         "archivedAt": "2025-11-05T01:17:17.150904+00:00",
+         "orderIndex": 0,
+         "specId": 16165,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 14544749,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldId": 19264,
+         "specFieldBySpecFieldId": {
+          "id": 19264,
+          "name": "Material golpeado",
+          "type": "BOOLEAN",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 149703,
+         "archivedAt": null,
+         "orderIndex": 0,
+         "specId": 16165,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 17854613,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldId": 22547,
+         "specFieldBySpecFieldId": {
+          "id": 22547,
+          "name": "Condiciones Adecuadas del Material Recibido",
+          "type": "BOOLEAN",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 117480,
+         "archivedAt": "2025-11-05T01:16:59.331215+00:00",
+         "orderIndex": 1,
+         "specId": 16165,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 14544883,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldId": 19265,
+         "specFieldBySpecFieldId": {
+          "id": 19265,
+          "name": "Material oxidado",
+          "type": "BOOLEAN",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 121520,
+         "archivedAt": "2025-11-05T01:23:23.605572+00:00",
+         "orderIndex": 1,
+         "specId": 16165,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 15224574,
+            "name": "0%"
+           }
+          ]
+         },
+         "specFieldId": 19960,
+         "specFieldBySpecFieldId": {
+          "id": 19960,
+          "name": "Porcentaje de Defectivo",
+          "type": "NUMBER",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 117482,
+         "archivedAt": "2025-11-05T01:17:01.136142+00:00",
+         "orderIndex": 2,
+         "specId": 16165,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 14545109,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldId": 19266,
+         "specFieldBySpecFieldId": {
+          "id": 19266,
+          "name": "Material con exceso de grasa",
+          "type": "BOOLEAN",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 146041,
+         "archivedAt": null,
+         "orderIndex": 2,
+         "specId": 16165,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 17544218,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldId": 22066,
+         "specFieldBySpecFieldId": {
+          "id": 22066,
+          "name": "Requiere notificar al cliente",
+          "type": "DROPDOWN",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 117486,
+         "archivedAt": "2025-11-05T01:17:03.375964+00:00",
+         "orderIndex": 3,
+         "specId": 16165,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 14545342,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldId": 19267,
+         "specFieldBySpecFieldId": {
+          "id": 19267,
+          "name": "Material mezclado",
+          "type": "BOOLEAN",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 117491,
+         "archivedAt": null,
+         "orderIndex": 3,
+         "specId": 16165,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 14546115,
+            "name": "Notas Adicionales"
+           }
+          ]
+         },
+         "specFieldId": 19271,
+         "specFieldBySpecFieldId": {
+          "id": 19271,
+          "name": "Notas Adicionales",
+          "type": "TEXT",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 117487,
+         "archivedAt": "2025-11-05T01:17:05.375516+00:00",
+         "orderIndex": 4,
+         "specId": 16165,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 14545498,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldId": 19268,
+         "specFieldBySpecFieldId": {
+          "id": 19268,
+          "name": "Material con recubrimiento",
+          "type": "BOOLEAN",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 117488,
+         "archivedAt": "2025-11-05T01:17:08.208875+00:00",
+         "orderIndex": 5,
+         "specId": 16165,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 14545799,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldId": 19269,
+         "specFieldBySpecFieldId": {
+          "id": 19269,
+          "name": "Material con rebaba",
+          "type": "BOOLEAN",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 117489,
+         "archivedAt": "2025-11-05T01:17:10.728525+00:00",
+         "orderIndex": 6,
+         "specId": 16165,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 14545964,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldId": 19270,
+         "specFieldBySpecFieldId": {
+          "id": 19270,
+          "name": "Empaque dañado",
+          "type": "BOOLEAN",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 121517,
+         "archivedAt": "2025-11-05T01:00:07.436534+00:00",
+         "orderIndex": 8,
+         "specId": 16165,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 15224571,
+            "name": "Aceptado o Retenido"
+           }
+          ]
+         },
+         "specFieldId": 19956,
+         "specFieldBySpecFieldId": {
+          "id": 19956,
+          "name": "Disposición del Rechazo",
+          "type": "DROPDOWN",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 121518,
+         "archivedAt": "2025-10-28T23:40:11.571136+00:00",
+         "orderIndex": 9,
+         "specId": 16165,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": []
+         },
+         "specFieldId": 19957,
+         "specFieldBySpecFieldId": {
+          "id": 19957,
+          "name": "Notificar al Cliente",
+          "type": "BOOLEAN",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 121519,
+         "archivedAt": "2025-09-12T04:03:54.966154+00:00",
+         "orderIndex": null,
+         "specId": 16165,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 15224573,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldId": 19958,
+         "specFieldBySpecFieldId": {
+          "id": 19958,
+          "name": "Evidencia del Rechazo",
+          "type": "BOOLEAN",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": null
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": 5407300,
+     "partNumberId": 3016541,
+     "archivedAt": null,
+     "partNumberSpecByPartNumberSpecId": null,
+     "treatmentSpecByTreatmentSpecId": {
+      "id": 8466,
+      "treatmentByTreatmentId": {
+       "id": 80010,
+       "name": "TR-PRM-004 Preparación de Surtido en Almacén"
+      }
+     },
+     "classificationSetByClassificationSetId": null,
+     "specBySpecId": {
+      "id": 22402,
+      "domainId": 344,
+      "idInDomain": 361,
+      "revisionNumber": 1,
+      "revisionName": "Rev.01",
+      "name": "Preparación de Surtido en Almacén ",
+      "specLabelsBySpecId": {
+       "nodes": [
+        {
+         "labelByLabelId": {
+          "id": 8245,
+          "color": "#0097a7",
+          "name": "Parámetros"
+         }
+        }
+       ]
+      },
+      "specFieldSpecsBySpecId": {
+       "nodes": [
+        {
+         "id": 196923,
+         "archivedAt": null,
+         "orderIndex": null,
+         "specId": 22402,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 22792982,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldId": 30057,
+         "specFieldBySpecFieldId": {
+          "id": 30057,
+          "name": " PC-00 Surtimiento a la línea de producción",
+          "type": "SENSOR",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": {
+           "id": 12514,
+           "name": "PC-00 Surtimiento a la línea de producción",
+           "sensorMeasurementType": "BOOLEAN",
+           "unitByUnitId": null
+          }
+         }
+        },
+        {
+         "id": 196931,
+         "archivedAt": null,
+         "orderIndex": null,
+         "specId": 22402,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 22793251,
+            "name": "Si o No"
+           }
+          ]
+         },
+         "specFieldId": 30058,
+         "specFieldBySpecFieldId": {
+          "id": 30058,
+          "name": " PC-00 Identificación de Material Propiedad de Cliente",
+          "type": "SENSOR",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": {
+           "id": 12516,
+           "name": " PC-00 Identificación de Material Propiedad de Cliente",
+           "sensorMeasurementType": "BOOLEAN",
+           "unitByUnitId": null
+          }
+         }
+        },
+        {
+         "id": 196932,
+         "archivedAt": null,
+         "orderIndex": null,
+         "specId": 22402,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 22793305,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldId": 30060,
+         "specFieldBySpecFieldId": {
+          "id": 30060,
+          "name": " PC-00 Cantidad de Material Propiedad de Cliente",
+          "type": "SENSOR",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": {
+           "id": 12517,
+           "name": " PC-00 Cantidad de Material Propiedad de Cliente",
+           "sensorMeasurementType": "NUMBER",
+           "unitByUnitId": null
+          }
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": 5407301,
+     "partNumberId": 3016541,
+     "archivedAt": null,
+     "partNumberSpecByPartNumberSpecId": null,
+     "treatmentSpecByTreatmentSpecId": {
+      "id": 8467,
+      "treatmentByTreatmentId": {
+       "id": 94832,
+       "name": "TR-PRM-010 Recibo de Orden"
+      }
+     },
+     "classificationSetByClassificationSetId": null,
+     "specBySpecId": {
+      "id": 22403,
+      "domainId": 344,
+      "idInDomain": 362,
+      "revisionNumber": 1,
+      "revisionName": "Rev. 01",
+      "name": "Recibo de Orden ",
+      "specLabelsBySpecId": {
+       "nodes": [
+        {
+         "labelByLabelId": {
+          "id": 8245,
+          "color": "#0097a7",
+          "name": "Parámetros"
+         }
+        }
+       ]
+      },
+      "specFieldSpecsBySpecId": {
+       "nodes": [
+        {
+         "id": 196933,
+         "archivedAt": null,
+         "orderIndex": null,
+         "specId": 22403,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 22793682,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldId": 30061,
+         "specFieldBySpecFieldId": {
+          "id": 30061,
+          "name": "PC-00 Almacenaje temporal de Piezas",
+          "type": "SENSOR",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": {
+           "id": 12518,
+           "name": "PC-00 Almacenaje temporal de Piezas",
+           "sensorMeasurementType": "BOOLEAN",
+           "unitByUnitId": null
+          }
+         }
+        },
+        {
+         "id": 196934,
+         "archivedAt": null,
+         "orderIndex": null,
+         "specId": 22403,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 22793960,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldId": 30062,
+         "specFieldBySpecFieldId": {
+          "id": 30062,
+          "name": "PC-00 Concentración (Recepción e Inspección de Materia Prima)",
+          "type": "SENSOR",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": {
+           "id": 12519,
+           "name": "PC-00 Recepción e Inspección de Materia Prima (Químicos)",
+           "sensorMeasurementType": "BOOLEAN",
+           "unitByUnitId": null
+          }
+         }
+        },
+        {
+         "id": 196935,
+         "archivedAt": null,
+         "orderIndex": null,
+         "specId": 22403,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 22793961,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldId": 30063,
+         "specFieldBySpecFieldId": {
+          "id": 30063,
+          "name": "PC-00 Empaque (Recepción e Inspección de Materia Prima)",
+          "type": "SENSOR",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": {
+           "id": 12519,
+           "name": "PC-00 Recepción e Inspección de Materia Prima (Químicos)",
+           "sensorMeasurementType": "BOOLEAN",
+           "unitByUnitId": null
+          }
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": 5407302,
+     "partNumberId": 3016541,
+     "archivedAt": null,
+     "partNumberSpecByPartNumberSpecId": null,
+     "treatmentSpecByTreatmentSpecId": {
+      "id": 8293,
+      "treatmentByTreatmentId": {
+       "id": 82877,
+       "name": "TR-PRM-001 Antitarnish Manual"
+      }
+     },
+     "classificationSetByClassificationSetId": null,
+     "specBySpecId": {
+      "id": 18452,
+      "domainId": 344,
+      "idInDomain": 65,
+      "revisionNumber": 1,
+      "revisionName": null,
+      "name": "GDE1214700 (Antitarnish)",
+      "specLabelsBySpecId": {
+       "nodes": [
+        {
+         "labelByLabelId": {
+          "id": 11102,
+          "color": "#3e2723",
+          "name": "Schneider"
+         }
+        },
+        {
+         "labelByLabelId": {
+          "id": 10707,
+          "color": "#f06292",
+          "name": "Antitarnish"
+         }
+        }
+       ]
+      },
+      "specFieldSpecsBySpecId": {
+       "nodes": [
+        {
+         "id": 149308,
+         "archivedAt": null,
+         "orderIndex": 0,
+         "specId": 18452,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 17824087,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldId": 20570,
+         "specFieldBySpecFieldId": {
+          "id": 20570,
+          "name": "Protección - Sulfuro de sodio al 2.5%",
+          "type": "BOOLEAN",
+          "scheduleBy": false,
+          "descriptionMarkdown": "Sin coloración café",
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 150208,
+         "archivedAt": "2025-12-10T23:47:58.21459+00:00",
+         "orderIndex": 1,
+         "specId": 18452,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 17954940,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldId": 19445,
+         "specFieldBySpecFieldId": {
+          "id": 19445,
+          "name": "Apariencia Homogénea",
+          "type": "BOOLEAN",
+          "scheduleBy": false,
+          "descriptionMarkdown": "* Brillo indistinto\n* Areas sin falta de recubrimiento\n* Libre de burbujas\n* Libre de manchas\n* Libre de ataque\n* Libre de grumos\n* Libre de puntos negros\n* Libre de manchas blancas\n* Libre de grasa o aceite\n* Libre de oxidación\n* Libre de contaminación ",
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 166976,
+         "archivedAt": null,
+         "orderIndex": 1,
+         "specId": 18452,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 19391314,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldId": 25415,
+         "specFieldBySpecFieldId": {
+          "id": 25415,
+          "name": "Apariencia Homogénea - Antitarnish",
+          "type": "BOOLEAN",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 149700,
+         "archivedAt": null,
+         "orderIndex": 2,
+         "specId": 18452,
+         "isGeneric": true,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 17854562,
+            "name": "Sí o No (ambos pasan)"
+           }
+          ]
+         },
+         "specFieldId": 22546,
+         "specFieldBySpecFieldId": {
+          "id": 22546,
+          "name": "Primeras Piezas Antitarnish",
+          "type": "DROPDOWN",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 149307,
+         "archivedAt": "2025-11-04T17:52:41.704589+00:00",
+         "orderIndex": null,
+         "specId": 18452,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": []
+         },
+         "specFieldId": 20562,
+         "specFieldBySpecFieldId": {
+          "id": 20562,
+          "name": "Protección - Polisulfuro de amonio al 5%",
+          "type": "BOOLEAN",
+          "scheduleBy": false,
+          "descriptionMarkdown": "Sin coloración café",
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 149313,
+         "archivedAt": "2025-11-05T00:41:17.046906+00:00",
+         "orderIndex": null,
+         "specId": 18452,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 17826195,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldId": 22067,
+         "specFieldBySpecFieldId": {
+          "id": 22067,
+          "name": "Primeras Piezas",
+          "type": "DROPDOWN",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": null
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": 5407303,
+     "partNumberId": 3016541,
+     "archivedAt": null,
+     "partNumberSpecByPartNumberSpecId": null,
+     "treatmentSpecByTreatmentSpecId": {
+      "id": 8469,
+      "treatmentByTreatmentId": {
+       "id": 85132,
+       "name": "TR-PRM-006 Preparación de Embarque en Almacén"
+      }
+     },
+     "classificationSetByClassificationSetId": null,
+     "specBySpecId": {
+      "id": 22404,
+      "domainId": 344,
+      "idInDomain": 363,
+      "revisionNumber": 1,
+      "revisionName": "Rev. 01",
+      "name": "Preparación de Embarque en Almacén",
+      "specLabelsBySpecId": {
+       "nodes": [
+        {
+         "labelByLabelId": {
+          "id": 8245,
+          "color": "#0097a7",
+          "name": "Parámetros"
+         }
+        }
+       ]
+      },
+      "specFieldSpecsBySpecId": {
+       "nodes": [
+        {
+         "id": 196958,
+         "archivedAt": null,
+         "orderIndex": null,
+         "specId": 22404,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 22799942,
+            "name": "N/A"
+           }
+          ]
+         },
+         "specFieldId": 30083,
+         "specFieldBySpecFieldId": {
+          "id": 30083,
+          "name": "PC-00 Empaque de material e identificación",
+          "type": "SENSOR",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": {
+           "id": 12520,
+           "name": "PC-00 Empaque de material e identificación",
+           "sensorMeasurementType": "BOOLEAN",
+           "unitByUnitId": null
+          }
+         }
+        },
+        {
+         "id": 196959,
+         "archivedAt": "2026-02-27T13:50:32.26502+00:00",
+         "orderIndex": null,
+         "specId": 22404,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": []
+         },
+         "specFieldId": 30061,
+         "specFieldBySpecFieldId": {
+          "id": 30061,
+          "name": "PC-00 Almacenaje temporal de Piezas",
+          "type": "SENSOR",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": {
+           "id": 12518,
+           "name": "PC-00 Almacenaje temporal de Piezas",
+           "sensorMeasurementType": "BOOLEAN",
+           "unitByUnitId": null
+          }
+         }
+        },
+        {
+         "id": 196961,
+         "archivedAt": null,
+         "orderIndex": null,
+         "specId": 22404,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 22800543,
+            "name": "N/A"
+           }
+          ]
+         },
+         "specFieldId": 30086,
+         "specFieldBySpecFieldId": {
+          "id": 30086,
+          "name": "PC-00 Almacenaje Temporal",
+          "type": "SENSOR",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": {
+           "id": 12521,
+           "name": "PC-00 Almacenaje Temporal",
+           "sensorMeasurementType": "BOOLEAN",
+           "unitByUnitId": null
+          }
+         }
+        },
+        {
+         "id": 197025,
+         "archivedAt": null,
+         "orderIndex": null,
+         "specId": 22404,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 22800671,
+            "name": "N/A"
+           }
+          ]
+         },
+         "specFieldId": 30087,
+         "specFieldBySpecFieldId": {
+          "id": 30087,
+          "name": "PC-00 Cantidad a Embarcar",
+          "type": "SENSOR",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": {
+           "id": 12522,
+           "name": "PC-00 Cantidad a Embarcar",
+           "sensorMeasurementType": "NUMBER",
+           "unitByUnitId": null
+          }
+         }
+        },
+        {
+         "id": 197026,
+         "archivedAt": null,
+         "orderIndex": null,
+         "specId": 22404,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 22800732,
+            "name": "N/A"
+           }
+          ]
+         },
+         "specFieldId": 30088,
+         "specFieldBySpecFieldId": {
+          "id": 30088,
+          "name": "PC-00 Documentación",
+          "type": "SENSOR",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": {
+           "id": 12523,
+           "name": "PC-00 Documentación",
+           "sensorMeasurementType": "BOOLEAN",
+           "unitByUnitId": null
+          }
+         }
+        },
+        {
+         "id": 197199,
+         "archivedAt": null,
+         "orderIndex": null,
+         "specId": 22404,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 22811105,
+            "name": "N/A"
+           }
+          ]
+         },
+         "specFieldId": 30091,
+         "specFieldBySpecFieldId": {
+          "id": 30091,
+          "name": "PC-00 Condiciones de Empaque ",
+          "type": "SENSOR",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": {
+           "id": 12525,
+           "name": "PC-00 Condiciones de Empaque ",
+           "sensorMeasurementType": "BOOLEAN",
+           "unitByUnitId": null
+          }
+         }
+        }
+       ]
+      }
+     }
+    },
+    {
+     "id": 5407304,
+     "partNumberId": 3016541,
+     "archivedAt": null,
+     "partNumberSpecByPartNumberSpecId": null,
+     "treatmentSpecByTreatmentSpecId": {
+      "id": 7127,
+      "treatmentByTreatmentId": {
+       "id": 83118,
+       "name": "TR-ICA-005 Inspección de Calidad Embarques"
+      }
+     },
+     "classificationSetByClassificationSetId": null,
+     "specBySpecId": {
+      "id": 16907,
+      "domainId": 344,
+      "idInDomain": 35,
+      "revisionNumber": 1,
+      "revisionName": null,
+      "name": "Inspección Embarques",
+      "specLabelsBySpecId": {
+       "nodes": [
+        {
+         "labelByLabelId": {
+          "id": 9428,
+          "color": "#ffeb3b",
+          "name": "Inspección"
+         }
+        }
+       ]
+      },
+      "specFieldSpecsBySpecId": {
+       "nodes": [
+        {
+         "id": 149704,
+         "archivedAt": null,
+         "orderIndex": 0,
+         "specId": 16907,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 17854633,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldId": 22550,
+         "specFieldBySpecFieldId": {
+          "id": 22550,
+          "name": "Condiciones del Material a Embarcar",
+          "type": "BOOLEAN",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 126535,
+         "archivedAt": "2025-11-05T01:25:54.009557+00:00",
+         "orderIndex": 1,
+         "specId": 16907,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 15663238,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldId": 20547,
+         "specFieldBySpecFieldId": {
+          "id": 20547,
+          "name": "Liberado por Producción",
+          "type": "BOOLEAN",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 126534,
+         "archivedAt": "2025-11-05T01:26:09.060866+00:00",
+         "orderIndex": 2,
+         "specId": 16907,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 15663237,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldId": 20546,
+         "specFieldBySpecFieldId": {
+          "id": 20546,
+          "name": "Identificación Correcta",
+          "type": "BOOLEAN",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 126536,
+         "archivedAt": "2025-11-05T01:26:21.186706+00:00",
+         "orderIndex": 3,
+         "specId": 16907,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 15663242,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldId": 20548,
+         "specFieldBySpecFieldId": {
+          "id": 20548,
+          "name": "Empaque sin Daños",
+          "type": "BOOLEAN",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 126537,
+         "archivedAt": "2025-11-05T01:26:34.343533+00:00",
+         "orderIndex": 4,
+         "specId": 16907,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 15663250,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldId": 20549,
+         "specFieldBySpecFieldId": {
+          "id": 20549,
+          "name": "Llenado Correcto a Nivel",
+          "type": "BOOLEAN",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 126539,
+         "archivedAt": "2025-11-05T01:20:24.859899+00:00",
+         "orderIndex": 5,
+         "specId": 16907,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 15663252,
+            "name": "Aceptado o Retenido"
+           }
+          ]
+         },
+         "specFieldId": 19956,
+         "specFieldBySpecFieldId": {
+          "id": 19956,
+          "name": "Disposición del Rechazo",
+          "type": "DROPDOWN",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 126541,
+         "archivedAt": null,
+         "orderIndex": 5,
+         "specId": 16907,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 15663270,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldId": 20550,
+         "specFieldBySpecFieldId": {
+          "id": 20550,
+          "name": "Certificado de Calidad Creado",
+          "type": "BOOLEAN",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 126540,
+         "archivedAt": "2025-11-05T01:29:33.105049+00:00",
+         "orderIndex": 6,
+         "specId": 16907,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 15663253,
+            "name": "Notas Adicionales"
+           }
+          ]
+         },
+         "specFieldId": 19271,
+         "specFieldBySpecFieldId": {
+          "id": 19271,
+          "name": "Notas Adicionales",
+          "type": "TEXT",
+          "scheduleBy": false,
+          "descriptionMarkdown": null,
+          "sensorTypeBySensorTypeId": null
+         }
+        }
+       ]
+      }
+     }
+    }
+   ]
+  },
+  "recipeNodesByWorkOrderId": {
+   "nodes": [
+    {
+     "id": 44947398,
+     "name": "T400 (ANT)-CU-VARIOS (20.0)",
+     "type": "PROCESS",
+     "recipeInd": 0,
+     "processNodeOccurrence": 1,
+     "autoComplete": true,
+     "processNodeByDerivedFrom": {
+      "id": 170989,
+      "name": "T400 (ANT)-CU-VARIOS (20.0)",
+      "partNumberOptOut": null
+     },
+     "partsTransfersByToId": {
+      "nodes": []
+     },
+     "recipeNodeSpecFieldsByRecipeNodeId": {
+      "nodes": []
+     },
+     "partNumberRecipeNodeSpecFieldParamsByRecipeNodeId": {
+      "nodes": []
+     }
+    },
+    {
+     "id": 44947399,
+     "name": "SP Inspección Recibo",
+     "type": "SUB_PROCESS",
+     "recipeInd": 1,
+     "processNodeOccurrence": 1,
+     "autoComplete": true,
+     "processNodeByDerivedFrom": {
+      "id": 139820,
+      "name": "SP Inspección Recibo",
+      "partNumberOptOut": null
+     },
+     "partsTransfersByToId": {
+      "nodes": []
+     },
+     "recipeNodeSpecFieldsByRecipeNodeId": {
+      "nodes": []
+     },
+     "partNumberRecipeNodeSpecFieldParamsByRecipeNodeId": {
+      "nodes": []
+     }
+    },
+    {
+     "id": 44947400,
+     "name": "Listo para Inspección Recibo",
+     "type": "STAGING",
+     "recipeInd": 2,
+     "processNodeOccurrence": 1,
+     "autoComplete": false,
+     "processNodeByDerivedFrom": {
+      "id": 166805,
+      "name": "Listo para Inspección Recibo",
+      "partNumberOptOut": null
+     },
+     "partsTransfersByToId": {
+      "nodes": [
+       {
+        "id": 47520746
+       }
+      ]
+     },
+     "recipeNodeSpecFieldsByRecipeNodeId": {
+      "nodes": []
+     },
+     "partNumberRecipeNodeSpecFieldParamsByRecipeNodeId": {
+      "nodes": []
+     }
+    },
+    {
+     "id": 44947401,
+     "name": "Inspeccionando Recibo",
+     "type": "QUALITY_ASSURANCE_NODE",
+     "recipeInd": 3,
+     "processNodeOccurrence": 1,
+     "autoComplete": false,
+     "processNodeByDerivedFrom": {
+      "id": 166806,
+      "name": "Inspeccionando Recibo",
+      "partNumberOptOut": null
+     },
+     "partsTransfersByToId": {
+      "nodes": [
+       {
+        "id": 47520923
+       }
+      ]
+     },
+     "recipeNodeSpecFieldsByRecipeNodeId": {
+      "nodes": [
+       {
+        "id": 39142342,
+        "orderIndex": 1,
+        "specFieldId": 22547,
+        "specFieldBySpecFieldId": {
+         "id": 22547,
+         "name": "Condiciones Adecuadas del Material Recibido"
+        }
+       },
+       {
+        "id": 39142343,
+        "orderIndex": 2,
+        "specFieldId": 22066,
+        "specFieldBySpecFieldId": {
+         "id": 22066,
+         "name": "Requiere notificar al cliente"
+        }
+       },
+       {
+        "id": 39142344,
+        "orderIndex": 3,
+        "specFieldId": 19271,
+        "specFieldBySpecFieldId": {
+         "id": 19271,
+         "name": "Notas Adicionales"
+        }
+       }
+      ]
+     },
+     "partNumberRecipeNodeSpecFieldParamsByRecipeNodeId": {
+      "nodes": [
+       {
+        "id": 24354576,
+        "archivedAt": null,
+        "partNumberId": 3016541,
+        "specFieldId": 22547,
+        "geometryTypeSpecFieldId": null,
+        "locationId": null,
+        "recipeNodeId": 44947401,
+        "geometryTypeSpecFieldByGeometryTypeSpecFieldId": null,
+        "specFieldBySpecFieldId": {
+         "id": 22547,
+         "name": "Condiciones Adecuadas del Material Recibido"
+        },
+        "recipeNodeByRecipeNodeId": {
+         "id": 44947401,
+         "name": "Inspeccionando Recibo",
+         "recipeInd": 3,
+         "derivedFrom": 166806,
+         "processNodeOccurrence": 1
+        },
+        "locationByLocationId": null,
+        "partNumberWorkOrderSpecByDrivenBy": {
+         "id": 5407299,
+         "specBySpecId": {
+          "id": 16165,
+          "name": "Inspección Recibo",
+          "idInDomain": 22,
+          "revisionNumber": 1,
+          "revisionName": null
+         },
+         "workOrderByWorkOrderId": {
+          "id": 1844453,
+          "idInDomain": 10837,
+          "name": ""
+         }
+        },
+        "specFieldParamBySpecFieldParamId": {
+         "id": 32464218,
+         "name": "Sí o No",
+         "drivesCoupons": false,
+         "descriptionMarkdown": "Características Especiales:\nMétodo de Evaluación: Visual\nTamaño de Muestra: 100%\nFrecuencia: Cada lote recibido\nMétodo de Control: Reporte de material Inspeccionado al recibo\nResponsable: Calidad\nReacción: Segregar e identificar el material sospechoso con etiqueta, y notificar al cliente\n\n\n##### **El material no debe presentar ninguna de las siguientes características:**\n* [ ] Material golpeado\n* [ ] Material oxidado\n* [ ] Material con exceso de grasa\n* [ ] Material mezclado\n* [ ] Material con recubrimiento\n* [ ] Material con rebaba\n* [ ] Empaque dañado",
+         "inputRequested": false,
+         "inputRequired": true,
+         "isDefault": false,
+         "maximumValue": null,
+         "minimumValue": null,
+         "mustBePassing": true,
+         "failingRequiresResolution": true,
+         "oneAtATime": false,
+         "requestDocument": false,
+         "sampleCount": null,
+         "samplingIntervalMinutes": null,
+         "samplingRate": null,
+         "sensorValidDurationMinutes": null,
+         "sensorWarningThresholdMinutes": null,
+         "targetValue": null,
+         "unitId": null,
+         "sampleSetId": 181,
+         "specFieldParamDropdownBySpecFieldParamDropdownId": null,
+         "sampleSetBySampleSetId": {
+          "id": 181,
+          "name": "Cero Defectos FCA74R2"
+         },
+         "specFieldParamByDerivedFromId": {
+          "isDefault": false,
+          "id": 17890459,
+          "name": "Sí o No"
+         },
+         "unitByUnitId": null,
+         "specFieldSpecBySpecFieldSpecId": {
+          "id": 149703,
+          "specBySpecId": {
+           "id": 16165,
+           "name": "Inspección Recibo",
+           "domainId": 344,
+           "idInDomain": 22,
+           "revisionNumber": 1,
+           "revisionName": null,
+           "processNodeByDefaultProcessNodeId": {
+            "id": 139820,
+            "name": "SP Inspección Recibo",
+            "archivedAt": null
+           },
+           "processNodeSpecOptInOutsBySpecId": {
+            "nodes": []
+           },
+           "specProcessNodeDefaultsBySpecId": {
+            "nodes": []
+           }
+          },
+          "specFieldBySpecFieldId": {
+           "id": 22547,
+           "name": "Condiciones Adecuadas del Material Recibido",
+           "type": "BOOLEAN",
+           "sensorTypeBySensorTypeId": null
+          }
+         },
+         "processNodeSpecFieldParamsBySpecFieldParamId": {
+          "nodes": []
+         },
+         "processNodeSpecFieldParamOptInOutsBySpecFieldParamId": {
+          "nodes": []
+         },
+         "specFieldParamProcessNodeDefaultsBySpecFieldParamId": {
+          "nodes": []
+         }
+        },
+        "specValuePartsTransferAccountsByPartNumberRecipeNodeSpecFieldParamId": {
+         "nodes": [
+          {
+           "specFieldParamValueBySpecFieldParamValueId": {
+            "archivedAt": null
+           }
+          }
+         ]
+        }
+       },
+       {
+        "id": 24354577,
+        "archivedAt": null,
+        "partNumberId": 3016541,
+        "specFieldId": 22066,
+        "geometryTypeSpecFieldId": null,
+        "locationId": null,
+        "recipeNodeId": 44947401,
+        "geometryTypeSpecFieldByGeometryTypeSpecFieldId": null,
+        "specFieldBySpecFieldId": {
+         "id": 22066,
+         "name": "Requiere notificar al cliente"
+        },
+        "recipeNodeByRecipeNodeId": {
+         "id": 44947401,
+         "name": "Inspeccionando Recibo",
+         "recipeInd": 3,
+         "derivedFrom": 166806,
+         "processNodeOccurrence": 1
+        },
+        "locationByLocationId": null,
+        "partNumberWorkOrderSpecByDrivenBy": {
+         "id": 5407299,
+         "specBySpecId": {
+          "id": 16165,
+          "name": "Inspección Recibo",
+          "idInDomain": 22,
+          "revisionNumber": 1,
+          "revisionName": null
+         },
+         "workOrderByWorkOrderId": {
+          "id": 1844453,
+          "idInDomain": 10837,
+          "name": ""
+         }
+        },
+        "specFieldParamBySpecFieldParamId": {
+         "id": 32464219,
+         "name": "Sí o No",
+         "drivesCoupons": false,
+         "descriptionMarkdown": "Características Especiales:\nMétodo de Evaluación: N/A\nTamaño de Muestra: 100%\nFrecuencia: Cada lote recibido\nMétodo de Control: Reporte de material Inspeccionado al recibo\nResponsable: Calidad\nReacción: Segregar e identificar el material sospechoso con etiqueta, y notificar al cliente",
+         "inputRequested": true,
+         "inputRequired": false,
+         "isDefault": false,
+         "maximumValue": null,
+         "minimumValue": null,
+         "mustBePassing": false,
+         "failingRequiresResolution": true,
+         "oneAtATime": false,
+         "requestDocument": false,
+         "sampleCount": null,
+         "samplingIntervalMinutes": null,
+         "samplingRate": null,
+         "sensorValidDurationMinutes": null,
+         "sensorWarningThresholdMinutes": null,
+         "targetValue": null,
+         "unitId": null,
+         "sampleSetId": 181,
+         "specFieldParamDropdownBySpecFieldParamDropdownId": {
+          "id": 689079,
+          "name": "Sí o No (ambos pasan)"
+         },
+         "sampleSetBySampleSetId": {
+          "id": 181,
+          "name": "Cero Defectos FCA74R2"
+         },
+         "specFieldParamByDerivedFromId": {
+          "isDefault": false,
+          "id": 17890462,
+          "name": "Sí o No"
+         },
+         "unitByUnitId": null,
+         "specFieldSpecBySpecFieldSpecId": {
+          "id": 146041,
+          "specBySpecId": {
+           "id": 16165,
+           "name": "Inspección Recibo",
+           "domainId": 344,
+           "idInDomain": 22,
+           "revisionNumber": 1,
+           "revisionName": null,
+           "processNodeByDefaultProcessNodeId": {
+            "id": 139820,
+            "name": "SP Inspección Recibo",
+            "archivedAt": null
+           },
+           "processNodeSpecOptInOutsBySpecId": {
+            "nodes": []
+           },
+           "specProcessNodeDefaultsBySpecId": {
+            "nodes": []
+           }
+          },
+          "specFieldBySpecFieldId": {
+           "id": 22066,
+           "name": "Requiere notificar al cliente",
+           "type": "DROPDOWN",
+           "sensorTypeBySensorTypeId": null
+          }
+         },
+         "processNodeSpecFieldParamsBySpecFieldParamId": {
+          "nodes": []
+         },
+         "processNodeSpecFieldParamOptInOutsBySpecFieldParamId": {
+          "nodes": []
+         },
+         "specFieldParamProcessNodeDefaultsBySpecFieldParamId": {
+          "nodes": []
+         }
+        },
+        "specValuePartsTransferAccountsByPartNumberRecipeNodeSpecFieldParamId": {
+         "nodes": []
+        }
+       },
+       {
+        "id": 24354578,
+        "archivedAt": null,
+        "partNumberId": 3016541,
+        "specFieldId": 19271,
+        "geometryTypeSpecFieldId": null,
+        "locationId": null,
+        "recipeNodeId": 44947401,
+        "geometryTypeSpecFieldByGeometryTypeSpecFieldId": null,
+        "specFieldBySpecFieldId": {
+         "id": 19271,
+         "name": "Notas Adicionales"
+        },
+        "recipeNodeByRecipeNodeId": {
+         "id": 44947401,
+         "name": "Inspeccionando Recibo",
+         "recipeInd": 3,
+         "derivedFrom": 166806,
+         "processNodeOccurrence": 1
+        },
+        "locationByLocationId": null,
+        "partNumberWorkOrderSpecByDrivenBy": {
+         "id": 5407299,
+         "specBySpecId": {
+          "id": 16165,
+          "name": "Inspección Recibo",
+          "idInDomain": 22,
+          "revisionNumber": 1,
+          "revisionName": null
+         },
+         "workOrderByWorkOrderId": {
+          "id": 1844453,
+          "idInDomain": 10837,
+          "name": ""
+         }
+        },
+        "specFieldParamBySpecFieldParamId": {
+         "id": 32464220,
+         "name": "Notas Adicionales",
+         "drivesCoupons": false,
+         "descriptionMarkdown": "#### **Record any additional comments here regarding this group of parts.**\nCaracterísticas Especiales:\nMétodo de Evaluación: N/A\nTamaño de Muestra: 100%\nFrecuencia: Cada lote recibido\nMétodo de Control: Reporte de material Inspeccionado al recibo\nResponsable: Calidad\nReacción: Segregar e identificar el material sospechoso con etiqueta, y notificar al cliente",
+         "inputRequested": true,
+         "inputRequired": false,
+         "isDefault": false,
+         "maximumValue": null,
+         "minimumValue": null,
+         "mustBePassing": false,
+         "failingRequiresResolution": false,
+         "oneAtATime": false,
+         "requestDocument": false,
+         "sampleCount": null,
+         "samplingIntervalMinutes": null,
+         "samplingRate": null,
+         "sensorValidDurationMinutes": null,
+         "sensorWarningThresholdMinutes": null,
+         "targetValue": null,
+         "unitId": null,
+         "sampleSetId": 181,
+         "specFieldParamDropdownBySpecFieldParamDropdownId": null,
+         "sampleSetBySampleSetId": {
+          "id": 181,
+          "name": "Cero Defectos FCA74R2"
+         },
+         "specFieldParamByDerivedFromId": {
+          "isDefault": false,
+          "id": 22793356,
+          "name": "Notas Adicionales"
+         },
+         "unitByUnitId": null,
+         "specFieldSpecBySpecFieldSpecId": {
+          "id": 117491,
+          "specBySpecId": {
+           "id": 16165,
+           "name": "Inspección Recibo",
+           "domainId": 344,
+           "idInDomain": 22,
+           "revisionNumber": 1,
+           "revisionName": null,
+           "processNodeByDefaultProcessNodeId": {
+            "id": 139820,
+            "name": "SP Inspección Recibo",
+            "archivedAt": null
+           },
+           "processNodeSpecOptInOutsBySpecId": {
+            "nodes": []
+           },
+           "specProcessNodeDefaultsBySpecId": {
+            "nodes": []
+           }
+          },
+          "specFieldBySpecFieldId": {
+           "id": 19271,
+           "name": "Notas Adicionales",
+           "type": "TEXT",
+           "sensorTypeBySensorTypeId": null
+          }
+         },
+         "processNodeSpecFieldParamsBySpecFieldParamId": {
+          "nodes": []
+         },
+         "processNodeSpecFieldParamOptInOutsBySpecFieldParamId": {
+          "nodes": []
+         },
+         "specFieldParamProcessNodeDefaultsBySpecFieldParamId": {
+          "nodes": []
+         }
+        },
+        "specValuePartsTransferAccountsByPartNumberRecipeNodeSpecFieldParamId": {
+         "nodes": []
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": 44947402,
+     "name": "SP Preparación de Surtido en Almacén",
+     "type": "SUB_PROCESS",
+     "recipeInd": 4,
+     "processNodeOccurrence": 1,
+     "autoComplete": true,
+     "processNodeByDerivedFrom": {
+      "id": 112722,
+      "name": "SP Preparación de Surtido en Almacén",
+      "partNumberOptOut": null
+     },
+     "partsTransfersByToId": {
+      "nodes": []
+     },
+     "recipeNodeSpecFieldsByRecipeNodeId": {
+      "nodes": []
+     },
+     "partNumberRecipeNodeSpecFieldParamsByRecipeNodeId": {
+      "nodes": []
+     }
+    },
+    {
+     "id": 44947403,
+     "name": "Listo para Preparar Surtido",
+     "type": "STAGING",
+     "recipeInd": 5,
+     "processNodeOccurrence": 1,
+     "autoComplete": false,
+     "processNodeByDerivedFrom": {
+      "id": 167775,
+      "name": "Listo para Preparar Surtido",
+      "partNumberOptOut": null
+     },
+     "partsTransfersByToId": {
+      "nodes": [
+       {
+        "id": 47521204
+       }
+      ]
+     },
+     "recipeNodeSpecFieldsByRecipeNodeId": {
+      "nodes": []
+     },
+     "partNumberRecipeNodeSpecFieldParamsByRecipeNodeId": {
+      "nodes": []
+     }
+    },
+    {
+     "id": 44947404,
+     "name": "Preparando Surtido en Almacén",
+     "type": "STEP",
+     "recipeInd": 6,
+     "processNodeOccurrence": 1,
+     "autoComplete": false,
+     "processNodeByDerivedFrom": {
+      "id": 167776,
+      "name": "Preparando Surtido en Almacén",
+      "partNumberOptOut": null
+     },
+     "partsTransfersByToId": {
+      "nodes": [
+       {
+        "id": 47524589
+       }
+      ]
+     },
+     "recipeNodeSpecFieldsByRecipeNodeId": {
+      "nodes": [
+       {
+        "id": 39142345,
+        "orderIndex": 1,
+        "specFieldId": 30057,
+        "specFieldBySpecFieldId": {
+         "id": 30057,
+         "name": " PC-00 Surtimiento a la línea de producción"
+        }
+       },
+       {
+        "id": 39142346,
+        "orderIndex": 2,
+        "specFieldId": 30058,
+        "specFieldBySpecFieldId": {
+         "id": 30058,
+         "name": " PC-00 Identificación de Material Propiedad de Cliente"
+        }
+       },
+       {
+        "id": 39142347,
+        "orderIndex": 3,
+        "specFieldId": 30060,
+        "specFieldBySpecFieldId": {
+         "id": 30060,
+         "name": " PC-00 Cantidad de Material Propiedad de Cliente"
+        }
+       }
+      ]
+     },
+     "partNumberRecipeNodeSpecFieldParamsByRecipeNodeId": {
+      "nodes": [
+       {
+        "id": 24354579,
+        "archivedAt": null,
+        "partNumberId": 3016541,
+        "specFieldId": 30057,
+        "geometryTypeSpecFieldId": null,
+        "locationId": null,
+        "recipeNodeId": 44947404,
+        "geometryTypeSpecFieldByGeometryTypeSpecFieldId": null,
+        "specFieldBySpecFieldId": {
+         "id": 30057,
+         "name": " PC-00 Surtimiento a la línea de producción"
+        },
+        "recipeNodeByRecipeNodeId": {
+         "id": 44947404,
+         "name": "Preparando Surtido en Almacén",
+         "recipeInd": 6,
+         "derivedFrom": 167776,
+         "processNodeOccurrence": 1
+        },
+        "locationByLocationId": null,
+        "partNumberWorkOrderSpecByDrivenBy": {
+         "id": 5407300,
+         "specBySpecId": {
+          "id": 22402,
+          "name": "Preparación de Surtido en Almacén ",
+          "idInDomain": 361,
+          "revisionNumber": 1,
+          "revisionName": "Rev.01"
+         },
+         "workOrderByWorkOrderId": {
+          "id": 1844453,
+          "idInDomain": 10837,
+          "name": ""
+         }
+        },
+        "specFieldParamBySpecFieldParamId": {
+         "id": 32464221,
+         "name": "Sí o No",
+         "drivesCoupons": false,
+         "descriptionMarkdown": "Características Especiales:\nMétodo de Evaluación: Visual \nTamaño de Muestra: 100%\nFrecuencia: Cada lote recibido\nMétodo de Control: Orden de Trabajo\nResponsable: Almacén\nReacción: Identificar el material, Mandar a retención y avisar al responsable de almacén \nHerramienta : Patín, Montacargas",
+         "inputRequested": false,
+         "inputRequired": false,
+         "isDefault": false,
+         "maximumValue": null,
+         "minimumValue": null,
+         "mustBePassing": false,
+         "failingRequiresResolution": false,
+         "oneAtATime": false,
+         "requestDocument": false,
+         "sampleCount": null,
+         "samplingIntervalMinutes": null,
+         "samplingRate": null,
+         "sensorValidDurationMinutes": 540000,
+         "sensorWarningThresholdMinutes": 540000,
+         "targetValue": null,
+         "unitId": null,
+         "sampleSetId": 181,
+         "specFieldParamDropdownBySpecFieldParamDropdownId": null,
+         "sampleSetBySampleSetId": {
+          "id": 181,
+          "name": "Cero Defectos FCA74R2"
+         },
+         "specFieldParamByDerivedFromId": {
+          "isDefault": false,
+          "id": 22792988,
+          "name": "Sí o No"
+         },
+         "unitByUnitId": null,
+         "specFieldSpecBySpecFieldSpecId": {
+          "id": 196923,
+          "specBySpecId": {
+           "id": 22402,
+           "name": "Preparación de Surtido en Almacén ",
+           "domainId": 344,
+           "idInDomain": 361,
+           "revisionNumber": 1,
+           "revisionName": "Rev.01",
+           "processNodeByDefaultProcessNodeId": null,
+           "processNodeSpecOptInOutsBySpecId": {
+            "nodes": []
+           },
+           "specProcessNodeDefaultsBySpecId": {
+            "nodes": []
+           }
+          },
+          "specFieldBySpecFieldId": {
+           "id": 30057,
+           "name": " PC-00 Surtimiento a la línea de producción",
+           "type": "SENSOR",
+           "sensorTypeBySensorTypeId": {
+            "id": 12514,
+            "name": "PC-00 Surtimiento a la línea de producción",
+            "sensorMeasurementType": "BOOLEAN",
+            "unitByUnitId": null
+           }
+          }
+         },
+         "processNodeSpecFieldParamsBySpecFieldParamId": {
+          "nodes": []
+         },
+         "processNodeSpecFieldParamOptInOutsBySpecFieldParamId": {
+          "nodes": []
+         },
+         "specFieldParamProcessNodeDefaultsBySpecFieldParamId": {
+          "nodes": []
+         }
+        },
+        "specValuePartsTransferAccountsByPartNumberRecipeNodeSpecFieldParamId": {
+         "nodes": []
+        }
+       },
+       {
+        "id": 24354580,
+        "archivedAt": null,
+        "partNumberId": 3016541,
+        "specFieldId": 30058,
+        "geometryTypeSpecFieldId": null,
+        "locationId": null,
+        "recipeNodeId": 44947404,
+        "geometryTypeSpecFieldByGeometryTypeSpecFieldId": null,
+        "specFieldBySpecFieldId": {
+         "id": 30058,
+         "name": " PC-00 Identificación de Material Propiedad de Cliente"
+        },
+        "recipeNodeByRecipeNodeId": {
+         "id": 44947404,
+         "name": "Preparando Surtido en Almacén",
+         "recipeInd": 6,
+         "derivedFrom": 167776,
+         "processNodeOccurrence": 1
+        },
+        "locationByLocationId": null,
+        "partNumberWorkOrderSpecByDrivenBy": {
+         "id": 5407300,
+         "specBySpecId": {
+          "id": 22402,
+          "name": "Preparación de Surtido en Almacén ",
+          "idInDomain": 361,
+          "revisionNumber": 1,
+          "revisionName": "Rev.01"
+         },
+         "workOrderByWorkOrderId": {
+          "id": 1844453,
+          "idInDomain": 10837,
+          "name": ""
+         }
+        },
+        "specFieldParamBySpecFieldParamId": {
+         "id": 32464222,
+         "name": "Si o No",
+         "drivesCoupons": false,
+         "descriptionMarkdown": "Características Especiales:\nMétodo de Evaluación: Visual \nTamaño de Muestra: Lote Completo\nFrecuencia: Cada Embarque\nMétodo de Control: Recibo de Almacén \nResponsable: Almacén\nReacción: Segregar el material y notificar al cliente a través del reporte de discrepancia FAL 08",
+         "inputRequested": false,
+         "inputRequired": false,
+         "isDefault": false,
+         "maximumValue": null,
+         "minimumValue": null,
+         "mustBePassing": false,
+         "failingRequiresResolution": false,
+         "oneAtATime": false,
+         "requestDocument": false,
+         "sampleCount": null,
+         "samplingIntervalMinutes": null,
+         "samplingRate": null,
+         "sensorValidDurationMinutes": 540000,
+         "sensorWarningThresholdMinutes": 540000,
+         "targetValue": null,
+         "unitId": null,
+         "sampleSetId": 181,
+         "specFieldParamDropdownBySpecFieldParamDropdownId": null,
+         "sampleSetBySampleSetId": {
+          "id": 181,
+          "name": "Cero Defectos FCA74R2"
+         },
+         "specFieldParamByDerivedFromId": {
+          "isDefault": false,
+          "id": 22793341,
+          "name": "Si o No"
+         },
+         "unitByUnitId": null,
+         "specFieldSpecBySpecFieldSpecId": {
+          "id": 196931,
+          "specBySpecId": {
+           "id": 22402,
+           "name": "Preparación de Surtido en Almacén ",
+           "domainId": 344,
+           "idInDomain": 361,
+           "revisionNumber": 1,
+           "revisionName": "Rev.01",
+           "processNodeByDefaultProcessNodeId": null,
+           "processNodeSpecOptInOutsBySpecId": {
+            "nodes": []
+           },
+           "specProcessNodeDefaultsBySpecId": {
+            "nodes": []
+           }
+          },
+          "specFieldBySpecFieldId": {
+           "id": 30058,
+           "name": " PC-00 Identificación de Material Propiedad de Cliente",
+           "type": "SENSOR",
+           "sensorTypeBySensorTypeId": {
+            "id": 12516,
+            "name": " PC-00 Identificación de Material Propiedad de Cliente",
+            "sensorMeasurementType": "BOOLEAN",
+            "unitByUnitId": null
+           }
+          }
+         },
+         "processNodeSpecFieldParamsBySpecFieldParamId": {
+          "nodes": []
+         },
+         "processNodeSpecFieldParamOptInOutsBySpecFieldParamId": {
+          "nodes": []
+         },
+         "specFieldParamProcessNodeDefaultsBySpecFieldParamId": {
+          "nodes": []
+         }
+        },
+        "specValuePartsTransferAccountsByPartNumberRecipeNodeSpecFieldParamId": {
+         "nodes": []
+        }
+       },
+       {
+        "id": 24354581,
+        "archivedAt": null,
+        "partNumberId": 3016541,
+        "specFieldId": 30060,
+        "geometryTypeSpecFieldId": null,
+        "locationId": null,
+        "recipeNodeId": 44947404,
+        "geometryTypeSpecFieldByGeometryTypeSpecFieldId": null,
+        "specFieldBySpecFieldId": {
+         "id": 30060,
+         "name": " PC-00 Cantidad de Material Propiedad de Cliente"
+        },
+        "recipeNodeByRecipeNodeId": {
+         "id": 44947404,
+         "name": "Preparando Surtido en Almacén",
+         "recipeInd": 6,
+         "derivedFrom": 167776,
+         "processNodeOccurrence": 1
+        },
+        "locationByLocationId": null,
+        "partNumberWorkOrderSpecByDrivenBy": {
+         "id": 5407300,
+         "specBySpecId": {
+          "id": 22402,
+          "name": "Preparación de Surtido en Almacén ",
+          "idInDomain": 361,
+          "revisionNumber": 1,
+          "revisionName": "Rev.01"
+         },
+         "workOrderByWorkOrderId": {
+          "id": 1844453,
+          "idInDomain": 10837,
+          "name": ""
+         }
+        },
+        "specFieldParamBySpecFieldParamId": {
+         "id": 32464223,
+         "name": "Sí o No",
+         "drivesCoupons": false,
+         "descriptionMarkdown": "Características Especiales:\nMétodo de Evaluación: Bascula\nTamaño de Muestra: Lote Completo\nFrecuencia: Cada Embarque\nMétodo de Control: Recibo de Almacén \nResponsable: Almacén\nReacción: Segregar el material y notificar al cliente a través del reporte de discrepancia FAL 08\n",
+         "inputRequested": false,
+         "inputRequired": false,
+         "isDefault": false,
+         "maximumValue": null,
+         "minimumValue": null,
+         "mustBePassing": false,
+         "failingRequiresResolution": false,
+         "oneAtATime": false,
+         "requestDocument": false,
+         "sampleCount": null,
+         "samplingIntervalMinutes": null,
+         "samplingRate": null,
+         "sensorValidDurationMinutes": 540000,
+         "sensorWarningThresholdMinutes": 540000,
+         "targetValue": null,
+         "unitId": null,
+         "sampleSetId": 181,
+         "specFieldParamDropdownBySpecFieldParamDropdownId": null,
+         "sampleSetBySampleSetId": {
+          "id": 181,
+          "name": "Cero Defectos FCA74R2"
+         },
+         "specFieldParamByDerivedFromId": {
+          "isDefault": false,
+          "id": 22793342,
+          "name": "Sí o No"
+         },
+         "unitByUnitId": null,
+         "specFieldSpecBySpecFieldSpecId": {
+          "id": 196932,
+          "specBySpecId": {
+           "id": 22402,
+           "name": "Preparación de Surtido en Almacén ",
+           "domainId": 344,
+           "idInDomain": 361,
+           "revisionNumber": 1,
+           "revisionName": "Rev.01",
+           "processNodeByDefaultProcessNodeId": null,
+           "processNodeSpecOptInOutsBySpecId": {
+            "nodes": []
+           },
+           "specProcessNodeDefaultsBySpecId": {
+            "nodes": []
+           }
+          },
+          "specFieldBySpecFieldId": {
+           "id": 30060,
+           "name": " PC-00 Cantidad de Material Propiedad de Cliente",
+           "type": "SENSOR",
+           "sensorTypeBySensorTypeId": {
+            "id": 12517,
+            "name": " PC-00 Cantidad de Material Propiedad de Cliente",
+            "sensorMeasurementType": "NUMBER",
+            "unitByUnitId": null
+           }
+          }
+         },
+         "processNodeSpecFieldParamsBySpecFieldParamId": {
+          "nodes": []
+         },
+         "processNodeSpecFieldParamOptInOutsBySpecFieldParamId": {
+          "nodes": []
+         },
+         "specFieldParamProcessNodeDefaultsBySpecFieldParamId": {
+          "nodes": []
+         }
+        },
+        "specValuePartsTransferAccountsByPartNumberRecipeNodeSpecFieldParamId": {
+         "nodes": []
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": 44947405,
+     "name": "T400-CE03 Antitarnish en Línea 20.0",
+     "type": "STEP",
+     "recipeInd": 7,
+     "processNodeOccurrence": 1,
+     "autoComplete": true,
+     "processNodeByDerivedFrom": {
+      "id": 267684,
+      "name": "T400-CE03 Antitarnish en Línea 20.0",
+      "partNumberOptOut": null
+     },
+     "partsTransfersByToId": {
+      "nodes": []
+     },
+     "recipeNodeSpecFieldsByRecipeNodeId": {
+      "nodes": []
+     },
+     "partNumberRecipeNodeSpecFieldParamsByRecipeNodeId": {
+      "nodes": []
+     }
+    },
+    {
+     "id": 44947406,
+     "name": "Recibo de Orden de Antitarnish",
+     "type": "STEP",
+     "recipeInd": 8,
+     "processNodeOccurrence": 1,
+     "autoComplete": false,
+     "processNodeByDerivedFrom": {
+      "id": 267691,
+      "name": "Recibo de Orden de Antitarnish",
+      "partNumberOptOut": null
+     },
+     "partsTransfersByToId": {
+      "nodes": [
+       {
+        "id": 47526825
+       }
+      ]
+     },
+     "recipeNodeSpecFieldsByRecipeNodeId": {
+      "nodes": []
+     },
+     "partNumberRecipeNodeSpecFieldParamsByRecipeNodeId": {
+      "nodes": []
+     }
+    },
+    {
+     "id": 44947407,
+     "name": "Listo para Antitarnish Manual",
+     "type": "STAGING",
+     "recipeInd": 9,
+     "processNodeOccurrence": 1,
+     "autoComplete": false,
+     "processNodeByDerivedFrom": {
+      "id": 267692,
+      "name": "Listo para Antitarnish Manual",
+      "partNumberOptOut": null
+     },
+     "partsTransfersByToId": {
+      "nodes": [
+       {
+        "id": 50313685
+       }
+      ]
+     },
+     "recipeNodeSpecFieldsByRecipeNodeId": {
+      "nodes": []
+     },
+     "partNumberRecipeNodeSpecFieldParamsByRecipeNodeId": {
+      "nodes": []
+     }
+    },
+    {
+     "id": 44947408,
+     "name": "CE03 Aplicando Antitarnish Manual",
+     "type": "STEP",
+     "recipeInd": 10,
+     "processNodeOccurrence": 1,
+     "autoComplete": false,
+     "processNodeByDerivedFrom": {
+      "id": 267704,
+      "name": "CE03 Aplicando Antitarnish Manual",
+      "partNumberOptOut": null
+     },
+     "partsTransfersByToId": {
+      "nodes": [
+       {
+        "id": 50319003
+       }
+      ]
+     },
+     "recipeNodeSpecFieldsByRecipeNodeId": {
+      "nodes": []
+     },
+     "partNumberRecipeNodeSpecFieldParamsByRecipeNodeId": {
+      "nodes": []
+     }
+    },
+    {
+     "id": 44947409,
+     "name": "Inspección y Empaque",
+     "type": "STEP",
+     "recipeInd": 11,
+     "processNodeOccurrence": 1,
+     "autoComplete": true,
+     "processNodeByDerivedFrom": {
+      "id": 267710,
+      "name": "Inspección y Empaque",
+      "partNumberOptOut": null
+     },
+     "partsTransfersByToId": {
+      "nodes": []
+     },
+     "recipeNodeSpecFieldsByRecipeNodeId": {
+      "nodes": []
+     },
+     "partNumberRecipeNodeSpecFieldParamsByRecipeNodeId": {
+      "nodes": []
+     }
+    },
+    {
+     "id": 44947410,
+     "name": "Listo para Inspección y Empaque",
+     "type": "STAGING",
+     "recipeInd": 12,
+     "processNodeOccurrence": 1,
+     "autoComplete": false,
+     "processNodeByDerivedFrom": {
+      "id": 268052,
+      "name": "Listo para Inspección y Empaque",
+      "partNumberOptOut": null
+     },
+     "partsTransfersByToId": {
+      "nodes": [
+       {
+        "id": 49899053
+       }
+      ]
+     },
+     "recipeNodeSpecFieldsByRecipeNodeId": {
+      "nodes": []
+     },
+     "partNumberRecipeNodeSpecFieldParamsByRecipeNodeId": {
+      "nodes": []
+     }
+    },
+    {
+     "id": 44947411,
+     "name": "Inspeccionando y  Empacando Antitarnish",
+     "type": "QUALITY_ASSURANCE_NODE",
+     "recipeInd": 13,
+     "processNodeOccurrence": 1,
+     "autoComplete": false,
+     "processNodeByDerivedFrom": {
+      "id": 268059,
+      "name": "Inspeccionando y  Empacando Antitarnish",
+      "partNumberOptOut": null
+     },
+     "partsTransfersByToId": {
+      "nodes": [
+       {
+        "id": 49899771
+       }
+      ]
+     },
+     "recipeNodeSpecFieldsByRecipeNodeId": {
+      "nodes": []
+     },
+     "partNumberRecipeNodeSpecFieldParamsByRecipeNodeId": {
+      "nodes": []
+     }
+    },
+    {
+     "id": 44947412,
+     "name": "SP Preparación de Embarque en Almacén",
+     "type": "SUB_PROCESS",
+     "recipeInd": 14,
+     "processNodeOccurrence": 1,
+     "autoComplete": true,
+     "processNodeByDerivedFrom": {
+      "id": 116917,
+      "name": "SP Preparación de Embarque en Almacén",
+      "partNumberOptOut": null
+     },
+     "partsTransfersByToId": {
+      "nodes": []
+     },
+     "recipeNodeSpecFieldsByRecipeNodeId": {
+      "nodes": []
+     },
+     "partNumberRecipeNodeSpecFieldParamsByRecipeNodeId": {
+      "nodes": []
+     }
+    },
+    {
+     "id": 44947413,
+     "name": "Recibo de Orden en Almacén",
+     "type": "STEP",
+     "recipeInd": 15,
+     "processNodeOccurrence": 1,
+     "autoComplete": false,
+     "processNodeByDerivedFrom": {
+      "id": 207565,
+      "name": "Recibo de Orden en Almacén",
+      "partNumberOptOut": null
+     },
+     "partsTransfersByToId": {
+      "nodes": [
+       {
+        "id": 50319173
+       }
+      ]
+     },
+     "recipeNodeSpecFieldsByRecipeNodeId": {
+      "nodes": [
+       {
+        "id": 39142348,
+        "orderIndex": 0,
+        "specFieldId": 30091,
+        "specFieldBySpecFieldId": {
+         "id": 30091,
+         "name": "PC-00 Condiciones de Empaque "
+        }
+       },
+       {
+        "id": 39142349,
+        "orderIndex": 1,
+        "specFieldId": 30086,
+        "specFieldBySpecFieldId": {
+         "id": 30086,
+         "name": "PC-00 Almacenaje Temporal"
+        }
+       }
+      ]
+     },
+     "partNumberRecipeNodeSpecFieldParamsByRecipeNodeId": {
+      "nodes": [
+       {
+        "id": 24354582,
+        "archivedAt": null,
+        "partNumberId": 3016541,
+        "specFieldId": 30091,
+        "geometryTypeSpecFieldId": null,
+        "locationId": null,
+        "recipeNodeId": 44947413,
+        "geometryTypeSpecFieldByGeometryTypeSpecFieldId": null,
+        "specFieldBySpecFieldId": {
+         "id": 30091,
+         "name": "PC-00 Condiciones de Empaque "
+        },
+        "recipeNodeByRecipeNodeId": {
+         "id": 44947413,
+         "name": "Recibo de Orden en Almacén",
+         "recipeInd": 15,
+         "derivedFrom": 207565,
+         "processNodeOccurrence": 1
+        },
+        "locationByLocationId": null,
+        "partNumberWorkOrderSpecByDrivenBy": {
+         "id": 5407303,
+         "specBySpecId": {
+          "id": 22404,
+          "name": "Preparación de Embarque en Almacén",
+          "idInDomain": 363,
+          "revisionNumber": 1,
+          "revisionName": "Rev. 01"
+         },
+         "workOrderByWorkOrderId": {
+          "id": 1844453,
+          "idInDomain": 10837,
+          "name": ""
+         }
+        },
+        "specFieldParamBySpecFieldParamId": {
+         "id": 32464224,
+         "name": "N/A",
+         "drivesCoupons": false,
+         "descriptionMarkdown": "Características Especiales:\nMétodo de Evaluación: Visual\nTamaño de Muestra: 100%\nFrecuencia: Cada lote\nMétodo de Control: Tarjeta de Material Liberado FCA 48 y /o Sello verde de Material Liberado FCA 107\nResponsable: Calidad\nReacción: Detener el proceso, segregar e identificar con tarjeta de rechazado FCA 53,  y dar aviso al responsable de producción y laboratorio para que corrijan el proceso \n",
+         "inputRequested": false,
+         "inputRequired": false,
+         "isDefault": false,
+         "maximumValue": null,
+         "minimumValue": null,
+         "mustBePassing": false,
+         "failingRequiresResolution": false,
+         "oneAtATime": false,
+         "requestDocument": false,
+         "sampleCount": null,
+         "samplingIntervalMinutes": null,
+         "samplingRate": null,
+         "sensorValidDurationMinutes": 540000,
+         "sensorWarningThresholdMinutes": null,
+         "targetValue": null,
+         "unitId": null,
+         "sampleSetId": 181,
+         "specFieldParamDropdownBySpecFieldParamDropdownId": null,
+         "sampleSetBySampleSetId": {
+          "id": 181,
+          "name": "Cero Defectos FCA74R2"
+         },
+         "specFieldParamByDerivedFromId": {
+          "isDefault": false,
+          "id": 22811547,
+          "name": "N/A"
+         },
+         "unitByUnitId": null,
+         "specFieldSpecBySpecFieldSpecId": {
+          "id": 197199,
+          "specBySpecId": {
+           "id": 22404,
+           "name": "Preparación de Embarque en Almacén",
+           "domainId": 344,
+           "idInDomain": 363,
+           "revisionNumber": 1,
+           "revisionName": "Rev. 01",
+           "processNodeByDefaultProcessNodeId": null,
+           "processNodeSpecOptInOutsBySpecId": {
+            "nodes": []
+           },
+           "specProcessNodeDefaultsBySpecId": {
+            "nodes": []
+           }
+          },
+          "specFieldBySpecFieldId": {
+           "id": 30091,
+           "name": "PC-00 Condiciones de Empaque ",
+           "type": "SENSOR",
+           "sensorTypeBySensorTypeId": {
+            "id": 12525,
+            "name": "PC-00 Condiciones de Empaque ",
+            "sensorMeasurementType": "BOOLEAN",
+            "unitByUnitId": null
+           }
+          }
+         },
+         "processNodeSpecFieldParamsBySpecFieldParamId": {
+          "nodes": []
+         },
+         "processNodeSpecFieldParamOptInOutsBySpecFieldParamId": {
+          "nodes": []
+         },
+         "specFieldParamProcessNodeDefaultsBySpecFieldParamId": {
+          "nodes": []
+         }
+        },
+        "specValuePartsTransferAccountsByPartNumberRecipeNodeSpecFieldParamId": {
+         "nodes": []
+        }
+       },
+       {
+        "id": 24354583,
+        "archivedAt": null,
+        "partNumberId": 3016541,
+        "specFieldId": 30086,
+        "geometryTypeSpecFieldId": null,
+        "locationId": null,
+        "recipeNodeId": 44947413,
+        "geometryTypeSpecFieldByGeometryTypeSpecFieldId": null,
+        "specFieldBySpecFieldId": {
+         "id": 30086,
+         "name": "PC-00 Almacenaje Temporal"
+        },
+        "recipeNodeByRecipeNodeId": {
+         "id": 44947413,
+         "name": "Recibo de Orden en Almacén",
+         "recipeInd": 15,
+         "derivedFrom": 207565,
+         "processNodeOccurrence": 1
+        },
+        "locationByLocationId": null,
+        "partNumberWorkOrderSpecByDrivenBy": {
+         "id": 5407303,
+         "specBySpecId": {
+          "id": 22404,
+          "name": "Preparación de Embarque en Almacén",
+          "idInDomain": 363,
+          "revisionNumber": 1,
+          "revisionName": "Rev. 01"
+         },
+         "workOrderByWorkOrderId": {
+          "id": 1844453,
+          "idInDomain": 10837,
+          "name": ""
+         }
+        },
+        "specFieldParamBySpecFieldParamId": {
+         "id": 32464225,
+         "name": "N/A",
+         "drivesCoupons": false,
+         "descriptionMarkdown": "Características Especiales:\nMétodo de Evaluación: Visual \nTamaño de Muestra: 100%\nFrecuencia: Cada Lote\nMétodo de Control: Identificación de Tarima FAL 11Auditoria de conservación del producto FAL 07.\nResponsable: Almacén\nReacción: En caso de incumplimiento detener el embarque, segregar e identificar el material con tarjeta de rechazo FCA 53 y dar aviso a responsables de Almacén \n",
+         "inputRequested": false,
+         "inputRequired": false,
+         "isDefault": false,
+         "maximumValue": null,
+         "minimumValue": null,
+         "mustBePassing": false,
+         "failingRequiresResolution": false,
+         "oneAtATime": false,
+         "requestDocument": false,
+         "sampleCount": null,
+         "samplingIntervalMinutes": null,
+         "samplingRate": null,
+         "sensorValidDurationMinutes": 540000,
+         "sensorWarningThresholdMinutes": null,
+         "targetValue": null,
+         "unitId": null,
+         "sampleSetId": 181,
+         "specFieldParamDropdownBySpecFieldParamDropdownId": null,
+         "sampleSetBySampleSetId": {
+          "id": 181,
+          "name": "Cero Defectos FCA74R2"
+         },
+         "specFieldParamByDerivedFromId": {
+          "isDefault": false,
+          "id": 22800789,
+          "name": "N/A"
+         },
+         "unitByUnitId": null,
+         "specFieldSpecBySpecFieldSpecId": {
+          "id": 196961,
+          "specBySpecId": {
+           "id": 22404,
+           "name": "Preparación de Embarque en Almacén",
+           "domainId": 344,
+           "idInDomain": 363,
+           "revisionNumber": 1,
+           "revisionName": "Rev. 01",
+           "processNodeByDefaultProcessNodeId": null,
+           "processNodeSpecOptInOutsBySpecId": {
+            "nodes": []
+           },
+           "specProcessNodeDefaultsBySpecId": {
+            "nodes": []
+           }
+          },
+          "specFieldBySpecFieldId": {
+           "id": 30086,
+           "name": "PC-00 Almacenaje Temporal",
+           "type": "SENSOR",
+           "sensorTypeBySensorTypeId": {
+            "id": 12521,
+            "name": "PC-00 Almacenaje Temporal",
+            "sensorMeasurementType": "BOOLEAN",
+            "unitByUnitId": null
+           }
+          }
+         },
+         "processNodeSpecFieldParamsBySpecFieldParamId": {
+          "nodes": []
+         },
+         "processNodeSpecFieldParamOptInOutsBySpecFieldParamId": {
+          "nodes": []
+         },
+         "specFieldParamProcessNodeDefaultsBySpecFieldParamId": {
+          "nodes": []
+         }
+        },
+        "specValuePartsTransferAccountsByPartNumberRecipeNodeSpecFieldParamId": {
+         "nodes": []
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": 44947414,
+     "name": "Listo para Preparar Embarque en Almacén",
+     "type": "STAGING",
+     "recipeInd": 16,
+     "processNodeOccurrence": 1,
+     "autoComplete": false,
+     "processNodeByDerivedFrom": {
+      "id": 147990,
+      "name": "Listo para Preparar Embarque en Almacén",
+      "partNumberOptOut": null
+     },
+     "partsTransfersByToId": {
+      "nodes": [
+       {
+        "id": 49900646
+       }
+      ]
+     },
+     "recipeNodeSpecFieldsByRecipeNodeId": {
+      "nodes": []
+     },
+     "partNumberRecipeNodeSpecFieldParamsByRecipeNodeId": {
+      "nodes": []
+     }
+    },
+    {
+     "id": 44947415,
+     "name": "Preparando Embarque en Almacén",
+     "type": "STEP",
+     "recipeInd": 17,
+     "processNodeOccurrence": 1,
+     "autoComplete": false,
+     "processNodeByDerivedFrom": {
+      "id": 154303,
+      "name": "Preparando Embarque en Almacén",
+      "partNumberOptOut": null
+     },
+     "partsTransfersByToId": {
+      "nodes": [
+       {
+        "id": 50319497
+       }
+      ]
+     },
+     "recipeNodeSpecFieldsByRecipeNodeId": {
+      "nodes": [
+       {
+        "id": 39142350,
+        "orderIndex": 1,
+        "specFieldId": 30083,
+        "specFieldBySpecFieldId": {
+         "id": 30083,
+         "name": "PC-00 Empaque de material e identificación"
+        }
+       },
+       {
+        "id": 39142351,
+        "orderIndex": 2,
+        "specFieldId": 30087,
+        "specFieldBySpecFieldId": {
+         "id": 30087,
+         "name": "PC-00 Cantidad a Embarcar"
+        }
+       },
+       {
+        "id": 39142352,
+        "orderIndex": 3,
+        "specFieldId": 30088,
+        "specFieldBySpecFieldId": {
+         "id": 30088,
+         "name": "PC-00 Documentación"
+        }
+       }
+      ]
+     },
+     "partNumberRecipeNodeSpecFieldParamsByRecipeNodeId": {
+      "nodes": [
+       {
+        "id": 24354584,
+        "archivedAt": null,
+        "partNumberId": 3016541,
+        "specFieldId": 30083,
+        "geometryTypeSpecFieldId": null,
+        "locationId": null,
+        "recipeNodeId": 44947415,
+        "geometryTypeSpecFieldByGeometryTypeSpecFieldId": null,
+        "specFieldBySpecFieldId": {
+         "id": 30083,
+         "name": "PC-00 Empaque de material e identificación"
+        },
+        "recipeNodeByRecipeNodeId": {
+         "id": 44947415,
+         "name": "Preparando Embarque en Almacén",
+         "recipeInd": 17,
+         "derivedFrom": 154303,
+         "processNodeOccurrence": 1
+        },
+        "locationByLocationId": null,
+        "partNumberWorkOrderSpecByDrivenBy": {
+         "id": 5407303,
+         "specBySpecId": {
+          "id": 22404,
+          "name": "Preparación de Embarque en Almacén",
+          "idInDomain": 363,
+          "revisionNumber": 1,
+          "revisionName": "Rev. 01"
+         },
+         "workOrderByWorkOrderId": {
+          "id": 1844453,
+          "idInDomain": 10837,
+          "name": ""
+         }
+        },
+        "specFieldParamBySpecFieldParamId": {
+         "id": 32464226,
+         "name": "N/A",
+         "drivesCoupons": false,
+         "descriptionMarkdown": "Características Especiales:\nMétodo de Evaluación: Visual \nTamaño de Muestra: 100%\nFrecuencia: Cada Lote\nMétodo de Control: Orden de Trabajo\nResponsable: Almacén\nReacción: En caso de incumplimiento detener el embarque, segregar e identificar el material con la tarjeta de rechazo FCA 53, y dar aviso al responsable de almacén \n",
+         "inputRequested": false,
+         "inputRequired": false,
+         "isDefault": false,
+         "maximumValue": null,
+         "minimumValue": null,
+         "mustBePassing": false,
+         "failingRequiresResolution": false,
+         "oneAtATime": false,
+         "requestDocument": false,
+         "sampleCount": null,
+         "samplingIntervalMinutes": null,
+         "samplingRate": null,
+         "sensorValidDurationMinutes": 540000,
+         "sensorWarningThresholdMinutes": 540000,
+         "targetValue": null,
+         "unitId": null,
+         "sampleSetId": 181,
+         "specFieldParamDropdownBySpecFieldParamDropdownId": null,
+         "sampleSetBySampleSetId": {
+          "id": 181,
+          "name": "Cero Defectos FCA74R2"
+         },
+         "specFieldParamByDerivedFromId": {
+          "isDefault": false,
+          "id": 22800788,
+          "name": "N/A"
+         },
+         "unitByUnitId": null,
+         "specFieldSpecBySpecFieldSpecId": {
+          "id": 196958,
+          "specBySpecId": {
+           "id": 22404,
+           "name": "Preparación de Embarque en Almacén",
+           "domainId": 344,
+           "idInDomain": 363,
+           "revisionNumber": 1,
+           "revisionName": "Rev. 01",
+           "processNodeByDefaultProcessNodeId": null,
+           "processNodeSpecOptInOutsBySpecId": {
+            "nodes": []
+           },
+           "specProcessNodeDefaultsBySpecId": {
+            "nodes": []
+           }
+          },
+          "specFieldBySpecFieldId": {
+           "id": 30083,
+           "name": "PC-00 Empaque de material e identificación",
+           "type": "SENSOR",
+           "sensorTypeBySensorTypeId": {
+            "id": 12520,
+            "name": "PC-00 Empaque de material e identificación",
+            "sensorMeasurementType": "BOOLEAN",
+            "unitByUnitId": null
+           }
+          }
+         },
+         "processNodeSpecFieldParamsBySpecFieldParamId": {
+          "nodes": []
+         },
+         "processNodeSpecFieldParamOptInOutsBySpecFieldParamId": {
+          "nodes": []
+         },
+         "specFieldParamProcessNodeDefaultsBySpecFieldParamId": {
+          "nodes": []
+         }
+        },
+        "specValuePartsTransferAccountsByPartNumberRecipeNodeSpecFieldParamId": {
+         "nodes": []
+        }
+       },
+       {
+        "id": 24354585,
+        "archivedAt": null,
+        "partNumberId": 3016541,
+        "specFieldId": 30087,
+        "geometryTypeSpecFieldId": null,
+        "locationId": null,
+        "recipeNodeId": 44947415,
+        "geometryTypeSpecFieldByGeometryTypeSpecFieldId": null,
+        "specFieldBySpecFieldId": {
+         "id": 30087,
+         "name": "PC-00 Cantidad a Embarcar"
+        },
+        "recipeNodeByRecipeNodeId": {
+         "id": 44947415,
+         "name": "Preparando Embarque en Almacén",
+         "recipeInd": 17,
+         "derivedFrom": 154303,
+         "processNodeOccurrence": 1
+        },
+        "locationByLocationId": null,
+        "partNumberWorkOrderSpecByDrivenBy": {
+         "id": 5407303,
+         "specBySpecId": {
+          "id": 22404,
+          "name": "Preparación de Embarque en Almacén",
+          "idInDomain": 363,
+          "revisionNumber": 1,
+          "revisionName": "Rev. 01"
+         },
+         "workOrderByWorkOrderId": {
+          "id": 1844453,
+          "idInDomain": 10837,
+          "name": ""
+         }
+        },
+        "specFieldParamBySpecFieldParamId": {
+         "id": 32464227,
+         "name": "N/A",
+         "drivesCoupons": false,
+         "descriptionMarkdown": "Características Especiales:\nMétodo de Evaluación: Conteo Visual \nTamaño de Muestra: 100%\nFrecuencia: Cada Embarque\nMétodo de Control: Remisión Salida de material de almacén FAL 02, Resultados de medición de grano FCA 110 Control de Transportista S/C\nResponsable: Almacén\nReacción: En caso de incumplimiento, detener el proceso, segregar e identificar con tarjeta de Rechazo FCA 53  y dar aviso al responsable de almacén \n",
+         "inputRequested": false,
+         "inputRequired": false,
+         "isDefault": false,
+         "maximumValue": null,
+         "minimumValue": null,
+         "mustBePassing": false,
+         "failingRequiresResolution": false,
+         "oneAtATime": false,
+         "requestDocument": false,
+         "sampleCount": null,
+         "samplingIntervalMinutes": null,
+         "samplingRate": null,
+         "sensorValidDurationMinutes": 540000,
+         "sensorWarningThresholdMinutes": null,
+         "targetValue": null,
+         "unitId": null,
+         "sampleSetId": 181,
+         "specFieldParamDropdownBySpecFieldParamDropdownId": null,
+         "sampleSetBySampleSetId": {
+          "id": 181,
+          "name": "Cero Defectos FCA74R2"
+         },
+         "specFieldParamByDerivedFromId": {
+          "isDefault": false,
+          "id": 22800790,
+          "name": "N/A"
+         },
+         "unitByUnitId": null,
+         "specFieldSpecBySpecFieldSpecId": {
+          "id": 197025,
+          "specBySpecId": {
+           "id": 22404,
+           "name": "Preparación de Embarque en Almacén",
+           "domainId": 344,
+           "idInDomain": 363,
+           "revisionNumber": 1,
+           "revisionName": "Rev. 01",
+           "processNodeByDefaultProcessNodeId": null,
+           "processNodeSpecOptInOutsBySpecId": {
+            "nodes": []
+           },
+           "specProcessNodeDefaultsBySpecId": {
+            "nodes": []
+           }
+          },
+          "specFieldBySpecFieldId": {
+           "id": 30087,
+           "name": "PC-00 Cantidad a Embarcar",
+           "type": "SENSOR",
+           "sensorTypeBySensorTypeId": {
+            "id": 12522,
+            "name": "PC-00 Cantidad a Embarcar",
+            "sensorMeasurementType": "NUMBER",
+            "unitByUnitId": null
+           }
+          }
+         },
+         "processNodeSpecFieldParamsBySpecFieldParamId": {
+          "nodes": []
+         },
+         "processNodeSpecFieldParamOptInOutsBySpecFieldParamId": {
+          "nodes": []
+         },
+         "specFieldParamProcessNodeDefaultsBySpecFieldParamId": {
+          "nodes": []
+         }
+        },
+        "specValuePartsTransferAccountsByPartNumberRecipeNodeSpecFieldParamId": {
+         "nodes": []
+        }
+       },
+       {
+        "id": 24354586,
+        "archivedAt": null,
+        "partNumberId": 3016541,
+        "specFieldId": 30088,
+        "geometryTypeSpecFieldId": null,
+        "locationId": null,
+        "recipeNodeId": 44947415,
+        "geometryTypeSpecFieldByGeometryTypeSpecFieldId": null,
+        "specFieldBySpecFieldId": {
+         "id": 30088,
+         "name": "PC-00 Documentación"
+        },
+        "recipeNodeByRecipeNodeId": {
+         "id": 44947415,
+         "name": "Preparando Embarque en Almacén",
+         "recipeInd": 17,
+         "derivedFrom": 154303,
+         "processNodeOccurrence": 1
+        },
+        "locationByLocationId": null,
+        "partNumberWorkOrderSpecByDrivenBy": {
+         "id": 5407303,
+         "specBySpecId": {
+          "id": 22404,
+          "name": "Preparación de Embarque en Almacén",
+          "idInDomain": 363,
+          "revisionNumber": 1,
+          "revisionName": "Rev. 01"
+         },
+         "workOrderByWorkOrderId": {
+          "id": 1844453,
+          "idInDomain": 10837,
+          "name": ""
+         }
+        },
+        "specFieldParamBySpecFieldParamId": {
+         "id": 32464228,
+         "name": "N/A",
+         "drivesCoupons": false,
+         "descriptionMarkdown": "Características Especiales:\nMétodo de Evaluación: Visual\nTamaño de Muestra: 100%\nFrecuencia: Cada Embarque\nMétodo de Control: Remisión Salida de material de almacén FAL 02, Resultados de medición de grano FCA 110 Control de Transportista S/C\nResponsable: Almacén\nReacción: En caso de incumplimiento, detener el proceso, segregar e identificar con tarjeta de Rechazo FCA 53 y dar aviso al responsable de almacén",
+         "inputRequested": false,
+         "inputRequired": false,
+         "isDefault": false,
+         "maximumValue": null,
+         "minimumValue": null,
+         "mustBePassing": false,
+         "failingRequiresResolution": false,
+         "oneAtATime": false,
+         "requestDocument": false,
+         "sampleCount": null,
+         "samplingIntervalMinutes": null,
+         "samplingRate": null,
+         "sensorValidDurationMinutes": 540000,
+         "sensorWarningThresholdMinutes": null,
+         "targetValue": null,
+         "unitId": null,
+         "sampleSetId": 181,
+         "specFieldParamDropdownBySpecFieldParamDropdownId": null,
+         "sampleSetBySampleSetId": {
+          "id": 181,
+          "name": "Cero Defectos FCA74R2"
+         },
+         "specFieldParamByDerivedFromId": {
+          "isDefault": false,
+          "id": 22800791,
+          "name": "N/A"
+         },
+         "unitByUnitId": null,
+         "specFieldSpecBySpecFieldSpecId": {
+          "id": 197026,
+          "specBySpecId": {
+           "id": 22404,
+           "name": "Preparación de Embarque en Almacén",
+           "domainId": 344,
+           "idInDomain": 363,
+           "revisionNumber": 1,
+           "revisionName": "Rev. 01",
+           "processNodeByDefaultProcessNodeId": null,
+           "processNodeSpecOptInOutsBySpecId": {
+            "nodes": []
+           },
+           "specProcessNodeDefaultsBySpecId": {
+            "nodes": []
+           }
+          },
+          "specFieldBySpecFieldId": {
+           "id": 30088,
+           "name": "PC-00 Documentación",
+           "type": "SENSOR",
+           "sensorTypeBySensorTypeId": {
+            "id": 12523,
+            "name": "PC-00 Documentación",
+            "sensorMeasurementType": "BOOLEAN",
+            "unitByUnitId": null
+           }
+          }
+         },
+         "processNodeSpecFieldParamsBySpecFieldParamId": {
+          "nodes": []
+         },
+         "processNodeSpecFieldParamOptInOutsBySpecFieldParamId": {
+          "nodes": []
+         },
+         "specFieldParamProcessNodeDefaultsBySpecFieldParamId": {
+          "nodes": []
+         }
+        },
+        "specValuePartsTransferAccountsByPartNumberRecipeNodeSpecFieldParamId": {
+         "nodes": []
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": 44947416,
+     "name": "SP Inspección de Calidad Embarques",
+     "type": "SUB_PROCESS",
+     "recipeInd": 18,
+     "processNodeOccurrence": 1,
+     "autoComplete": true,
+     "processNodeByDerivedFrom": {
+      "id": 144493,
+      "name": "SP Inspección de Calidad Embarques",
+      "partNumberOptOut": null
+     },
+     "partsTransfersByToId": {
+      "nodes": []
+     },
+     "recipeNodeSpecFieldsByRecipeNodeId": {
+      "nodes": []
+     },
+     "partNumberRecipeNodeSpecFieldParamsByRecipeNodeId": {
+      "nodes": []
+     }
+    },
+    {
+     "id": 44947417,
+     "name": "Listo para Inspección Embarques",
+     "type": "STAGING",
+     "recipeInd": 19,
+     "processNodeOccurrence": 1,
+     "autoComplete": false,
+     "processNodeByDerivedFrom": {
+      "id": 144494,
+      "name": "Listo para Inspección Embarques",
+      "partNumberOptOut": null
+     },
+     "partsTransfersByToId": {
+      "nodes": [
+       {
+        "id": 50319498
+       }
+      ]
+     },
+     "recipeNodeSpecFieldsByRecipeNodeId": {
+      "nodes": []
+     },
+     "partNumberRecipeNodeSpecFieldParamsByRecipeNodeId": {
+      "nodes": []
+     }
+    },
+    {
+     "id": 44947418,
+     "name": "Inspeccionando Calidad Embarques",
+     "type": "QUALITY_ASSURANCE_NODE",
+     "recipeInd": 20,
+     "processNodeOccurrence": 1,
+     "autoComplete": false,
+     "processNodeByDerivedFrom": {
+      "id": 144495,
+      "name": "Inspeccionando Calidad Embarques",
+      "partNumberOptOut": null
+     },
+     "partsTransfersByToId": {
+      "nodes": [
+       {
+        "id": 50319503
+       }
+      ]
+     },
+     "recipeNodeSpecFieldsByRecipeNodeId": {
+      "nodes": [
+       {
+        "id": 39142354,
+        "orderIndex": 0,
+        "specFieldId": 22550,
+        "specFieldBySpecFieldId": {
+         "id": 22550,
+         "name": "Condiciones del Material a Embarcar"
+        }
+       },
+       {
+        "id": 39142353,
+        "orderIndex": 1,
+        "specFieldId": 20550,
+        "specFieldBySpecFieldId": {
+         "id": 20550,
+         "name": "Certificado de Calidad Creado"
+        }
+       }
+      ]
+     },
+     "partNumberRecipeNodeSpecFieldParamsByRecipeNodeId": {
+      "nodes": [
+       {
+        "id": 24354587,
+        "archivedAt": null,
+        "partNumberId": 3016541,
+        "specFieldId": 20550,
+        "geometryTypeSpecFieldId": null,
+        "locationId": null,
+        "recipeNodeId": 44947418,
+        "geometryTypeSpecFieldByGeometryTypeSpecFieldId": null,
+        "specFieldBySpecFieldId": {
+         "id": 20550,
+         "name": "Certificado de Calidad Creado"
+        },
+        "recipeNodeByRecipeNodeId": {
+         "id": 44947418,
+         "name": "Inspeccionando Calidad Embarques",
+         "recipeInd": 20,
+         "derivedFrom": 144495,
+         "processNodeOccurrence": 1
+        },
+        "locationByLocationId": null,
+        "partNumberWorkOrderSpecByDrivenBy": {
+         "id": 5407304,
+         "specBySpecId": {
+          "id": 16907,
+          "name": "Inspección Embarques",
+          "idInDomain": 35,
+          "revisionNumber": 1,
+          "revisionName": null
+         },
+         "workOrderByWorkOrderId": {
+          "id": 1844453,
+          "idInDomain": 10837,
+          "name": ""
+         }
+        },
+        "specFieldParamBySpecFieldParamId": {
+         "id": 32464229,
+         "name": "Sí o No",
+         "drivesCoupons": false,
+         "descriptionMarkdown": "Características Especiales:\nMétodo de Evaluación: Validación en el Sistema\nTamaño de Muestra: Cada Certificado\nFrecuencia: Cada partida\nMétodo de Control: Orden de Trabajo\nResponsable: Calidad\nReacción: Solicitud de creación extemporánea del Certificado en modulo de embarques al momento de la remisión",
+         "inputRequested": false,
+         "inputRequired": true,
+         "isDefault": false,
+         "maximumValue": null,
+         "minimumValue": null,
+         "mustBePassing": false,
+         "failingRequiresResolution": true,
+         "oneAtATime": false,
+         "requestDocument": false,
+         "sampleCount": null,
+         "samplingIntervalMinutes": null,
+         "samplingRate": null,
+         "sensorValidDurationMinutes": null,
+         "sensorWarningThresholdMinutes": null,
+         "targetValue": null,
+         "unitId": null,
+         "sampleSetId": 181,
+         "specFieldParamDropdownBySpecFieldParamDropdownId": null,
+         "sampleSetBySampleSetId": {
+          "id": 181,
+          "name": "Cero Defectos FCA74R2"
+         },
+         "specFieldParamByDerivedFromId": {
+          "isDefault": false,
+          "id": 15663275,
+          "name": "Sí o No"
+         },
+         "unitByUnitId": null,
+         "specFieldSpecBySpecFieldSpecId": {
+          "id": 126541,
+          "specBySpecId": {
+           "id": 16907,
+           "name": "Inspección Embarques",
+           "domainId": 344,
+           "idInDomain": 35,
+           "revisionNumber": 1,
+           "revisionName": null,
+           "processNodeByDefaultProcessNodeId": {
+            "id": 144493,
+            "name": "SP Inspección de Calidad Embarques",
+            "archivedAt": null
+           },
+           "processNodeSpecOptInOutsBySpecId": {
+            "nodes": []
+           },
+           "specProcessNodeDefaultsBySpecId": {
+            "nodes": []
+           }
+          },
+          "specFieldBySpecFieldId": {
+           "id": 20550,
+           "name": "Certificado de Calidad Creado",
+           "type": "BOOLEAN",
+           "sensorTypeBySensorTypeId": null
+          }
+         },
+         "processNodeSpecFieldParamsBySpecFieldParamId": {
+          "nodes": []
+         },
+         "processNodeSpecFieldParamOptInOutsBySpecFieldParamId": {
+          "nodes": []
+         },
+         "specFieldParamProcessNodeDefaultsBySpecFieldParamId": {
+          "nodes": []
+         }
+        },
+        "specValuePartsTransferAccountsByPartNumberRecipeNodeSpecFieldParamId": {
+         "nodes": []
+        }
+       },
+       {
+        "id": 24354588,
+        "archivedAt": null,
+        "partNumberId": 3016541,
+        "specFieldId": 22550,
+        "geometryTypeSpecFieldId": null,
+        "locationId": null,
+        "recipeNodeId": 44947418,
+        "geometryTypeSpecFieldByGeometryTypeSpecFieldId": null,
+        "specFieldBySpecFieldId": {
+         "id": 22550,
+         "name": "Condiciones del Material a Embarcar"
+        },
+        "recipeNodeByRecipeNodeId": {
+         "id": 44947418,
+         "name": "Inspeccionando Calidad Embarques",
+         "recipeInd": 20,
+         "derivedFrom": 144495,
+         "processNodeOccurrence": 1
+        },
+        "locationByLocationId": null,
+        "partNumberWorkOrderSpecByDrivenBy": {
+         "id": 5407304,
+         "specBySpecId": {
+          "id": 16907,
+          "name": "Inspección Embarques",
+          "idInDomain": 35,
+          "revisionNumber": 1,
+          "revisionName": null
+         },
+         "workOrderByWorkOrderId": {
+          "id": 1844453,
+          "idInDomain": 10837,
+          "name": ""
+         }
+        },
+        "specFieldParamBySpecFieldParamId": {
+         "id": 32464230,
+         "name": "Sí o No",
+         "drivesCoupons": false,
+         "descriptionMarkdown": "Características Especiales:\nMétodo de Evaluación: Evaluación Visual\nTamaño de Muestra: Plan de Muestreo FCA 74\nFrecuencia: Cada lote\nMétodo de Control: Registro de auditoria final  FCA-17 Resultados de medición  de grano FCA 110\nResponsable: Calidad\nReacción: Detener el proceso, segregar e identificar con tarjeta de rechazado FCA 53,  y dar aviso al responsable de producción y laboratorio para que corrijan el proceso \n\n\n",
+         "inputRequested": false,
+         "inputRequired": true,
+         "isDefault": false,
+         "maximumValue": null,
+         "minimumValue": null,
+         "mustBePassing": true,
+         "failingRequiresResolution": true,
+         "oneAtATime": false,
+         "requestDocument": false,
+         "sampleCount": null,
+         "samplingIntervalMinutes": null,
+         "samplingRate": null,
+         "sensorValidDurationMinutes": null,
+         "sensorWarningThresholdMinutes": null,
+         "targetValue": null,
+         "unitId": null,
+         "sampleSetId": 181,
+         "specFieldParamDropdownBySpecFieldParamDropdownId": null,
+         "sampleSetBySampleSetId": {
+          "id": 181,
+          "name": "Cero Defectos FCA74R2"
+         },
+         "specFieldParamByDerivedFromId": {
+          "isDefault": false,
+          "id": 17890683,
+          "name": "Sí o No"
+         },
+         "unitByUnitId": null,
+         "specFieldSpecBySpecFieldSpecId": {
+          "id": 149704,
+          "specBySpecId": {
+           "id": 16907,
+           "name": "Inspección Embarques",
+           "domainId": 344,
+           "idInDomain": 35,
+           "revisionNumber": 1,
+           "revisionName": null,
+           "processNodeByDefaultProcessNodeId": {
+            "id": 144493,
+            "name": "SP Inspección de Calidad Embarques",
+            "archivedAt": null
+           },
+           "processNodeSpecOptInOutsBySpecId": {
+            "nodes": []
+           },
+           "specProcessNodeDefaultsBySpecId": {
+            "nodes": []
+           }
+          },
+          "specFieldBySpecFieldId": {
+           "id": 22550,
+           "name": "Condiciones del Material a Embarcar",
+           "type": "BOOLEAN",
+           "sensorTypeBySensorTypeId": null
+          }
+         },
+         "processNodeSpecFieldParamsBySpecFieldParamId": {
+          "nodes": []
+         },
+         "processNodeSpecFieldParamOptInOutsBySpecFieldParamId": {
+          "nodes": []
+         },
+         "specFieldParamProcessNodeDefaultsBySpecFieldParamId": {
+          "nodes": []
+         }
+        },
+        "specValuePartsTransferAccountsByPartNumberRecipeNodeSpecFieldParamId": {
+         "nodes": []
+        }
+       }
+      ]
+     }
+    },
+    {
+     "id": 44947419,
+     "name": "SP Embarque en Almacén",
+     "type": "STEP_SHIPPING",
+     "recipeInd": 21,
+     "processNodeOccurrence": 1,
+     "autoComplete": true,
+     "processNodeByDerivedFrom": {
+      "id": 109804,
+      "name": "SP Embarque en Almacén",
+      "partNumberOptOut": null
+     },
+     "partsTransfersByToId": {
+      "nodes": []
+     },
+     "recipeNodeSpecFieldsByRecipeNodeId": {
+      "nodes": []
+     },
+     "partNumberRecipeNodeSpecFieldParamsByRecipeNodeId": {
+      "nodes": []
+     }
+    },
+    {
+     "id": 44947420,
+     "name": "Listo para Embarcar",
+     "type": "STEP_SHIPPING_READY",
+     "recipeInd": 22,
+     "processNodeOccurrence": 1,
+     "autoComplete": null,
+     "processNodeByDerivedFrom": {
+      "id": 109805,
+      "name": "Listo para Embarcar",
+      "partNumberOptOut": null
+     },
+     "partsTransfersByToId": {
+      "nodes": [
+       {
+        "id": 50360547
+       }
+      ]
+     },
+     "recipeNodeSpecFieldsByRecipeNodeId": {
+      "nodes": []
+     },
+     "partNumberRecipeNodeSpecFieldParamsByRecipeNodeId": {
+      "nodes": []
+     }
+    },
+    {
+     "id": 44947421,
+     "name": "Creando Remisión",
+     "type": "STEP_SHIPPING_PACKED",
+     "recipeInd": 23,
+     "processNodeOccurrence": 1,
+     "autoComplete": false,
+     "processNodeByDerivedFrom": {
+      "id": 109806,
+      "name": "Creando Remisión",
+      "partNumberOptOut": null
+     },
+     "partsTransfersByToId": {
+      "nodes": []
+     },
+     "recipeNodeSpecFieldsByRecipeNodeId": {
+      "nodes": []
+     },
+     "partNumberRecipeNodeSpecFieldParamsByRecipeNodeId": {
+      "nodes": []
+     }
+    },
+    {
+     "id": 44947422,
+     "name": "Embarcando",
+     "type": "STEP_SHIPPING_SHIPPED",
+     "recipeInd": 24,
+     "processNodeOccurrence": 1,
+     "autoComplete": null,
+     "processNodeByDerivedFrom": {
+      "id": 109807,
+      "name": "Embarcando",
+      "partNumberOptOut": null
+     },
+     "partsTransfersByToId": {
+      "nodes": []
+     },
+     "recipeNodeSpecFieldsByRecipeNodeId": {
+      "nodes": []
+     },
+     "partNumberRecipeNodeSpecFieldParamsByRecipeNodeId": {
+      "nodes": []
+     }
+    }
+   ]
+  }
+ },
+ "partNumber": {
+  "id": 3016541,
+  "name": "PHA20842",
+  "partNumberSpecsByPartNumberId": {
+   "nodes": [
+    {
+     "id": 1155160,
+     "specBySpecId": {
+      "id": 18452,
+      "name": "GDE1214700 (Antitarnish)",
+      "processNodeSpecOptInOutsBySpecId": {
+       "nodes": []
+      }
+     }
+    }
+   ]
+  },
+  "partNumberSpecFieldParamsByPartNumberId": {
+   "nodes": [
+    {
+     "id": 8084271,
+     "processNodeOccurrence": null,
+     "specFieldBySpecFieldId": {
+      "id": 20570,
+      "name": "Protección - Sulfuro de sodio al 2.5%"
+     },
+     "processNodeByProcessNodeId": null,
+     "locationByLocationId": null,
+     "geometryTypeSpecFieldByGeometryTypeSpecFieldId": null,
+     "specFieldParamBySpecFieldParamId": {
+      "id": 28985361,
+      "name": "Sí o No",
+      "processNodeSpecFieldParamOptInOutsBySpecFieldParamId": {
+       "nodes": []
+      }
+     }
+    },
+    {
+     "id": 8084272,
+     "processNodeOccurrence": null,
+     "specFieldBySpecFieldId": {
+      "id": 25415,
+      "name": "Apariencia Homogénea - Antitarnish"
+     },
+     "processNodeByProcessNodeId": null,
+     "locationByLocationId": null,
+     "geometryTypeSpecFieldByGeometryTypeSpecFieldId": null,
+     "specFieldParamBySpecFieldParamId": {
+      "id": 28985362,
+      "name": "Sí o No",
+      "processNodeSpecFieldParamOptInOutsBySpecFieldParamId": {
+       "nodes": []
+      }
+     }
+    },
+    {
+     "id": 8084273,
+     "processNodeOccurrence": null,
+     "specFieldBySpecFieldId": {
+      "id": 22546,
+      "name": "Primeras Piezas Antitarnish"
+     },
+     "processNodeByProcessNodeId": null,
+     "locationByLocationId": null,
+     "geometryTypeSpecFieldByGeometryTypeSpecFieldId": null,
+     "specFieldParamBySpecFieldParamId": {
+      "id": 28985363,
+      "name": "Sí o No (ambos pasan)",
+      "processNodeSpecFieldParamOptInOutsBySpecFieldParamId": {
+       "nodes": []
+      }
+     }
+    }
+   ]
+  }
+ }
+}

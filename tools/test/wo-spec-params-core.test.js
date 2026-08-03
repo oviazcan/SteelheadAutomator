@@ -663,3 +663,200 @@ test('v0.5.0: el plan de migración archiva en el raíz y escribe en el de inspe
   assert.ok(add, 'debe reponer Adherencia');
   assert.equal(add.recipeNodeId, 47237754);
 });
+
+// ── El caso GDE1214700 Antitarnish (OT 10837, reportado en piso 2026-08-03) ──
+//
+// La orden nació el 2026-07-02 copiando una receta cuyo nodo de calidad
+// «Inspeccionando y  Empacando Antitarnish» AÚN NO declaraba los campos de la spec del
+// cliente; el nodo maestro (processNode 268059) se corrigió el 2026-07-07, cinco días
+// DESPUÉS. La copia de la orden no se refresca, así que su nodo quedó con
+// `recipeNodeSpecFields: []` para siempre.
+//
+// Consecuencia medida en vivo: los 3 parámetros del NP van sin nodo forzado, ningún nodo
+// declara sus specFields y —por la regla de herencia del ERP— quedaron FUERA de la orden.
+// La spec entra DOS veces (por el NP y por el tratamiento TR-PRM-001), que es el «choque»
+// que reportó el operador, pero ése no es el motivo: la orden de control 2472 también la
+// trae doble y sí aplicó. El motivo es que ningún nodo la declara.
+const ANTITARNISH = JSON.parse(fs.readFileSync(
+  path.join(__dirname, 'fixtures', 'wo-spec-params-10837.json'), 'utf8'));
+
+test('OT 10837: la spec del cliente entra dos veces —por NP y por tratamiento—', () => {
+  const specs = ANTITARNISH.workOrder.partNumberWorkOrderSpecsByWorkOrderId.nodes
+    .filter(s => (s.specBySpecId || {}).id === 18452);
+  assert.equal(specs.length, 2, 'la misma spec 18452 llega por dos caminos');
+  assert.equal(specs.filter(s => s.partNumberSpecByPartNumberSpecId).length, 1);
+  assert.equal(specs.filter(s => s.treatmentSpecByTreatmentSpecId).length, 1);
+});
+
+test('OT 10837: ningún nodo declara los campos de Antitarnish', () => {
+  const CAMPOS = [20570, 25415, 22546];
+  for (const n of ANTITARNISH.workOrder.recipeNodesByWorkOrderId.nodes) {
+    const decl = ((n.recipeNodeSpecFieldsByRecipeNodeId || {}).nodes || []).map(f => f.specFieldId);
+    for (const c of CAMPOS) {
+      assert.equal(decl.includes(c), false,
+        `el nodo ${n.id} no debería declarar ${c} en esta orden congelada`);
+    }
+  }
+});
+
+test('OT 10837: sin nodo que la toque, la spec externa queda SIN DESTINO y no se escribe', () => {
+  const r = Core.classifyWorkOrder(ANTITARNISH);
+  assert.equal(r.inspectionNode.ambiguous, true);
+  assert.deepEqual(r.inspectionNode.candidates, []);
+  assert.equal(r.faltantesSinDestino.length, 3,
+    'los 3 campos de GDE1214700 quedan sin colocar');
+  const plan = Core.buildWritePlan(r, { partNumberId: 3016541 });
+  assert.equal(plan.touched, 0, 'no se adivina un nodo: escribir criterios de calidad ' +
+    'en la etapa equivocada es peor que no escribirlos');
+});
+
+test('OT 10837: migrarAInspeccion tampoco inventa un destino', () => {
+  const r = Core.classifyWorkOrder(ANTITARNISH, { migrarAInspeccion: true });
+  assert.equal(Core.buildWritePlan(r, { partNumberId: 3016541 }).touched, 0);
+});
+
+// ── Rescate por RECETA MAESTRA (0.6.0) ──────────────────────────────────────
+//
+// La OT 10837 no se puede reparar mirando sólo la orden: su copia congelada no declara los
+// campos en ningún nodo. Pero el processNode MAESTRO del que deriva su nodo de calidad
+// (268059) SÍ los declara — se corrigió el 2026-07-07, cinco días después de que nacieran
+// las órdenes. Eso da un destino con evidencia ESTRUCTURAL, no una adivinanza: no se elige
+// «el nodo que suena parecido», se elige el nodo de la orden cuyo maestro declara el campo.
+//
+// La regla de seguridad no cambia: si no resuelve a EXACTAMENTE UN nodo, no se toca nada.
+const MASTERS = JSON.parse(fs.readFileSync(
+  path.join(__dirname, 'fixtures', 'wo-spec-params-masters.json'), 'utf8'));
+
+// masterFields: Map<processNodeId(maestro), Set<specFieldId>>
+function masterFieldsFrom(ids) {
+  const m = new Map();
+  for (const id of ids) m.set(Number(id), Core.masterDeclaredFields(MASTERS[String(id)]));
+  return m;
+}
+
+test('masterDeclaredFields: saca los specFieldId del nodo maestro', () => {
+  const s = Core.masterDeclaredFields(MASTERS['268059']);
+  assert.deepEqual([...s].sort((a, b) => a - b), [20570, 22546, 25415]);
+});
+
+test('masterDeclaredFields: tolera un maestro nulo o sin declaraciones', () => {
+  assert.equal(Core.masterDeclaredFields(null).size, 0);
+  assert.equal(Core.masterDeclaredFields({}).size, 0);
+});
+
+test('rescate: con la receta maestra, la OT 10837 SÍ encuentra su nodo de calidad', () => {
+  const es = Core.findExternalSpecs(ANTITARNISH.workOrder)[0];
+  const r = Core.findInspectionNode(ANTITARNISH.workOrder, es,
+                                    { masterFields: masterFieldsFrom([268059]) });
+  assert.ok(r.node, 'debe resolver a un nodo');
+  assert.equal(r.node.id, 44947411, 'el nodo que deriva del maestro 268059');
+  assert.equal(r.viaMaster, true, 'y debe quedar marcado como rescatado por receta');
+});
+
+test('rescate: sin la receta maestra sigue siendo ambiguo (no hay regresión)', () => {
+  const es = Core.findExternalSpecs(ANTITARNISH.workOrder)[0];
+  assert.equal(Core.findInspectionNode(ANTITARNISH.workOrder, es).ambiguous, true);
+});
+
+test('rescate: si el maestro no declara los campos de ESTA spec, no rescata', () => {
+  const es = Core.findExternalSpecs(ANTITARNISH.workOrder)[0];
+  const m = new Map([[268059, new Set([99999])]]);   // declara otra cosa
+  assert.equal(Core.findInspectionNode(ANTITARNISH.workOrder, es, { masterFields: m }).ambiguous,
+    true, 'un maestro que declara otros campos no es destino de esta spec');
+});
+
+test('rescate: si DOS nodos de la orden derivan de maestros que declaran, no se toca nada', () => {
+  const wo = JSON.parse(JSON.stringify(ANTITARNISH.workOrder));
+  const qa = wo.recipeNodesByWorkOrderId.nodes.filter(n => n.type === 'QUALITY_ASSURANCE_NODE');
+  qa[0].processNodeByDerivedFrom = { id: 268059, name: 'otro' };   // ahora hay dos
+  const es = Core.findExternalSpecs(wo)[0];
+  const r = Core.findInspectionNode(wo, es, { masterFields: masterFieldsFrom([268059]) });
+  assert.equal(r.ambiguous, true, 'dos destinos posibles = no se adivina');
+});
+
+test('rescate: con destino resuelto, la OT 10837 aplica sus 3 campos', () => {
+  const r = Core.classifyWorkOrder(ANTITARNISH, { masterFields: masterFieldsFrom([268059]) });
+  assert.equal(r.faltantesSinDestino.length, 0, 'ya no quedan campos huérfanos');
+  const plan = Core.buildWritePlan(r, { partNumberId: 3016541 });
+  assert.equal(plan.parametersToAdd.length, 3, 'los 3 criterios del cliente se escriben');
+  assert.equal(plan.archiveIds.length, 0, 'no había nada que archivar: las casillas estaban vacías');
+  for (const a of plan.parametersToAdd) {
+    assert.equal(a.recipeNodeId, 44947411, 'todos al nodo de calidad de Antitarnish');
+  }
+});
+
+test('rescate: los campos rescatados quedan marcados como FORZADOS', () => {
+  const r = Core.classifyWorkOrder(ANTITARNISH, { masterFields: masterFieldsFrom([268059]) });
+  const tocadas = r.cells.filter(c => c.status === 'VACIO');
+  assert.equal(tocadas.length, 3);
+  assert.ok(tocadas.every(c => c.forced),
+    'el nodo de la ORDEN no los declara: cada uno es un forzado y debe reportarse como tal');
+});
+
+// ── El «choque» SÍ tenía efecto, pero no el que se creía ─────────────────────
+//
+// La spec `GDE1214700 (Antitarnish)` entra a la OT 10837 dos veces —por el NP y por el
+// tratamiento— con el MISMO specId y los MISMOS specFieldSpec. `buildCatalogIndex` recorre
+// las `partNumberWorkOrderSpecs` una por una, así que cada campo salía con DOS candidatos
+// idénticos (`specFieldSpecId` 149308 en ambos) y `resolveDesired` los contaba como dos
+// opciones distintas → `AMBIGUO: el catálogo ofrece 2 opciones` → no se escribía nada.
+//
+// No son dos opciones: es la misma opción contada dos veces. La dedup va por
+// `specFieldSpecId` y NO por specId — dos specs DISTINTAS que declaren el mismo campo sí son
+// alternativas reales y ahí el AMBIGUO es correcto.
+//
+// Aquí la vía del NP tampoco salva el caso: sus 3 parámetros vienen con
+// `specFieldSpecBySpecFieldSpecId: null` (medido — en la OT 5769 los 10 sí lo traen), así que
+// `buildPartNumberIndex` no puede indexarlos y la resolución cae al catálogo.
+
+test('choque: la misma spec por dos vías no son dos opciones del catálogo', () => {
+  const cat = Core.buildCatalogIndex(ANTITARNISH.workOrder);
+  for (const fid of [20570, 25415, 22546]) {
+    const c = cat.get(fid) || [];
+    assert.equal(c.length, 1,
+      `el campo ${fid} debe ofrecer UN candidato, no uno por cada vía de entrada`);
+  }
+});
+
+test('choque: dos specs DISTINTAS con el mismo campo siguen siendo dos opciones', () => {
+  const wo = JSON.parse(JSON.stringify(ANTITARNISH.workOrder));
+  const dup = wo.partNumberWorkOrderSpecsByWorkOrderId.nodes
+    .find(s => (s.specBySpecId || {}).id === 18452 && !s.partNumberSpecByPartNumberSpecId);
+  dup.specBySpecId = JSON.parse(JSON.stringify(dup.specBySpecId));
+  dup.specBySpecId.id = 99999;                       // otra spec…
+  dup.specBySpecId.name = 'OTRA SPEC';
+  for (const f of dup.specBySpecId.specFieldSpecsBySpecId.nodes) f.id = f.id + 500000;  // …con su propio specFieldSpec
+  const cat = Core.buildCatalogIndex(wo);
+  assert.equal((cat.get(20570) || []).length, 2,
+    'dos specs distintas declarando el mismo campo SON dos opciones reales');
+});
+
+test('choque: deduplicado, la OT 10837 resuelve por catálogo y escribe sus 3 campos', () => {
+  const r = Core.classifyWorkOrder(ANTITARNISH, { masterFields: masterFieldsFrom([268059]) });
+  assert.equal(r.tally.AMBIGUO, 0, 'ya no hay ambigüedad artificial');
+  const plan = Core.buildWritePlan(r, { partNumberId: 3016541 });
+  assert.equal(plan.parametersToAdd.length, 3);
+});
+
+test('OT 10837: lo que se escribiría es lo MISMO que tiene la orden de control 2472', () => {
+  // La validación que importa no es el conteo sino el contenido. La OT 2472 corre otro proceso
+  // pero la MISMA spec de Antitarnish y sí la aplicó: sus 3 casillas dicen «Sí o No», «Sí o No»
+  // y «Sí o No (ambos pasan)». El plan para la 10837 tiene que llegar a lo mismo.
+  const ESPERADO = {
+    20570: 'Sí o No',                    // Protección - Sulfuro de sodio al 2.5%
+    25415: 'Sí o No',                    // Apariencia Homogénea - Antitarnish
+    22546: 'Sí o No (ambos pasan)'       // Primeras Piezas Antitarnish
+  };
+  const r = Core.classifyWorkOrder(ANTITARNISH, { masterFields: masterFieldsFrom([268059]) });
+  const plan = Core.buildWritePlan(r, { partNumberId: 3016541 });
+  // nombre del parámetro del catálogo que se va a escribir, por campo
+  const cat = Core.buildCatalogIndex(ANTITARNISH.workOrder);
+  for (const add of plan.parametersToAdd) {
+    const cand = (cat.get(add.specFieldId) || [])[0];
+    const p = (cand.params || []).find(x => x.id === add.specFieldParamId);
+    assert.ok(p, `el parámetro ${add.specFieldParamId} debe salir del catálogo de la spec`);
+    assert.equal(p.name, ESPERADO[add.specFieldId],
+      `campo ${add.specFieldId}: debe quedar igual que en la orden de control`);
+  }
+  assert.equal(plan.parametersToAdd.length, 3);
+});

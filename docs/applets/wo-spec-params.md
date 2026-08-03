@@ -1,5 +1,106 @@
 # `wo-spec-params` — Reaplicar Parámetros en Órdenes de Trabajo
 
+## 2026-08-03 — 0.6.0: «las de GDE1214700 Antitarnish no se aplicaron» (OT 10837)
+
+Reporte del operador: *"tengo en el tratamiento y además en el número de parte, así que chocan,
+pero debía haberse aplicado al menos una de las dos y no se aplicó ninguna"*. **Sin deployar.**
+
+### El choque era real y tenía efecto, pero no el que parecía
+
+Sí llegan dos: la spec `GDE1214700 (Antitarnish)` (specId 18452) entra por el NP
+(`partNumberSpec 1155160`) **y** por el tratamiento (`treatmentSpec 8293` → `TR-PRM-001
+Antitarnish Manual`), con los mismos 3 campos. La primera hipótesis —que la duplicidad
+bloqueaba la escritura— se **descartó con un control**: la OT 2472 también la trae doble y sí
+aplicó.
+
+Pero al reparar el caso apareció que el choque **sí** hacía daño, en otro punto:
+`buildCatalogIndex` recorre las `partNumberWorkOrderSpecs` una por una, así que cada campo salía
+con **dos candidatos idénticos** —el mismo `specFieldSpecId` 149308, los mismos parámetros— y
+`resolveDesired` los contaba como dos opciones: `AMBIGUO, el catálogo ofrece 2 opciones`. No son
+dos opciones; es la misma contada dos veces. **La dedup va por `specFieldSpecId`, NO por
+specId**: dos specs *distintas* que declaren el mismo campo sí son alternativas reales y ahí el
+`AMBIGUO` es la respuesta correcta (hay test que lo fija).
+
+### La causa de fondo: la orden nació 5 días antes de que arreglaran la receta
+
+| | OT 10837 / 10839 | OT 2472 (control) |
+|---|---|---|
+| Proceso | `T400 (ANT)-CU-VARIOS (20.0)` | `T300 (LES)-T205 (PLA)-T300 (ANT)…` |
+| Nodo QA de Antitarnish | **declara 0, aplicados 0** | declara 5, aplicados 5 |
+| processNode maestro | `268059` | `157804` |
+
+Las órdenes se crearon el **2026-07-02 16:01**. El processNode `268059` nació el 2026-06-05 y se
+**actualizó el 2026-07-07 22:48** — cinco días después; hoy declara los 3 campos igual que su
+homónimo. Las órdenes copiaron la receta incompleta y **esa copia no se refresca**: es el
+problema que este applet resuelve, un nivel más abajo — no quedaron viejos los parámetros, quedó
+vieja la **declaración de campos del nodo**. Sin ella, los 3 parámetros del NP (que van sin nodo
+forzado) quedaron FUERA por la regla de herencia del ERP.
+
+Descartado en el camino: el `treatment_spec 7569` (`TR-ICA-006`) está archivado desde el
+2026-02-09 y parecía explicarlo, pero **ambos** maestros cuelgan del mismo tratamiento `86895` y
+uno funciona. El tratamiento no era la variable.
+
+### Rescate por receta maestra
+
+Cuando ningún nodo de la orden toca la spec externa, se consulta el `processNode` **maestro** del
+que deriva cada nodo de calidad (`processNodeByDerivedFrom`) y se elige el nodo cuyo maestro
+declara el campo. Es evidencia **estructural**, no un match por nombre, y **la regla de
+exactamente-uno se mantiene**: con dos candidatos no se toca nada.
+
+- `masterDeclaredFields(processNode)` — núcleo puro. El id viaja en `specFieldBySpecFieldId.id`;
+  el campo plano `specFieldId` **no viene** en esa selección y leerlo de ahí daría un Set de
+  `undefined`.
+- `GetProcessNode` exige las **tres** variables (`id`, `processNodeOccurrence`, `rootId`): con
+  menos responde error de variables faltantes, no datos parciales. `rootId` es el maestro del
+  nodo `PROCESS` de la orden. **Ya tenía ruta de regeneración** en `route-catalog.json` → cero
+  deuda nueva.
+- Sólo se consulta si la orden dejó campos sin destino, en **serie**, y con caché por
+  processNode: en un barrido todas las órdenes del mismo proceso comparten maestros. La caché se
+  vacía **al empezar** cada corrida, no sólo al terminar — corregir la receta y volver a correr
+  es el flujo esperado, y una caché viva devolvería el estado viejo.
+- Si la receta no se puede leer, **no se adivina**: la orden se reporta sin destino, como antes.
+
+### La validación que importa no es el conteo, es el contenido
+
+Lo que el applet escribiría en la OT 10837 coincide **campo por campo** con lo que la orden de
+control 2472 tiene aplicado — y eso quedó como golden test, no como comprobación de una vez:
+
+```
+20570 Protección - Sulfuro de sodio al 2.5%  → "Sí o No"
+25415 Apariencia Homogénea - Antitarnish     → "Sí o No"
+22546 Primeras Piezas Antitarnish            → "Sí o No (ambos pasan)"
+```
+
+Los tres al nodo `44947411`, `drivenBy` la entrada externa, y **cero archivados** (las casillas
+estaban vacías, no equivocadas).
+
+**Hallazgo lateral:** aquí la vía del NP no podía resolver — sus 3 parámetros vienen con
+`specFieldSpecBySpecFieldSpecId: null`, mientras que en la OT 5769 los 10 sí lo traen. Por eso la
+resolución cae al catálogo, y por eso el conteo doble era fatal en vez de cosmético.
+
+### El defecto que hacía todo esto invisible
+
+`faltantesSinDestino` se calculaba desde 0.4.0 y **nunca se mostraba ni se contaba** — una sola
+aparición en el glue, guardándola en el resultado. La orden reportaba `touched: 0` y era
+**indistinguible de una orden sana**; en el barrido de fase 3, que sólo conserva el slim, la
+señal se perdía por completo. Es el modo de falla que este repo ya pagó en `price-confirm-guard`
+y `surtido-guard` 0.4.0: **«no tengo dónde ponerlo» se leía igual que «no hacía falta»**.
+
+Corregido en los tres canales: `nSinDestino` en el slim, `sinDestino` en `summarize`, bloque
+ámbar en el panel y renglón `SIN_DESTINO:<n>` en el CSV — este último importa porque una orden
+sin destino **no genera renglones de cambios** y desaparecía del reporte justo siendo la que
+necesita atención.
+
+### Cobertura
+Fixtures reales `wo-spec-params-10837.json` (la orden) y `wo-spec-params-masters.json` (los dos
+processNode maestros). **Core 68/68, glue 45/45, suite 91 archivos 0 rojos.**
+
+### Pendiente
+**Corrida real.** El plan está validado contra una orden que funcionó, pero no se ha aplicado
+en vivo. Antes de un barrido masivo: correr sobre la OT 10837 sola, releer y confirmar que las
+3 casillas quedaron en el nodo de calidad. Falta también medir cuántas órdenes cayeron en la
+ventana del 2026-06-05 al 2026-07-07.
+
 ## 2026-07-30 — una orden puede traer VARIAS specs externas (config 1.11.42)
 
 **Reporte del operador:** *«me marca en la WO 16510 que no encuentra el nodo de calidad, pero sí
@@ -112,7 +213,7 @@ de `AddParamsToPartNumber`.
 
 ---
 
-**Versión:** 0.5.0 · **Estado:** ✅ **VIVO (config 1.11.3, tag `v1.11.3`)** · fase 1 validada end-to-end el 2026-07-28; fases 2 y 3 y el modo *migrar* **sin corrida real**
+**Versión:** 0.6.0 · **Estado:** ✅ VIVO en 0.5.0 (config 1.11.3, tag `v1.11.3`) · **0.6.0 SIN DEPLOYAR y SIN corrida real** · fase 1 validada end-to-end el 2026-07-28; fases 2 y 3 y el modo *migrar* **sin corrida real**
 **Bundle:** 5ª acción de *Ajuste Masivo de Specs* (`spec-migrator`)
 **Diseño:** [`docs/superpowers/specs/2026-07-28-wo-spec-params-reapply-design.md`](../superpowers/specs/2026-07-28-wo-spec-params-reapply-design.md)
 **Plan:** [`docs/superpowers/plans/2026-07-28-wo-spec-params-fase1.md`](../superpowers/plans/2026-07-28-wo-spec-params-fase1.md)
