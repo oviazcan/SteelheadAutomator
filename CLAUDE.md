@@ -140,7 +140,15 @@ sesión con WIP en main (regla §"Trabajo paralelo").
   en 590); hay que leer el `getBoundingClientRect()`. Y **una regla CSS derrotada por orden de
   cascada no avisa**: el primer intento del arreglo puso `.view.active{display:flex}` antes de la
   regla vieja `{display:block}` y quedó desactivado en silencio (menú en lista: 1799px).
-  **Publicado en el zip `1.7.3`.** Cada máquina lo toma al aceptar el banner e instalar a mano.
+  **VIVO: zip `1.7.3` + config 1.11.52, tag `v1.11.52`, firmado KMS** (commits `c44842d` fix +
+  `fed6f70` bump). Verificado **descargando el zip SERVIDO** y corriendo el trinquete contra el
+  `popup.html` de adentro: 10/10. **Lo que NO se verificó: el popup REAL instalado en Chrome** —
+  todo se midió sobre `popup.html` servido por HTTP (el proxy documentado, que ya predijo bien
+  el síntoma y el arreglo anteriores). Cada máquina lo toma al aceptar el banner e instalar a mano.
+  **No requiere rebundle de Safari/iPad**: ese bundle tiene su propio popup, `extension/` no viaja
+  ahí. Alcance: la vista de Configuración (838px) solo la ven admins o quien tenga
+  `WRITE_USER_PERMISSIONS` (es la que monta el editor de permisos); la de la barra de progreso
+  (609px) le pegaba a **todos**.
   Ver [`docs/architecture/popup-sizing.md`](docs/architecture/popup-sizing.md).
 
 ## Trabajo paralelo (dos instancias de Claude)

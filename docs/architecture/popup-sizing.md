@@ -106,6 +106,27 @@ el final (nada queda recortado sin acceso) — se verificó explícitamente, por
 `overflow: hidden` el modo de falla contrario (contenido inalcanzable) sería peor que el
 ensanchamiento.
 
+**Alcance de cada caso** (importa para leer los reportes de piso): la vista de Configuración
+solo la ven **admins o quien tenga `WRITE_USER_PERMISSIONS`** — es la condición que monta el
+editor de permisos, y sin él la vista pide 461 px y nunca se pasó. El caso de la barra de
+progreso, en cambio, **le pegaba a todos** y se dispara en el gesto más común del popup: entrar
+a un applet y darle clic a una acción.
+
+### Qué se verificó y qué no
+
+- ✅ Las 9 combinaciones medidas sobre el `popup.html` **real** (no una réplica), con el config
+  vivo de 44 applets, servido por HTTP.
+- ✅ El zip **servido** (`steelhead-automator.zip` de gh-pages) trae `manifest 1.7.3`, y su
+  `popup.html` pasa los 10 casos del trinquete — se descargó y se corrió el test contra él.
+- ⚠️ **No se abrió el popup REAL instalado en Chrome.** Toda la medición usa el proxy de la
+  página servida. Es el mismo proxy que predijo bien el síntoma (618/646 px) y el arreglo
+  (578/576 px) de la vuelta anterior, así que la confianza es alta — pero el ciclo end-to-end
+  lo cierra el operador al instalar 1.7.3.
+
+**VIVO:** zip `1.7.3` + config 1.11.52, tag `v1.11.52`, firmado KMS. Commits `c44842d` (fix,
+test y doc) y `fed6f70` (bump del config). No requiere rebundle de Safari/iPad: ese bundle
+tiene su propio popup y `extension/` no viaja ahí.
+
 ## Regla
 
 **El popup nunca debe pedir más de 600 px de alto.** Ya no hay cuentas que rehacer, pero sí
