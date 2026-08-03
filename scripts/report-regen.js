@@ -27,7 +27,7 @@
 (function () {
   'use strict';
 
-  const APPLET_VERSION = '0.3.4';
+  const APPLET_VERSION = '0.3.5';
 
   // ── Singleton guard + teardown de versión previa (re-inyección en SPA / bump) ──
   if (window.ReportRegen && window.ReportRegen.__version === APPLET_VERSION) return;
@@ -358,19 +358,31 @@
     (document.head || document.documentElement).appendChild(st);
   }
 
-  // Ancla definitiva: el contenedor que tiene play (PlayArrowIcon) Y correo
-  // (EmailOutlinedIcon) como hermanos. El botón se inserta justo antes del correo.
+  // Ancla: el contenedor del botón de CORREO en el header secundario. El botón se inserta
+  // justo antes del correo.
+  //
+  // DOS COSAS CAMBIARON AQUÍ EL 2026-08-03, y sólo una fue culpa de SH:
+  //  1. SH publicó un build que **quita los `data-testid` de los iconos MUI** (medido: 0 en
+  //     `/Reporting/View`, con 189 svg en pantalla) ⇒ este `find` devolvía null para siempre,
+  //     en silencio, mientras el gate de permisos decía `allowed: true`. Ahora se busca por
+  //     testid PRIMERO y por la FORMA del icono (`path d`) DESPUÉS.
+  //  2. **Exigir el PLAY era un bug nuestro, anterior:** el operador reportó que el ▶ se
+  //     convierte en ⏸ cuando hay un timer activo, así que el botón desaparecía justo
+  //     mientras corría un reporte. El requisito duro pasa a ser el CORREO —medido: hay un
+  //     solo sobre en toda la página—, y play/pausa y el breadcrumb sólo CONFIRMAN.
   function findAnchor() {
-    const emailSvgs = document.querySelectorAll('svg[data-testid="EmailOutlinedIcon"]');
-    for (const svg of emailSvgs) {
-      const btn = svg.closest('button');
-      if (!btn || !btn.parentElement) continue;
-      const container = btn.parentElement;
-      if (container.querySelector('svg[data-testid="PlayArrowIcon"]')) {
-        return { container, emailBtn: btn };
-      }
-    }
-    return null;
+    const Icons = window.MuiIconAnchorCore;
+    if (!Icons) { warnOnce('falta mui-icon-anchor-core — no se puede anclar'); return null; }
+    return Icons.findReportHeaderAnchor(document);
+  }
+
+  // Un aviso por sesión: `ensureButton` corre en cada pasada del observer.
+  let warnedKeys = null;
+  function warnOnce(msg) {
+    if (!warnedKeys) warnedKeys = new Set();
+    if (warnedKeys.has(msg)) return;
+    warnedKeys.add(msg);
+    console.warn('[RR]', msg);
   }
 
   function buildButton() {
