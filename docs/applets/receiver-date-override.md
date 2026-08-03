@@ -1,4 +1,15 @@
-# `receiver-date-override`: lecciones 0.5.64 → 0.5.68
+# `receiver-date-override`: lecciones 0.5.64 → 0.5.81
+
+## 0.5.81 (2026-08-03) — el ancla que parecía estructura era un hash de emotion
+
+**Reporte de piso: «ya no me aparece la fecha y ubicación de la extensión».** El campo «Fecha real de recibido:» desapareció del modal de recepción, junto con el combo de ubicación de `warehouse-location-prefill` — mismo incidente, misma causa, mismo día. El análisis completo vive en la [bitácora de WLP](warehouse-location-prefill.md#063-2026-08-03--una-clase-de-emotion-es-menos-estable-que-el-texto-que-quisimos-evitar); aquí van las lecciones propias de este applet.
+
+- **Causa raíz:** `p.closest('.css-iyrxkt')` devolvía `null` porque SH rehizo el encabezado y esa clase dejó de existir (medido: **0 ocurrencias**). El `return` posterior era silencioso. La lección general —*una clase `css-<hash>` es el anclaje MENOS estable que hay, por debajo del texto visible; el texto cambia cuando alguien traduce, el hash cambia cuando alguien mueve un padding*— está desarrollada en la bitácora hermana.
+- **Corrige la lección 0.5.67/0.5.80 de este archivo.** Aquella documentó el layout con nombres de clase (`.css-xd9ivb` flex-row, `.css-iyrxkt` grid `auto 1fr`) y ancló a ellos. La observación del layout era correcta y sigue siendo útil como historia; **anclarse a los nombres fue el error**, y tenía fecha de caducidad desde el día que se escribió. Lo que se conserva de aquella lección es lo que sí valió: *pide el wrapper HTML real antes de iterar selectores*.
+- **EL MODO DE FALLA PROPIO DE ESTE APPLET, que es lo que volvió el bug permanente:** `onModalFound` ponía el latch `data-sa-rdo-attached = 'true'` **ANTES** de llamar a `injectField`. Con el ancla rota, el observer volvía a pasar, veía el latch y se iba. Por eso el síntoma fue **«la fecha desapareció»** y no «la fecha tardó un render en aparecer»: un fallo transitorio de montaje se congelaba para siempre. Ahora `injectField` devuelve booleano y **el latch se pone sólo si el campo quedó montado**; si no, se reintenta en la siguiente pasada del observer.
+- **Corolario general: un latch de idempotencia debe marcar el ÉXITO, no el INTENTO.** Marcar la intención convierte cualquier fallo —de anclaje, de timing, de carrera con React— en un fallo definitivo y mudo. Es pariente de la regla que el repo ya tiene sobre los guards que preguntan «¿ya lo hice?» en vez de «¿sigue siendo del mismo dueño?».
+- **`warnOnce` por modal.** Al quitar el latch del intento, el observer reintenta en cada mutación; un `console.warn` por pasada llenaría la consola justo cuando hace falta leerla para diagnosticar. El aviso se emite una vez por modal (`data-sa-rdo-warned`).
+- **VIVO config 1.11.53**, tag `v1.11.53`. Bundle iPad **0.6.20**. El anclaje se comprobó contra el DOM productivo (monta, y la fila queda en 4 columnas de 400px, sin apretar); **no se cerró** la pasada end-to-end con el código ya deployado porque el renderer de la pestaña automatizada se congeló — modo de falla del arnés, no del applet.
 
 Applet que inyecta un campo "Fecha real de recibido:" + selector de hora (default 12:00) en el modal **"Receive Parts from Customer" / "Recibir piezas del cliente"**. Permite editar el `receivedAt` del receiver al momento de creación, eliminando el paso manual de ir a "All Receivers" después.
 
