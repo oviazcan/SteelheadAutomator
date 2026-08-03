@@ -134,11 +134,53 @@ necesita atención.
 Fixtures reales `wo-spec-params-10837.json` (la orden) y `wo-spec-params-masters.json` (los dos
 processNode maestros). **Core 68/68, glue 45/45, suite 91 archivos 0 rojos.**
 
-### Pendiente
-**Corrida real.** El plan está validado contra una orden que funcionó, pero no se ha aplicado
-en vivo. Antes de un barrido masivo: correr sobre la OT 10837 sola, releer y confirmar que las
-3 casillas quedaron en el nodo de calidad. Falta también medir cuántas órdenes cayeron en la
-ventana del 2026-06-05 al 2026-07-07.
+### El alcance, medido (ya no es un pendiente)
+
+Escaneo de **las 428 órdenes activas anteriores al 4 de julio** con el applet publicado, sólo
+lectura, 1 131 consultas, 0 fallos:
+
+| | |
+|---|---|
+| sanas | **396** |
+| las arregla el applet solo (rescate) | **12** |
+| necesitan declarar el campo en la receta | **14** |
+
+El dominio tiene hoy **5 428** órdenes activas (no 4 284), pero **más de 5 000 nacieron después**
+de que se corrigieran las recetas: se muestrearon las 25 más recientes y salieron **25 sanas**.
+Mapa de posición→fecha (`ID_DESC`): offset 0 = 3 ago · 1000 = 29 jul · 3000 = 17 jul · 5000 = 4 jul.
+**Barrer el dominio completo trabajaría casi todo en balde**; el tramo que importa son las últimas
+~428.
+
+### Lo que el applet NO puede arreglar solo, y dónde se captura
+
+Las 14 restantes necesitan que un humano declare el specField en la receta — el rescate sólo
+funciona si el **maestro** lo declara. Concentradas en **5 nodos y 6 campos**:
+
+| processNode | nodo | campos a declarar | OTs |
+|---|---|---|---|
+| 172393 | `T109-IC00-001 Inspeccionando y Empacando` | 16405, 33474, 32963 | 10075, 10076, 10204 |
+| 171436 | `T106-IC00-001 Inspeccionando y Empacando` | 16405, 33474, 32963, 33222 | 8016, 9894-9896, 9916 |
+| 187309 | `T201-IC00-001 Inspeccionando y Empacando` | 33579 | 7893, 8084, 8092, 8093 |
+| 197146 | `T105-IC00-001 Inspeccionando y Empacando` | 33222 | 8017 |
+| 169853 | `T205-IC00-001 Inspeccionando y Empacando` | 20561 | 7723 |
+
+**Cuál de los tres nodos de calidad, resuelto con dato y no con criterio.** Cada proceso tiene
+`Inspeccionando Recibo`, `Txxx-IC00-001 Inspeccionando y Empacando` e `Inspeccionando Calidad
+Embarques`; el primer reporte los listaba **los tres**, lo que habría metido criterios del cliente
+en recibo y embarque. Se resolvió midiendo dónde viven hoy los **campos hermanos** de esas specs
+en todo el dominio: Estaño 4 950 filas, Zinc 4 950, Plata Mate 3 745 — **siempre en el nodo de la
+línea**, nunca en recibo ni embarques. Los 6 campos de la tabla **nunca se han aplicado** en
+ninguna orden (son nuevos), así que su nodo no se podía deducir de su propia historia.
+
+Entregable para el operador: `plan-specfields.html` (self-contained, generado en scratchpad).
+
+### Pendientes REALES
+1. **La escritura del rescate nunca se ha ejecutado.** Todo lo validado es lectura + decisión.
+   Antes de cualquier barrido: correr sobre **una** orden (la 7723, de un solo campo), **releer** y
+   confirmar que la casilla quedó en el nodo de calidad — el ERP responde sin confirmar nada.
+2. **Capturar los 6 campos** de la tabla de arriba antes del barrido, o esas 14 seguirán botándose.
+3. Al aplicar en masa, revisar el resumen: un número repetido e idéntico de cambios por orden es la
+   firma del error de la corrida de los 9 551.
 
 ## 2026-07-30 — una orden puede traer VARIAS specs externas (config 1.11.42)
 
@@ -252,7 +294,7 @@ de `AddParamsToPartNumber`.
 
 ---
 
-**Versión:** 0.6.0 · **Estado:** ✅ VIVO en 0.5.0 (config 1.11.3, tag `v1.11.3`) · **0.6.0 SIN DEPLOYAR y SIN corrida real** · fase 1 validada end-to-end el 2026-07-28; fases 2 y 3 y el modo *migrar* **sin corrida real**
+**Versión:** 0.6.0 · **Estado:** ✅ **VIVO — config 1.11.52** (deployado por la sesión paralela; el script servido es byte-idéntico al validado). Lectura y decisión **verificadas en vivo**; **la ESCRITURA del rescate sigue sin ejecutarse ni una vez** · fase 1 validada end-to-end el 2026-07-28; fases 2 y 3 y el modo *migrar* **sin corrida real**
 **Bundle:** 5ª acción de *Ajuste Masivo de Specs* (`spec-migrator`)
 **Diseño:** [`docs/superpowers/specs/2026-07-28-wo-spec-params-reapply-design.md`](../superpowers/specs/2026-07-28-wo-spec-params-reapply-design.md)
 **Plan:** [`docs/superpowers/plans/2026-07-28-wo-spec-params-fase1.md`](../superpowers/plans/2026-07-28-wo-spec-params-fase1.md)
