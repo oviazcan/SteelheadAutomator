@@ -90,6 +90,14 @@
       for (const f of fields) {
         if (!f || f.archivedAt || f.specFieldId == null) continue;
         if (!out.has(f.specFieldId)) out.set(f.specFieldId, []);
+        // Una MISMA spec puede entrar a la orden por dos caminos —por el Número de Parte y por
+        // el tratamiento— y entonces sus specFieldSpec llegan repetidos. Eso no son dos
+        // opciones: es la misma contada dos veces, y contarla doble volvía AMBIGUO lo que tenía
+        // una sola respuesta (OT 10837: «el catálogo ofrece 2 opciones» sobre el mismo
+        // specFieldSpecId 149308, y los 3 criterios del cliente se quedaban sin escribir).
+        // La llave es el specFieldSpecId, NO el specId: dos specs DISTINTAS que declaren el
+        // mismo campo sí son alternativas reales y ahí el AMBIGUO es la respuesta correcta.
+        if (out.get(f.specFieldId).some(c => c.specFieldSpecId === f.id)) continue;
         out.get(f.specFieldId).push({
           specFieldSpecId: f.id,
           pnwosId: pnwos.id,
@@ -155,7 +163,16 @@
   //
   // Si no es exactamente uno NO se adivina: forzar en el nodo equivocado mete criterios de
   // calidad del cliente en una etapa que no le corresponde.
-  function findInspectionNode(workOrder, externalSpec) {
+  //
+  // RESCATE POR RECETA MAESTRA (0.6.0). Hay órdenes donde NINGÚN nodo toca la spec porque
+  // nacieron copiando una receta que todavía no la declaraba, y esa copia no se refresca:
+  // la OT 10837 se creó el 2026-07-02 y su processNode maestro (268059) se corrigió el
+  // 2026-07-07, cinco días después. Ahí la orden sola no alcanza para decidir, pero el
+  // maestro del que deriva cada nodo sí sabe qué debía declarar. `opts.masterFields` es un
+  // Map<processNodeId, Set<specFieldId>> que el glue consulta SÓLO cuando hace falta.
+  // Sigue siendo evidencia estructural —qué maestro declara el campo—, no un match por
+  // nombre, y la regla de exactamente-uno se aplica igual.
+  function findInspectionNode(workOrder, externalSpec, opts) {
     const nodes = (workOrder && workOrder.recipeNodesByWorkOrderId
       && workOrder.recipeNodesByWorkOrderId.nodes) || [];
     if (!externalSpec) {
@@ -178,6 +195,34 @@
       if (touches) candidates.push(n);
     }
     if (candidates.length === 1) return { node: candidates[0] };
+
+    // El rescate SÓLO corre cuando la orden no dio ningún candidato. Si dio varios el problema
+    // es de exceso, y el maestro no desempata: se reporta como siempre.
+    const masterFields = opts && opts.masterFields;
+    if (candidates.length === 0 && masterFields && masterFields.size) {
+      const rescued = [];
+      for (const n of nodes) {
+        if (!n || n.type !== 'QUALITY_ASSURANCE_NODE') continue;
+        const masterId = n.processNodeByDerivedFrom && n.processNodeByDerivedFrom.id;
+        if (masterId == null) continue;
+        const declared = masterFields.get(masterId);
+        if (!declared || !declared.size) continue;
+        let declaresThisSpec = false;
+        for (const id of externalSpec.fieldIds) {
+          if (declared.has(id)) { declaresThisSpec = true; break; }
+        }
+        if (declaresThisSpec) rescued.push(n);
+      }
+      if (rescued.length === 1) return { node: rescued[0], viaMaster: true };
+      if (rescued.length > 1) {
+        return {
+          ambiguous: true,
+          candidates: rescued.map(n => n.id),
+          reason: 'hay ' + rescued.length + ' nodos cuya receta declara la especificación externa'
+        };
+      }
+    }
+
     return {
       ambiguous: true,
       candidates: candidates.map(n => n.id),
@@ -185,6 +230,22 @@
         ? 'ningún nodo de inspección toca la especificación externa'
         : 'hay ' + candidates.length + ' nodos de inspección que tocan la especificación externa'
     };
+  }
+
+  // Qué specFields declara un processNode MAESTRO (el de la receta, no el de la orden).
+  // El id viaja anidado en `specFieldBySpecFieldId.id`; el campo plano `specFieldId` no viene
+  // en esa selección de GraphQL, así que leerlo de ahí daría un Set de `undefined`.
+  function masterDeclaredFields(processNode) {
+    const out = new Set();
+    const nodes = (processNode && processNode.processNodeSpecFieldsByProcessNodeId
+      && processNode.processNodeSpecFieldsByProcessNodeId.nodes) || [];
+    for (const f of nodes) {
+      if (!f) continue;
+      const nested = f.specFieldBySpecFieldId && f.specFieldBySpecFieldId.id;
+      const id = nested != null ? nested : f.specFieldId;
+      if (id != null) out.add(id);
+    }
+    return out;
   }
 
   // ── Deseado y equivalencia ────────────────────────────────────────────────
@@ -340,7 +401,7 @@
     // primera, que es lo que el panel ya mostraba.
     const externalSpecs = findExternalSpecs(workOrder);
     const externalSpec = externalSpecs.length ? externalSpecs[0] : null;
-    const inspectionNode = findInspectionNode(workOrder, externalSpec);
+    const inspectionNode = findInspectionNode(workOrder, externalSpec, opts);
 
     // Los campos EXTERNOS de la orden son la unión de todas: el universo PROCESO los excluye,
     // y con una sola spec considerada los de las demás se colaban ahí y se trataban como
@@ -359,8 +420,10 @@
     // como cubierto. Mirar solo el nodo de inspección hacía proponer duplicados de lo que ya
     // existía en otro lado: en la corrida del 2026-07-29 eran ~7660 de 9551 cambios.
     for (const thisSpec of externalSpecs) {
-      // El nodo se resuelve POR SPEC: el de RC Zn no es el de Deshidrogenado.
-      const thisNodeInfo = findInspectionNode(workOrder, thisSpec);
+      // El nodo se resuelve POR SPEC: el de RC Zn no es el de Deshidrogenado. `opts` va aquí
+      // también porque el rescate por receta maestra es POR SPEC — una orden puede traer una
+      // spec resuelta por la vía normal y otra que sólo el maestro sabe dónde colocar.
+      const thisNodeInfo = findInspectionNode(workOrder, thisSpec, opts);
       // Sin nodo identificado NO se corta: los campos que ya viven en algún lado se siguen
       // evaluando y solo los que faltan quedan sin destino (los reporta el bucle de abajo).
       // Cortar aquí mandaría a "faltantes" hasta lo que está correctamente aplicado, y el
@@ -556,7 +619,7 @@
   window.WoSpecParamsCore = {
     rootParamId, normalizeName,
     buildPartNumberIndex, buildCatalogIndex,
-    findExternalSpec, findExternalSpecs, findInspectionNode,
+    findExternalSpec, findExternalSpecs, findInspectionNode, masterDeclaredFields,
     resolveDesired, isEquivalent,
     classifyWorkOrder, buildWritePlan
   };
