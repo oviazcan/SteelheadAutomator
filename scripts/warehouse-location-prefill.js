@@ -439,28 +439,32 @@ const WarehouseLocationPrefill = (() => {
   function injectField(modal) {
     if (modal.querySelector('[data-sa-wlp-field="true"]')) return;
 
-    // Anclar dentro del .css-iyrxkt de "Receiver Comments" como rows extra del grid
-    const labels = modal.querySelectorAll('p');
-    let anchorWrapper = null;
-    for (const p of labels) {
-      if (/^(?:receiver\s+comments|comentarios\s+del\s+receptor):?$/i.test(p.textContent.trim())) {
-        anchorWrapper = p.closest('.css-iyrxkt');
-        break;
-      }
+    // Se ENTRA por el label "Comentarios del receptor:" / "Receiver Comments:" (ES+EN) y se
+    // SUBE por estructura. Hasta el 2026-08-03 aquí decía `p.closest('.css-iyrxkt')`: una
+    // clase GENERADA por emotion, que SH rehasheó al pasar el encabezado de grid a flex.
+    // Dejó de existir y este `return` se disparaba en silencio — el combo de ubicación no
+    // aparecía, y como el CANDADO del payload sigue vivo, el operador se quedaba teniendo
+    // que poner la ubicación renglón por renglón sin la herramienta que la ponía de un jalón.
+    const Anchor = window.ReceiveModalAnchorCore;
+    if (!Anchor) {
+      console.warn(LOG_PREFIX, 'Falta receive-modal-anchor-core — no se puede anclar');
+      return;
     }
-    if (!anchorWrapper) {
+    const labelNode = Anchor.findLabelNode(modal, Anchor.LABEL_RECEIVER_COMMENTS);
+    const anchor = labelNode && Anchor.findHeaderFieldAnchor(labelNode);
+    if (!anchor) {
       console.warn(LOG_PREFIX, 'No se localizó el wrapper de Receiver Comments — layout cambió?');
       return;
     }
 
     const label = document.createElement('p');
-    label.className = 'MuiTypography-root MuiTypography-body1 css-9l3uo3 sa-wlp-row-label';
-    label.style.gridColumn = '1';
+    // La clase se HEREDA del label vecino vivo: así el próximo rehash de emotion nos sigue
+    // vistiendo igual que a SH, en vez de dejarnos con un nombre de clase muerto.
+    label.className = `${anchor.labelClass} sa-wlp-row-label`.trim();
     label.textContent = 'Ubicación inicial:';
     label.dataset.saWlpField = 'true';
 
     const controls = document.createElement('div');
-    controls.style.gridColumn = '2';
     controls.className = 'sa-wlp-controls sa-wlp-row-controls';
     controls.dataset.saWlpField = 'true';
 
@@ -490,12 +494,15 @@ const WarehouseLocationPrefill = (() => {
 
     controls.appendChild(combo);
 
-    anchorWrapper.appendChild(label);
-    anchorWrapper.appendChild(controls);
+    const host = Anchor.mountHeaderField(document, anchor, label, controls);
+    if (!host) {
+      console.warn(LOG_PREFIX, 'No se pudo montar el campo de ubicación');
+      return;
+    }
+    host.dataset.saWlpField = 'true';
 
     // Fila extra con checkboxes para re-habilitar Grupo de Piezas / Contenedor
     const toggles = document.createElement('div');
-    toggles.style.gridColumn = '2';
     toggles.style.display = 'flex';
     toggles.style.gap = '14px';
     toggles.style.flexWrap = 'wrap';
@@ -528,7 +535,7 @@ const WarehouseLocationPrefill = (() => {
       lab.appendChild(document.createTextNode(' Habilitar ' + cfg.displayLabel));
       toggles.appendChild(lab);
     }
-    anchorWrapper.appendChild(toggles);
+    host.appendChild(toggles);
 
     // Stash refs en el state
     const state = modalStates.get(modal) || {};
@@ -719,35 +726,17 @@ const WarehouseLocationPrefill = (() => {
   ];
 
   function findHeaderComboByLabel(modal, labelRegex) {
-    // El text node del label vive dentro de un .css-xd9ivb que suele ser
-    // SIBLING (no ancestor) del control react-select, así que iteramos
-    // wrappers .css-iyrxkt y para cada uno checamos (a) algún .css-xd9ivb
-    // descendiente con text node directo que matchee el label y (b) un
-    // [class*="-control"] descendiente. Preferimos el wrapper más profundo
-    // (más específico, evita matches espurios cuando hay anidación).
-    const wrappers = modal.querySelectorAll('.css-iyrxkt');
-    let best = null;
-    let bestDepth = -1;
-    for (const w of wrappers) {
-      const labelBlocks = w.querySelectorAll('.css-xd9ivb');
-      let hasLabel = false;
-      for (const block of labelBlocks) {
-        for (const node of block.childNodes) {
-          if (node.nodeType === 3) {
-            const t = node.textContent.trim();
-            if (t && labelRegex.test(t)) { hasLabel = true; break; }
-          }
-        }
-        if (hasLabel) break;
-      }
-      if (!hasLabel) continue;
-      const control = w.querySelector('[class*="-control"]');
-      if (!control) continue;
-      let depth = 0; let cur = w;
-      while (cur && cur !== modal) { depth++; cur = cur.parentElement; }
-      if (depth > bestDepth) { best = control; bestDepth = depth; }
-    }
-    return best;
+    // Se localiza el TEXTO del label y se sube al ancestro MÁS CERCANO que tenga un control
+    // react-select. Es el mismo patrón que locateRowLocationCombo() —ya validado en piso por
+    // el candado 0.6.1— y sustituye al que iteraba `.css-iyrxkt` buscando `.css-xd9ivb`
+    // dentro: esas dos clases las genera emotion y el 2026-08-03 dejaron de existir (medido:
+    // 0 ocurrencias de cada una), así que esta función devolvía null siempre y los campos
+    // que debían quedar bloqueados se quedaban habilitados, sin ningún aviso.
+    const Anchor = window.ReceiveModalAnchorCore;
+    if (!Anchor) return null;
+    const labelHost = findLabelHost(modal, labelRegex);
+    if (!labelHost) return null;
+    return Anchor.findControlNearLabel(labelHost, (n) => n.querySelector('[class*="-control"]'));
   }
 
   function applyUnusedFieldStates(modal) {
