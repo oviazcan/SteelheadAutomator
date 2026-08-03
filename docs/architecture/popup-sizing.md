@@ -2,6 +2,8 @@
 
 **Medido el 2026-08-03**, a raíz del reporte del operador: el panel de la extensión aparecía
 como una ventana enorme y oscura con el contenido apretado en una columna a la izquierda.
+**Reabierto el mismo día**: *«ya no en la pantalla principal, pero sí cuando doy clic a un
+submenú interno»* — el arreglo del menú funcionaba y quedaban dos vistas sin contar.
 
 ## El mecanismo
 
@@ -19,61 +21,99 @@ El vacío se ve oscuro —y por eso salta a la vista— porque el `background` d
 **propaga al canvas** del documento: aunque el `body` mide 340 px, el color pinta la ventana
 entera. En modo claro el mismo hueco pasa casi desapercibido.
 
-## Las medidas reales (2026-08-03)
+## Las tres veces que falló el esquema de topes en px
 
-Cromo fijo del popup:
+El primer arreglo (2026-08-03, mañana) le puso a cada lista larga un `max-height` en píxeles,
+calculado **a mano** contra el cromo fijo de su vista. Funcionó para las dos vistas que se
+midieron y falló en todo lo demás:
+
+| # | Fecha | Vista | Alto pedido | Por qué se escapó |
+|---|---|---|---|---|
+| 1 | 2026-07-29 | Acciones de `Ajuste Masivo de Specs` | 646 px | Pasó de 5 a 7 acciones y `.app-actions` era la única lista sin tope |
+| 2 | 2026-08-03 | **Configuración** (editor de permisos, 44 applets) | **838 px** | Nunca se contó — no tenía tope de ningún tipo |
+| 3 | 2026-08-03 | Acciones + **barra de progreso** | **609 px** | La barra es **hermana** de las vistas: suma 33 px a *cualquiera*, justo al dar clic a una acción |
+
+Medidas del cromo fijo (2026-08-03):
 
 | Pieza | Alto |
 |---|---|
 | `.header` | 73 px |
 | `.status-bar` | 38 px |
-| `.app-view-header` (solo en la vista de acciones) | 38 px |
+| `.app-view-header` (vistas internas) | 38 px |
 | `.footer` | 28 px |
 | `#update-banner` (solo si hay versión nueva) | 104 px |
+| `#progress-container` (solo mientras corre una acción) | 33 px |
 
-⇒ presupuesto para la lista: **461 px** en el menú, **423 px** en la vista de acciones.
+El caso 3 es el que mejor explica por qué el esquema no podía sostenerse: `.app-actions`
+estaba dimensionada correctamente (400 + 177 = 577), y aun así se pasaba, porque **el cromo
+de una vista no es constante** — le crece una pieza cuando el operador ejecuta algo. Cada
+combinación nueva (vista × banner × progreso) era una cuenta más que alguien tenía que
+acordarse de hacer.
 
-Antes del arreglo:
+## El arreglo: que la aritmética la haga el navegador
 
-| Vista | Alto del documento | vs. tope 600 |
+El documento se topa a **590 px** y se reparte como **columna flex**:
+
+```css
+html { max-height: 590px; }
+body {
+  width: 340px; max-height: 590px;
+  display: flex; flex-direction: column; overflow: hidden;
+}
+body > * { flex: 0 0 auto; }              /* el cromo nunca se encoge */
+.view.active { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+.view-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+```
+
+La lista larga de cada vista lleva la clase **`.view-scroll`** y es la única que se encoge.
+Agregar acciones, permisos, applets o piezas fijas ya **no obliga a rehacer ninguna cuenta**:
+el que reparte es el navegador.
+
+Dos detalles que no son opcionales:
+
+- **`min-height: 0`** en cada eslabón. Sin él, un hijo flex no baja de su tamaño de
+  contenido y el documento vuelve a estirarse. Aplica también a los intermediarios
+  (`.app-menu-wrap`, que se interpone entre `#view-menu` y la lista).
+- **`.view.active` tiene que ser `flex`, no `block`.** Si la cadena se corta en la vista,
+  la lista de adentro crece libre aunque tenga `.view-scroll`.
+
+### El error que costó una vuelta
+
+El primer intento puso `.view.active { display: flex }` **antes** de la regla original
+`.view.active { display: block }`. Misma especificidad ⇒ **gana la última**, y el modelo
+quedó desactivado sin ningún síntoma: el CSS era válido, no hubo error en consola, y el
+popup se veía prácticamente igual con poco contenido. Solo al medir con las 44 apps salió
+el desastre (menú en lista: **1799 px**). *Una regla CSS derrotada por orden de cascada no
+avisa; hay que medirla.* El test `popup-sizing.test.js` fija justamente eso: la **última**
+declaración de `display` para `.view.active` debe ser `flex`.
+
+## Resultados medidos (2026-08-03, config vivo con 44 applets)
+
+| Escenario | Antes | Ahora |
 |---|---|---|
-| Menú principal (44 applets, lista topada a 480) | 618 px | **+18** |
-| Ajuste Masivo de Specs (7 acciones, lista sin tope) | 646 px | **+46** |
+| Menú (grid / lista, 44 apps) | 578 | **590** ✅ |
+| Menú + banner de actualización | 578 | **590** ✅ |
+| Acciones «Ajuste Masivo de Specs» (7) | 576 | **590** ✅ |
+| Acciones (7) **+ barra de progreso** | **609 ❌** | **590** ✅ |
+| Acciones (7) + progreso + banner | **609 ❌** | **590** ✅ |
+| Acciones de un applet con 1 acción | — | **266** ✅ (se encoge) |
+| Resultados (60 operaciones) | 526 | **590** ✅ |
+| **Configuración + permisos (44 applets)** | **838 ❌** | **590** ✅ |
+| Configuración + permisos + banner + progreso | **975 ❌** | **590** ✅ |
 
-`.app-menu`, `.app-grid`, `.app-list`, `.results-panel` y `.app-perms-editor` ya tenían tope
-+ scroll propio. **`.app-actions` no tenía ninguno** — era la única lista que crecía libre.
-
-## Por qué apareció ahora
-
-`Ajuste Masivo de Specs` es **el único de los 44 applets con 7 acciones** (el segundo más
-largo, `Carga Masiva`, tiene 5). Cruzó el umbral el **2026-07-29**, cuando se le agregaron
-dos acciones el mismo día:
-
-- `d160047` — «Barrer nodo forzado (todos los clientes)»
-- `b6d9fc0` — «Reparar archivados sin reponer»
-
-El menú principal ya rebasaba el tope por 18 px desde antes; con la ventana del navegador
-maximizada un popup de 800 px no llama la atención, con la ventana angosta ocupa casi todo
-el ancho y el hueco se hace evidente.
-
-## El arreglo
-
-Toda lista larga lleva **tope de altura + scroll propio**, dimensionado contra el cromo fijo:
-
-- `.app-menu` / `.app-grid` / `.app-list`: 480 → **440 px** (139 + 440 = 579)
-- `.app-actions`: sin tope → **400 px** + `overflow-y: auto` (177 + 400 = 577)
-- Con el banner de actualización visible, un bloque `body:has(.update-banner.visible)`
-  encoge ambas en los 104 px del banner (336 / 296) — si no, el popup se ensancha **justo
-  cuando el operador lo abre para actualizar**.
-
-Verificado tras el cambio: menú **578**, Ajuste Masivo de Specs **576**, ambos con y sin
-banner. Ancho preferido del documento: **340 px**.
+Ancho preferido del documento: **340 px** en todos los casos. Las 4 vistas scrollean hasta
+el final (nada queda recortado sin acceso) — se verificó explícitamente, porque con
+`overflow: hidden` el modo de falla contrario (contenido inalcanzable) sería peor que el
+ensanchamiento.
 
 ## Regla
 
-**El popup nunca debe pedir más de 600 px de alto.** Al agregar acciones a un applet o
-piezas fijas al popup, rehacer la cuenta: `cromo fijo + max-height de la lista ≤ 600`.
-La lista es la que hace scroll; el header y el «◀ volver» se quedan quietos.
+**El popup nunca debe pedir más de 600 px de alto.** Ya no hay cuentas que rehacer, pero sí
+un contrato que respetar: **toda vista nueva necesita un contenedor con `.view-scroll`**, y
+toda pieza fija va como hijo directo del `body` (hereda `flex: 0 0 auto`). El trinquete
+`tools/test/popup-sizing.test.js` lo verifica —10 casos, validados con 6 mutaciones que debe
+detectar— y se pone rojo si alguien agrega una vista sin lista scrollable, repone un
+`max-height` en px, o invierte el orden de la cascada.
 
 ## Cómo medirlo sin instalar nada
 
@@ -82,6 +122,21 @@ cd extension && python3 -m http.server 8777 --bind 127.0.0.1
 ```
 
 Abrir `http://127.0.0.1:8777/popup.html` (`popup.js` truena sin las APIs `chrome.*`, así que
-la lista se llena a mano), fijar `document.documentElement.style.width = '800px'` y leer
-`document.body.scrollHeight`. El ancho preferido sale poniendo el `documentElement` en
-`width: max-content`.
+las listas se llenan a mano), fijar `document.documentElement.style.width = '800px'` y leer
+el alto. El ancho preferido sale poniendo el `documentElement` en `width: max-content`.
+
+⚠️ **`document.body.scrollHeight` ya NO es el medidor válido.** Con `overflow: hidden` en el
+`body` sigue reportando el **contenido recortado**, no lo que pide el documento: durante esta
+sesión marcó 3606 px cuando el documento medía 590. Hay que leer el **rect**:
+
+```js
+Math.max(
+  Math.ceil(document.documentElement.getBoundingClientRect().height),
+  Math.ceil(document.body.getBoundingClientRect().height)
+)
+```
+
+Dos notas del arnés, ambas costaron tiempo: los `fetch` de una pestaña automatizada que
+queda oculta **se congelan** (el `Runtime.evaluate` revienta a los 45 s) — servir el JSON
+en local y leerlo con `XMLHttpRequest` síncrono lo evita; y si el renderer ya se trabó, una
+recarga lo destraba.

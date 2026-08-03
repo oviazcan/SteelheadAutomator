@@ -159,7 +159,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function renderGridMenu(container, apps) {
     const grid = document.createElement('div');
-    grid.className = 'app-grid';
+    // view-scroll: es la lista que scrollea dentro de la vista. Sin ella el documento
+    // crece con el número de apps y el popup se abre a 800px. Ver popup-sizing.md
+    grid.className = 'app-grid view-scroll';
 
     for (const app of apps) {
       const tile = document.createElement('div');
@@ -176,7 +178,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function renderListMenu(container, apps) {
     const list = document.createElement('div');
-    list.className = 'app-list';
+    list.className = 'app-list view-scroll';
 
     // Group by category, preserving order of first appearance
     const categories = [];

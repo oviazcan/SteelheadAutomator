@@ -120,15 +120,27 @@ sesión con WIP en main (regla §"Trabajo paralelo").
   no tiene tamaño propio: Chromium lo ajusta a lo que pide el documento con un tope duro de
   **800×600**. Si el alto se pasa, el navegador **deja de ajustar el ancho al preferido (340px)
   y abre la ventana al MÁXIMO**: el `body` a la izquierda y ~460px vacíos a la derecha — que se
-  ven oscuros porque el `background` del body **se propaga al canvas**. Reportado en piso el
-  2026-08-03 (*"¿por qué se hace así el panel?"*) y medido: menú principal 618px, `Ajuste Masivo
-  de Specs` 646px. La causa: `.app-menu`/`.app-grid`/`.app-list`/`.results-panel`/`.app-perms-editor`
-  ya tenían tope + scroll y **`.app-actions` no tenía ninguno** — cruzó el umbral el 2026-07-29 al
-  pasar de 5 a 7 acciones. **Al agregar acciones a un applet o piezas fijas al popup, rehacer la
-  cuenta `cromo fijo + max-height ≤ 600`** (cromo fijo: 139px en el menú, 177px en la vista de
-  acciones, +104px si el banner de actualización está visible).
-  **Publicado en el zip `1.7.2`** (config 1.11.49, verificado descargando el zip servido: el
-  `manifest.json` de adentro dice 1.7.2). Cada máquina lo toma al aceptar el banner e instalar a mano.
+  ven oscuros porque el `background` del body **se propaga al canvas**.
+  **El esquema de topes en px falló TRES veces** (`max-height` por lista, calculado a mano contra
+  el cromo fijo): (1) `.app-actions` sin tope al pasar `Ajuste Masivo de Specs` de 5 a 7 acciones
+  —646px, 2026-07-29—; y al reportarlo de nuevo el operador el 2026-08-03 *«ya no en la pantalla
+  principal, pero sí en un submenú interno»*, medidas dos más: (2) la vista de **Configuración**
+  —**838px**, nunca se contó, con el editor de permisos de los 44 applets— y (3) la **barra de
+  progreso**, que es **HERMANA de las vistas** y suma 33px a cualquiera, así que la vista de
+  acciones pasaba de 576 a **609 justo al dar clic a una acción**. Ese tercer caso es el que
+  condena el esquema: `.app-actions` estaba bien dimensionada (400+177=577) y aun así se pasaba,
+  porque **el cromo de una vista no es constante** — le crece una pieza cuando el operador ejecuta.
+  **Ahora la aritmética la hace el navegador**: documento topado a 590px + **columna flex**
+  (`body > *` = cromo que no se encoge; `.view.active` flex con `min-height:0`; la lista larga de
+  cada vista marcada **`.view-scroll`** es la única que se encoge). Agregar acciones, permisos o
+  piezas fijas ya **no obliga a rehacer ninguna cuenta**; el contrato es: **toda vista nueva
+  necesita un contenedor `.view-scroll`**. Trinquete `tools/test/popup-sizing.test.js` (10 casos,
+  validado con 6 mutaciones que debe detectar). **Ojo al medir: `document.body.scrollHeight` ya
+  NO sirve** — con `overflow:hidden` reporta el contenido recortado (marcó 3606px con el documento
+  en 590); hay que leer el `getBoundingClientRect()`. Y **una regla CSS derrotada por orden de
+  cascada no avisa**: el primer intento del arreglo puso `.view.active{display:flex}` antes de la
+  regla vieja `{display:block}` y quedó desactivado en silencio (menú en lista: 1799px).
+  **Publicado en el zip `1.7.3`.** Cada máquina lo toma al aceptar el banner e instalar a mano.
   Ver [`docs/architecture/popup-sizing.md`](docs/architecture/popup-sizing.md).
 
 ## Trabajo paralelo (dos instancias de Claude)
