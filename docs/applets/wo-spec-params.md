@@ -74,9 +74,48 @@ control 2472 tiene aplicado — y eso quedó como golden test, no como comprobac
 Los tres al nodo `44947411`, `drivenBy` la entrada externa, y **cero archivados** (las casillas
 estaban vacías, no equivocadas).
 
-**Hallazgo lateral:** aquí la vía del NP no podía resolver — sus 3 parámetros vienen con
-`specFieldSpecBySpecFieldSpecId: null`, mientras que en la OT 5769 los 10 sí lo traen. Por eso la
-resolución cae al catálogo, y por eso el conteo doble era fatal en vez de cosmético.
+El test compara **nombres, no ids**, y la razón importa: el id que se escribe es la raíz del
+parámetro del NP, que puede ser una revisión más nueva que la del catálogo de la orden
+(`28878284` vs `17824087`, ambos «Sí o No»). El id vigente cambia; el criterio de calidad no.
+
+### Validación en vivo (2026-08-03)
+Corriendo el applet **publicado** (bajado de gh-pages, byte-idéntico a lo probado) contra el ERP:
+
+```
+versión viva 0.6.0 · rescate: true
+OT 10837 · NP PHA20842
+  tally     : OK 13 · VACIO 3 · AMBIGUO 0
+  sin destino: 0            (antes: 3)
+  nodo      : 44947411 «Inspeccionando y  Empacando Antitarnish»
+  plan      : 0 archivar · 3 agregar
+  consultas : 6             (5 de la orden + 1 de receta maestra)
+```
+
+Estable entre corridas. **Sólo lectura y decisión — la escritura no se ha ejecutado.**
+
+**Error propio, corregido al validar en vivo (mismo día).** La primera versión de esto decía
+que «la vía del NP no puede resolver porque sus parámetros vienen con
+`specFieldSpecBySpecFieldSpecId: null`». **Es falso**, y era un artefacto del fixture: yo tomé el
+NP de `partNumberById` **embebido en `GetPartNumberWorkOrderSpecsInfo`**, y ESA selección no trae
+`specFieldSpec`. El applet no usa ése: pide `GetPartNumber`, que sí los trae poblados. Medido en
+vivo el 2026-08-03:
+
+```
+GetPartNumber(3016541) → 28985361 specFieldSpec=149308 derivedFrom=28878284  "Sí o No"
+                         28985362 specFieldSpec=166976 derivedFrom=28878286  "Sí o No"
+                         28985363 specFieldSpec=149700 derivedFrom=17854562  "Sí o No (ambos pasan)"
+```
+
+Así que la OT 10837 resuelve **por vía NP**, no por catálogo, y escribe la **raíz de catálogo**
+(`derivedFrom`) — la regla de los tres ids, funcionando. El fixture ya viene de `GetPartNumber` y
+hay un test que falla si vuelve a ser indexable-vacío.
+
+**La dedup del catálogo sigue siendo necesaria** aunque aquí gane el NP: es el respaldo cuando el
+NP no define el campo, y sin ella ese respaldo devolvía `AMBIGUO` por conteo doble.
+
+**Lección de método:** un fixture recortado a mano puede cambiar la respuesta sin fallar ningún
+test — el mío hacía pasar los 68 y sostenía una conclusión equivocada sobre POR QUÉ fallaba el
+caso. Lo destapó correr el applet **vivo** contra el ERP **vivo**, no la suite.
 
 ### El defecto que hacía todo esto invisible
 

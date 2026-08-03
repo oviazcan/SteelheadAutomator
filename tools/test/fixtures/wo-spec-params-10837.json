@@ -3678,11 +3678,2345 @@
    "nodes": [
     {
      "id": 1155160,
+     "archivedAt": null,
+     "classificationSetByClassificationSetId": null,
      "specBySpecId": {
       "id": 18452,
       "name": "GDE1214700 (Antitarnish)",
+      "domainId": 344,
+      "idInDomain": 65,
+      "revisionNumber": 1,
+      "revisionName": null,
+      "specBySupersededById": null,
+      "specLabelsBySpecId": {
+       "nodes": [
+        {
+         "labelByLabelId": {
+          "color": "#3e2723",
+          "name": "Schneider",
+          "id": 11102
+         }
+        },
+        {
+         "labelByLabelId": {
+          "color": "#f06292",
+          "name": "Antitarnish",
+          "id": 10707
+         }
+        }
+       ]
+      },
+      "specFieldSpecsBySpecId": {
+       "nodes": [
+        {
+         "id": 149308,
+         "archivedAt": null,
+         "specId": 18452,
+         "specFieldId": 20570,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "isExternal": true,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 17824087,
+            "specFieldSpecId": 149308,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldBySpecFieldId": {
+          "id": 20570,
+          "name": "Protección - Sulfuro de sodio al 2.5%",
+          "type": "BOOLEAN",
+          "scheduleBy": false,
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 150208,
+         "archivedAt": "2025-12-10T23:47:58.21459+00:00",
+         "specId": 18452,
+         "specFieldId": 19445,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "isExternal": true,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 17954940,
+            "specFieldSpecId": 150208,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldBySpecFieldId": {
+          "id": 19445,
+          "name": "Apariencia Homogénea",
+          "type": "BOOLEAN",
+          "scheduleBy": false,
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 166976,
+         "archivedAt": null,
+         "specId": 18452,
+         "specFieldId": 25415,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "isExternal": true,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 19391314,
+            "specFieldSpecId": 166976,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldBySpecFieldId": {
+          "id": 25415,
+          "name": "Apariencia Homogénea - Antitarnish",
+          "type": "BOOLEAN",
+          "scheduleBy": false,
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 149700,
+         "archivedAt": null,
+         "specId": 18452,
+         "specFieldId": 22546,
+         "isGeneric": true,
+         "requiresGeometryType": false,
+         "isExternal": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 17854562,
+            "specFieldSpecId": 149700,
+            "name": "Sí o No (ambos pasan)"
+           }
+          ]
+         },
+         "specFieldBySpecFieldId": {
+          "id": 22546,
+          "name": "Primeras Piezas Antitarnish",
+          "type": "DROPDOWN",
+          "scheduleBy": false,
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 149307,
+         "archivedAt": "2025-11-04T17:52:41.704589+00:00",
+         "specId": 18452,
+         "specFieldId": 20562,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "isExternal": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": []
+         },
+         "specFieldBySpecFieldId": {
+          "id": 20562,
+          "name": "Protección - Polisulfuro de amonio al 5%",
+          "type": "BOOLEAN",
+          "scheduleBy": false,
+          "sensorTypeBySensorTypeId": null
+         }
+        },
+        {
+         "id": 149313,
+         "archivedAt": "2025-11-05T00:41:17.046906+00:00",
+         "specId": 18452,
+         "specFieldId": 22067,
+         "isGeneric": false,
+         "requiresGeometryType": false,
+         "isExternal": false,
+         "specFieldParamsBySpecFieldSpecId": {
+          "nodes": [
+           {
+            "id": 17826195,
+            "specFieldSpecId": 149313,
+            "name": "Sí o No"
+           }
+          ]
+         },
+         "specFieldBySpecFieldId": {
+          "id": 22067,
+          "name": "Primeras Piezas",
+          "type": "DROPDOWN",
+          "scheduleBy": false,
+          "sensorTypeBySensorTypeId": null
+         }
+        }
+       ]
+      },
       "processNodeSpecOptInOutsBySpecId": {
        "nodes": []
+      },
+      "specProcessNodeDefaultsBySpecId": {
+       "nodes": []
+      },
+      "specVersionsBySpecId": {
+       "nodes": []
+      },
+      "processNodeByDefaultProcessNodeId": {
+       "id": 148295,
+       "name": "T300-CE03 Antitarnish en Línea 16.3",
+       "type": "SUB_PROCESS",
+       "autoComplete": true,
+       "partNumberOptOut": null,
+       "descriptionMarkdown": null,
+       "isShared": true,
+       "processNodeSpecFieldsByProcessNodeId": {
+        "nodes": []
+       },
+       "workboardCardsByProcessNodeId": {
+        "nodes": []
+       },
+       "workboardSuperProcessNodesByProcessNodeId": {
+        "nodes": []
+       },
+       "treatmentByTreatmentId": null,
+       "processNodeTreatmentChoicesByProcessNodeId": {
+        "nodes": []
+       },
+       "processNodeTreatmentGroupsByProcessNodeId": {
+        "nodes": []
+       },
+       "processNodeDescriptionsByProcessNodeId": {
+        "nodes": []
+       },
+       "processNodeGoTosByFromId": {
+        "nodes": []
+       },
+       "descendantRelationships": [
+        {
+         "id": 13614718,
+         "toId": 148295,
+         "childInd": 0,
+         "specId": null,
+         "processNodeByFromId": {
+          "id": 265980,
+          "name": "Recibo de Orden",
+          "type": "STEP",
+          "autoComplete": false,
+          "partNumberOptOut": null,
+          "descriptionMarkdown": null,
+          "isShared": true,
+          "processNodeSpecFieldsByProcessNodeId": {
+           "nodes": []
+          },
+          "workboardCardsByProcessNodeId": {
+           "nodes": [
+            {
+             "id": 111747
+            },
+            {
+             "id": 111857
+            },
+            {
+             "id": 118105
+            },
+            {
+             "id": 118346
+            }
+           ]
+          },
+          "workboardSuperProcessNodesByProcessNodeId": {
+           "nodes": []
+          },
+          "treatmentByTreatmentId": {
+           "id": 94832,
+           "name": "TR-PRM-010 Recibo de Orden",
+           "descriptionMarkdown": null,
+           "stationTreatmentsByTreatmentId": {
+            "nodes": [
+             {
+              "id": 78984,
+              "stationByStationId": {
+               "id": 13740,
+               "name": "T205-EN00-001 Enracado",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 78991,
+              "stationByStationId": {
+               "id": 15690,
+               "name": "T103-EN00-001 Enracado",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 78992,
+              "stationByStationId": {
+               "id": 16370,
+               "name": "T101-EN00-001 Enracado",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 78993,
+              "stationByStationId": {
+               "id": 15390,
+               "name": "T102-EN00-001 Carga de Barril / Enracado",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 78994,
+              "stationByStationId": {
+               "id": 15431,
+               "name": "T104-EN00-001 Enracado",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 78995,
+              "stationByStationId": {
+               "id": 15693,
+               "name": "T105-EN00-001 Enracado",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 78996,
+              "stationByStationId": {
+               "id": 14805,
+               "name": "T106-EN00-001 Carga de Barril",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 78997,
+              "stationByStationId": {
+               "id": 12453,
+               "name": "T107-EN00-001 Enracado",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 78998,
+              "stationByStationId": {
+               "id": 15699,
+               "name": "T108-EN00-001 Enracado / Carga de Barril",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 78999,
+              "stationByStationId": {
+               "id": 14655,
+               "name": "T109-EN00-001 Carga de Barril",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 79000,
+              "stationByStationId": {
+               "id": 15707,
+               "name": "T110-EN00-001 Enracado",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 79001,
+              "stationByStationId": {
+               "id": 15751,
+               "name": "T111-EN00-001 Enracado",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 79002,
+              "stationByStationId": {
+               "id": 16392,
+               "name": "T112-EN00-001 Carga de Barril",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 79003,
+              "stationByStationId": {
+               "id": 15715,
+               "name": "T113-EN00-001 Carga de Barril",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 79004,
+              "stationByStationId": {
+               "id": 15790,
+               "name": "T114-EN00-001 Enracado",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 79005,
+              "stationByStationId": {
+               "id": 16426,
+               "name": "T115-EN00-001 Enracado",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 79006,
+              "stationByStationId": {
+               "id": 15792,
+               "name": "T116-EN00-001 Enracado",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 79007,
+              "stationByStationId": {
+               "id": 15723,
+               "name": "T201-EN00-001 Enracado",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 79008,
+              "stationByStationId": {
+               "id": 15734,
+               "name": "T202-EN00-001 Enracado",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 79009,
+              "stationByStationId": {
+               "id": 15777,
+               "name": "T203-EN00-001 Carga de Barril",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 79010,
+              "stationByStationId": {
+               "id": 14344,
+               "name": "T204-EN00-001 Enracado",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 79011,
+              "stationByStationId": {
+               "id": 14803,
+               "name": "T206-EN00-001 Carga de Barril / Cubetas",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 79012,
+              "stationByStationId": {
+               "id": 15781,
+               "name": "T207-EN00-001 Enracado",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 79013,
+              "stationByStationId": {
+               "id": 15787,
+               "name": "T301-EN00-001 Carga de Barril",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 79014,
+              "stationByStationId": {
+               "id": 12103,
+               "name": "T401-LI Epóxico BT y MT (30)",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 6
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 79015,
+              "stationByStationId": {
+               "id": 17189,
+               "name": "T117-EN00-001 Enracado",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 89641,
+              "stationByStationId": {
+               "id": 20655,
+               "name": "T300 Recibo de Orden (Antitarnish)",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 89691,
+              "stationByStationId": {
+               "id": 20656,
+               "name": "T203 Recibo de Orden (Antitarnish)",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 89692,
+              "stationByStationId": {
+               "id": 20657,
+               "name": "T204 Recibo de Orden (Antitarnish)",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 89693,
+              "stationByStationId": {
+               "id": 20658,
+               "name": "T202 Recibo de Orden (Antitarnish)",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 89694,
+              "stationByStationId": {
+               "id": 20675,
+               "name": "T110 Recibo de Orden (Antitarnish)",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 89695,
+              "stationByStationId": {
+               "id": 20676,
+               "name": "T400 Recibo de Orden (Antitarnish)",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 99194,
+              "stationByStationId": {
+               "id": 21677,
+               "name": "T300-CE05-002 Recibo de Orden de Limpieza Especial",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 99195,
+              "stationByStationId": {
+               "id": 21678,
+               "name": "T202-EN00-002 Recibo de Orden de Limpieza Especial",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 99196,
+              "stationByStationId": {
+               "id": 21679,
+               "name": "T203-EN00-002 Recibo de Orden de Limpieza Especial",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 99197,
+              "stationByStationId": {
+               "id": 21680,
+               "name": "T301-EN00-002 Recibo de Orden de Limpieza Especial",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             }
+            ]
+           },
+           "performingStations": {
+            "nodes": [
+             {
+              "id": 12103,
+              "name": "T401-LI Epóxico BT y MT (30)"
+             },
+             {
+              "id": 12453,
+              "name": "T107-EN00-001 Enracado"
+             },
+             {
+              "id": 13740,
+              "name": "T205-EN00-001 Enracado"
+             },
+             {
+              "id": 14344,
+              "name": "T204-EN00-001 Enracado"
+             },
+             {
+              "id": 14655,
+              "name": "T109-EN00-001 Carga de Barril"
+             },
+             {
+              "id": 14803,
+              "name": "T206-EN00-001 Carga de Barril / Cubetas"
+             },
+             {
+              "id": 14805,
+              "name": "T106-EN00-001 Carga de Barril"
+             },
+             {
+              "id": 15390,
+              "name": "T102-EN00-001 Carga de Barril / Enracado"
+             },
+             {
+              "id": 15431,
+              "name": "T104-EN00-001 Enracado"
+             },
+             {
+              "id": 15690,
+              "name": "T103-EN00-001 Enracado"
+             },
+             {
+              "id": 15693,
+              "name": "T105-EN00-001 Enracado"
+             },
+             {
+              "id": 15699,
+              "name": "T108-EN00-001 Enracado / Carga de Barril"
+             },
+             {
+              "id": 15707,
+              "name": "T110-EN00-001 Enracado"
+             },
+             {
+              "id": 15715,
+              "name": "T113-EN00-001 Carga de Barril"
+             },
+             {
+              "id": 15723,
+              "name": "T201-EN00-001 Enracado"
+             },
+             {
+              "id": 15734,
+              "name": "T202-EN00-001 Enracado"
+             },
+             {
+              "id": 15751,
+              "name": "T111-EN00-001 Enracado"
+             },
+             {
+              "id": 15777,
+              "name": "T203-EN00-001 Carga de Barril"
+             },
+             {
+              "id": 15781,
+              "name": "T207-EN00-001 Enracado"
+             },
+             {
+              "id": 15787,
+              "name": "T301-EN00-001 Carga de Barril"
+             },
+             {
+              "id": 15790,
+              "name": "T114-EN00-001 Enracado"
+             },
+             {
+              "id": 15792,
+              "name": "T116-EN00-001 Enracado"
+             },
+             {
+              "id": 16370,
+              "name": "T101-EN00-001 Enracado"
+             },
+             {
+              "id": 16392,
+              "name": "T112-EN00-001 Carga de Barril"
+             },
+             {
+              "id": 16426,
+              "name": "T115-EN00-001 Enracado"
+             },
+             {
+              "id": 17189,
+              "name": "T117-EN00-001 Enracado"
+             },
+             {
+              "id": 20655,
+              "name": "T300 Recibo de Orden (Antitarnish)"
+             },
+             {
+              "id": 20656,
+              "name": "T203 Recibo de Orden (Antitarnish)"
+             },
+             {
+              "id": 20657,
+              "name": "T204 Recibo de Orden (Antitarnish)"
+             },
+             {
+              "id": 20658,
+              "name": "T202 Recibo de Orden (Antitarnish)"
+             },
+             {
+              "id": 20675,
+              "name": "T110 Recibo de Orden (Antitarnish)"
+             },
+             {
+              "id": 20676,
+              "name": "T400 Recibo de Orden (Antitarnish)"
+             },
+             {
+              "id": 21677,
+              "name": "T300-CE05-002 Recibo de Orden de Limpieza Especial"
+             },
+             {
+              "id": 21678,
+              "name": "T202-EN00-002 Recibo de Orden de Limpieza Especial"
+             },
+             {
+              "id": 21679,
+              "name": "T203-EN00-002 Recibo de Orden de Limpieza Especial"
+             },
+             {
+              "id": 21680,
+              "name": "T301-EN00-002 Recibo de Orden de Limpieza Especial"
+             }
+            ]
+           }
+          },
+          "processNodeTreatmentChoicesByProcessNodeId": {
+           "nodes": []
+          },
+          "processNodeTreatmentGroupsByProcessNodeId": {
+           "nodes": []
+          },
+          "processNodeDescriptionsByProcessNodeId": {
+           "nodes": []
+          },
+          "processNodeGoTosByFromId": {
+           "nodes": []
+          }
+         }
+        },
+        {
+         "id": 13614719,
+         "toId": 148295,
+         "childInd": 1,
+         "specId": null,
+         "processNodeByFromId": {
+          "id": 148612,
+          "name": "Listo para Antitarnish Manual",
+          "type": "STAGING",
+          "autoComplete": false,
+          "partNumberOptOut": null,
+          "descriptionMarkdown": null,
+          "isShared": true,
+          "processNodeSpecFieldsByProcessNodeId": {
+           "nodes": []
+          },
+          "workboardCardsByProcessNodeId": {
+           "nodes": [
+            {
+             "id": 107362
+            },
+            {
+             "id": 107561
+            },
+            {
+             "id": 111748
+            },
+            {
+             "id": 111858
+            },
+            {
+             "id": 118354
+            }
+           ]
+          },
+          "workboardSuperProcessNodesByProcessNodeId": {
+           "nodes": []
+          },
+          "treatmentByTreatmentId": null,
+          "processNodeTreatmentChoicesByProcessNodeId": {
+           "nodes": []
+          },
+          "processNodeTreatmentGroupsByProcessNodeId": {
+           "nodes": []
+          },
+          "processNodeDescriptionsByProcessNodeId": {
+           "nodes": []
+          },
+          "processNodeGoTosByFromId": {
+           "nodes": []
+          }
+         }
+        },
+        {
+         "id": 13614720,
+         "toId": 148295,
+         "childInd": 2,
+         "specId": null,
+         "processNodeByFromId": {
+          "id": 148613,
+          "name": "CE03 Aplicando Antitarnish Manual",
+          "type": "STEP",
+          "autoComplete": false,
+          "partNumberOptOut": null,
+          "descriptionMarkdown": null,
+          "isShared": true,
+          "processNodeSpecFieldsByProcessNodeId": {
+           "nodes": []
+          },
+          "workboardCardsByProcessNodeId": {
+           "nodes": [
+            {
+             "id": 107363
+            },
+            {
+             "id": 107562
+            },
+            {
+             "id": 111749
+            },
+            {
+             "id": 111859
+            },
+            {
+             "id": 118360
+            }
+           ]
+          },
+          "workboardSuperProcessNodesByProcessNodeId": {
+           "nodes": []
+          },
+          "treatmentByTreatmentId": {
+           "id": 82877,
+           "name": "TR-PRM-001 Antitarnish Manual",
+           "descriptionMarkdown": null,
+           "stationTreatmentsByTreatmentId": {
+            "nodes": [
+             {
+              "id": 72248,
+              "stationByStationId": {
+               "id": 12135,
+               "name": "T300-CE03-002 Célula de Antitarnish",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 1
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 72249,
+              "stationByStationId": {
+               "id": 12136,
+               "name": "T400-CE03-001 Célula de Antitarnish",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 1
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 89452,
+              "stationByStationId": {
+               "id": 20640,
+               "name": "T204-CE03-003 Célula de Antitarnish",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 89453,
+              "stationByStationId": {
+               "id": 20641,
+               "name": "T203-CE03-004 Célula de Antitarnish",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 89454,
+              "stationByStationId": {
+               "id": 20642,
+               "name": "T202-CE03-005 Célula de Antitarnish",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 89455,
+              "stationByStationId": {
+               "id": 20643,
+               "name": "T110-CE03-006 Célula de Antitarnish",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             }
+            ]
+           },
+           "performingStations": {
+            "nodes": [
+             {
+              "id": 12135,
+              "name": "T300-CE03-002 Célula de Antitarnish"
+             },
+             {
+              "id": 12136,
+              "name": "T400-CE03-001 Célula de Antitarnish"
+             },
+             {
+              "id": 20640,
+              "name": "T204-CE03-003 Célula de Antitarnish"
+             },
+             {
+              "id": 20641,
+              "name": "T203-CE03-004 Célula de Antitarnish"
+             },
+             {
+              "id": 20642,
+              "name": "T202-CE03-005 Célula de Antitarnish"
+             },
+             {
+              "id": 20643,
+              "name": "T110-CE03-006 Célula de Antitarnish"
+             }
+            ]
+           }
+          },
+          "processNodeTreatmentChoicesByProcessNodeId": {
+           "nodes": []
+          },
+          "processNodeTreatmentGroupsByProcessNodeId": {
+           "nodes": []
+          },
+          "processNodeDescriptionsByProcessNodeId": {
+           "nodes": []
+          },
+          "processNodeGoTosByFromId": {
+           "nodes": []
+          }
+         }
+        },
+        {
+         "id": 13614721,
+         "toId": 148295,
+         "childInd": 3,
+         "specId": null,
+         "processNodeByFromId": {
+          "id": 157796,
+          "name": "Inspección y Empaque",
+          "type": "STEP",
+          "autoComplete": true,
+          "partNumberOptOut": null,
+          "descriptionMarkdown": null,
+          "isShared": true,
+          "processNodeSpecFieldsByProcessNodeId": {
+           "nodes": []
+          },
+          "workboardCardsByProcessNodeId": {
+           "nodes": []
+          },
+          "workboardSuperProcessNodesByProcessNodeId": {
+           "nodes": []
+          },
+          "treatmentByTreatmentId": null,
+          "processNodeTreatmentChoicesByProcessNodeId": {
+           "nodes": []
+          },
+          "processNodeTreatmentGroupsByProcessNodeId": {
+           "nodes": []
+          },
+          "processNodeDescriptionsByProcessNodeId": {
+           "nodes": []
+          },
+          "processNodeGoTosByFromId": {
+           "nodes": []
+          }
+         }
+        },
+        {
+         "id": 13614722,
+         "toId": 157796,
+         "childInd": 0,
+         "specId": null,
+         "processNodeByFromId": {
+          "id": 157802,
+          "name": "Listo para Inspección y Empaque",
+          "type": "STAGING",
+          "autoComplete": false,
+          "partNumberOptOut": null,
+          "descriptionMarkdown": null,
+          "isShared": true,
+          "processNodeSpecFieldsByProcessNodeId": {
+           "nodes": []
+          },
+          "workboardCardsByProcessNodeId": {
+           "nodes": [
+            {
+             "id": 95046
+            },
+            {
+             "id": 95048
+            },
+            {
+             "id": 95208
+            },
+            {
+             "id": 107364
+            },
+            {
+             "id": 107563
+            },
+            {
+             "id": 111750
+            },
+            {
+             "id": 111860
+            },
+            {
+             "id": 115732
+            },
+            {
+             "id": 117810
+            },
+            {
+             "id": 118366
+            }
+           ]
+          },
+          "workboardSuperProcessNodesByProcessNodeId": {
+           "nodes": []
+          },
+          "treatmentByTreatmentId": null,
+          "processNodeTreatmentChoicesByProcessNodeId": {
+           "nodes": []
+          },
+          "processNodeTreatmentGroupsByProcessNodeId": {
+           "nodes": []
+          },
+          "processNodeDescriptionsByProcessNodeId": {
+           "nodes": []
+          },
+          "processNodeGoTosByFromId": {
+           "nodes": []
+          }
+         }
+        },
+        {
+         "id": 13614723,
+         "toId": 157796,
+         "childInd": 1,
+         "specId": null,
+         "processNodeByFromId": {
+          "id": 157804,
+          "name": "Inspeccionando y  Empacando Antitarnish",
+          "type": "QUALITY_ASSURANCE_NODE",
+          "autoComplete": false,
+          "partNumberOptOut": null,
+          "descriptionMarkdown": null,
+          "isShared": true,
+          "processNodeSpecFieldsByProcessNodeId": {
+           "nodes": [
+            {
+             "id": 66126,
+             "processNodeId": 157804,
+             "specFieldId": 20570,
+             "specFieldBySpecFieldId": {
+              "id": 20570,
+              "name": "Protección - Sulfuro de sodio al 2.5%"
+             }
+            },
+            {
+             "id": 72300,
+             "processNodeId": 157804,
+             "specFieldId": 25415,
+             "specFieldBySpecFieldId": {
+              "id": 25415,
+              "name": "Apariencia Homogénea - Antitarnish"
+             }
+            },
+            {
+             "id": 66806,
+             "processNodeId": 157804,
+             "specFieldId": 22546,
+             "specFieldBySpecFieldId": {
+              "id": 22546,
+              "name": "Primeras Piezas Antitarnish"
+             }
+            }
+           ]
+          },
+          "workboardCardsByProcessNodeId": {
+           "nodes": [
+            {
+             "id": 95047
+            },
+            {
+             "id": 95049
+            },
+            {
+             "id": 95209
+            },
+            {
+             "id": 107365
+            },
+            {
+             "id": 107564
+            },
+            {
+             "id": 111751
+            },
+            {
+             "id": 111861
+            },
+            {
+             "id": 115738
+            },
+            {
+             "id": 117812
+            },
+            {
+             "id": 118372
+            }
+           ]
+          },
+          "workboardSuperProcessNodesByProcessNodeId": {
+           "nodes": []
+          },
+          "treatmentByTreatmentId": {
+           "id": 86895,
+           "name": "TR-ICA-006 Inspección de Calidad Antitarnish Manual",
+           "descriptionMarkdown": null,
+           "stationTreatmentsByTreatmentId": {
+            "nodes": [
+             {
+              "id": 89706,
+              "stationByStationId": {
+               "id": 20677,
+               "name": "T204-IC00-002 Inspección de Antitarnish",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 89707,
+              "stationByStationId": {
+               "id": 20678,
+               "name": "T202-IC00-002 Inspección de Antitarnish",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 89708,
+              "stationByStationId": {
+               "id": 20679,
+               "name": "T110-IC00-002 Inspección de Antitarnish",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 89709,
+              "stationByStationId": {
+               "id": 20680,
+               "name": "T203-IC00-002 Inspección de Antitarnish",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 91745,
+              "stationByStationId": {
+               "id": 21273,
+               "name": "T300-IC00-002 Inspección de Antitarnish",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             },
+             {
+              "id": 91746,
+              "stationByStationId": {
+               "id": 21274,
+               "name": "T400-IC00-002 Inspección de Antitarnish",
+               "stationParametersByStationId": {
+                "nodes": []
+               },
+               "workboardCardsByStationId": {
+                "totalCount": 0
+               },
+               "workboardsBySuperStationId": {
+                "totalCount": 0
+               }
+              }
+             }
+            ]
+           },
+           "performingStations": {
+            "nodes": [
+             {
+              "id": 20677,
+              "name": "T204-IC00-002 Inspección de Antitarnish"
+             },
+             {
+              "id": 20678,
+              "name": "T202-IC00-002 Inspección de Antitarnish"
+             },
+             {
+              "id": 20679,
+              "name": "T110-IC00-002 Inspección de Antitarnish"
+             },
+             {
+              "id": 20680,
+              "name": "T203-IC00-002 Inspección de Antitarnish"
+             },
+             {
+              "id": 21273,
+              "name": "T300-IC00-002 Inspección de Antitarnish"
+             },
+             {
+              "id": 21274,
+              "name": "T400-IC00-002 Inspección de Antitarnish"
+             }
+            ]
+           }
+          },
+          "processNodeTreatmentChoicesByProcessNodeId": {
+           "nodes": []
+          },
+          "processNodeTreatmentGroupsByProcessNodeId": {
+           "nodes": []
+          },
+          "processNodeDescriptionsByProcessNodeId": {
+           "nodes": []
+          },
+          "processNodeGoTosByFromId": {
+           "nodes": []
+          }
+         }
+        }
+       ]
+      },
+      "applicableLocations": {
+       "nodes": [
+        {
+         "id": 22872
+        },
+        {
+         "id": 23345
+        },
+        {
+         "id": 23346
+        },
+        {
+         "id": 23347
+        },
+        {
+         "id": 24913
+        },
+        {
+         "id": 24914
+        },
+        {
+         "id": 24915
+        },
+        {
+         "id": 25252
+        },
+        {
+         "id": 25253
+        },
+        {
+         "id": 25254
+        },
+        {
+         "id": 25255
+        },
+        {
+         "id": 25256
+        },
+        {
+         "id": 25257
+        },
+        {
+         "id": 25258
+        },
+        {
+         "id": 25259
+        },
+        {
+         "id": 25260
+        },
+        {
+         "id": 25261
+        },
+        {
+         "id": 25262
+        },
+        {
+         "id": 25263
+        },
+        {
+         "id": 25264
+        },
+        {
+         "id": 25265
+        },
+        {
+         "id": 25266
+        },
+        {
+         "id": 25267
+        },
+        {
+         "id": 25268
+        },
+        {
+         "id": 25269
+        },
+        {
+         "id": 25270
+        },
+        {
+         "id": 25271
+        },
+        {
+         "id": 25272
+        },
+        {
+         "id": 25273
+        },
+        {
+         "id": 25274
+        },
+        {
+         "id": 25275
+        },
+        {
+         "id": 25276
+        },
+        {
+         "id": 25277
+        },
+        {
+         "id": 25278
+        },
+        {
+         "id": 25279
+        },
+        {
+         "id": 25280
+        },
+        {
+         "id": 25281
+        },
+        {
+         "id": 25282
+        },
+        {
+         "id": 25283
+        },
+        {
+         "id": 25284
+        },
+        {
+         "id": 25285
+        },
+        {
+         "id": 25286
+        },
+        {
+         "id": 25287
+        },
+        {
+         "id": 25288
+        },
+        {
+         "id": 25289
+        },
+        {
+         "id": 25290
+        },
+        {
+         "id": 25291
+        },
+        {
+         "id": 25292
+        },
+        {
+         "id": 25293
+        },
+        {
+         "id": 25294
+        },
+        {
+         "id": 25295
+        },
+        {
+         "id": 25296
+        },
+        {
+         "id": 25297
+        },
+        {
+         "id": 25298
+        },
+        {
+         "id": 25299
+        },
+        {
+         "id": 25300
+        },
+        {
+         "id": 25301
+        },
+        {
+         "id": 25302
+        },
+        {
+         "id": 25303
+        },
+        {
+         "id": 25304
+        },
+        {
+         "id": 25305
+        },
+        {
+         "id": 25306
+        },
+        {
+         "id": 25307
+        },
+        {
+         "id": 25308
+        },
+        {
+         "id": 25309
+        },
+        {
+         "id": 25310
+        },
+        {
+         "id": 25311
+        },
+        {
+         "id": 25312
+        },
+        {
+         "id": 25313
+        },
+        {
+         "id": 25314
+        },
+        {
+         "id": 25315
+        },
+        {
+         "id": 25316
+        },
+        {
+         "id": 25317
+        },
+        {
+         "id": 25319
+        },
+        {
+         "id": 25320
+        },
+        {
+         "id": 25321
+        },
+        {
+         "id": 25322
+        },
+        {
+         "id": 25323
+        },
+        {
+         "id": 25324
+        },
+        {
+         "id": 25325
+        },
+        {
+         "id": 25326
+        },
+        {
+         "id": 25327
+        },
+        {
+         "id": 25328
+        },
+        {
+         "id": 25329
+        },
+        {
+         "id": 25330
+        },
+        {
+         "id": 25331
+        },
+        {
+         "id": 25332
+        },
+        {
+         "id": 25333
+        },
+        {
+         "id": 25334
+        },
+        {
+         "id": 25335
+        },
+        {
+         "id": 25336
+        },
+        {
+         "id": 25337
+        },
+        {
+         "id": 25338
+        },
+        {
+         "id": 25339
+        },
+        {
+         "id": 25340
+        },
+        {
+         "id": 25341
+        },
+        {
+         "id": 25342
+        },
+        {
+         "id": 25343
+        },
+        {
+         "id": 25344
+        },
+        {
+         "id": 25345
+        },
+        {
+         "id": 25346
+        },
+        {
+         "id": 25347
+        },
+        {
+         "id": 25348
+        },
+        {
+         "id": 25349
+        },
+        {
+         "id": 25350
+        },
+        {
+         "id": 25351
+        },
+        {
+         "id": 25352
+        },
+        {
+         "id": 25353
+        },
+        {
+         "id": 25354
+        },
+        {
+         "id": 25355
+        },
+        {
+         "id": 25356
+        },
+        {
+         "id": 25357
+        },
+        {
+         "id": 25358
+        },
+        {
+         "id": 25359
+        },
+        {
+         "id": 25360
+        },
+        {
+         "id": 25361
+        },
+        {
+         "id": 25362
+        },
+        {
+         "id": 25363
+        },
+        {
+         "id": 25364
+        },
+        {
+         "id": 25365
+        },
+        {
+         "id": 25366
+        },
+        {
+         "id": 25367
+        },
+        {
+         "id": 25368
+        },
+        {
+         "id": 25369
+        },
+        {
+         "id": 25370
+        },
+        {
+         "id": 25371
+        },
+        {
+         "id": 25372
+        },
+        {
+         "id": 25373
+        },
+        {
+         "id": 25374
+        },
+        {
+         "id": 25375
+        },
+        {
+         "id": 25376
+        },
+        {
+         "id": 25377
+        },
+        {
+         "id": 25378
+        },
+        {
+         "id": 25379
+        },
+        {
+         "id": 25380
+        },
+        {
+         "id": 25381
+        },
+        {
+         "id": 25382
+        },
+        {
+         "id": 25383
+        },
+        {
+         "id": 25384
+        },
+        {
+         "id": 25385
+        },
+        {
+         "id": 25386
+        },
+        {
+         "id": 25387
+        },
+        {
+         "id": 25388
+        },
+        {
+         "id": 25389
+        },
+        {
+         "id": 25802
+        },
+        {
+         "id": 27768
+        },
+        {
+         "id": 27771
+        },
+        {
+         "id": 27772
+        },
+        {
+         "id": 27775
+        },
+        {
+         "id": 27776
+        },
+        {
+         "id": 27777
+        },
+        {
+         "id": 27779
+        },
+        {
+         "id": 27780
+        },
+        {
+         "id": 27781
+        },
+        {
+         "id": 27782
+        },
+        {
+         "id": 28175
+        },
+        {
+         "id": 28177
+        },
+        {
+         "id": 28196
+        },
+        {
+         "id": 28197
+        },
+        {
+         "id": 28199
+        },
+        {
+         "id": 28200
+        },
+        {
+         "id": 28201
+        },
+        {
+         "id": 28202
+        },
+        {
+         "id": 28203
+        },
+        {
+         "id": 28204
+        },
+        {
+         "id": 28205
+        },
+        {
+         "id": 28206
+        },
+        {
+         "id": 28208
+        },
+        {
+         "id": 28209
+        },
+        {
+         "id": 28210
+        },
+        {
+         "id": 32269
+        },
+        {
+         "id": 32270
+        },
+        {
+         "id": 32271
+        },
+        {
+         "id": 32272
+        },
+        {
+         "id": 32273
+        },
+        {
+         "id": 32741
+        },
+        {
+         "id": 33107
+        },
+        {
+         "id": 33108
+        },
+        {
+         "id": 33109
+        },
+        {
+         "id": 33110
+        },
+        {
+         "id": 33701
+        },
+        {
+         "id": 33816
+        },
+        {
+         "id": 33817
+        },
+        {
+         "id": 33818
+        },
+        {
+         "id": 33819
+        },
+        {
+         "id": 33820
+        },
+        {
+         "id": 33821
+        },
+        {
+         "id": 33823
+        },
+        {
+         "id": 33824
+        },
+        {
+         "id": 33825
+        },
+        {
+         "id": 33826
+        },
+        {
+         "id": 33827
+        },
+        {
+         "id": 33828
+        },
+        {
+         "id": 33829
+        },
+        {
+         "id": 33830
+        },
+        {
+         "id": 33831
+        },
+        {
+         "id": 33832
+        },
+        {
+         "id": 33833
+        },
+        {
+         "id": 33834
+        },
+        {
+         "id": 33836
+        },
+        {
+         "id": 33837
+        },
+        {
+         "id": 33838
+        },
+        {
+         "id": 33839
+        },
+        {
+         "id": 33840
+        },
+        {
+         "id": 33841
+        },
+        {
+         "id": 33842
+        },
+        {
+         "id": 33843
+        },
+        {
+         "id": 33844
+        },
+        {
+         "id": 33845
+        },
+        {
+         "id": 33846
+        },
+        {
+         "id": 33847
+        },
+        {
+         "id": 33850
+        },
+        {
+         "id": 33851
+        },
+        {
+         "id": 33852
+        },
+        {
+         "id": 33853
+        },
+        {
+         "id": 33854
+        },
+        {
+         "id": 33855
+        },
+        {
+         "id": 33856
+        },
+        {
+         "id": 33857
+        },
+        {
+         "id": 33858
+        },
+        {
+         "id": 33859
+        },
+        {
+         "id": 36196
+        },
+        {
+         "id": 36197
+        },
+        {
+         "id": 36198
+        },
+        {
+         "id": 36201
+        },
+        {
+         "id": 36203
+        },
+        {
+         "id": 36205
+        },
+        {
+         "id": 36207
+        },
+        {
+         "id": 36209
+        },
+        {
+         "id": 36211
+        },
+        {
+         "id": 36213
+        },
+        {
+         "id": 36215
+        },
+        {
+         "id": 36217
+        },
+        {
+         "id": 36220
+        },
+        {
+         "id": 36222
+        },
+        {
+         "id": 36224
+        },
+        {
+         "id": 36226
+        },
+        {
+         "id": 36228
+        },
+        {
+         "id": 36230
+        },
+        {
+         "id": 36232
+        },
+        {
+         "id": 36234
+        },
+        {
+         "id": 36236
+        },
+        {
+         "id": 36238
+        },
+        {
+         "id": 36240
+        },
+        {
+         "id": 36242
+        },
+        {
+         "id": 36244
+        },
+        {
+         "id": 36245
+        },
+        {
+         "id": 36247
+        },
+        {
+         "id": 36248
+        },
+        {
+         "id": 36249
+        },
+        {
+         "id": 37905
+        },
+        {
+         "id": 40413
+        },
+        {
+         "id": 40414
+        },
+        {
+         "id": 40442
+        },
+        {
+         "id": 40443
+        }
+       ]
       }
      }
     }
@@ -3691,60 +6025,463 @@
   "partNumberSpecFieldParamsByPartNumberId": {
    "nodes": [
     {
-     "id": 8084271,
-     "processNodeOccurrence": null,
-     "specFieldBySpecFieldId": {
-      "id": 20570,
-      "name": "Protección - Sulfuro de sodio al 2.5%"
+     "id": 7997982,
+     "archivedAt": "2026-05-26T13:00:56.148+00:00",
+     "specFieldId": 20570,
+     "processNodeId": 170989,
+     "processNodeOccurrence": 1,
+     "locationId": null,
+     "geometryTypeSpecFieldId": null,
+     "geometryTypeSpecFieldByGeometryTypeSpecFieldId": null,
+     "processNodeByProcessNodeId": {
+      "id": 170989,
+      "name": "T400 (ANT)-CU-VARIOS (20.0)"
      },
+     "locationByLocationId": null,
+     "specFieldParamBySpecFieldParamId": {
+      "id": 28878284,
+      "maximumValue": null,
+      "createdAt": "2026-05-23T18:48:26.322006+00:00",
+      "name": "Sí o No",
+      "minimumValue": null,
+      "samplingRate": null,
+      "sampleCount": 2,
+      "targetValue": null,
+      "oneAtATime": false,
+      "requestDocument": false,
+      "inputRequired": false,
+      "inputRequested": true,
+      "mustBePassing": false,
+      "failingRequiresResolution": true,
+      "descriptionMarkdown": "",
+      "sensorValidDurationMinutes": null,
+      "sensorWarningThresholdMinutes": null,
+      "samplingIntervalMinutes": 180,
+      "isDefault": false,
+      "unitId": null,
+      "derivedFromId": 17824087,
+      "sampleSetId": null,
+      "drivesCoupons": null,
+      "specFieldParamDropdownBySpecFieldParamDropdownId": null,
+      "sampleSetBySampleSetId": null,
+      "specFieldParamByDerivedFromId": {
+       "id": 17824087,
+       "name": "Sí o No"
+      },
+      "specFieldSpecBySpecFieldSpecId": {
+       "id": 149308,
+       "specId": 18452,
+       "specBySpecId": {
+        "supersededById": null,
+        "id": 18452,
+        "name": "GDE1214700 (Antitarnish)",
+        "domainId": 344,
+        "idInDomain": 65,
+        "revisionNumber": 1,
+        "revisionName": null
+       },
+       "specFieldId": 20570,
+       "specFieldBySpecFieldId": {
+        "id": 20570,
+        "name": "Protección - Sulfuro de sodio al 2.5%",
+        "type": "BOOLEAN",
+        "sensorTypeBySensorTypeId": null
+       }
+      },
+      "specFieldSpecId": 149308,
+      "unitByUnitId": null,
+      "processNodeSpecFieldParamsBySpecFieldParamId": {
+       "nodes": []
+      },
+      "processNodeSpecFieldParamOptInOutsBySpecFieldParamId": {
+       "nodes": []
+      },
+      "specFieldParamProcessNodeDefaultsBySpecFieldParamId": {
+       "nodes": []
+      }
+     }
+    },
+    {
+     "id": 7997983,
+     "archivedAt": "2026-05-26T13:00:56.148+00:00",
+     "specFieldId": 25415,
+     "processNodeId": 170989,
+     "processNodeOccurrence": 1,
+     "locationId": null,
+     "geometryTypeSpecFieldId": null,
+     "geometryTypeSpecFieldByGeometryTypeSpecFieldId": null,
+     "processNodeByProcessNodeId": {
+      "id": 170989,
+      "name": "T400 (ANT)-CU-VARIOS (20.0)"
+     },
+     "locationByLocationId": null,
+     "specFieldParamBySpecFieldParamId": {
+      "id": 28878286,
+      "maximumValue": null,
+      "createdAt": "2026-05-23T18:48:26.322006+00:00",
+      "name": "Sí o No",
+      "minimumValue": null,
+      "samplingRate": null,
+      "sampleCount": 2,
+      "targetValue": null,
+      "oneAtATime": false,
+      "requestDocument": false,
+      "inputRequired": false,
+      "inputRequested": true,
+      "mustBePassing": false,
+      "failingRequiresResolution": true,
+      "descriptionMarkdown": "",
+      "sensorValidDurationMinutes": null,
+      "sensorWarningThresholdMinutes": null,
+      "samplingIntervalMinutes": 180,
+      "isDefault": false,
+      "unitId": null,
+      "derivedFromId": 19391314,
+      "sampleSetId": null,
+      "drivesCoupons": false,
+      "specFieldParamDropdownBySpecFieldParamDropdownId": null,
+      "sampleSetBySampleSetId": null,
+      "specFieldParamByDerivedFromId": {
+       "id": 19391314,
+       "name": "Sí o No"
+      },
+      "specFieldSpecBySpecFieldSpecId": {
+       "id": 166976,
+       "specId": 18452,
+       "specBySpecId": {
+        "supersededById": null,
+        "id": 18452,
+        "name": "GDE1214700 (Antitarnish)",
+        "domainId": 344,
+        "idInDomain": 65,
+        "revisionNumber": 1,
+        "revisionName": null
+       },
+       "specFieldId": 25415,
+       "specFieldBySpecFieldId": {
+        "id": 25415,
+        "name": "Apariencia Homogénea - Antitarnish",
+        "type": "BOOLEAN",
+        "sensorTypeBySensorTypeId": null
+       }
+      },
+      "specFieldSpecId": 166976,
+      "unitByUnitId": null,
+      "processNodeSpecFieldParamsBySpecFieldParamId": {
+       "nodes": []
+      },
+      "processNodeSpecFieldParamOptInOutsBySpecFieldParamId": {
+       "nodes": []
+      },
+      "specFieldParamProcessNodeDefaultsBySpecFieldParamId": {
+       "nodes": []
+      }
+     }
+    },
+    {
+     "id": 7997984,
+     "archivedAt": "2026-05-26T13:00:56.148+00:00",
+     "specFieldId": 22546,
+     "processNodeId": 170989,
+     "processNodeOccurrence": 1,
+     "locationId": null,
+     "geometryTypeSpecFieldId": null,
+     "geometryTypeSpecFieldByGeometryTypeSpecFieldId": null,
+     "processNodeByProcessNodeId": {
+      "id": 170989,
+      "name": "T400 (ANT)-CU-VARIOS (20.0)"
+     },
+     "locationByLocationId": null,
+     "specFieldParamBySpecFieldParamId": {
+      "id": 17854562,
+      "maximumValue": null,
+      "createdAt": "2025-11-05T00:41:03.814531+00:00",
+      "name": "Sí o No (ambos pasan)",
+      "minimumValue": null,
+      "samplingRate": null,
+      "sampleCount": 2,
+      "targetValue": null,
+      "oneAtATime": false,
+      "requestDocument": false,
+      "inputRequired": false,
+      "inputRequested": true,
+      "mustBePassing": false,
+      "failingRequiresResolution": false,
+      "descriptionMarkdown": "",
+      "sensorValidDurationMinutes": null,
+      "sensorWarningThresholdMinutes": null,
+      "samplingIntervalMinutes": 180,
+      "isDefault": true,
+      "unitId": null,
+      "derivedFromId": null,
+      "sampleSetId": null,
+      "drivesCoupons": false,
+      "specFieldParamDropdownBySpecFieldParamDropdownId": {
+       "id": 56210,
+       "name": "Sí o No (ambos pasan)"
+      },
+      "sampleSetBySampleSetId": null,
+      "specFieldParamByDerivedFromId": null,
+      "specFieldSpecBySpecFieldSpecId": {
+       "id": 149700,
+       "specId": 18452,
+       "specBySpecId": {
+        "supersededById": null,
+        "id": 18452,
+        "name": "GDE1214700 (Antitarnish)",
+        "domainId": 344,
+        "idInDomain": 65,
+        "revisionNumber": 1,
+        "revisionName": null
+       },
+       "specFieldId": 22546,
+       "specFieldBySpecFieldId": {
+        "id": 22546,
+        "name": "Primeras Piezas Antitarnish",
+        "type": "DROPDOWN",
+        "sensorTypeBySensorTypeId": null
+       }
+      },
+      "specFieldSpecId": 149700,
+      "unitByUnitId": null,
+      "processNodeSpecFieldParamsBySpecFieldParamId": {
+       "nodes": []
+      },
+      "processNodeSpecFieldParamOptInOutsBySpecFieldParamId": {
+       "nodes": []
+      },
+      "specFieldParamProcessNodeDefaultsBySpecFieldParamId": {
+       "nodes": []
+      }
+     }
+    },
+    {
+     "id": 8084271,
+     "archivedAt": null,
+     "specFieldId": 20570,
+     "processNodeId": null,
+     "processNodeOccurrence": null,
+     "locationId": null,
+     "geometryTypeSpecFieldId": null,
+     "geometryTypeSpecFieldByGeometryTypeSpecFieldId": null,
      "processNodeByProcessNodeId": null,
      "locationByLocationId": null,
-     "geometryTypeSpecFieldByGeometryTypeSpecFieldId": null,
      "specFieldParamBySpecFieldParamId": {
       "id": 28985361,
+      "maximumValue": null,
+      "createdAt": "2026-05-26T13:00:56.132597+00:00",
       "name": "Sí o No",
+      "minimumValue": null,
+      "samplingRate": null,
+      "sampleCount": 2,
+      "targetValue": null,
+      "oneAtATime": false,
+      "requestDocument": false,
+      "inputRequired": false,
+      "inputRequested": true,
+      "mustBePassing": false,
+      "failingRequiresResolution": true,
+      "descriptionMarkdown": "",
+      "sensorValidDurationMinutes": null,
+      "sensorWarningThresholdMinutes": null,
+      "samplingIntervalMinutes": 180,
+      "isDefault": false,
+      "unitId": null,
+      "derivedFromId": 28878284,
+      "sampleSetId": null,
+      "drivesCoupons": null,
+      "specFieldParamDropdownBySpecFieldParamDropdownId": null,
+      "sampleSetBySampleSetId": null,
+      "specFieldParamByDerivedFromId": {
+       "id": 28878284,
+       "name": "Sí o No"
+      },
+      "specFieldSpecBySpecFieldSpecId": {
+       "id": 149308,
+       "specId": 18452,
+       "specBySpecId": {
+        "supersededById": null,
+        "id": 18452,
+        "name": "GDE1214700 (Antitarnish)",
+        "domainId": 344,
+        "idInDomain": 65,
+        "revisionNumber": 1,
+        "revisionName": null
+       },
+       "specFieldId": 20570,
+       "specFieldBySpecFieldId": {
+        "id": 20570,
+        "name": "Protección - Sulfuro de sodio al 2.5%",
+        "type": "BOOLEAN",
+        "sensorTypeBySensorTypeId": null
+       }
+      },
+      "specFieldSpecId": 149308,
+      "unitByUnitId": null,
+      "processNodeSpecFieldParamsBySpecFieldParamId": {
+       "nodes": []
+      },
       "processNodeSpecFieldParamOptInOutsBySpecFieldParamId": {
+       "nodes": []
+      },
+      "specFieldParamProcessNodeDefaultsBySpecFieldParamId": {
        "nodes": []
       }
      }
     },
     {
      "id": 8084272,
+     "archivedAt": null,
+     "specFieldId": 25415,
+     "processNodeId": null,
      "processNodeOccurrence": null,
-     "specFieldBySpecFieldId": {
-      "id": 25415,
-      "name": "Apariencia Homogénea - Antitarnish"
-     },
+     "locationId": null,
+     "geometryTypeSpecFieldId": null,
+     "geometryTypeSpecFieldByGeometryTypeSpecFieldId": null,
      "processNodeByProcessNodeId": null,
      "locationByLocationId": null,
-     "geometryTypeSpecFieldByGeometryTypeSpecFieldId": null,
      "specFieldParamBySpecFieldParamId": {
       "id": 28985362,
+      "maximumValue": null,
+      "createdAt": "2026-05-26T13:00:56.132597+00:00",
       "name": "Sí o No",
+      "minimumValue": null,
+      "samplingRate": null,
+      "sampleCount": 2,
+      "targetValue": null,
+      "oneAtATime": false,
+      "requestDocument": false,
+      "inputRequired": false,
+      "inputRequested": true,
+      "mustBePassing": false,
+      "failingRequiresResolution": true,
+      "descriptionMarkdown": "",
+      "sensorValidDurationMinutes": null,
+      "sensorWarningThresholdMinutes": null,
+      "samplingIntervalMinutes": 180,
+      "isDefault": false,
+      "unitId": null,
+      "derivedFromId": 28878286,
+      "sampleSetId": null,
+      "drivesCoupons": false,
+      "specFieldParamDropdownBySpecFieldParamDropdownId": null,
+      "sampleSetBySampleSetId": null,
+      "specFieldParamByDerivedFromId": {
+       "id": 28878286,
+       "name": "Sí o No"
+      },
+      "specFieldSpecBySpecFieldSpecId": {
+       "id": 166976,
+       "specId": 18452,
+       "specBySpecId": {
+        "supersededById": null,
+        "id": 18452,
+        "name": "GDE1214700 (Antitarnish)",
+        "domainId": 344,
+        "idInDomain": 65,
+        "revisionNumber": 1,
+        "revisionName": null
+       },
+       "specFieldId": 25415,
+       "specFieldBySpecFieldId": {
+        "id": 25415,
+        "name": "Apariencia Homogénea - Antitarnish",
+        "type": "BOOLEAN",
+        "sensorTypeBySensorTypeId": null
+       }
+      },
+      "specFieldSpecId": 166976,
+      "unitByUnitId": null,
+      "processNodeSpecFieldParamsBySpecFieldParamId": {
+       "nodes": []
+      },
       "processNodeSpecFieldParamOptInOutsBySpecFieldParamId": {
+       "nodes": []
+      },
+      "specFieldParamProcessNodeDefaultsBySpecFieldParamId": {
        "nodes": []
       }
      }
     },
     {
      "id": 8084273,
+     "archivedAt": null,
+     "specFieldId": 22546,
+     "processNodeId": null,
      "processNodeOccurrence": null,
-     "specFieldBySpecFieldId": {
-      "id": 22546,
-      "name": "Primeras Piezas Antitarnish"
-     },
+     "locationId": null,
+     "geometryTypeSpecFieldId": null,
+     "geometryTypeSpecFieldByGeometryTypeSpecFieldId": null,
      "processNodeByProcessNodeId": null,
      "locationByLocationId": null,
-     "geometryTypeSpecFieldByGeometryTypeSpecFieldId": null,
      "specFieldParamBySpecFieldParamId": {
       "id": 28985363,
+      "maximumValue": null,
+      "createdAt": "2026-05-26T13:00:56.132597+00:00",
       "name": "Sí o No (ambos pasan)",
+      "minimumValue": null,
+      "samplingRate": null,
+      "sampleCount": 2,
+      "targetValue": null,
+      "oneAtATime": false,
+      "requestDocument": false,
+      "inputRequired": false,
+      "inputRequested": true,
+      "mustBePassing": false,
+      "failingRequiresResolution": false,
+      "descriptionMarkdown": "",
+      "sensorValidDurationMinutes": null,
+      "sensorWarningThresholdMinutes": null,
+      "samplingIntervalMinutes": 180,
+      "isDefault": false,
+      "unitId": null,
+      "derivedFromId": 17854562,
+      "sampleSetId": null,
+      "drivesCoupons": false,
+      "specFieldParamDropdownBySpecFieldParamDropdownId": {
+       "id": 495454,
+       "name": "Sí o No (ambos pasan)"
+      },
+      "sampleSetBySampleSetId": null,
+      "specFieldParamByDerivedFromId": {
+       "id": 17854562,
+       "name": "Sí o No (ambos pasan)"
+      },
+      "specFieldSpecBySpecFieldSpecId": {
+       "id": 149700,
+       "specId": 18452,
+       "specBySpecId": {
+        "supersededById": null,
+        "id": 18452,
+        "name": "GDE1214700 (Antitarnish)",
+        "domainId": 344,
+        "idInDomain": 65,
+        "revisionNumber": 1,
+        "revisionName": null
+       },
+       "specFieldId": 22546,
+       "specFieldBySpecFieldId": {
+        "id": 22546,
+        "name": "Primeras Piezas Antitarnish",
+        "type": "DROPDOWN",
+        "sensorTypeBySensorTypeId": null
+       }
+      },
+      "specFieldSpecId": 149700,
+      "unitByUnitId": null,
+      "processNodeSpecFieldParamsBySpecFieldParamId": {
+       "nodes": []
+      },
       "processNodeSpecFieldParamOptInOutsBySpecFieldParamId": {
+       "nodes": []
+      },
+      "specFieldParamProcessNodeDefaultsBySpecFieldParamId": {
        "nodes": []
       }
      }
     }
    ]
   }
- }
+ },
+ "_nota": "partNumber viene de GetPartNumber (la consulta que usa el applet), NO del partNumberById embebido en GetPartNumberWorkOrderSpecsInfo: ese último trae los params SIN specFieldSpec y la vía NP no podría resolver."
 }

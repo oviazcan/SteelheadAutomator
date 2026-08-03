@@ -839,9 +839,15 @@ test('choque: deduplicado, la OT 10837 resuelve por catálogo y escribe sus 3 ca
 });
 
 test('OT 10837: lo que se escribiría es lo MISMO que tiene la orden de control 2472', () => {
-  // La validación que importa no es el conteo sino el contenido. La OT 2472 corre otro proceso
-  // pero la MISMA spec de Antitarnish y sí la aplicó: sus 3 casillas dicen «Sí o No», «Sí o No»
-  // y «Sí o No (ambos pasan)». El plan para la 10837 tiene que llegar a lo mismo.
+  // La validación que importa no es el conteo ni el id, sino el CRITERIO que queda escrito.
+  // La OT 2472 corre otro proceso pero la MISMA spec de Antitarnish y sí la aplicó.
+  //
+  // Ojo con el id: la vía NP gana sobre el catálogo y lo que se escribe es la RAÍZ del
+  // parámetro del NP (`derivedFrom ?? id`), que puede ser una revisión más nueva que la que
+  // ofrece el catálogo de la orden — medido en vivo el 2026-08-03: el NP trae 28985361 con
+  // derivedFrom 28878284 mientras el catálogo ofrece 17824087, y AMBOS se llaman «Sí o No».
+  // Por eso el test compara nombres y no ids: el id correcto depende de qué revisión esté
+  // vigente, el criterio de calidad no.
   const ESPERADO = {
     20570: 'Sí o No',                    // Protección - Sulfuro de sodio al 2.5%
     25415: 'Sí o No',                    // Apariencia Homogénea - Antitarnish
@@ -849,14 +855,31 @@ test('OT 10837: lo que se escribiría es lo MISMO que tiene la orden de control 
   };
   const r = Core.classifyWorkOrder(ANTITARNISH, { masterFields: masterFieldsFrom([268059]) });
   const plan = Core.buildWritePlan(r, { partNumberId: 3016541 });
-  // nombre del parámetro del catálogo que se va a escribir, por campo
-  const cat = Core.buildCatalogIndex(ANTITARNISH.workOrder);
-  for (const add of plan.parametersToAdd) {
-    const cand = (cat.get(add.specFieldId) || [])[0];
-    const p = (cand.params || []).find(x => x.id === add.specFieldParamId);
-    assert.ok(p, `el parámetro ${add.specFieldParamId} debe salir del catálogo de la spec`);
-    assert.equal(p.name, ESPERADO[add.specFieldId],
-      `campo ${add.specFieldId}: debe quedar igual que en la orden de control`);
-  }
   assert.equal(plan.parametersToAdd.length, 3);
+
+  // nombre del parámetro que quedará, por la vía que lo haya resuelto
+  const porCampo = new Map();
+  for (const c of r.cells) if (c.scope === 'EXTERNA') porCampo.set(c.specFieldId, c);
+  for (const add of plan.parametersToAdd) {
+    const cell = porCampo.get(add.specFieldId);
+    assert.ok(cell, `debe haber celda para el campo ${add.specFieldId}`);
+    const nombre = (cell.desired && (cell.desired.refName
+      || (cell.desired.refParam && cell.desired.refParam.name))) || '';
+    assert.equal(nombre, ESPERADO[add.specFieldId],
+      `campo ${add.specFieldId}: el criterio debe quedar igual que en la orden de control`);
+  }
+});
+
+test('OT 10837: con el NP real la vía es NP, y se escribe la RAÍZ de catálogo', () => {
+  // Regresión de un error propio: el primer fixture tomó `partNumberById` de
+  // GetPartNumberWorkOrderSpecsInfo, que trae los params SIN `specFieldSpec` — con eso
+  // `buildPartNumberIndex` sale vacío y parecía que la vía NP no podía resolver nunca.
+  // El applet usa GetPartNumber, que sí los trae. El fixture ya viene de ahí.
+  const pnIndex = Core.buildPartNumberIndex(ANTITARNISH.partNumber);
+  assert.ok(pnIndex.size > 0, 'el NP del fixture debe ser indexable (viene de GetPartNumber)');
+  const r = Core.classifyWorkOrder(ANTITARNISH, { masterFields: masterFieldsFrom([268059]) });
+  for (const c of r.cells) {
+    if (c.scope !== 'EXTERNA') continue;
+    assert.equal(c.via, 'NP', `campo ${c.specFieldId}: el NP manda sobre el catálogo`);
+  }
 });
