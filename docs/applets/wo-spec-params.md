@@ -1,6 +1,16 @@
 # `wo-spec-params` — Reaplicar Parámetros en Órdenes de Trabajo
 
-**Versión:** 0.5.0 · **Estado:** ✅ **VIVO (config 1.11.3, tag `v1.11.3`)** · fase 1 validada end-to-end el 2026-07-28; fases 2 y 3 y el modo *migrar* **sin corrida real**
+**Versión:** **0.6.0** · **Estado:** ✅ **VIVO (config 1.11.51)** — desplegado el 2026-08-03 · fase 1 validada end-to-end el 2026-07-28; fases 2 y 3 y el modo *migrar* **sin corrida real**
+
+> ⚠️ **Esta bitácora está en 0.5.0; el código en producción es 0.6.0.** El 0.6.0 («rescate por receta
+> maestra — la orden rota se veía sana», OT 10837) se desarrolló en la rama **`workbench`** (commit
+> `da5da96`, con su bitácora, 2 fixtures y +302 líneas de tests) y **desde ahí se deployó a producción**
+> con `wb-deploy.sh` el 2026-08-03: primero `wo-spec-params-core.js` (config 1.11.50) y luego el glue
+> (config 1.11.51), en ese orden para no dejar un minuto con glue nuevo sobre core viejo. Verificado en
+> vivo: el script servido reporta `VERSION='0.6.0'` y el core tiene md5 idéntico al local.
+> **`wb-deploy.sh` publica el script + config, NO la documentación** → el detalle del 0.6.0 sigue en
+> `workbench` sin mergear a `main`. **Pendiente: mergear `workbench` para que esta bitácora alcance al
+> código.** Su propia bitácora allá dice «Sin deployar», que ya es falso.
 **Bundle:** 5ª acción de *Ajuste Masivo de Specs* (`spec-migrator`)
 **Diseño:** [`docs/superpowers/specs/2026-07-28-wo-spec-params-reapply-design.md`](../superpowers/specs/2026-07-28-wo-spec-params-reapply-design.md)
 **Plan:** [`docs/superpowers/plans/2026-07-28-wo-spec-params-fase1.md`](../superpowers/plans/2026-07-28-wo-spec-params-fase1.md)
