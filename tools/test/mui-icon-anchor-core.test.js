@@ -60,6 +60,8 @@ function attachQuery(root) {
       if (m) return scope.filter((e) => e.tagName === 'SVG' && e.getAttribute('data-testid') === m[1]);
       if (sel === 'svg path') return scope.filter((e) => e.tagName === 'PATH');
       if (sel === 'path') return scope.filter((e) => e.tagName === 'PATH');
+      if (sel === '[aria-label]') return scope.filter((e) => e.getAttribute && e.getAttribute('aria-label'));
+      if (sel === 'svg') return scope.filter((e) => e.tagName === 'SVG');
       return [];
     };
     node.querySelector = (sel) => node.querySelectorAll(sel)[0] || null;
@@ -222,4 +224,96 @@ test('report-regen: con varios sobres elige el que está en el header (con bread
   const a = Core.findReportHeaderAnchor(page);
   assert.ok(a);
   assert.equal(a.container, h.cont);
+});
+
+// ---------- Catálogo: lo medido y lo pendiente ----------
+// Estos tests son el REGISTRO de la deuda: si alguien mide un icono y lo agrega, el test que
+// lo declara pendiente se pone rojo y obliga a moverlo de lista en el mismo commit.
+
+test('el catálogo trae los 7 iconos MEDIDOS en vivo el 2026-08-03', () => {
+  for (const n of ['PlayArrowIcon', 'EmailOutlinedIcon', 'EditIcon', 'ArchiveIcon',
+                   'FilterListIcon', 'QrCode2Icon', 'CalendarMonthIcon']) {
+    assert.ok(Core.ICON_SHAPES[n] && Core.ICON_SHAPES[n].length > 0, n + ' debe tener forma medida');
+  }
+});
+
+test('los iconos PENDIENTES DE MEDIR siguen vacíos (no se adivinan paths)', () => {
+  // Un path adivinado no matchea —se comprobó: el Edit canónico dice `a.9959.9959 0` y el
+  // real `a.996.996 0`— y además finge cobertura. Mejor vacío y anotado.
+  for (const n of ['CloseIcon', 'SendIcon', 'RestorePageOutlinedIcon', 'VisibilityIcon', 'VisibilityOffIcon']) {
+    assert.equal(Core.ICON_SHAPES[n].length, 0, n + ': si ya lo mediste, muévelo a la lista de arriba');
+  }
+});
+
+test('el Edit medido NO es el canónico de MUI (la diferencia que costó el diagnóstico)', () => {
+  const real = Core.ICON_SHAPES.EditIcon[0];
+  assert.ok(real.includes('a.996.996 0'), 'el real trae la precisión corta');
+  assert.ok(!real.includes('a.9959.9959 0'), 'el canónico de la doc NO matchea en esta versión de MUI');
+});
+
+// ---------- Tercera vía: aria-label ----------
+
+test('findIcon: cae al aria-label cuando no hay testid ni forma catalogada', () => {
+  const svg = makeSvg('M-forma-desconocida', null);
+  const btn = makeButton(svg, { 'aria-label': 'Cerrar' });
+  const root = attachQuery(makeContainer([btn]));
+  const hit = Core.findIcon(root, 'CloseIcon');
+  assert.ok(hit, 'CloseIcon no tiene forma medida, pero sí patrón de aria');
+  assert.equal(hit.by, 'aria');
+});
+
+test('findIcon: el aria es BILINGÜE — el mismo icono en ES y en EN', () => {
+  for (const label of ['Archivar Orden de Trabajo', 'Archive Work Order']) {
+    const root = attachQuery(makeContainer([makeButton(makeSvg('M-x', null), { 'aria-label': label })]));
+    assert.ok(Core.findIcon(root, 'ArchiveIcon'), 'debe matchear «' + label + '»');
+  }
+});
+
+test('findIcon: el aria matchea por SUBCADENA (el texto real es más largo)', () => {
+  // Medidos en vivo: "Archivar Orden de Trabajo", "Imprimir Etiquetas de Trabajo",
+  // "Filtrar Números de Parte" — ninguno es igual al nombre del icono.
+  const casos = [['Imprimir Etiquetas de Trabajo', 'QrCode2Icon'], ['Filtrar Números de Parte', 'FilterListIcon']];
+  for (const [label, icon] of casos) {
+    const root = attachQuery(makeContainer([makeButton(makeSvg('M-x', null), { 'aria-label': label })]));
+    assert.ok(Core.findIcon(root, icon), label + ' → ' + icon);
+  }
+});
+
+test('PRECEDENCIA: la forma gana al aria-label', () => {
+  // Dos botones: uno con la forma real de Edit, otro con aria "Editar" y forma desconocida.
+  const conForma = makeButton(makeSvg(Core.ICON_SHAPES.EditIcon[0], null));
+  const conAria = makeButton(makeSvg('M-otra', null), { 'aria-label': 'Editar' });
+  const root = attachQuery(makeContainer([conAria, conForma]));
+  const hit = Core.findIcon(root, 'EditIcon');
+  assert.equal(hit.by, 'shape', 'la forma es más confiable que un texto traducible');
+});
+
+test('findIcon: sin forma medida NI patrón de aria devuelve null (no inventa)', () => {
+  const root = attachQuery(makeContainer([makeButton(makeSvg('M-lo-que-sea', null))]));
+  assert.equal(Core.findIcon(root, 'RestorePageOutlinedIcon'), null);
+});
+
+// ---------- findIcons / hasAnyIcon ----------
+
+test('findIcons: devuelve TODOS los del mismo icono, no sólo el primero', () => {
+  const d = Core.ICON_SHAPES.EditIcon[0];
+  const root = attachQuery(makeContainer([makeButton(makeSvg(d, null)), makeButton(makeSvg(d, null))]));
+  assert.equal(Core.findIcons(root, 'EditIcon').length, 2);
+});
+
+test('findIcons: lista vacía si no hay ninguno', () => {
+  const root = attachQuery(makeContainer([makeButton(makeSvg(OTHER_D, null))]));
+  assert.deepEqual(Core.findIcons(root, 'EditIcon'), []);
+});
+
+test('hasAnyIcon: true si aparece CUALQUIERA de los nombres', () => {
+  const root = attachQuery(makeContainer([makeButton(makeSvg(MAIL_D, null))]));
+  assert.equal(Core.hasAnyIcon(root, ['SendIcon', 'EmailOutlinedIcon']), true);
+});
+
+test('hasAnyIcon: false si no aparece ninguno, y tolera entradas nulas', () => {
+  const root = attachQuery(makeContainer([makeButton(makeSvg(OTHER_D, null))]));
+  assert.equal(Core.hasAnyIcon(root, ['EditIcon', 'ArchiveIcon']), false);
+  assert.equal(Core.hasAnyIcon(null, ['EditIcon']), false);
+  assert.equal(Core.hasAnyIcon(root, null), false);
 });
