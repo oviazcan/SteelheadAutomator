@@ -12,9 +12,11 @@
 // applets hacían `return` en silencio: cargaban, detectaban el modal, y no pintaban nada.
 //
 // ── LA REGLA QUE FIJA ─────────────────────────────────────────────────────────────────
-// Se ENTRA por el texto del label (ES+EN) porque este modal no ofrece nada mejor: medido en
+// Se ENTRA por el texto del label (ES+EN) porque ESTE modal no ofrece nada mejor: medido en
 // vivo, 0 `data-steelhead-component-id` y 0 `data-testid` en todo el diálogo, así que el
-// nivel 1 de la jerarquía de anclaje del repo no está disponible aquí. Pero se SUBE por
+// nivel 1 de la jerarquía no está disponible AQUÍ. Ojo con generalizarlo: los
+// `data-steelhead-component-id` SÍ existen en otras pantallas (38 en la ficha de OT, 40 en la
+// de PN) — lo que SH eliminó globalmente fueron los `data-testid`, no éstos. Pero se SUBE por
 // RELACIÓN ESTRUCTURAL (padre / número de labels hijos), nunca por el nombre de una clase
 // generada. Y las clases de presentación se HEREDAN del vecino vivo en lugar de escribirse
 // a mano, para que el próximo rehash de emotion nos siga vistiendo igual que a SH.

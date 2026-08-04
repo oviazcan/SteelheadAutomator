@@ -2,16 +2,31 @@
 // ya no está.
 //
 // ── POR QUÉ EXISTE (incidente 2026-08-03, segunda mitad) ──────────────────────────────
-// Steelhead publicó un build que **quita los `data-testid` de los iconos MUI** y los
-// `data-steelhead-component-id`. Medido en tres pantallas distintas, todas cargadas y con
-// contenido real: `/Reporting/View` (189 svg), `/Receiving/CustomerParts` (159 svg) y la
-// lista de reportes → **0 `[data-testid]` y 0 `[data-steelhead-component-id]`** en cada una.
-// (Los únicos dos testid que sobreviven, `sentinelStart`/`sentinelEnd`, los pone
-// react-virtuoso, no SH.)
+// Steelhead publicó un build que **quita los `data-testid` de los iconos MUI**. Medido en
+// cinco pantallas distintas, todas cargadas y con contenido real: `/Reporting/View` (189 svg),
+// `/Receiving/CustomerParts` (159 svg), el listado de reportes, el de OTs y el de NPs →
+// **0 `[data-testid]`** en todas. (Los únicos dos que sobreviven, `sentinelStart`/
+// `sentinelEnd`, los pone react-virtuoso, no SH.)
 //
 // Eso dejó a `report-regen` sin ancla, con un modo de falla que engaña: su gate de permisos
 // pasaba (`allowed: true`), el script cargaba, el observer vivía — y `findAnchor()` devolvía
 // null para siempre, en silencio, porque «esta vista no tiene el header» es un caso legítimo.
+//
+// ── CORRECCIÓN 2026-08-03 (medido después, mismo día) ────────────────────────────────
+// La primera redacción de este archivo decía que SH había eliminado **también** los
+// `data-steelhead-component-id`. **ES FALSO y era una sobregeneralización mía**: se midió 0
+// en tres pantallas y se concluyó "los eliminó", cuando esas tres pantallas simplemente no
+// tienen ninguno. Medido después en fichas de DETALLE: **38 en la ficha de OT y 40 en la de
+// PN**, incluidos los anclajes que el repo usa (`WORK_ORDER_PAGE_HEADER_OPEN_PDF_BUTTON`,
+// `WORK_ORDER_PAGE_HEADER_PRINT_JOB_TAGS_BUTTON`, `PART_NUMBER_PAGE_UNITS*`).
+//
+// Lo cierto es más acotado: **SH quitó los `data-testid`** (0 en las cinco pantallas
+// medidas). Los `data-steelhead-component-id` y los ids de schema RJSF (`root_*`) **SIGUEN
+// VIVOS** y siguen siendo nivel 1 — sólo que existen en fichas de detalle, no en listados.
+//
+// La lección de método, que es lo que conviene no perder: **"0 ocurrencias en N pantallas"
+// no prueba "lo eliminaron"; prueba "no está en esas N pantallas"**. Para afirmar una
+// eliminación hay que medir donde el atributo SÍ debería estar.
 //
 // ── LA REGLA QUE FIJA ────────────────────────────────────────────────────────────────
 // El `data-testid` era el nivel 1 de la jerarquía de anclaje del repo y SH lo puede quitar de
