@@ -60,12 +60,34 @@
     // Se dejan VACÍOS a propósito. Meter aquí el path canónico de MUI sería peor que dejarlo
     // vacío: no matchearía (ver arriba) y daría la falsa impresión de que el icono está
     // cubierto. Con la lista vacía, `findIcon` cae al aria-label o devuelve null, que es
-    // exactamente el estado de hoy — nunca peor. Para cerrarlos hay que abrir la pantalla
-    // donde vive cada uno y leer el `d` real:
-    //   CloseIcon                → cualquier modal con "X" de cerrar
-    //   SendIcon                 → modal de enviar factura por correo
-    //   RestorePageOutlinedIcon  → listado de facturas, con las filas cargadas
-    //   VisibilityIcon/OffIcon   → dashboard de sensores
+    // exactamente el estado de hoy — nunca peor.
+    //
+    // INTENTO DE MEDICIÓN 2026-08-03 — los cinco siguen abiertos, cada uno por su motivo.
+    // Se anota el motivo porque NO son equivalentes: dos son imposibles hoy, uno está
+    // deliberadamente bloqueado, y dos sólo necesitan otro intento.
+    //
+    //   VisibilityIcon / VisibilityOffIcon
+    //     → IMPOSIBLE HOY: el dominio 344 **no tiene ningún Sensor Dashboard creado**
+    //       (`/Domains/344/SensorDashboards` con la lista vacía). Sin la pantalla no hay
+    //       icono que leer. Corolario útil: `sensor-graph-hide-all` tampoco tiene dónde
+    //       correr aquí, así que su prioridad real es baja. Y ojo — ese applet ancla primero
+    //       a `aria-label` EXACTO en inglés ('Hide this sensor in the graph.'), que es deuda
+    //       bilingüe sin verificar: si SH lo tradujo, la primaria y el fallback caen juntos.
+    //
+    //   SendIcon
+    //     → NO MEDIDO POR SEGURIDAD, no por falta de acceso: el único lugar donde vive es el
+    //       modal de envío de factura por correo, y abrirlo en el ERP productivo es una
+    //       acción con efectos externos. No se toca sin que el operador lo pida.
+    //       Mientras tanto lo sostiene el aria («Enviar»/«Send»), y `cfdi-attacher` además
+    //       acepta `EmailOutlinedIcon`, que SÍ está medido.
+    //
+    //   CloseIcon, RestorePageOutlinedIcon
+    //     → NO ALCANZADOS: los modales no llegaron a abrirse por automatización (la ficha de
+    //       OT probada no tenía etiquetas, y el listado de facturas abre por omisión en
+    //       Packing Slips, sin filas de factura). El renderer se congeló varias veces — modo
+    //       de falla del ARNÉS ya documentado, no de la app. Se cierran con un intento desde
+    //       la pantalla correcta: cualquier modal con "X" para Close, y la ficha de una
+    //       factura emitida para RestorePage.
     CloseIcon: [],
     SendIcon: [],
     RestorePageOutlinedIcon: [],
