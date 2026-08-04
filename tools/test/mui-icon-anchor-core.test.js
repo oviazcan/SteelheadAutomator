@@ -317,3 +317,36 @@ test('hasAnyIcon: false si no aparece ninguno, y tolera entradas nulas', () => {
   assert.equal(Core.hasAnyIcon(null, ['EditIcon']), false);
   assert.equal(Core.hasAnyIcon(root, null), false);
 });
+
+// ---------- Falsos positivos del aria-label (encontrados VERIFICANDO EN VIVO) ----------
+// Un aria demasiado laxo no falla: acierta el icono EQUIVOCADO. Estos casos son textos
+// REALES medidos en la app el 2026-08-03.
+
+test('REGRESIÓN: «Escanear Código QR» (la cámara) NO es el QR de imprimir etiquetas', () => {
+  // Con el patrón viejo `/…|qr/i` esto matcheaba, y wo-schedule-button habría abierto la
+  // CÁMARA en vez de generar el PDF de etiquetas.
+  const root = attachQuery(makeContainer([makeButton(makeSvg('M-camara', null), { 'aria-label': 'Escanear Código QR' })]));
+  assert.equal(Core.findIcon(root, 'QrCode2Icon'), null);
+});
+
+test('el QR de etiquetas SÍ matchea por su aria real', () => {
+  const root = attachQuery(makeContainer([makeButton(makeSvg('M-x', null), { 'aria-label': 'Imprimir Etiquetas de Trabajo' })]));
+  assert.ok(Core.findIcon(root, 'QrCode2Icon'));
+});
+
+test('REGRESIÓN: «Ver Documentos» / «Ver Desglose de Ventas» NO son el ojo de visibilidad', () => {
+  for (const label of ['Ver Documentos', 'Ver Desglose de Ventas']) {
+    const root = attachQuery(makeContainer([makeButton(makeSvg('M-x', null), { 'aria-label': label })]));
+    assert.equal(Core.findIcon(root, 'VisibilityIcon'), null, '«' + label + '» no debe matchear');
+  }
+});
+
+test('«View Schedule» (aria real de la ficha de OT) sí es el calendario', () => {
+  const root = attachQuery(makeContainer([makeButton(makeSvg('M-x', null), { 'aria-label': 'View Schedule' })]));
+  assert.ok(Core.findIcon(root, 'CalendarMonthIcon'));
+});
+
+test('«Archivar Orden de Trabajo» sigue matcheando tras endurecer el patrón', () => {
+  const root = attachQuery(makeContainer([makeButton(makeSvg('M-x', null), { 'aria-label': 'Archivar Orden de Trabajo' })]));
+  assert.ok(Core.findIcon(root, 'ArchiveIcon'));
+});
