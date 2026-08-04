@@ -76,7 +76,7 @@
     QrCode2Icon: ['M3 11h8V3H3zm2-6h4v4H5zM3 21h8v-8H3zm2-6h4v4H5zm8-12v8h8V3zm6 6h-4V5h4zm0 10h2v2h-2zm-6-6h2v2h-2zm2 2h2v2h-2zm-2 2h2v2h-2zm2 2h2v2h-2zm2-2h2v2h-2zm0-4h2v2h-2zm2 2h2v2h-2z'],
     CalendarMonthIcon: ['M19 4h-1V2h-2v2H8V2H6v2H5c-1.11 0-1.99.9-1.99 2L3 20c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2m0 16H5V10h14zM9 14H7v-2h2zm4 0h-2v-2h2zm4 0h-2v-2h2zm-8 4H7v-2h2zm4 0h-2v-2h2zm4 0h-2v-2h2z'],
 
-    // ── PENDIENTES DE MEDIR ───────────────────────────────────────────────────────────
+    // ── LOS ÚLTIMOS EN MEDIRSE (todos cerrados el 2026-08-03) ────────────────────────
     // Se dejan VACÍOS a propósito. Meter aquí el path canónico de MUI sería peor que dejarlo
     // vacío: no matchearía (ver arriba) y daría la falsa impresión de que el icono está
     // cubierto. Con la lista vacía, `findIcon` cae al aria-label o devuelve null, que es
@@ -117,7 +117,10 @@
     // Igual que CloseIcon, el canónico de MUI resultó correcto — no matcheaba antes porque el
     // icono sólo existe en ese modal, que deliberadamente no se abrió por automatización.
     SendIcon: ['M2.01 21 23 12 2.01 3 2 10l15 2-15 2z'],
-    RestorePageOutlinedIcon: [],
+    // MEDIDO 2026-08-03 en la ficha de factura (dentro de un `popoverHandle`). Es el ÚNICO
+    // del catálogo que **no tiene `aria-label` ni `data-testid`**: la forma es su única señal,
+    // así que `invoice-auto-regen` dependía por completo de un atributo que SH borró.
+    RestorePageOutlinedIcon: ['M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8zm4 18H6V4h7.17L18 8.83zm-9.55-9.43L7.28 9.4V13h3.6l-1.44-1.44c.52-1.01 1.58-1.71 2.79-1.71 1.74 0 3.15 1.41 3.15 3.15s-1.41 3.15-3.15 3.15c-1.07 0-2.02-.54-2.58-1.35H8.1c.69 1.58 2.28 2.7 4.12 2.7 2.48 0 4.5-2.02 4.5-4.5s-2.02-4.5-4.5-4.5c-1.59 0-2.97.83-3.77 2.07'],
     // MEDIDO 2026-08-03 en el dashboard de sensores 117 (botón «Hide this sensor in the
     // graph.» = ojo abierto = sensor visible). TERCERA confirmación de la misma lección: el
     // canónico de MUI era correcto y había dado `false` al probarlo en Receiving sólo porque
