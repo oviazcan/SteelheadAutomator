@@ -46,10 +46,55 @@ test('helpers: physPos / extractLineCode / isLineStation', () => {
   assert.equal(Engine.physPos('T205-EN00-001 Enracado'), 1);
   assert.equal(Engine.physPos('T205-LI Plata y Estaño s/Barras (16.3)'), null);
   assert.equal(Engine.extractLineCode('T205-TI00-019 Enjuague'), 'T205');
-  assert.equal(Engine.extractLineCode('T300-CE05-001 …'), 'T300');
+  assert.equal(Engine.extractLineCode('T300-CE05-001 …'), 'T300-CE05');   // TX00 = área, ver bloque abajo
   assert.equal(Engine.isLineStation('T205-LI Plata y Estaño s/Barras (16.3)'), true);
   assert.equal(Engine.isLineStation('T205-TI00-019 Enjuague'), false);
   assert.equal(Engine.isLineStation('T205-EN00-001 Enracado'), false);
+});
+
+// ── TX00 es un ÁREA, no una línea (2026-08-04) ────────────────────────────
+// Alineación con `surtido-guard-filter-core.lineCodeFromStationText`, a petición del operador.
+// Las líneas de producción son T101…T120, T201…T208, T301, T302, T401, T501 — ninguna termina
+// en 00. T000/T100/T200/T300/T400/T500 son ÁREAS que agrupan destinos sin relación entre sí
+// (T300-CE03 Antitarnish vs T300-CE05 Limpieza Especial), así que para el ruteador tampoco
+// pueden ser "la misma línea": el bypass —cuya pregunta es "¿este nodo pertenece a la línea que
+// estoy moviendo?"— respondía que sí para dos células que no comparten nada.
+test('extractLineCode: TX00 lleva el segundo segmento; una línea real NO se parte', () => {
+  assert.equal(Engine.extractLineCode('T300-CE03-002 Célula de Antitarnish'), 'T300-CE03');
+  assert.equal(Engine.extractLineCode('T300-CE05-001 Célula de Limpieza Especial'), 'T300-CE05');
+  assert.equal(Engine.extractLineCode('T100-SA01-001 Sandblast Sílico'), 'T100-SA01');
+  assert.equal(Engine.extractLineCode('T000-SPR-001 Surtimiento de Producción'), 'T000-SPR');
+  // Líneas reales: sus TI00/EN00/SE00/LI son PASOS suyos, no destinos rivales.
+  assert.equal(Engine.extractLineCode('T204-LI Plata y Estaño s/Cobre Colgado (16.1)'), 'T204');
+  assert.equal(Engine.extractLineCode('T205-EN00-001 Enracado'), 'T205');
+  assert.equal(Engine.extractLineCode('T401-CE01-005 Célula de Inspección y Empaque (Epóxico)'), 'T401');
+});
+
+test('extractLineCode: dos células de la MISMA área ya no se confunden', () => {
+  assert.notEqual(
+    Engine.extractLineCode('T300-CE03-002 Célula de Antitarnish'),
+    Engine.extractLineCode('T300-CE05-001 Célula de Limpieza Especial')
+  );
+});
+
+test('extractLineCode: sin guion PEGADO degrada al área, no inventa destino', () => {
+  // "T100 (LMC)-CU/BR-VARIOS (4.0)" es un nombre de PROCESO, no de estación: sin exigir que el
+  // guion venga pegado al código, el "segundo segmento" habría sido CU — un destino inexistente.
+  assert.equal(Engine.extractLineCode('T100 (LMC)-CU/BR-VARIOS (4.0)'), 'T100');
+  assert.equal(Engine.extractLineCode('T100 Horneado Deshidrogenado'), 'T100');
+  assert.equal(Engine.extractLineCode('T300'), 'T300');
+});
+
+test('extractLineCode: la regla es letra + 3 dígitos terminados en 00, no "termina en 00"', () => {
+  // El regex base admite T\d{2,4}: un T3000 hipotético NO debe entrar a la regla de área.
+  assert.equal(Engine.extractLineCode('T3000-CE01-001 algo'), 'T3000');
+  assert.equal(Engine.extractLineCode('T20-AB01-001 algo'), 'T20');
+});
+
+test('extractLineCode: physPos NO se altera (sigue leyendo la posición física)', () => {
+  // physPos y extractLineCode leen el mismo nombre; ampliar uno no puede mover al otro.
+  assert.equal(Engine.physPos('T300-CE05-001 Célula de Limpieza Especial'), 1);
+  assert.equal(Engine.physPos('T205-TI00-019 Enjuague'), 19);
 });
 
 test('destinationLines: TODAS las líneas del tratamiento de nivel-línea (Planificación)', () => {

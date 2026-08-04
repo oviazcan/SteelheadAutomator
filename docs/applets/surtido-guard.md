@@ -151,11 +151,22 @@ divergir.
 - `TX00` sin segundo segmento (`T100 Horneado Deshidrogenado`) → `T100`. Perder granularidad es
   tolerable; inventar un destino no.
 
-**Deuda conocida, deliberada:** `auto-router-engine.js` tiene su propio `extractLineCode`, que
-sigue devolviendo `T300` para `T300-CE05-001` (fijado por su test). **No se tocó**: ese motor
-decide rutas —mueve material físicamente— y está validado 22/22 contra ground-truth; alinearlo
-es un cambio con consecuencia física que necesita su propia validación, no un efecto colateral de
-un fix de filtro. Queda anotado en Pendientes.
+**El ruteador quedó alineado el mismo día** (decisión del operador, tras plantearle que dos applets
+llamaban "línea" a cosas distintas): `auto-router-engine.extractLineCode` aplica ahora la misma
+regla. Ahí la pregunta que respondía mal era la del **bypass** —*«¿este nodo pertenece a la línea
+que estoy moviendo?»*—, que decía **sí** para dos células de la misma área. Se verificó que el
+ground-truth **no se movió** (T204→T205 no toca ningún `TX00` ⇒ el cambio es inerte ahí: 34 nodos
+idénticos, 22 rutas deterministas exactas, bypass en verde). Detalle en
+[`auto-router.md § TX00 es un ÁREA`](auto-router.md).
+
+Son **dos implementaciones a propósito** —los regex base difieren: allá anclado al inicio y con
+`T\d{2,4}`, aquí sin anclar porque la celda trae el prefijo inglés `at `— atadas por
+`tools/test/line-code-area-parity.test.js`, que se pone rojo si alguien toca una y no la otra. El
+repo ya pagó el precio de dos copias de una misma decisión con el anclaje del modal de recepción.
+
+**Sigue SIN alinear, a propósito:** `process-shared.extractLineCodeFromName` y su gemela de
+`process-canon` cortan a 3 dígitos. No rutean material —seccionan árboles de proceso y agregan los
+reportes de `process-deep-audit`—, así que es su propia decisión de dominio.
 
 ### El catálogo del dropdown viene de la API, no del DOM
 
@@ -498,11 +509,11 @@ convierte "no hay" en una respuesta legítima a una pregunta que no era la tuya.
   nuevos, pero falta la pasada end-to-end: en un board con material hacia un área, el dropdown debe
   ofrecer `T300-CE03` y `T300-CE05` **por separado** (antes uno solo, `T300`) y filtrar por uno no
   debe dejar visible el otro. Ojo al **ancho del box**: los códigos crecieron de 4 a ~9 caracteres.
-- **Inconsistencia entre applets: `auto-router-engine.extractLineCode` sigue cortando a 3 dígitos**
-  (`T300-CE05-001` → `T300`, fijado por su test). Es deliberado —ese motor mueve material y está
-  validado 22/22— pero significa que hoy dos applets llaman "línea" a cosas distintas. Alinearlo
-  necesita su propia validación de dominio: ¿el auto-router debe poder rutear a `T300-CE03` como
-  destino distinto de `T300-CE05`, o para él el área sí es la unidad correcta?
+- **Ver en vivo el auto-ruteador sobre una orden que corra DENTRO de un área.** Alinearlo no movió
+  el ground-truth (T204→T205 no toca ningún `TX00`), pero eso también significa que **el caso donde
+  el cambio sí actúa no está cubierto por el golden**: una orden en `T300-CE03` con nodos en
+  `T300-CE05` ahora los manda a bypass (conservan su default) en vez de tratarlos como tinas
+  hermanas. Es el comportamiento pedido; falta verlo con datos reales.
 - **Idea (no hecha): mostrar el NOMBRE junto al código en el dropdown** (`T300-CE03 — Antitarnish`).
   `AllStations` ya trae el nombre, así que no cuesta consulta; se dejó fuera porque el operador
   nombra los destinos por código y ensanchar el box tiene su propio costo en una barra compartida.

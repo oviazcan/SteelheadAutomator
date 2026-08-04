@@ -69,6 +69,56 @@ Validada contra el **ground-truth**: re-ruteo manual real de la WO 1760978 (PN S
 **exactas** al ground-truth — esas son las críticas (química correcta). Enjuagues genéricos: **6/12 (50%)**
 exactos; el resto es interchangeable y de bajo riesgo, lo cubre el **preview editable**.
 
+### `TX00` es un ÁREA, no una línea (2026-08-04)
+
+`extractLineCode` cortaba **siempre** a letra + 3 dígitos. Para una línea real es lo correcto; para
+un `TX00` no, porque **`TX00` no es una línea sino un área** que agrupa destinos sin relación entre
+sí. Medido sobre los nombres reales de estación del dominio, y confirmado por el catálogo de 28
+stations `-LI` de arriba: las líneas de producción son `T101…T120`, `T201…T208`, `T301`, `T302`,
+`T401`, `T501` y **ninguna termina en `00`**.
+
+| Área | Destinos distintos que agrupa |
+|---|---|
+| `T300` | `CE03` Antitarnish · `CE05` Limpieza Especial · `CE08` · `IC00` · `FI00`/`FI01` · `ME01` · `OC01` |
+| `T100` | `SA01` Sandblast · `IC00` Inspección/Empaque · `HO01…HO07` hornos · `CE02`/`CE07` · `PU00`/`PU01` |
+| `T000` | `SPR` Surtimiento · `MA00…MA02` maquilas de TT · `VC01…VC03`/`VU00` vehículos |
+| `T400` | `CE03` · `CE04` · `CE08` · `HO06` · `HP01` · `IC00` · `SA02` · `BY01` |
+| `T500` | `CE03` · `CE04` Ensamble de Kits · `BS01`/`BS04` · `FU02` · `HO04` · `MO01`/`MO02` |
+
+**Por qué le importa al ruteador y no sólo al filtro del board:** la pregunta que `computeRoutes`
+hace con este código es la del **paso 1, el bypass** — *«¿este nodo pertenece a la línea que estoy
+moviendo?»*. Con el corte a 3 dígitos, dos células que no comparten nada respondían que **sí**, así
+que una orden que corriera dentro de un área podía re-rutearse entre células distintas como si
+fueran tinas hermanas de la misma línea.
+
+**Regla:** si el código base es letra + 3 dígitos terminados en `00`, el destino lleva el **segundo
+segmento** (`T300-CE03`); si no, el base basta (`T204`). **No se generalizó**, y eso es lo que
+protege el ruteo validado: los `TI00`/`EN00`/`SE00`/`LI` de una línea real son **pasos suyos**, y
+partirlos rompería el T204→T205 de 22/22.
+
+**Verificado que el ground-truth NO se movió:** T204→T205 no toca ningún `TX00`, así que el cambio
+es *inerte* ahí — 34 nodos ruteados idénticos, 22 rutas deterministas exactas, y el test de bypass
+(`bloques T300 conservan su tina default`) sigue en verde: `T300-CE05` ≠ `T204` igual que antes
+`T300` ≠ `T204`.
+
+**Una guarda que vale nombrar:** el guion debe venir **pegado** al código. `T100 (LMC)-CU/BR-VARIOS
+(4.0)` es un nombre de **proceso**, no de estación; sin esa condición el "segundo segmento" habría
+sido `CU`, un destino que no existe. Sin guion inmediato se degrada al área.
+
+**Qué NO se tocó, con su motivo:** `process-shared.extractLineCodeFromName` y su gemela de
+`process-canon` **siguen cortando a 3 dígitos**. No rutean material: seccionan árboles de proceso
+(`buildLineSections`) y agrupan procesos compartidos para `process-deep-audit`, así que aplicarles
+esta regla cambiaría cómo se seccionan los árboles y cómo agregan los reportes históricos — es su
+propia decisión de dominio, no un efecto colateral de ésta. `auto-router` no carga `process-shared`,
+así que conviven sin tocarse.
+
+La regla vive además en `surtido-guard-filter-core.lineCodeFromStationText`. Son **dos**
+implementaciones a propósito (los regex base difieren: aquí anclado al inicio y con `T\d{2,4}`;
+allá sin anclar, porque la celda del board trae el prefijo inglés `at `), atadas por
+`tools/test/line-code-area-parity.test.js` para que no puedan derivar en silencio — el repo ya pagó
+ese precio con las dos copias del anclaje del modal de recepción, que se rompieron igual, el mismo
+día y sin avisar.
+
 ## Arquitectura (`remote/scripts/`)
 - `auto-router-engine.js` — **motor puro** (sin DOM/red). `AutoRouterEngine.computeRoutes(...)`. Único con golden test.
 - `auto-router-api.js` — `AutoRouterAPI`: `fetchWorkOrderRouteData`, `fetchCandidatesForTreatments` (pool conc. 5), `applyRoutes`, `parseRouteData`.
@@ -523,6 +573,9 @@ T117 Zinc Níquel Bonete · T201 Níquel y Estaño Colgado (25) · T202 Plata Se
 T204 Plata y Estaño s/Cobre Colgado (16.1) · T205 Plata y Estaño s/Barras (16.3) · T206 Estaño y Lavado Barril (18)
 T207 Anodizado y Electropulido (16.4) · T301 Estaño s/Cobre Barril (24) · T302 Reynosa · T401 Epóxico BT y MT (30)
 ```
+
+**Y las 28 confirman la regla de `TX00` (2026-08-04):** ninguna termina en `00`. Ese hecho es lo
+que sostiene la excepción de `extractLineCode` — ver abajo.
 
 **Hipótesis DESCARTADA por el operador:** que el número entre paréntesis fuera el código de proceso
 y la familia (`16`, `16.1`, `16.2`, `16.3`, `16.4`) marcara las líneas intercambiables. Encajaba con
