@@ -30,7 +30,12 @@
   // operador ya no puede saber a dónde va el material (reportado en piso 2026-08-04). Para una
   // línea real el corte a 3 dígitos SÍ es el correcto: sus TI00/EN00/SE00/IC00 son PASOS de esa
   // misma línea, no destinos rivales — partirla ahí llenaría el dropdown de ruido.
-  const AREA_CODE_RE = /00$/;
+  //
+  // La MISMA regla vive en auto-router-engine.extractLineCode (2026-08-04). Son dos
+  // implementaciones a propósito —los regex base difieren: allá anclado al inicio y con T\d{2,4},
+  // aquí sin anclar porque la celda trae el prefijo "at "— atadas por
+  // tools/test/line-code-area-parity.test.js para que no puedan derivar en silencio.
+  const AREA_CODE_RE = /^[A-Z]\d00$/;
 
   function lineCodeFromStationText(text) {
     if (typeof text !== 'string' || text === '') return null;
