@@ -113,9 +113,14 @@ td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:now
 
   <div class="callout warn">
     <p class="ct">Cambios de este corte respecto al anterior</p>
-    <p><strong>El certificado de calidad afinó la medición de tamaño de grano</strong> (Toluca versión 11372, Monterrey 11373, mismo código en ambas). Dos ajustes: la revisión que compara el cálculo contra el valor que teclea el inspector era tan estricta que descartaba mediciones buenas por diferencias de centésimas —ya se le dio el margen que corresponde al redondeo—; y cuando falta capturar uno de los cuatro campos de la fórmula, el sistema ahora <strong>lo dice y nombra el campo faltante</strong> en lugar de quedarse callado. Antes, esa captura incompleta desaparecía sin dejar rastro y nadie se enteraba.</p>
+    <p><strong>Cuando no hay orden de compra del cliente, los documentos ahora muestran el lote en lugar del punto rojo.</strong> Cinco ventanillas cambiaron el mismo día: factura (11390 / 11395), remisión (11391 / 11396), certificado (11392 / 11397), OT con instrucciones (11393 / 11398) y etiqueta por contenedor (11394 / 11399) — Toluca primero, Monterrey después, mismo código en ambas.</p>
+    <p>El ERP deja un <strong>punto</strong> (<code>.</code>) como marcador cuando el cliente no dio su número de orden de compra. Hasta ahora los documentos lo imprimían tal cual, en <strong>rojo y letra grande</strong>. El aviso no aportaba: gritaba algo que ya se sabía, y ocupaba el lugar donde debería ir un dato útil. Desde este corte, en su lugar va el <strong>nombre del lote</strong>, que sí identifica el material.</p>
+    <p><strong>El aviso rojo no desapareció, cambió de objetivo.</strong> El lote que toma el lugar de la orden de compra se revisa con la misma vara: si viene vacío, o dice “pendiente”, o trae “SQRO” o “no usar”, o es otro punto, entonces <em>ese</em> lote sale en rojo. Y si no hay ningún lote con qué sustituir —una orden de retrabajo, por ejemplo—, se queda el punto en rojo como antes. Dicho corto: el rojo ahora marca <strong>lo que sí se puede corregir</strong>.</p>
+    <p><strong>Lo que no cambió:</strong> los otros motivos de alerta (orden de compra vacía, “PENDIENTE”, “SQRO”, “no usar”) siguen exactamente igual. Y la <em>orden de trabajo general</em> —la versión corta, distinta de la “OT con instrucciones”— se quedó fuera: su ventanilla no recibe el dato del lote, así que ahí no hay con qué reemplazar el punto.</p>
+    <p>Los ids de las otras 17 ventanillas se releyeron el mismo día y <strong>no cambiaron</strong>. Del corte anterior sigue vigente: la carga masiva de usuarios estrenada en las dos plantas (versiones 722 y 725), y los renglones de <em>orden de venta</em> y <em>embarque</em> en formato de fábrica.</p>
+    <p class="ct" style="margin-top:1rem">Del corte anterior — tamaño de grano</p>
+    <p><strong>El certificado de calidad afinó la medición de tamaño de grano.</strong> Dos ajustes: la revisión que compara el cálculo contra el valor que teclea el inspector era tan estricta que descartaba mediciones buenas por diferencias de centésimas —ya se le dio el margen que corresponde al redondeo—; y cuando falta capturar uno de los cuatro campos de la fórmula, el sistema ahora <strong>lo dice y nombra el campo faltante</strong> en lugar de quedarse callado. Antes, esa captura incompleta desaparecía sin dejar rastro y nadie se enteraba.</p>
     <p><strong>Sigue firme el criterio de siempre:</strong> si la medición capturada no cuadra con la fórmula, el dato <em>no</em> sale en el certificado del cliente. Eso es deliberado — un certificado con un tamaño de grano que no cuadra es peor que un certificado sin él.</p>
-    <p>Los ids de las otras 21 ventanillas se releyeron el mismo día y <strong>no cambiaron</strong>. Del corte anterior sigue vigente: la carga masiva de usuarios estrenada en las dos plantas (versiones 722 y 725), y los renglones de <em>orden de venta</em> y <em>embarque</em> en formato de fábrica.</p>
   </div>
 
   <div class="callout meta">
@@ -192,14 +197,14 @@ td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:now
           <td><code>pdf:WORK_ORDER_PART_NUMBER_TEMPLATE</code></td>
           <td>Genera una etiqueta por contenedor físico: calcula cuántos contenedores lleva cada lote y precalcula las conversiones de peso, área y longitud para cada uno.</td>
           <td><span class="st on">Atendida</span></td>
-          <td class="num">11200</td><td class="num">11206</td>
+          <td class="num">11394</td><td class="num">11399</td>
         </tr>
         <tr>
           <td><strong>Piso — OT con instrucciones</strong><br><span style="color:var(--faint);font-size:.82rem">PDF “Orden de Trabajo Completa”</span></td>
           <td><code>pdf:WORK_ORDER_PART_NUMBER_VERBOSE_TEMPLATE</code></td>
           <td>La versión larga: un bloque por número de parte, con acabados en chips de color, y la receta del proceso con sus ayudas visuales e imágenes de instrucción al final.</td>
           <td><span class="st on">Atendida</span></td>
-          <td class="num">11217</td><td class="num">11218</td>
+          <td class="num">11393</td><td class="num">11398</td>
         </tr>
         <tr>
           <td><strong>Piso — etiqueta de rack</strong><br><span style="color:var(--faint);font-size:.82rem">PDF de rack</span></td>
@@ -213,14 +218,14 @@ td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:now
           <td><code>pdf:CERTIFICATION_TEMPLATE</code></td>
           <td>Aplana mediciones y fotos por grupo de especificación, reconstruye el tamaño de grano y expone los datos del número de parte en campos planos —con su imagen de display— para que la plantilla los pueda pintar.</td>
           <td><span class="st on">Atendida</span></td>
-          <td class="num">11372</td><td class="num">11373</td>
+          <td class="num">11392</td><td class="num">11397</td>
         </tr>
         <tr>
           <td><strong>Embarque — remisión</strong><br><span style="color:var(--faint);font-size:.82rem">PDF de packing slip</span></td>
           <td><code>pdf:PACKING_SLIP_TEMPLATE</code></td>
           <td>Numera los contenedores (“2/5”) y arma el cuerpo de la remisión, incluyendo el peso en la unidad correcta y el trato especial de cuentas como Schneider.</td>
           <td><span class="st on">Atendida</span></td>
-          <td class="num">11196</td><td class="num">11202</td>
+          <td class="num">11391</td><td class="num">11396</td>
         </tr>
         <tr>
           <td><strong>Facturación — cálculo</strong><br><span style="color:var(--faint);font-size:.82rem">Editor de factura</span></td>
@@ -234,7 +239,7 @@ td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:now
           <td><code>pdf:INVOICE_TEMPLATE</code></td>
           <td>Prepara el PDF de la factura: limpia direcciones, agrupa lotes y remisiones, y precalcula la tabla “Relación de Lotes” con las conversiones ya resueltas.</td>
           <td><span class="st on">Atendida</span></td>
-          <td class="num">11208</td><td class="num">11209</td>
+          <td class="num">11390</td><td class="num">11395</td>
         </tr>
         <tr>
           <td><strong>Compras — orden a proveedor</strong><br><span style="color:var(--faint);font-size:.82rem">PDF de orden de compra</span></td>
