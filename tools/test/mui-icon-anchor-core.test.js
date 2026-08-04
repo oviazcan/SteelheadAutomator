@@ -233,19 +233,29 @@ test('report-regen: con varios sobres elige el que está en el header (con bread
 test('el catálogo trae los 7 iconos MEDIDOS en vivo el 2026-08-03', () => {
   for (const n of ['PlayArrowIcon', 'EmailOutlinedIcon', 'EditIcon', 'ArchiveIcon',
                    'FilterListIcon', 'QrCode2Icon', 'CalendarMonthIcon', 'CloseIcon', 'PrintIcon',
-                   'SendIcon', 'VisibilityIcon', 'VisibilityOffIcon']) {
+                   'SendIcon', 'VisibilityIcon', 'VisibilityOffIcon', 'RestorePageOutlinedIcon']) {
     assert.ok(Core.ICON_SHAPES[n] && Core.ICON_SHAPES[n].length > 0, n + ' debe tener forma medida');
   }
 });
 
-test('los iconos PENDIENTES DE MEDIR siguen vacíos (no se adivinan paths)', () => {
-  // Un path adivinado no matchea —se comprobó: el Edit canónico dice `a.9959.9959 0` y el
-  // real `a.996.996 0`— y además finge cobertura. Mejor vacío y anotado.
-  for (const n of ['RestorePageOutlinedIcon']) {
-    assert.equal(Core.ICON_SHAPES[n].length, 0, n + ': si ya lo mediste, muévelo a la lista de arriba');
-  }
+test('NINGÚN icono del catálogo se quedó sin forma medida', () => {
+  // El catálogo se cerró completo el 2026-08-03. Este test es el TRINQUETE: si alguien agrega
+  // un icono nuevo con la lista vacía —esperando "ya lo mediré"— se pone rojo. Un icono sin
+  // forma sólo tiene el aria, que es traducible, y el `data-testid`, que SH ya demostró que
+  // puede borrar de un build a otro.
+  const sinForma = Object.keys(Core.ICON_SHAPES).filter((n) => Core.ICON_SHAPES[n].length === 0);
+  assert.deepEqual(sinForma, [], 'mide su path en la pantalla donde vive antes de agregarlo: ' + sinForma.join(', '));
 });
 
+test('RestorePageOutlinedIcon: la FORMA es su única señal', () => {
+  // Medido en la ficha de factura. No tiene aria-label ni data-testid — es el único así del
+  // catálogo, y por eso `invoice-auto-regen` quedó totalmente ciego cuando SH borró el testid.
+  assert.equal(Core.ICON_ARIA.RestorePageOutlinedIcon, undefined, 'no tiene patrón de aria porque el botón no lo trae');
+  const d = Core.ICON_SHAPES.RestorePageOutlinedIcon[0];
+  const root = attachQuery(makeContainer([makeButton(makeSvg(d, null))]));
+  const hit = Core.findIcon(root, 'RestorePageOutlinedIcon');
+  assert.ok(hit && hit.by === 'shape');
+});
 test('el Edit medido NO es el canónico de MUI (la diferencia que costó el diagnóstico)', () => {
   const real = Core.ICON_SHAPES.EditIcon[0];
   assert.ok(real.includes('a.996.996 0'), 'el real trae la precisión corta');
