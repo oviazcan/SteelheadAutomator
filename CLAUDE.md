@@ -247,7 +247,9 @@ es el último recurso, no el primero):
    matiz que importa: el workboard usa **PrintIcon** para «Print Job Tags» mientras la ficha de
    OT usa **QrCode2Icon** para «Imprimir Etiquetas de Trabajo» — dos botones con la misma función
    nominal y distinto icono, y es justo por casos así que **la FORMA va antes que el aria**.
-   **CATÁLOGO COMPLETO: 13 de 13 MEDIDOS (2026-08-03).** El operador aportó también el HTML del modal «Send Invoice
+   **CATÁLOGO COMPLETO: 13 de 13 MEDIDOS (2026-08-03) — VIVO config 1.11.61, bundle iPad 0.6.27.**
+   (Son **14 entradas** en `ICON_SHAPES`: las 13 que hacían falta más `PauseIcon`, que entró como
+   señal auxiliar del anclaje de `report-regen`.) El operador aportó también el HTML del modal «Send Invoice
    Email» y del dashboard de sensores 117 (la ruta real es
    `/Domains/<d>/Maintenance/SensorDashboards/<id>`, no la que se había intentado) ⇒ cerrados
    **`SendIcon`**, **`VisibilityIcon`** y **`VisibilityOffIcon`**. y, con el último fragmento,
