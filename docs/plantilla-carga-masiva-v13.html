@@ -90,10 +90,11 @@
 <p class="muted">La hoja pasa de 60 a 67 columnas visibles; el CSV que produce, de 73 a 80.</p>
 
 <div class="callout ok">
-  <span class="t">Estado: todo verificado en frío</span>
-  Tus dos plantillas (la moderna y la de compatibilidad) <strong>verifican verde</strong> contra el
-  parser real, y la v12 sigue funcionando sin cambios. La suite está en 94 archivos, 0 rojos.
-  Lo único que falta es una <strong>corrida real contra el ERP</strong>.
+  <span class="t">Estado: publicado y en uso</span>
+  Ya está <strong>en producción</strong> (versión 1.11.63). Las dos plantillas —la moderna y la de
+  compatibilidad— están publicadas y son las que se descargan desde el menú de la extensión; se
+  comprobó bajando el archivo <em>del sitio</em> y verificándolo. La v12 sigue funcionando sin
+  cambios. Lo único que falta es tu <strong>primera carga real</strong>.
 </div>
 
 <h2>Lo que hay que saber de Instrucciones de Empaque</h2>
@@ -173,15 +174,22 @@
 </table>
 </div>
 
-<h2>Pendiente importante: la macro <code>Module5</code></h2>
-<div class="callout warn">
-  <span class="t">Sin esto, la plantilla exporta bien pero se ensucia sola</span>
-  <code>LimpiarDatos</code> y <code>LimpiarEspacios</code> recorren las columnas <strong>por
-  número</strong>, y esos números no se ajustan solos al insertar columnas. Hay que reemplazar el
-  módulo con <code>vbas/Module5_v18.bas</code>: <kbd>Alt</kbd>+<kbd>F11</kbd> →
-  <code>Module5</code> → seleccionar todo y pegar.
+<h2>La macro <code>Module5</code> — ya resuelto</h2>
+<div class="callout ok">
+  <span class="t">Listo: v19 pegado en las dos plantillas</span>
+  Se comprobó extrayendo el código de cada archivo: las dos traen la versión <strong>v19</strong>,
+  que recorre las <strong>67</strong> columnas correctas. Queda aquí el porqué, por si alguna vez
+  se vuelve a ensanchar la hoja.
 </div>
-<p>Si no se hace, pasan tres cosas, y la primera es la que no se ve:</p>
+<p>
+  <code>LimpiarDatos</code> y <code>LimpiarEspacios</code> recorren las columnas <strong>por
+  número</strong>, y esos números <strong>no se ajustan solos</strong> al insertar columnas. Ya pasó
+  dos veces: primero al agregar los racks, y luego con la columna de empaque —el v18 se quedó en 66
+  cuando la hoja ya medía 67, y dejaba <em>Tiempo de Entrega</em> sin limpiar—. Ahora hay una prueba
+  automática que compara el tope de la macro contra el ancho real de la plantilla, así que si vuelve
+  a pasar se detecta antes de publicar, no en el piso.
+</p>
+<p>Esto es lo que se rompería si el tope se queda corto, y lo primero es lo que no se ve:</p>
 <div class="tablewrap">
 <table>
   <thead><tr><th>Qué queda mal</th><th>Efecto</th></tr></thead>
@@ -215,15 +223,16 @@
 
 <h2>Antes de la primera carga grande</h2>
 <ul class="tight">
+  <li><strong>Baja la plantilla desde el menú de la extensión</strong> (no la de tu carpeta de descargas): así compruebas el circuito completo, botón incluido.</li>
   <li><strong>Estrena con un lote chico</strong>, con los 5 racks y la columna de empaque llenos. Nada de la v13 se ha ejecutado todavía contra el ERP.</li>
   <li><strong>Ojo al volumen:</strong> 5 racks pueden multiplicar por 2.5 las escrituras de rack, y las instrucciones se escriben <em>una llamada por número de parte</em> (no se pueden agrupar). En una carga de 8,000 PNs eso es mucho tráfico, y esta herramienta ya ha topado con límites del servidor antes.</li>
-  <li>Falta publicar las plantillas en el sitio y subir la versión de la configuración.</li>
+  <li>Al terminar, el resumen de la corrida trae un contador <strong>Instr.Empaque</strong>; y si algún número de parte no encontró su paso, el registro lo dice por PN.</li>
 </ul>
 
 <footer>
   SteelheadAutomator · Ecoplating — Documento técnico de apoyo.
   Detalle para desarrollo en <code>docs/applets/bulk-upload-v13.md</code>;
-  macro en <code>vbas/Module5_v18.bas</code>.
+  macro vigente en <code>vbas/Module5_v19.bas</code>.
 </footer>
 
 </div>
