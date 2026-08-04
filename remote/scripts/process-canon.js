@@ -121,7 +121,11 @@ const ProcessCanon = (() => {
   //  - Epóxicos: T401 (línea de epóxico)
   // Si la línea efectiva del proceso es alguno de estos, marcamos "no aplica
   // canon" en lugar de validarlo.
-  function isSatelliteCode(code) { return /^[TM]\d+00$/.test(code); }
+  // El sufijo opcional es la célula (T300-CE03, T100-SA01): desde 2026-08-04
+  // extractLineCodeFromName parte los TX00 por célula, y sin aceptarla aquí un satélite partido
+  // dejaría de excluirse del canon. Espeja PS.SATELLITE_REGEX (atado por
+  // tools/test/process-line-code.test.js).
+  function isSatelliteCode(code) { return /^[TM]\d+00(?:-[A-Z0-9]+)?$/.test(code); }
   function isExcludedLineCode(code) {
     return isSatelliteCode(code) || code === 'T401';
   }
@@ -372,9 +376,17 @@ const ProcessCanon = (() => {
   // Por cada operación (enracado, secado, inspEmpaque), localiza el tag por
   // patrón de nombre y pagina ProcessesWithTag para construir el map
   // lineCode → {id, name}.
+  // Espeja PS.extractLineCodeFromName — incluida la excepción TX00 (un código letra + 3 dígitos
+  // terminado en 00 es un ÁREA/satélite y sus células son procesos auxiliares distintos:
+  // T300-CE03 Antitarnish vs T300-CE05 Limpieza Especial). El guion debe venir PEGADO al código,
+  // porque los nombres de proceso llevan el acabado entre paréntesis ("T300 (ANT)-CU-VARIOS").
+  // Atado a la copia de process-shared por tools/test/process-line-code.test.js.
   function extractLineCodeFromName(name) {
-    const m = String(name || '').trim().match(/^(T\d{2,4}|M\d{2,4})\b/i);
-    return m ? m[1].toUpperCase() : null;
+    const m = String(name || '').trim().match(/^(T\d{2,4}|M\d{2,4})\b(?:-([A-Za-z0-9]+))?/i);
+    if (!m) return null;
+    const base = m[1].toUpperCase();
+    if (!/^[A-Z]\d00$/.test(base) || !m[2]) return base;
+    return base + '-' + m[2].toUpperCase();
   }
 
   async function loadSharedByLine(onProgress) {
