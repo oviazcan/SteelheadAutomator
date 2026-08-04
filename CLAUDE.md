@@ -219,6 +219,18 @@ es el último recurso, no el primero):
    (`WORK_ORDER_PAGE_HEADER_OPEN_PDF_BUTTON`, `WORK_ORDER_PAGE_HEADER_PRINT_JOB_TAGS_BUTTON`,
    `PART_NUMBER_PAGE_UNITS*`). Viven en **fichas de detalle, no en listados**. Los ids de
    schema RJSF (`root_*`) también siguen vivos.
+   **Verificado applet por applet (2026-08-03):** `wo-schedule-button` monta su readout
+   (`🔀📅 Sin programar`) junto al ancla PDF ✓ · `price-confirm-guard` tiene `PART_NUMBER_PAGE_UNITS`
+   presente y el mecanismo RJSF vivo (4 grupos `root_*` en la ficha de NP) ✓ · `wo-listing-columns`
+   y `proceso-calculator` comparten anclas de esas mismas fichas ✓.
+   **Sin verificar, con su motivo — para que nadie lo tome por hecho:** (a) el **gate** de
+   `price-confirm-guard` usa `root_DatosPrecio*`, que sólo aparece **dentro del sub-modal de
+   precio**; abrirlo toca precios productivos, así que **no se abrió** — lo que sí se comprobó es
+   que la familia `root_*` no desapareció. (b) `surtido-guard` usa
+   `WORKBOARD_PAGE_WORKBOARD_CARD_SALES_ORDER_LINK`, que vive **en las tarjetas**: el board probado
+   (8496) tenía **0 tarjetas**, así que su 0 **no prueba nada** — es exactamente el error de método
+   que esta regla acaba de corregir, y hay que repetirlo en un board CON tarjetas del step de
+   surtido.
    **LECCIÓN DE MÉTODO, que es lo que conviene no perder: «0 ocurrencias en N pantallas» NO
    prueba «lo eliminaron»; prueba «no está en esas N».** Para afirmar una eliminación hay que
    medir donde el atributo debería estar. Verificado en consecuencia: `wo-schedule-button`
