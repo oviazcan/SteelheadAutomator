@@ -813,3 +813,17 @@ default** de un reporte standalone (RPT-ALM-ANL-05 Transacciones de Inventario).
 - **Pendiente conocido:** `DeleteReportVariable` y hashes de dashboards/date-range/
   insights no se recapturaron el 2026-07-21 (no se dispararon); recapturar cuando se
   necesiten.
+
+## 2026-08-03 21:42 — 0 rotado(s) (corrida manual, config 1.11.63)
+
+251 hashes únicos por `(op,hash)` — extensión 198 · Reportes SH 41 · PowerTools 22.
+**250 ok / 0 stale / 1 skipped / 0 unknown / 0 auth**, 170.3 s.
+El único skipped es `CreateInvoicePdf` (`aafd22aa…`), falso positivo ya en la whitelist.
+
+**Cierra la señal lateral de `bulk-upload` v13:** el scan del hash-scanner traía
+`GetPartNumber` con `previousHash` = el nuestro (`5efd689d…`) → `98f2b7fa…`, lo que abría la
+duda de si el del config estaba muerto. **No lo está**: `5efd689d…` responde vigente
+server-side. Es el mismo precedente que `AllWorkOrders` — el frontend puede migrar a un hash
+nuevo sin que el anterior se dé de baja del registry, así que **`previousHash` en un scan NO
+es evidencia de rotación**; la única evidencia es que el validador lo marque stale.
+Sin acción para `pn-specs-column` / `pn-lifecycle` / `bulk-upload`.
