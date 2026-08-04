@@ -53,6 +53,40 @@ function findIncomeAccountColumn(headerTexts, hasComboByColumn) {
   return { index: -1, by: null };
 }
 
+// ── Núcleo puro: leer el CLIENTE del encabezado del editor de factura ──
+// Golden tests: tools/test/invoice-autofill-customer-heading.test.js
+//
+// 2026-08-03: reporte de piso «no detecta el cliente… se queda detrás». Medido en vivo,
+// el encabezado SÍ traía "Creating Invoice for SCHNEIDER ELECTRIC MEXICO" ⇒ el fallo era
+// INTERMITENTE, no permanente. La ventana de carrera estaba en la LECTURA: se concatenaban
+// sólo los text nodes DIRECTOS del h*, con `break` al primer elemento que no fuera
+// span/em/strong/b. Si en ese instante React no había pintado el nombre como texto plano
+// (o lo metía en un <a>/<div>), quedaba "Creating Invoice for" SIN nombre → el regex no
+// matcheaba → y como el texto NO estaba vacío, el fallback a `textContent` no se disparaba.
+// Por eso ahora el mismo parseo se intenta contra AMBAS lecturas (directa y completa):
+// el anclaje no se cambia, se AMPLÍA.
+function parseCustomerFromHeadingText(text) {
+  if (typeof text !== 'string' || !text) return null;
+  // Se corta en el fin de LÍNEA, no con `$`: el textContent completo del encabezado trae
+  // saltos, y `(.+?)$` sin flag `s` no cruza `\n` ⇒ devolvía null justo en la lectura ancha.
+  const m = text.match(/(?:invoice|factura)\s+(?:for|para)\s+([^\n\r]+)/i);
+  if (!m || !m[1]) return null;
+  let name = m[1].trim();
+  // El h* contiene botones anexos ("+ View Customer Custom Inputs", "<> EDIT POWER TOOLS",
+  // "Total: $X"). Al leer el textContent completo llegan pegados al nombre.
+  if (/View\s*Customer|Edit\s*Power|Power\s*Tools|Total\s*:|\$\d/i.test(name)) {
+    name = name
+      .replace(/([a-z])([A-Z])/g, '$1 $2')          // mogULView → mogUL View
+      .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2');    // MOGULView → MOGUL View
+    name = name.split(/\bView\b|\bEdit\b|\bPower\s+Tools|\bTotal\s*:|\$\d/i)[0].trim();
+  }
+  // Adornos que dejan esos botones al cortarlos ("…MEXICO+ View" → "…MEXICO+"). El punto
+  // NO se toca: se lleva las abreviaturas de la razón social ("ACME S.A. DE C.V.").
+  name = name.replace(/[\s+<>|·,;:\-]+$/, '').trim();
+  if (name.length > 1 && name.length < 200) return name;
+  return null;
+}
+
 const InvoiceAutofill = (() => {
   'use strict';
 
@@ -948,24 +982,19 @@ const InvoiceAutofill = (() => {
         }
       }
       txt = txt.trim();
-      // Fallback: si no hubo text nodes directos, usa textContent y luego corta
-      // en separadores conocidos
-      if (!txt) txt = h.textContent?.trim() || '';
       // Ancla en "invoice for X" / "factura para X" (ignora el verbo que traduzcan:
       // Creating/Creando/Generando…). El nombre real del cliente también llega por la API
       // (state.customerName de InvoiceLowCodeData/customerById) como respaldo idioma-indep.
-      const m = txt.match(/(?:invoice|factura)\s+(?:for|para)\s+(.+?)$/i);
-      if (m && m[1]) {
-        let name = m[1].trim();
-        // Si vemos botones contaminando ("MOGULView Customer..."), insertar espacios
-        // en boundaries CamelCase y luego split por keywords de botones
-        if (/View\s*Customer|Edit\s*Power|Power\s*Tools|Total\s*:|\$\d/i.test(name)) {
-          name = name
-            .replace(/([a-z])([A-Z])/g, '$1 $2')          // mogULView → mogUL View
-            .replace(/([A-Z])([A-Z][a-z])/g, '$1 $2');    // MOGULView → MOGUL View
-          name = name.split(/\bView\b|\bEdit\b|\bPower\s+Tools|\bTotal\s*:|\$\d/i)[0].trim();
-        }
-        if (name.length > 1 && name.length < 200) return name;
+      //
+      // Se intentan las DOS lecturas del mismo encabezado: la directa (limpia, sin los
+      // botones anexos) y el textContent COMPLETO. Antes el textContent sólo se usaba si
+      // la directa quedaba VACÍA — pero el modo de falla real deja "Creating Invoice for"
+      // sin el nombre, que no está vacío: el fallback nunca corría y el applet se quedaba
+      // en "Esperando selección de cliente…" hasta el siguiente re-render. Intermitente.
+      const full = h.textContent?.trim() || '';
+      for (const candidate of (txt && txt !== full) ? [txt, full] : [txt || full]) {
+        const name = parseCustomerFromHeadingText(candidate);
+        if (name) return name;
       }
     }
     // 2. Fallback (modal manual y forms sin heading): label-driven lookup.
@@ -2572,5 +2601,5 @@ if (typeof window !== 'undefined') {
 
 // Núcleo puro expuesto para los golden tests (en el navegador esto es un no-op).
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { isIncomeAccountHeader, findIncomeAccountColumn };
+  module.exports = { isIncomeAccountHeader, findIncomeAccountColumn, parseCustomerFromHeadingText };
 }
