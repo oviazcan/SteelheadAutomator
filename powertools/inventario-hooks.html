@@ -106,14 +106,18 @@ td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:now
   <div class="freshness">
     <span class="ic" aria-hidden="true">🟢</span>
     <div>
-      <b>Documento vivo — corte del 3 de agosto de 2026.</b> Los ids de versión activa que ves abajo se leyeron directamente del ERP ese día, en <strong>los dos dominios</strong> (Toluca y Monterrey). Cada vez que alguien publica un hook, el id cambia: <strong>verifica la versión viva antes de asumir vigencia</strong>.
+      <b>Documento vivo — corte del 4 de agosto de 2026.</b> Los ids de versión activa que ves abajo se leyeron directamente del ERP ese día, en <strong>los dos dominios</strong> (Toluca y Monterrey). Cada vez que alguien publica un hook, el id cambia: <strong>verifica la versión viva antes de asumir vigencia</strong>.
       <p>Comando que reproduce esta tabla: <code>python3 sync/lowcode_sync.py list</code> — y con <code>STEELHEAD_DEFAULT_DOMAIN=mty</code> delante para la columna de Monterrey.</p>
     </div>
   </div>
 
   <div class="callout warn">
     <p class="ct">Cambios de este corte respecto al anterior</p>
-    <p><strong>Cuando no hay orden de compra del cliente, los documentos ahora muestran el lote en lugar del punto rojo.</strong> Cinco ventanillas cambiaron el mismo día: factura (11390 / 11395), remisión (11391 / 11396), certificado (11392 / 11397), OT con instrucciones (11393 / 11398) y etiqueta por contenedor (11394 / 11399) — Toluca primero, Monterrey después, mismo código en ambas.</p>
+    <p><strong>El certificado ya no puede declarar más piezas muestreadas que las que ampara.</strong> Cambió una ventanilla: el certificado de calidad (11418 / 11419), Toluca y Monterrey el mismo día.</p>
+    <p>Calidad reportó órdenes de trabajo de <strong>una o dos piezas</strong> cuyo certificado imprimía <strong>“Muestra: 5”</strong> junto a <strong>“Cantidad: 1”</strong> en la misma hoja. Se revisó el origen en el ERP: el 5 venía por <em>dos</em> caminos a la vez —lo que el inspector registró como muestreado y lo que el plan de muestreo de la especificación pide—, y ninguno de los dos se comparaba contra el tamaño de la orden. Desde este corte la columna <strong>Muestra</strong> se topa al <strong>menor</strong> de los dos números: la muestra o las piezas de la orden. Una orden de 1 pieza muestra 1; una de 2 muestra 2; una de 500 sigue mostrando lo que el plan indique.</p>
+    <p><strong>Lo que no cambió:</strong> el plan de muestreo de las especificaciones sigue igual —esto no reescribe lo que Calidad captura, solo evita imprimir una cifra imposible—. Y cuando la orden <em>no</em> trae cantidad, la muestra se imprime tal cual: se prefiere dejar el dato como está antes que topar contra un cero y hacerlo parecer que no se muestreó nada.</p>
+    <p class="ct" style="margin-top:1rem">Del corte anterior — orden de compra sin capturar</p>
+    <p><strong>Cuando no hay orden de compra del cliente, los documentos muestran el lote en lugar del punto rojo.</strong> Cinco ventanillas cambiaron el mismo día: factura (11390 / 11395), remisión (11391 / 11396), certificado (11392 / 11397 — hoy 11418 / 11419), OT con instrucciones (11393 / 11398) y etiqueta por contenedor (11394 / 11399) — Toluca primero, Monterrey después, mismo código en ambas.</p>
     <p>El ERP deja un <strong>punto</strong> (<code>.</code>) como marcador cuando el cliente no dio su número de orden de compra. Hasta ahora los documentos lo imprimían tal cual, en <strong>rojo y letra grande</strong>. El aviso no aportaba: gritaba algo que ya se sabía, y ocupaba el lugar donde debería ir un dato útil. Desde este corte, en su lugar va el <strong>nombre del lote</strong>, que sí identifica el material.</p>
     <p><strong>El aviso rojo no desapareció, cambió de objetivo.</strong> El lote que toma el lugar de la orden de compra se revisa con la misma vara: si viene vacío, o dice “pendiente”, o trae “SQRO” o “no usar”, o es otro punto, entonces <em>ese</em> lote sale en rojo. Y si no hay ningún lote con qué sustituir —una orden de retrabajo, por ejemplo—, se queda el punto en rojo como antes. Dicho corto: el rojo ahora marca <strong>lo que sí se puede corregir</strong>.</p>
     <p><strong>Lo que no cambió:</strong> los otros motivos de alerta (orden de compra vacía, “PENDIENTE”, “SQRO”, “no usar”) siguen exactamente igual. Y la <em>orden de trabajo general</em> —la versión corta, distinta de la “OT con instrucciones”— se quedó fuera: su ventanilla no recibe el dato del lote, así que ahí no hay con qué reemplazar el punto.</p>
@@ -216,9 +220,9 @@ td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:now
         <tr>
           <td><strong>Calidad — certificado</strong><br><span style="color:var(--faint);font-size:.82rem">PDF de certificación (CoC)</span></td>
           <td><code>pdf:CERTIFICATION_TEMPLATE</code></td>
-          <td>Aplana mediciones y fotos por grupo de especificación, reconstruye el tamaño de grano y expone los datos del número de parte en campos planos —con su imagen de display— para que la plantilla los pueda pintar.</td>
+          <td>Aplana mediciones y fotos por grupo de especificación, reconstruye el tamaño de grano, topa la muestra a las piezas de la orden y expone los datos del número de parte en campos planos —con su imagen de display— para que la plantilla los pueda pintar.</td>
           <td><span class="st on">Atendida</span></td>
-          <td class="num">11392</td><td class="num">11397</td>
+          <td class="num">11418</td><td class="num">11419</td>
         </tr>
         <tr>
           <td><strong>Embarque — remisión</strong><br><span style="color:var(--faint);font-size:.82rem">PDF de packing slip</span></td>
@@ -393,7 +397,7 @@ td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:now
 
   <footer class="foot">
     <div><span class="badge vivo dot">Vivo</span> &nbsp; Inventario de ventanillas · Steelhead Power Tools</div>
-    <div>Corte de referencia: 31 jul 2026 · 22 ventanillas con código en Toluca, 20 en Monterrey · verificado contra el ERP en ambos dominios</div>
+    <div>Corte de referencia: 4 ago 2026 · 22 ventanillas con código en Toluca, 20 en Monterrey · verificado contra el ERP en ambos dominios</div>
     <div class="doc-credit">
       <a href="https://capazconsultoria.com" target="_blank" rel="noopener" aria-label="Capaz Consultoría" style="flex:0 0 auto;display:inline-flex"><img src="assets/capaz-c.png" alt="Capaz Consultoría"></a>
       <span>Documento elaborado por <a class="name" href="mailto:oviazcan@capazconsultoria.com">Omar Viazcán</a> · <a href="https://capazconsultoria.com" target="_blank" rel="noopener">Capaz Consultoría</a></span>
