@@ -231,6 +231,25 @@ es el último recurso, no el primero):
    (8496) tenía **0 tarjetas**, así que su 0 **no prueba nada** — es exactamente el error de método
    que esta regla acaba de corregir, y hay que repetirlo en un board CON tarjetas del step de
    surtido.
+   **CERRADO 2026-08-03 con el HTML que aportó el operador** (la automatización no lograba abrir
+   los modales; pegar el DOM salió más rápido y más fiable que insistir por CDP):
+   **(a) `surtido-guard` ESTÁ SANO** — `WORKBOARD_PAGE_WORKBOARD_CARD_SALES_ORDER_LINK` presente
+   en las tarjetas, y de paso se ve el **0.4.0 discriminando en vivo**: la tarjeta sin «Tareas
+   Programadas» sale con `class="sa-sg-orange"` y las dos que sí las traen (T204-LI, 24/7/2026
+   5:00 p.m.) quedan sin marcar — exactamente el comportamiento que el fix buscaba.
+   **(b) el GATE de `price-confirm-guard` ESTÁ VIVO** — `<fieldset id="root_DatosPrecio">` con
+   `root_DatosPrecio_Divisa` dentro del modal «Precio del número de parte». El ancla estructural
+   que sostiene el candado existe.
+   **(c) `CloseIcon` MEDIDO** (botón «Cancelar» de ese modal). El canónico de MUI resultaba
+   correcto: no matcheaba porque el icono no está en las pantallas donde se buscó — **«no
+   aparece» ≠ «es distinto»**, la misma confusión que produjo la sobregeneralización de los SHC.
+   Se sumaron además la variante **outlined de `EditIcon`** y **`PrintIcon`**, este último con un
+   matiz que importa: el workboard usa **PrintIcon** para «Print Job Tags» mientras la ficha de
+   OT usa **QrCode2Icon** para «Imprimir Etiquetas de Trabajo» — dos botones con la misma función
+   nominal y distinto icono, y es justo por casos así que **la FORMA va antes que el aria**.
+   **Quedan 3 sin medir:** `SendIcon` y `RestorePageOutlinedIcon` (ninguno aparece en el modal
+   View/Edit Invoice; el primero vive en el de envío por correo) y `Visibility*` (sigue sin haber
+   Sensor Dashboards).
    **LECCIÓN DE MÉTODO, que es lo que conviene no perder: «0 ocurrencias en N pantallas» NO
    prueba «lo eliminaron»; prueba «no está en esas N».** Para afirmar una eliminación hay que
    medir donde el atributo debería estar. Verificado en consecuencia: `wo-schedule-button`

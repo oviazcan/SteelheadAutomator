@@ -232,7 +232,7 @@ test('report-regen: con varios sobres elige el que está en el header (con bread
 
 test('el catálogo trae los 7 iconos MEDIDOS en vivo el 2026-08-03', () => {
   for (const n of ['PlayArrowIcon', 'EmailOutlinedIcon', 'EditIcon', 'ArchiveIcon',
-                   'FilterListIcon', 'QrCode2Icon', 'CalendarMonthIcon']) {
+                   'FilterListIcon', 'QrCode2Icon', 'CalendarMonthIcon', 'CloseIcon', 'PrintIcon']) {
     assert.ok(Core.ICON_SHAPES[n] && Core.ICON_SHAPES[n].length > 0, n + ' debe tener forma medida');
   }
 });
@@ -240,7 +240,7 @@ test('el catálogo trae los 7 iconos MEDIDOS en vivo el 2026-08-03', () => {
 test('los iconos PENDIENTES DE MEDIR siguen vacíos (no se adivinan paths)', () => {
   // Un path adivinado no matchea —se comprobó: el Edit canónico dice `a.9959.9959 0` y el
   // real `a.996.996 0`— y además finge cobertura. Mejor vacío y anotado.
-  for (const n of ['CloseIcon', 'SendIcon', 'RestorePageOutlinedIcon', 'VisibilityIcon', 'VisibilityOffIcon']) {
+  for (const n of ['SendIcon', 'RestorePageOutlinedIcon', 'VisibilityIcon', 'VisibilityOffIcon']) {
     assert.equal(Core.ICON_SHAPES[n].length, 0, n + ': si ya lo mediste, muévelo a la lista de arriba');
   }
 });
@@ -349,4 +349,34 @@ test('«View Schedule» (aria real de la ficha de OT) sí es el calendario', () 
 test('«Archivar Orden de Trabajo» sigue matcheando tras endurecer el patrón', () => {
   const root = attachQuery(makeContainer([makeButton(makeSvg('M-x', null), { 'aria-label': 'Archivar Orden de Trabajo' })]));
   assert.ok(Core.findIcon(root, 'ArchiveIcon'));
+});
+
+// ---------- Iconos medidos del HTML aportado por el operador (2026-08-03) ----------
+// Cuando la automatización no logró abrir los modales, el operador pegó el HTML de las tres
+// pantallas. Salió más rápido y más fiable que seguir intentando por CDP.
+
+const CLOSE_D = 'M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z';
+const EDIT_OUTLINED_D = 'm14.06 9.02.92.92L5.92 19H5v-.92zM17.66 3c-.25 0-.51.1-.7.29l-1.83 1.83 3.75 3.75 1.83-1.83c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.2-.2-.45-.29-.71-.29m-3.6 3.19L3 17.25V21h3.75L17.81 9.94z';
+
+test('CloseIcon: se resuelve por FORMA con el path del botón Cancelar real', () => {
+  const root = attachQuery(makeContainer([makeButton(makeSvg(CLOSE_D, null))]));
+  const hit = Core.findIcon(root, 'CloseIcon');
+  assert.ok(hit);
+  assert.equal(hit.by, 'shape', 'ya no depende del aria: tiene forma medida');
+});
+
+test('EditIcon: reconoce las DOS variantes que SH usa (filled y outlined)', () => {
+  for (const d of [Core.ICON_SHAPES.EditIcon[0], EDIT_OUTLINED_D]) {
+    const root = attachQuery(makeContainer([makeButton(makeSvg(d, null))]));
+    const hit = Core.findIcon(root, 'EditIcon');
+    assert.ok(hit && hit.by === 'shape', 'ambas variantes deben matchear por forma');
+  }
+});
+
+test('PrintIcon NO se confunde con QrCode2Icon (son botones distintos con la misma función)', () => {
+  // El workboard usa PrintIcon para «Print Job Tags»; la ficha de OT usa QrCode2 para
+  // «Imprimir Etiquetas de Trabajo». La forma los separa aunque el aria de ambos hable de tags.
+  const print = attachQuery(makeContainer([makeButton(makeSvg(Core.ICON_SHAPES.PrintIcon[0], null))]));
+  assert.equal(Core.findIcon(print, 'QrCode2Icon'), null, 'PrintIcon no es QrCode2Icon');
+  assert.ok(Core.findIcon(print, 'PrintIcon'));
 });
