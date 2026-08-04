@@ -2,6 +2,12 @@
 
 Versiones documentadas: 1.0.0 → 1.5.20 (+ extensión 1.6.0 → 1.6.2 + VBA Module1 v14). Para deploy y reglas generales, ver `../../CLAUDE.md`.
 
+> **Contratos de plantilla (viven aparte):** [`bulk-upload-v12.md`](bulk-upload-v12.md) ·
+> **[`bulk-upload-v13.md`](bulk-upload-v13.md) ← VIGENTE** (5 rack types + «Instrucciones de
+> Empaque»; VIVO en config 1.11.63, tag `v1.11.63`). Antes de tocar el mapa de columnas, el VBA
+> o cualquier cosa que lea el CSV, lee el v13: el layout es posicional y un corrimiento no
+> truena, escribe en el campo equivocado. La macro vigente es `vbas/Module5_v19.bas`.
+
 ## fix 1.5.42 (2026-07-22) — Fast-path SOLO_PRECIO bloqueado por `Validación=F` de plantilla [DEPLOYADO, config 1.7.176, firmado KMS, verificado EN VIVO]
 
 **Incidente (diagnóstico de corrida real).** Carga `Precios_V1.1` en modo SOLO_PN, **8238 PN de solo-precio** (identificados por Id SH, cero enriquecimiento). El reporte: `PNs procesados 8238`, **22 errores** todos `HTTP 429 en SavePartNumber`, 0 omitidas; todas las categorías de decisión (NEW/MODIFY Pase 1·2·3) en 0. Los precios **sí** se aplicaron (Paso 2/5 `SaveManyPartNumberPrices`, cero errores; corre **antes** del enrich). Pero el fast-path **no se activó** y corrió STEP 6 completo, con dos consecuencias:

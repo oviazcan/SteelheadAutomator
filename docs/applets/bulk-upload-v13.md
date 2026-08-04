@@ -1,6 +1,7 @@
 # Bulk-Upload — Plantilla Carga Masiva v13 (5 rack types + Instrucciones de Empaque)
 
-**Fecha:** 2026-08-03 · **Estado:** parser + escritura LISTOS y verificados en frío · **sin corrida real contra el ERP**
+**Fecha:** 2026-08-03 · **Estado:** ✅ **VIVO en producción — config 1.11.63, tag `v1.11.63`**
+(parser, escritura y ambas plantillas publicadas y verificadas) · 🔴 **sin corrida real contra el ERP**
 **Relacionado:** [`bulk-upload.md`](bulk-upload.md) (bitácora principal) · [`bulk-upload-v12.md`](bulk-upload-v12.md) (contrato v12)
 **Guía para el usuario:** [`../plantilla-carga-masiva-v13.html`](../plantilla-carga-masiva-v13.html)
 
@@ -242,13 +243,45 @@ leer Notas como instrucciones.
 - Por eso el `.xlsm` no se genera por XML: habría que reescribir esas fórmulas, `calcChain.xml`
   (375 KB), validaciones, tabla, comentarios y referencias cruzadas de `CAT_*` / `Cálculo MP`.
 
+## Publicación (2026-08-03) — VIVO en 1.11.63
+
+`tools/deploy.sh` desde el worktree de `main`. Invariante confirmado con `deploy-status.sh`:
+**main = gh-pages = EN VIVO = 1.11.63**, tag `v1.11.63`, firma KMS verificada en vivo.
+Comprobado por HTTP contra el sitio publicado, no sólo en git:
+
+| Recurso | |
+|---|---|
+| `templates/Plantilla_CargaMasiva_v13.xlsm` | HTTP 200 · 601 291 B · **md5 idéntico** al validado |
+| `templates/…v13_compatibilidad.xlsm` | HTTP 200 · 719 012 B |
+| `scripts/bulk-upload-packing.js` | HTTP 200 · 6 518 B |
+| `config.json` vivo | mutation ✓ · `nodeName` ✓ · `templateUrl` v13 ✓ · botones v13 ✓ |
+
+La plantilla se **bajó del sitio** y se le pasó el verificador: layout correcto. Lo que el
+operador descarga es exactamente lo validado.
+
+### Tres cosas del deploy que conviene no volver a aprender
+
+1. **`workbench` estaba 47 commits atrás de `main`** (config 1.11.47 vs 1.11.62). Deployar
+   desde ahí habría **revertido 15 versiones de trabajo ajeno** (`invoice-autofill`,
+   `cfdi-attacher`, `proceso-calculator`, `report-regen` 0.3.5, `config.sig`, `extension/`).
+   El merge completo daba conflictos en código de producción ajeno a la tarea ⇒ se **abortó** y
+   se fue por **cherry-pick quirúrgico**, tras medir que `main` **no había tocado ningún archivo
+   de bulk-upload** (los 5 scripts idénticos). Verificación del config resultante: 122 queries y
+   75 mutations de main **intactas**, +1 mía, **nada perdido**.
+   **Regla: antes de deployar desde un worktree, comparar su `config.version` contra `main`.**
+2. **Los `.xlsm` de `templates/` NO los deploya `deploy.sh`** (hace `git add scripts config.json`).
+   Se subieron en un commit propio **antes** del config, para no dejar una ventana con el botón
+   apuntando a un archivo inexistente. **El `pre-push` rebotó ese push**: valida el espejo
+   `gh-pages == main:remote/` **antes** de mirar si es "solo-docs", y gh-pages aún no tenía
+   `bulk-upload-packing.js`. La salida: dejar el commit local y que `deploy.sh` empuje ambos
+   juntos, con la punta ya espejando main.
+3. El hook exime del bump sólo a los push que **no tocan** `config.json` ni `scripts/`.
+
 ## Pendientes
 
 - 🔴 **Corrida real contra el ERP.** Nada de v13 se ha ejercido: todo lo verificado es parseo,
   layout y decisión en frío. **La escritura de instrucciones de empaque NUNCA se ha ejecutado.**
   Primera prueba: lote chico, con los 5 racks y la columna de empaque llenos.
-- 🔴 **Re-pegar `Module5_v19`** en ambas plantillas (Alt+F11). El v18 ya está pegado pero recorre
-  hasta 66 y la hoja tiene 67 ⇒ *Limpiar Datos* deja `Tiempo de Entrega` sucio.
 - 🟡 **Ruta de regeneración: declarada y con ancla, falta correrla headless.** La entidad
   `partNumberPackingDescription` ya lleva el ancla estructural verificada
   (`PART_NUMBER_PAGE_PART_NUMBER_INSTRUCTIONS` → botón lápiz → diálogo → Save), así que ya no es
@@ -258,7 +291,17 @@ leer Notas como instrucciones.
   config (`5efd689d…`) → `98f2b7fa…`. **No prueba que el nuestro esté muerto** (precedente:
   `AllWorkOrders` siguió válido server-side), pero lo usan `pn-specs-column`, `pn-lifecycle` y
   `bulk-upload`. Correr `tools/run-hash-validation.sh`.
-- Deploy: `config.json` ya apunta a v13 (`templateUrl` + los 2 botones) y las plantillas ya están
-  en `remote/templates/`; **falta publicarlas en `gh-pages/templates/`** en el mismo commit del bump.
 - Caso borde heredado: sentinel `-` en el slot 1 de racks **con** otro slot lleno no borra; trata
   `-` como nombre de rack → error visible `RackType "-" no encontrado`.
+- ⏳ **Bundle Safari/iPad sin rebundlear.** `bulk-upload` no está en la lista blanca del bundle,
+  así que la v13 **no aplica al iPad** hoy; si algún día entra, el módulo `bulk-upload-packing.js`
+  tiene que ir con él.
+
+### Resuelto en esta sesión (no re-abrir)
+
+- ✅ **`Module5_v19` pegado en AMBAS plantillas.** Verificado extrayendo el VBA con `olevba -c`
+  de cada `.xlsm`: `LimpiarDatos (v19`, **3× `For c = 1 To 67`**, `LimpiarEspacios (v15`,
+  `phHybridCols = Array(8, 15, 45)` y los 5 racks en `phCols`. (El v18 quedaba en 66 y dejaba
+  `Tiempo de Entrega` sin limpiar; `vbas/Module5_v18.bas` se **borró** para que nadie pegue el
+  equivocado.)
+- ✅ **Publicado en `gh-pages`** — ver §Publicación.
