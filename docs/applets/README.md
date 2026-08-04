@@ -1,0 +1,923 @@
+# Estado detallado de los applets
+
+> **Origen:** este contenido vivía completo en `CLAUDE.md` y pesaba 115 KB de los 184 KB del
+> archivo (63%), que se pagaban en tokens en **cada** arranque de sesión. Se extrajo el 2026-08-04 y
+> se reorganizó por applet el mismo día, con transformación mecánica: el texto es el mismo carácter
+> por carácter (verificado por multiset), solo cambió el formato — una sección por applet en vez de
+> una celda de tabla.
+>
+> De paso se corrigieron **dos renglones que rompían la tabla markdown**: `report-regen` y
+> `wo-spec-params` traían un `|` **crudo** dentro de código inline
+> (`by:'testid'|'shape'`, `FASTPATH|ASK|FULL`), que cualquier visor interpretaba como
+> separador de columna y partía el renglón. Fuera de una tabla, el problema desaparece.
+>
+> **Los tres niveles, del más barato al más caro:**
+> 1. **`CLAUDE.md` § Índice de applets** — nombre, versión viva y una línea de qué hace. Con eso
+>    decides si necesitas más. Se carga siempre.
+> 2. **Este archivo** — el estado completo con lecciones, versiones de config, hallazgos y
+>    pendientes. Ábrelo cuando la versión de un applet no te diga lo suficiente.
+> 3. **`docs/applets/<applet>.md`** — la bitácora profunda, con la historia por versión. Es la
+>    fuente de verdad; **antes de tocar un applet, lee la suya.**
+>
+> ⚠️ Al actualizar el estado de un applet, actualiza **su bitácora** (nivel 3) y la versión en
+> `CLAUDE.md` (nivel 1). Este archivo es un espejo de conveniencia y puede quedar atrás.
+>
+> El orden es el mismo que tenía la tabla original (no se reordenó, para no perder su agrupación
+> implícita).
+
+## Índice
+
+- [`proceso-calculator`](#proceso-calculator) — 0.1.0
+- [`pn-lifecycle`](#pn-lifecycle) — 0.2.0
+- [`load-calculator`](#load-calculator) — 0.2.0
+- [`report-regen`](#report-regen) — 0.3.5
+- [`bulk-upload`](#bulk-upload) — 1.5.42
+- [`process-deep-audit`](#process-deep-audit) — 0.8.0
+- [`spec-params-bulk`](#spec-params-bulk) — 0.9.0
+- [`pn-specs-column`](#pn-specs-column) — 0.3.3
+- [`spec-migrator`](#spec-migrator) — original + `validate-duplicate-params` 0.5.5
+- [`wo-spec-params`](#wo-spec-params) — 0.6.0
+- [`invoice-autofill`](#invoice-autofill) — 0.5.67
+- [`invoice-auto-regen`](#invoice-auto-regen) — 0.5.37
+- [`sensor-status-autofill`](#sensor-status-autofill) — 0.5.58
+- [`receiver-date-override`](#receiver-date-override) — 0.5.81
+- [`warehouse-location-prefill`](#warehouse-location-prefill) — 0.6.3
+- [`weight-quick-entry`](#weight-quick-entry) — 0.5.82
+- [`create-order-autofill`](#create-order-autofill) — 0.1.3
+- [`unit-autoconvert`](#unit-autoconvert) — 0.1.0
+- [`archiver`](#archiver) — 1.0.0
+- [`wo-mover`](#wo-mover) — 0.2.0
+- [`wo-completer`](#wo-completer) — 0.1.0
+- [`wo-listing-columns`](#wo-listing-columns) — 0.8.2
+- [`wo-schedule-button`](#wo-schedule-button) — 0.9.0
+- [`auto-router`](#auto-router) — 0.4.1
+- [`file-uploader`](#file-uploader) — 0.5.1
+- [`surtido-guard`](#surtido-guard) — 0.4.1
+- [`batch-name-filter`](#batch-name-filter) — 0.3.1
+- [`schedule-batch-highlighter`](#schedule-batch-highlighter) — 0.2.0
+- [`po-listing-filters`](#po-listing-filters) — 0.4.0
+- [`price-confirm-guard`](#price-confirm-guard) — 0.1.5
+- [`sensor-graph-hide-all`](#sensor-graph-hide-all) — 0.2.0
+- [`vale-almacen`](#vale-almacen) — 0.1.0
+- [`process-canon`](#process-canon) — varios
+- [`hash-scanner`](#hash-scanner) — 0.6.24
+- [`audit-incomplete-pns`](#audit-incomplete-pns) — fix-2026-05-25
+- [`integrity-tiers`](#integrity-tiers) — 1.5.3
+- [**Power Tools / Low-Code (`.ts`)** — _movidos a repo aparte (2026-06-16)_](#power-tools--low-code-ts--_movidos-a-repo-aparte-2026-06-16_) — **Ya NO viven aquí.** Repo dedicado: `SteelheadPowerTools`
+- [`dual-source-recovery`](#dual-source-recovery) — 1.0.2
+- [`wb-produccion-access`](#wb-produccion-access) — 1.0.0
+- [`marcar-usepartcount-productos`](#marcar-usepartcount-productos) — 1.0.0
+- [`archive-inventory-batch-statuses`](#archive-inventory-batch-statuses) — 1.0.0
+
+
+---
+
+## `proceso-calculator`
+
+**Versión:** 0.1.0 · **Bitácora:** [`docs/applets/proceso-calculator.md`](proceso-calculator.md)
+
+
+
+
+---
+
+## `pn-lifecycle`
+
+**Versión:** 0.2.0 · **Bitácora:** [`docs/applets/pn-lifecycle.md`](pn-lifecycle.md)
+
+(Gestor de ciclo de vida de PNs)
+
+rediseño del `archiver`: 4 acciones sobre PNs — marcar/quitar validación (opt-ins granulares), desarchivar, archivar=Borrado definitivo.
+
+**Dos orígenes**: escanear dominio con filtros ricos + dedup canónica, ó **v0.2.0 "Pegar IDs"** — pega Id SH numéricos → resolución dirigida `GetPartNumber(id)` (pool 4 + drain, `archived` real vía `archivedAt`) → **directo a preview** sin escanear ni filtrar (avisa Id no resueltos / renglones ignorados). Core puro `parsePastedIds`/`fetchPNsByIds`, 28/28 tests. Piloto en vivo por acción pendiente — dry-run+confirm+preview obligatorios
+
+
+---
+
+## `load-calculator`
+
+**Versión:** 0.2.0 · **Bitácora:** [`docs/applets/load-calculator.md`](load-calculator.md)
+
+(Calculadora de Piezas por Carga)
+
+Fase 1 + **Fase 2a/2b validadas en vivo 2026-07-22**; Fase 1: **Configurador de Estaciones** — datos maestros de tina/línea en `customInputs` de estación vía `CreateStationInputSchema`+`UpdateStationInputs`, por estación o bulk por línea; popup→`openStationConfig`. Motor de cálculo puro cuadrícula/área/barril validado vs golden del `Calculo.xlsx` (87/112/112·47/123/105) + núcleo RMW no-destructivo del configurador, 20 tests.
+
+**Deploy + run real OK (confirmado por el operador en producción, 2026-07-17).** **Fase 2a/2b VIVAS (validadas 2026-07-22)**: calculadora en el modal de Rack Types (`CreateEditPartsPerRackTypeQuery`) + persistir `PiezasCarga` vía `UpdatePartNumber` parcial; F2c (geometría) implementada con **escritura deshabilitada por diseño** (`F2C_WRITE_ENABLED=false`)
+
+
+---
+
+## `report-regen`
+
+**Versión:** 0.3.5 · **Bitácora:** [`docs/applets/report-regen.md`](report-regen.md)
+
+**VIVO config 1.11.54, tag `v1.11.54` — ✅ VALIDADO END-TO-END EN VIVO con el código deployado. 2026-08-03 — SH QUITÓ LOS `data-testid`, y anclar al ▶ era un bug NUESTRO, anterior.** Reporte de piso justo después del fix del modal de recibo: resultó ser **el mismo despliegue de SH** con otra cara.
+
+**El `debug()` que dejó la 0.3.4 se pagó solo:** en la PRIMERA medición dijo `allowed:true · booted:true · observer:true · **anclaEncontrada:false**`, cortando tres cuartas partes del árbol de causas — el gate de permisos, que ya había tumbado este applet tres veces, quedó descartado de entrada.
+
+**Causa raíz medida en 3 pantallas cargadas y con contenido real** (`/Reporting/View` 189 svg, `/Receiving/CustomerParts` 159 svg, lista de reportes): **0 `[data-testid]`** en cada una (los 2 que quedan son de react-virtuoso).
+
+**Sólo los `data-testid`**: los `data-steelhead-component-id` siguen VIVOS — 38 en la ficha de OT, 40 en la de NP — y decir lo contrario fue una sobregeneralización corregida el mismo día.
+
+**EL FIX ANCLA AL CORREO, NO AL PLAY**, por corrección de dominio del operador —*«el play a veces cambia por uno de pausa cuando tienes un timer activo; mejor ánclalo al del correo»*—: el `findAnchor` original exigía `PlayArrowIcon`, así que **el botón ya desaparecía con un timer corriendo**, desde antes del cambio de SH. Un bug latente que sólo se ve desde el piso. Ahora el requisito duro es el sobre (**medido: uno solo en toda la página**) y breadcrumb + play/pausa sólo CONFIRMAN — ninguno puede negar, así que un ⏸ ya no apaga nada. Se busca por `data-testid` PRIMERO y por la **FORMA del icono** (`path d`) después: un anclaje no se cambia, se AMPLÍA. Núcleo `mui-icon-anchor-core.js` (**15 golden**), que devuelve `by:'testid'|'shape'` para ver POR QUÉ matcheó.
+
+**En vivo: `version 0.3.5 · anclaEncontrada true · botonEnDOM true · by:'shape'`**, botón visible con countdown real `02:22` y tooltip «Última regeneración: 03 ago 2026, 05:29 p.m.»; orden `NAV │ Ver Documentos │ ▶ │ NUESTRO │ ✉ 99+`. Bundle iPad **0.6.21**. Lo único NO medido en vivo: el path del ⏸ (no había timer corriendo) — por eso entra sólo como señal que afirma
+
+
+---
+
+## `bulk-upload`
+
+**Versión:** 1.5.42 · **Bitácora:** [`docs/applets/bulk-upload.md`](bulk-upload.md)
+
++ config 1.7.176 (**2026-08-03: PLANTILLA v13 — 5 rack types por PN (antes 2) + columna «Instrucciones de Empaque». ✅ VIVO config 1.11.63, tag `v1.11.63` — ambas plantillas (moderna + compatibilidad) publicadas y verificadas POR HTTP contra el sitio (200, md5 idéntico al validado); 🔴 SIN corrida real contra el ERP.** Las piezas por carga son **por línea** (PN 3015610: 4 en `T204-FL01`, 1 en `T205-FL01`) → 2 ranuras no alcanzaban. Dos cambios, ambos DESPUÉS de los racks ⇒ **+6 y luego +1**: 60→**67** visibles, 73→**80** canónicas (racks 47-56, geometría 57, predictivos 63-71, **empaque 72**, notas 73, referencia 74-79). Headers de rack **numerados** por decisión del usuario (al ser únicos, `AddOut` ya no les pone sufijo).
+
+**`racks` se generalizó a array de pares** —el patrón que ya usaban `specs`/`prods`— y el loop quedó único para v10-v13.
+
+**Detección v13 con DOS señales independientes** (nº de headers `/^rack\b/i` ≥3 · ancho del header ≥79) porque v12 y v13 comparten `E="Id SH"` y 4 specs: confundirlos **no da error visible**, saca los predictivos de las columnas de dims y escribe basura en silencio ⇒ basta que una acierte.
+
+**HALLAZGO 1 — `ExportarCSV` NO se toca:** es header-driven y desambigua los headers repetidos con `" 2".." 5"` (`AddOut`), así que emite las columnas nuevas solo; igual `Module2`/`Module4`/`Hoja1.cls` (todas sus columnas < 39).
+
+**HALLAZGO 2 — `Module5` SÍ, y su falla es INVISIBLE:** `LimpiarDatos`/`LimpiarEspacios` direccionan por índice numérico y no se ajustan al insertar columnas — `For c = 1 To 60` (×3) dejaría **6 columnas sin limpiar** (datos de la carga anterior sobreviven y se re-suben, con la plantilla viéndose limpia) y `phHybridCols = Array(8,15,39)` escribiría el placeholder de Geometría **dentro de Rack 3**. Corregido en **`vbas/Module5_v19.bas`** (extraído con `olevba -c`).
+
+**El módulo se rompió DOS VECES por lo mismo:** el v18 se escribió para 66 columnas cuando la v13 aún era «5 racks», y la columna de empaque —que entró después— la dejó en 67 ⇒ el v18 **ya pegado en las plantillas** dejaba `Tiempo de Entrega` sin limpiar. Por eso el tope dejó de vivir en la cabeza de alguien: **`tools/test/module5-column-cap.test.js`** mide el ancho REAL de la hoja `Upload` del `.xlsm` y lo compara contra los `For c = 1 To N` del VBA vigente (**verificado que muerde**: contra el v18 falla nombrando la columna huérfana), más que ambas plantillas midan igual, que los índices de placeholders caigan en rango y que *Tipo de Geometría* siga siendo el que el VBA cree. Al liberar un `Module5_vNN` hay que actualizar la ruta de ese test **en el mismo commit**.
+
+**Lección: cuando un layout posicional se ensancha, el riesgo no está solo en el parser que LEE — está en toda macro que direccione por índice; la que exporta se salvó por ser header-driven, la que LIMPIA no.** **Verificador nuevo `tools/verify-template-layout.js`**: abre el `.xlsm`, simula `ExportarCSV §3`, mete un valor sonda por columna y lo pasa por el **parser real** en un `vm` — corrido contra la v12 **real** (73 canónicas, 2 racks, 8/8 ✓, o sea el refactor no movió v12) y contra una v13 sintética (79, 5 racks, 8/8 ✓).
+
+**7 golden tests nuevos, suite 92/0.** El `.xlsm` no se genera por XML con evidencia: **7,504 fórmulas** en `Upload`, **4,500 de ellas (predictivos) DESPUÉS de los racks**, más `calcChain.xml` (375 KB) y las validaciones de rack que viven en `extLst` (`AI9:AI508 AK9:AK508` → `Listas!$F`) ⇒ **las columnas nuevas se COPIAN, no se crean en blanco**.
+
+**«INSTRUCCIONES DE EMPAQUE» — la primera columna de la plantilla que escribe FUERA del PN.** No es un campo del número de parte: es una **`ProcessNodeDescription`**, la descripción de la tupla **(PN, nodo de proceso)**, vía `SaveManyPartNumberProcessNodeDescriptionsAndFiles` (hash `22bb7738…`, payload capturado con el hash-scanner y reproducido **byte a byte** en test).
+
+**LA TRAMPA: hay TRES entidades parecidas** — `partNumber.descriptionMarkdown` (otra cosa), **`processNode.descriptionMarkdown` (la descripción GLOBAL del nodo, COMPARTIDA por todos los PNs del dominio; hoy trae el aviso rojo «No olvidar empacar conforme a requerimientos del cliente»)** y la nuestra. Escribir en la de en medio le habría cambiado el aviso a toda la planta en una sola corrida.
+
+**El nodo se liga por NOMBRE, nunca por id** (petición del usuario: los ids son POR DOMINIO — los centinelas viven en TLC/344 y MTY es otro dominio — así que un id fijo escribiría en el nodo equivocado o en ninguno allá), con match **exacto normalizado y exactamente UNA coincidencia**: medido sobre el árbol real, **7 nodos contienen «Embarque»** ⇒ por subcadena se elegiría mal; ante 0 o >1 **no adivina, reporta**.
+
+**La ambigüedad del nombre («Empaque» en la columna vs nodo «Preparando Embarque en Almacén») la cerró el ERP, no una interpretación**: la descripción global de ese nodo habla de empacar, y el DOM de la ficha lo confirma con el ancla estructural `PART_NUMBER_PAGE_PART_NUMBER_INSTRUCTIONS` («Instrucciones del Número de Parte en “…” **#1**», donde el #N es `processNodeOccurrence`).
+
+**Cero hashes nuevos para LEER**: el nodo es compartido y el árbol se saca de **`GetProcessNode`**, que ya está en config y **ya tiene ruta de regeneración**, cacheado por proceso (1-2 lecturas por corrida, no una por PN). Semántica **vacío/`-`/dato**, con `skip ≠ clear` fijado por test (si «vacío» produjera `''`, cada carga con la columna en blanco **borraría** las instrucciones de toda la corrida en silencio) y `partHasEnrichLine` contando la columna (sin eso, precio+empaque sobre PNs existentes se clasificaría `SOLO_PRECIO` y el preview mentiría — molde del bug 1.5.42).
+
+**No batchea PNs** (`partNumberId` singular) ⇒ 1 llamada por PN. Núcleo puro `bulk-upload-packing.js` **15 tests** sobre el árbol REAL de 63 nodos + **9 de cableado** (config↔módulo↔centinela↔glue) + **10** de layout; ****9 que atan las PLANTILLAS REALES del repo al parser** (`template-layout-real.test.js` — el layout del `.xlsm` es parte del contrato y debe romper la suite si cambia, sin depender de correr el verificador a mano; incluye que los 5 racks NUMERADOS mapeen con nombre y cantidad distintos por slot y que `Pzas/Rack Línea N` **no** infle el conteo: con `/rack/i` sin ancla habrían sido 10 y la versión se detectaría **por accidente**); suite 96/0**. El **trinquete de rutas de regeneración subió 59→60 al agregar la mutation y volvió a 59** con su centinela `partNumberPackingDescription` (capture-abort, ancla estructural verificada; falta correrlo headless). 🔴 **La escritura NUNCA se ha ejecutado**; ojo con el volumen (5 racks ≈ ×2.5 escrituras + 1 por PN con instrucciones; este applet ya tuvo 429). ⚠️ **Señal lateral: el scan trae `GetPartNumber` con `previousHash` = el de nuestro config (`5efd689d…`) → `98f2b7fa…`** — NO prueba que el nuestro esté muerto (precedente `AllWorkOrders`), pero lo usan `pn-specs-column`/`pn-lifecycle`/`bulk-upload`: correr `tools/run-hash-validation.sh`. `config.json` apunta a v13 (templateUrl + 2 botones) y **ambas plantillas ya están vivas en `gh-pages/templates/`**.
+
+**DOS TRAMPAS DEL DEPLOY, medidas:** (a) el worktree `workbench` estaba **47 commits atrás** de main (config 1.11.47 vs 1.11.62) y deployar desde ahí habría **revertido 15 versiones ajenas** — se abortó el merge (conflictos en `invoice-autofill.js`, código ajeno a la tarea) y se fue por **cherry-pick quirúrgico** tras medir que main no había tocado NINGÚN archivo de bulk-upload; el config resultante conserva las 122 queries y 75 mutations de main intactas.
+
+**Regla: antes de deployar desde un worktree, comparar su `config.version` contra main.** (b) **`deploy.sh` NO publica los `.xlsm` de `templates/`** (hace `git add scripts config.json`): van en commit aparte y **antes** del config —si el puntero sale primero el botón da 404—, pero el `pre-push` valida el espejo `gh-pages == main:remote/` **antes** de eximir a los push «solo-docs», así que el commit de plantillas debe viajar **en el mismo push** que el deploy.
+
+**`Module5_v19` ya pegado en ambas plantillas**, verificado extrayendo el VBA con `olevba -c` (3× `For c = 1 To 67`); el v18 se borró del repo para que nadie pegue el equivocado. Guía humana: [`docs/plantilla-carga-masiva-v13.html`](../plantilla-carga-masiva-v13.html) · contrato: [`docs/applets/bulk-upload-v13.md`](bulk-upload-v13.md).
+
+**Previo 2026-07-22: Fix — fast-path SOLO_PRECIO bloqueado por `Validación=F` de plantilla** — la plantilla "Limpiar Datos" escribe Validación=F en todas las filas → `validacion1er=false` → `classifyRunIntent` daba ENRIQUECIMIENTO → el atajo NUNCA se activaba en cargas de solo-precio hechas con plantilla (incidente 2026-07-22: 8238 PN corrieron STEP 6 completo → 22×HTTP 429 + desactivación silenciosa de "validación 1er recibo" vía `optInOuts:[]` REPLACE; precios OK). Fix: decisión pura de 3 estados `Parse.planSoloPrecioDecision` (FASTPATH|ASK|FULL, distingue `validacion1er` por VALOR: true=activar→FULL, false=plantilla→ASK, null→sin señal) + modal `askFastPathSoloPrecio` que pregunta ANTES de escribir; refactor `partHasEnrichLine` (partHasEnrich byte-idéntico); NO toca `decideOptInOuts`.
+
+**23 golden tests**. Deployado+firmado KMS, verificado EN VIVO. Mismo patrón que el bug 1.5.29 (columna de plantilla contamina la clasificación).
+
+**2026-07-20: Fast-path SOLO_PRECIO ACTIVO** — una corrida que solo cambia precios de PN existentes (cero enriquecimiento) salta STEP 6 (enrich), un `runPool` que pegaba `SavePartNumber` por CADA PN sin nada que aplicar (N round-trips + REPLACE de arrays); más rápido y más seguro. Motor puro `Parse.planSoloPrecioFastPath` + flag `SOLO_PRECIO_FASTPATH_ENABLED=true` + **13 golden tests** (2 invariantes de seguridad: 1 fila con enrich o 1 PN nuevo DESACTIVA el atajo). Deployado+firmado KMS, verificado EN VIVO (cierra el pendiente "fast-path real SOLO_PRECIO"). Guard mínimo: un `if(!fastPathSoloPrecio)` alrededor del `runPool` de STEP 6; `runIntent` recalculado en `execute()`.
+
+**Previo:** retry AddParams (incidente 429 en corrida de 20k), troceo #4 SOLO_PN validado en vivo, **Refactor F1-F5** (módulos puros + golden tests, memory-hardening `host-cleanup-shared`, batches N→1, `classifyRunIntent`+badge), `sa_load_history`→IndexedDB (validado 7 corridas). Ver bitácora para el detalle completo.
+
+
+---
+
+## `process-deep-audit`
+
+**Versión:** 0.8.0 · **Bitácora:** [`docs/applets/process-deep-audit.md`](process-deep-audit.md)
+
+
+
+
+---
+
+## `spec-params-bulk`
+
+**Versión:** 0.9.0 · **Bitácora:** [`docs/applets/spec-params-bulk.md`](spec-params-bulk.md)
+
+
+
+
+---
+
+## `pn-specs-column`
+
+**Versión:** 0.3.3 · **Bitácora:** [`docs/applets/pn-specs-column.md`](pn-specs-column.md)
+
+(Datos del NP en Números de Parte)
+
+(**v0.3.3 2026-07-31 — LA FILA RECICLADA MOSTRABA LOS DATOS DE OTRO NP.** Reporte del operador con capturas: al **archivar** un NP su renglón seguía mostrando la spec del archivado y solo recargando se recomponía.
+
+**Causa:** React **recicla los `<tr>`** (archivar/filtrar/paginar) y el glue solo preguntaba si nuestra celda **existía** (`if (!td) {crear}`), nunca si seguía siendo del mismo NP ⇒ la celda nativa del nombre pasaba al NP siguiente y **nuestra celda sobrevivía con el `data-sa-pnid` y el contenido del anterior** — de ahí el síntoma exacto: **nombre correcto con las 3 columnas nuestras mintiendo**, coherentes entre sí por venir del mismo NP viejo.
+
+**El daño no era solo el dato viejo:** `applyToCells` busca por `[data-sa-pnid]`, así que el atributo stale hace que el fetch del NP ANTERIOR se pinte sobre la fila del NUEVO — la mentira se refresca sola.
+
+**Fix:** identidad revalidada en CADA sync (no solo al crear) en los dos sitios que inyectan nodos —celda de columna y box desc+metal—, con la decisión pura `isStaleNode(attr,pnId)` en el core (**4 tests**; sin atributo reconstruye, con `pnId` nulo NO reconstruye: una fila sin link no está reciclada, y reconstruir ahí entraría en bucle con el observer).
+
+**Lección —la misma que el repo ya pagó en `schedule-batch-highlighter` con los checkbox reciclados por la virtualización—: cuando React recicla nodos, un guard que pregunta «¿ya lo pinté?» en vez de «¿sigue siendo del mismo dueño?» no ahorra trabajo: CONSERVA UNA MENTIRA.** Todo nodo inyectado en una tabla de React debe llevar de quién es y revalidarlo.
+
+**VIVO config 1.11.46, tag `v1.11.46`. Core 46/46. Pendiente: rebundle iPad.**
+
+· 0.3.2 (**VIVO — salió en config 1.11.7, tag `v1.11.7`; el config vivo siguió avanzando con deploys de otros applets. Bundle iPad 0.6.9 — VALIDADO EN VIVO por el operador («ya quedó», contador `50/50`, mem 338MB/4192MB). Core 42/42.** v0.3.0 2026-07-29 — 4 COLUMNAS NUEVAS Y TODAS AL INICIO.** Pedido del operador; el *pedido dentro del pedido* es que la tabla nativa tiene **20 columnas** y `Línea`/`Departamento`/`Material` caen en la **posición 10-12**, fuera de vista sin scroll horizontal → duplicar `Línea` no es redundante, es traerla al frente. Ahora son 5 columnas con **un toggle cada una**: 🧪 Especificaciones · ⚗️ **Metal base** (`customInputs.DatosAdicionalesNP.BaseMetal`; la nativa `Material` es otra cosa y viene vacía) · 🏭 **Línea** (dim contable 349) · 🧺 **Rack Types** (cada uno con sus **piezas por carga**) · 📐 **Unidades** (**todos** los factores registrados, unidades/pieza).
+
+**Las 4 salen del MISMO `GetPartNumber` que ya se pagaba — cero consultas extra**, verificado en vivo (hash `5efd689d…`, HTTP 200, PN 2300153).
+
+**Hallazgo: el `GetDimension` extra de `load-calculator-modal` NO hace falta** — el catálogo de dimensiones viaja en el mismo response (`allAcctDimensions`, 30 valores de la dim 349); lo que la selección NO trae es el objeto anidado `acctDimensionCustomValueByDimensionCustomValueId`, que existe en `searchPartNumbers` pero no aquí (confundir los dos shapes es lo que empuja a pedir un query de más).
+
+**El dato que cambió las decisiones: el response pesa 5.84 MB** (medido, no estimado — la bitácora decía "504 campos") ⇒ 50 filas ≈ **290 MB** si se guardara crudo, así que las 4 nuevas nacen **APAGADAS** (encenderlas por default habría convertido un deploy de config en 50 consultas de 5.8 MB para todos) y `extractPnRow` destila **una vez** a ~2 KB. `partsPerRack` ausente se muestra **`?`, nunca 1** — ese supuesto silencioso es el que en `wo-schedule-button` vuelve 141 min en ~112 días. `fmtFactor` a 10 significativos porque un factor es dato maestro (`0.1297911062` no puede volverse `0.129791`). Línea anclada por **ID primero** (config `dimensionIds.linea`) con fallback por nombre **ES+EN** que solo AMPLÍA. `moveToFront` copiado de `wo-listing-columns`, verificado sobre la tabla real: 5 celdas en los índices 0-4 del thead y de las **50 filas**, 0 desalineadas, idempotente y recupera del "flotado" de React. Core **30/30** (13 nuevos sobre fixture REAL).
+
+**v0.3.1 (config 1.11.6, bundle 0.6.8) — ANGOSTAR lo que 0.3.0 ensanchó**, 5 correcciones del operador con un hilo común: **el ancho es el recurso escaso** y 0.3.0 agregó 4 columnas a una tabla que ya tenía 20. (1) **Fuera la columna de Línea** —*«ya vi que se repite»*—; `extractLinea` se queda en el core y `dropRetiredKeys()` borra la key huérfana (un flag de una columna que ya no existe seguiría contando en `anyOn()` y dispararía consultas sin pintar nada). (2) **Descripción + metal base DENTRO de la celda nativa del nombre, no como columna** (idea del operador, la que más ancho ahorra: usa una celda que ya existe) → `51004727AA ⏎ CONECTOR · Cobre`. Verificado en vivo ANTES de escribirlo, porque enriquecer una celda **de React** no es lo mismo que agregar una propia; **`syncNameInfo` es idempotente por contrato** (`data-sa-txt`): sin eso cada sync mutaría la celda, el observer dispararía otro sync y entra en BUCLE —riesgo mayor que en las columnas propias porque el subárbol lo comparte React—. `descriptionMarkdown` admite markdown ⇒ se limpia (si alguien escribe `**CONECTOR**` no se pintan los asteriscos). (3) **Specs acotada** 340→230 px: la causa real del desborde eran los chips en `white-space:nowrap`, que FORZABAN el ancho. (4) **Racks compactos** `T102-RA02 (18 pz)`. (5) **Unidades**: el `/pz` al ENCABEZADO (se repetía 5 veces por celda) y **3 decimales, miles con coma**, alineados a la derecha con cifras tabulares.
+
+**Guarda contra el falso cero**: redondear a 3 vuelve un factor chico `0.000`, que se lee como «esta unidad no aplica» → `fmtQty3` da **`<0.001`** (perder precisión se vale; mentir sobre la existencia del dato no) y el exacto queda en el `title`. Medido en la tabla real: las 3 columnas propias suman **340 px**, lo que antes ocupaba specs sola. Core **38/38**.
+
+**v0.3.2 (config 1.11.7, bundle 0.6.9) — 4 detalles de lectura + un bug propio**: (a) el toggle de **Specs al FINAL de la barra** —es el único que arrastra el contador y el medidor de memoria, y al inicio empujaba solo al último toggle a un 2º renglón—, con `TOGGLE_ORDER` (barra) ya independiente de `COLS` (columnas) y el popup apuntando a `specs` explícitamente; (b) **racks en DOS renglones por diseño** (ya ocupaban dos, pero el wrap partía por donde caía: `T102-RA02 (18` / `pz)`); (c) **unidades en el orden del ERP** —captura del modal *Per Part Count Unit Definitions*: KGM·LBR·DMK·FTK·CMK·FOT·LM·LO, o sea peso→superficie→longitud→lote— porque el alfabético mezclaba kilos con centímetros cuadrados; `KG` sin M se ordena junto a `KGM` y una unidad nueva del ERP cae al final sin descolocar a las conocidas; (d) **el nombre del NP a 14px/700** (nativo 12px/400): con tanto dato el ancla de la fila se perdía. La regla cuelga de una clase en `<body>`, NO del `className` del `<td>` —ese lo pinta React y lo reescribiría—.
+
+**BUG PROPIO destapado aquí:** `injectStyles()` comparaba `data-sa-v==='3'` pero escribía `'2'` ⇒ la condición de salida nunca se cumplía y **borraba y recreaba el `<style>` en CADA sync**; entró en 0.3.1 al subir el número en un solo lado y no rompía nada visible, por eso pasó el deploy. Core **42/42**.
+
+**Run integrado CERRADO** (el operador lo corrió en foreground: `50/50`, mem 338MB/4192MB).
+
+**Lección de método: el ciclo con RED de este applet solo se comprueba en foreground** —desde una pestaña automatizada `document.hidden` hace que Chrome congele los `fetch` y `inFlight` se queda clavado—; por automatización se verifica extracción y DOM, inyectando el row al cache y forzando un sync síncrono con dos `toggle()` seguidos.
+
+**Pendientes reales: recompilar en Xcode** (bundle 0.6.9 listo y copiado a `Resources/`) y **capturar el guardrail de memoria + paginación** con las columnas encendidas.
+
+**v0.2.1** mismo fix del toggle que wo-listing-columns) **DEPLOYADO** (autoInject en `/PartNumbers`: **toggle persistente en el header** + **columna "Specs / Params num."** que enriquece cada NP visible con sus specs (cada una **link** a `/Domains/<d>/Specs/<idInDomain>/Revisions/<rev>`) y los **parámetros cuyo VALOR trae dígitos** (v0.2.0: criterio por valLabel, no por `type` — así `Tiempo s/Corrosión "24 hrs."` BOOLEAN sale y `Adherencia "Sí o No"` no); excluye archivados.
+
+**`AllPartNumbers` NO trae specs/params → 2º query `GetPartNumber` por NP** (opt-in + memory-hardening: cache slim, mem monitor+guardrail, pool 4×/~7req/s, Datadog stop, Apollo drain). Core 15/15 golden.
+
+**v0.1.1** corrige 2 bugs del run real: (1) la columna se desalineaba al filtrar/paginar (React reposiciona el `<th>` inyectado) → fix: celda SIEMPRE última + re-posición en cada sync (validado en vivo, `aligned` 15/15); (2) specs ARCHIVADAS reaparecían por params huérfanos activos → fix: `partNumberSpecs` es la única fuente de specs activas, no se inventan buckets al vuelo.
+
+**Hallazgo v0.1.0:** el hash `GetPartNumber` rotó (`8e3fdb52…`→`5efd689d…`); actualizado y deployado)
+
+
+---
+
+## `spec-migrator`
+
+**Versión:** original + `validate-duplicate-params` 0.5.5 · **Bitácora:** [`docs/applets/spec-migrator.md`](spec-migrator.md)
+
+(bundle Ajuste Masivo)
+
+(CSV multi-cliente + memory hardening completo: mem monitor + guardrail @88% + resume + virtualización preview + host-cleanup-shared) + **`assign-pending-params` normalización de falsos pendientes (config 1.7.136, VALIDADO EN VIVO 2026-07-16): PNs marcados "pendientes" por `searchPartNumbers` pero con param ACTIVO de una REVISIÓN ANTERIOR de la spec (mismo nombre, distinto `specFieldParamId`) → `AddParams` chocaba por `specFieldId` (23P01, o HTTP 500 "mudo" bajo carga). Fix: archiva la fila activa vieja (`UpdatePartNumberSpecParam`) + repone el param del catálogo vigente, con preview + guard de equivalencia de nombre + rollback. Módulo puro `spec-migrator-normalize.js` 10/10. También: `steelhead-api` preserva errores 500 sin `message` (antes colapsaba a `undefined`)**
+
+
+---
+
+## `wo-spec-params`
+
+**Versión:** **0.6.0** · **Bitácora:** [`docs/applets/wo-spec-params.md`](wo-spec-params.md)
+
+(Reaplicar Params en OTs)
+
+(**2026-08-04 — PRIMERA CORRIDA REAL DE `migrarAInspeccion`: 2,551 casillas movidas, y 2 se PERDIERON.** El operador aplicó el modo de mover sobre 672 órdenes. El movimiento es de UBICACIÓN, no de contenido (medido: **100%** de los renglones traen `tenia == quedara`).
+
+**Validación en vivo contra el ERP —15 órdenes, 13 líneas, 9 acabados— 46 de 48 casillas correctas.** La que falló: **OT 15928**, dos criterios de calidad (`Primeras Piezas`, `Apariencia Homogénea`) **archivados `2026-08-04T17:20:58Z` y NUNCA repuestos** — 68 filas vivas de 72, sólo esas dos huecas.
+
+**El archivado corrió y el alta no**: el código protege el caso inverso (si falla el archivado no agrega), éste no.
+
+**CAUSA, con correlación exacta y única: la 15928 es la ÚNICA orden del reporte con casillas repetidas** — de 2,549 casillas, **2,547 aparecen una vez** y las 2 que aparecen **dos** son justo las huecas. Una casilla planificada dos veces se ejecuta dos veces: la 2ª pasada, con el plan viejo, **archiva lo que la 1ª acababa de crear**. El duplicado sale de **reanudar** el barrido (`mergeCheckpoint` mezcla el avance guardado con lo reprocesado); no es reparto multi-PN (la orden tiene un solo `partNumberId`).
+
+**LECCIÓN: un renglón repetido en el reporte deja de ser cosmético en cuanto el modo ESCRIBE BORRANDO** — sin el check, un duplicado sólo reintenta y choca sin consecuencia; con el check, borra. ⇒ **mientras no exista el dedup, con `migrarAInspeccion` se arranca DE CERO, no se reanuda.** **Y EL REPORTE ESCONDÍA JUSTO LO QUE HACÍA FALTA VER:** `downloadScanCsv` sólo itera `h.cambios`, así que **NO exporta `fueraDeInspeccion`** —las candidatas a `MIGRAR`, invisibles con el check apagado: los 2,551 movimientos no salían por ningún lado en el escaneo previo— **ni `plan.skipped`** (`AMBIGUO`/`SIN_CATALOGO`), pese a que el panel promete *«van en el CSV»*. Peor: **`anomalies` está MUERTA a propósito** desde que el universo EXTERNA cubre todos sus campos vivan donde vivan, pero el CSV **sí** emite su renglón ⇒ sale siempre en 0, y usarla como proxy de «¿hay algo fuera de lugar?» concluye **que no hay nada que mover**, errando por 2,551 (pasó en el análisis de esta sesión).
+
+**La medición buena ya existe y no requiere muestreo: la pantalla final imprime `X archivados · Y aplicados` — si `Y < X`, la diferencia ES el número de casillas huecas.** Reparar es barato: una hueca sale como `VACIO` al siguiente escaneo y se repone sola. · **VIVO config 1.11.51** — deployado el 2026-08-03 desde la rama `workbench` con `wb-deploy.sh`: primero el core (1.11.50) y luego el glue (1.11.51), en ese orden para no dejar un minuto con glue nuevo sobre core viejo; verificado en vivo `VERSION='0.6.0'` + md5 del core idéntico.
+
+**`wb-deploy` publica script + config, NO la doc** ⇒ la bitácora del 0.6.0 («rescate por receta maestra — la orden rota se veía sana», OT 10837) sigue en `workbench` commit `da5da96` **sin mergear a main**, y allá se lee «Sin deployar», que ya es falso.
+
+**Pendiente: mergear `workbench`.**)
+
+· 0.5.0 (**config 1.11.3, tag `v1.11.3`.** **2026-07-29 — EL BUG QUE EL OPERADOR CAZÓ MIRANDO EL PATRÓN:** la corrida de 4436 órdenes reportó **9551 cambios**, con casi todas diciendo exactamente `5 cambios · 1 forzada · 4 anomalías`; frenó porque **un hallazgo genuino no se repite idéntico 1890 veces**. Tenía razón: la cobertura se medía **por NODO en vez de por ORDEN** y los campos de la spec externa viven REPARTIDOS entre nodos que los declaran (el raíz y el de inspección declaran los mismos), así que se proponía agregar en el QA lo que ya existía en el PROCESS. Verificado en 3 órdenes: a las tres les faltaba SOLO el campo 33579; de 9551 cambios **~7660 habrían DUPLICADO parámetros**.
+
+**Lección: la fase 1 se validó sobre la OT 5769, que el operador YA había tocado a mano** —su nodo de inspección tenía params— así que escondía el reparto normal; **validar sobre un caso ya tocado oculta el comportamiento típico**.
+
+**DIAGNÓSTICO DEL NODO RAÍZ, cerrado con git + datos en vivo:** el culpable es **`bulk-upload`**, que hasta el commit `046ec5b` (regla 1.4.38, 2026-05-25) escribía `processNodeId: part.processId || pn.defaultProcessNodeId` — forzaba el proceso DEFAULT del NP (verificado: el NP 80247-572-20 tiene 4 params con NODO=241753 y su `defaultProcessNodeId` ES 241753, mismo nombre que el nodo raíz de la OT).
+
+**Regla de herencia del ERP (del operador):** al crear la OT, un param SIN nodo forzado cae en el nodo que declare su specField y si ninguno lo declara queda FUERA; con nodo forzado va a ese nodo. El fix de mayo detuvo la sangría pero no limpió lo escrito, y **el deduplicador no lo alcanzaba por dos límites**: `if (bucket.params.length < 2) continue` (solo miraba DUPLICADOS, y estos casos tienen UNA fila) y su modo masivo **solo archivaba** (su propio comentario lo admitía: *"no podemos convertir un row con processNode en NULL"*).
+
+**Ambos levantados en 0.5.0** + `planForcedNodeRelease` (núcleo puro, 7 tests, con estado `ambiguous` que NO toca nada si los valores difieren) y el apply que **repone con `processNodeId:null` DESPUÉS de archivar**. Modo **`migrarAInspeccion`** para las OTs existentes (apagado por omisión; sin nodo de inspección identificado no mueve nada).
+
+**ORDEN DE EJECUCIÓN: primero el frente NP, luego el de OTs** — al revés se migran órdenes que seguirán naciendo torcidas. LAS TRES FASES. Fase 1 VALIDADA END-TO-END por el operador 2026-07-28** —desalineó parámetros a propósito y corrió el corrector: *"funciona perfecto"*—; fase 2 sin corrida real.
+
+**Fase 2 (0.2.0): pegas los NP corregidos y encuentra sus órdenes.** 3 hallazgos en vivo: (a) el `searchQuery` de `AllWorkOrders` **NO busca por Número de Parte** (0 resultados para un NP con órdenes; mismo patrón que `po-listing-filters` con proveedores) → la vía es **`partNumberIdFilter:[ids]`**, lista con semántica OR, que **no venía en el scan**; (b) los nombres parecidos (`partNumberIdsFilter`/`partNumberFilter`/`partNumberIds`) **el server los IGNORA EN SILENCIO** y devuelve el dominio ENTERO —**4284 órdenes en vez de 4**—, así que un typo no falla: procesa todo (test que fija el nombre dentro del cuerpo de la función); (c) **los nombres de NP NO son únicos**: `80236-167-07` resuelve a **9 NPs activos**, solo 2 con órdenes → un nombre se expande a TODOS los homónimos, y es seguro porque **cada orden se compara contra el NP que ELLA tiene asociado**, nunca contra el que pegaste.
+
+**El dominio tiene 4284 OTs activas, no 1000+** → a 0.87 MB por (OT × NP) el escaneo total serían ~3.7 GB, lo que deja la fase 2 como camino principal y la 3 como último recurso. —desalineó parámetros a propósito y corrió el corrector: *"funciona perfecto"*—. 5ª acción de *Ajuste Masivo de Specs*: alinea los parámetros de las specs de una OT con los del NP, sobre la orden en pantalla o una lista pegada. Existe porque `bulk-upload` corrigió los NP pero **las OTs generadas antes conservan el criterio viejo** — y hay 1000+ abiertas.
+
+**El ERP CLONA el parámetro al aplicarlo** (pides el id del catálogo, queda otro encadenado por `derivedFromId`) → hay TRES ids que no se confunden: el de la fila (se archiva), el del clon (nunca se manda) y el del catálogo (se escribe y se compara).
+
+**Modelo de DOS UNIVERSOS**: la spec EXTERNA (la del cliente; señal estructural `partNumberSpecByPartNumberSpecId != null`, 1 de las 7 en la OT 5769) va COMPLETA y **solo** en el nodo de inspección de la línea, forzando los campos que ese nodo no declare; las de PROCESO siguen `recipeNodeSpecFields`. El nodo destino se identifica por **TIPO** (`QUALITY_ASSURANCE_NODE`) **no por nombre**, pero hay TRES por orden → el bueno es el único que toca la spec externa; si no es exactamente uno **no fuerza nada**. Los parámetros de la spec externa en otro nodo son **ANOMALÍAS: se reportan, NO se tocan** (5 en la OT 5769, todas en la raíz).
+
+**LECCIÓN: la comparación por LINAJE no era la principal** — de 136 aciertos medidos, **132 salieron por identidad de valor y solo 4 por linaje**, porque el catálogo de una spec evoluciona y un parámetro aplicado puede descender de una versión ya reemplazada; un prototipo apoyado solo en linaje marcó **134 falsos DIFIERE** y habría reescrito la orden entera. La cascada **solo puede absolver**: un falso OK se corrige en la siguiente corrida, un falso DIFIERE cambia el criterio de calidad de una orden en piso. Archiva ANTES de agregar, y si el archivado falla NO agrega (dejaría dos filas vivas en la casilla). Lectura de **0.87 MB por (OT × NP)** → se destila y se descarta. Núcleo puro **34 golden** contra fixture REAL + glue 16. Rutas de regeneración con anclas ESTRUCTURALES verificadas en vivo (`WORK_ORDER_PAGE_PARTS_EDIT_SPECS_BUTTON`, `WORK_PARTS_INFO_SAVE_SPECS_AND_CLOSE_BUTTON`) — esa pantalla mezcla idiomas.
+
+**Fase 3 (0.3.0): escaneo de las 4284 órdenes** (~40 min) con el checklist de memory-hardening COMPLETO desde el día uno: `slimResult` guarda ~2 KB por orden en vez del crudo (**en 4284 órdenes esa diferencia ES el OOM**; test que falla si pasa de 4 KB), `workOrder=null` tras clasificar, caché de NP, `closePanel` suelta todo; y del lado del host `stopDatadogSessionReplay` al arrancar, `createMemMonitor` con **guardrail al 88% que DETIENE y guarda** (checkpoint antes que crash) y `makePeriodicDrain(50)`.
+
+**Checkpoint en IndexedDB** por lote de 100 → reanudable (localStorage no aguanta; misma razón que `bulk-upload`). Pool de **3** clavado en código; **las escrituras van EN SERIE** (la lectura tolera pool, escribir no). Fases 2 y 3 sin corrida real)
+
+
+---
+
+## `invoice-autofill`
+
+**Versión:** 0.5.67 · **Bitácora:** [`docs/applets/invoice-autofill.md`](invoice-autofill.md)
+
+(**VIVO config 1.11.62, tag `v1.11.62`, bundle iPad 0.6.28. 2026-08-03 — «no detecta el cliente»: NO era una rotura, era una CARRERA.** Reporte de piso horas después de validar el 0.5.66.
+
+**Se descartó primero el sospechoso obvio con evidencia**: el diff de ese mismo día **no tocó** `extractCustomerFromDOM` ni el gate.
+
+**Medido en vivo** (`/Invoices` → Packing Slips → PS #001559 → CREAR FACTURA) el encabezado **SÍ** traía `Creating Invoice for SCHNEIDER ELECTRIC MEXICO` y el panel arrancó ⇒ **el fallo no se reprodujo** y el operador lo reclasificó como intermitencia — lo que cambia la pregunta de «¿qué se rompió?» a «¿por dónde falla A VECES?».
+
+**La ventana está en la LECTURA del encabezado:** se concatenaban sólo los text nodes **directos** del `h*` con `break` al primer elemento que no fuera `span/em/strong/b`; si React aún no había pintado el nombre como texto plano —o lo metía en un `<a>`/`<div>`, que es lo que hacen los botones anexos— quedaba `txt="Creating Invoice for"` **sin nombre**, el regex no matcheaba, y como `txt` **no estaba vacío** el fallback a `textContent` (que existía, tras un `if (!txt)`) **nunca corría**. De ahí el síntoma: panel clavado en «Esperando selección de cliente…» que **se arregla solo al siguiente re-render**.
+
+**Fix: el anclaje no se cambia, se AMPLÍA** — núcleo puro `parseCustomerFromHeadingText` y el mismo parseo contra **las dos lecturas**. Dos hallazgos al escribirlo: el regex era `(.+?)$` **sin flag `s`**, así que un `\n` en el `textContent` lo tumbaba (ahora corta en fin de línea), y leer el encabezado completo deja el `+` del botón pegado al nombre (`…MEXICO+`) ⇒ se limpian adornos finales, **pero el punto NO** (se llevaría `ACME S.A. DE C.V.`).
+
+**Guarda:** encabezado sin nombre ⇒ **`null`**, nunca cadena vacía — un valor truthy dispararía un autofill con basura, peor que no detectar.
+
+**12 golden**, suite 94/0.
+
+**Lo que NO se verificó, y por qué:** el fixture del caso del bug es **reconstruido, no medido** — al ir por el `outerHTML` real, `/Invoices` empezó a responder **«¡PERMISOS INSUFICIENTES! … READ_INVOICING»**; anotado dentro del propio test.
+
+**Ese error es un FALSO NEGATIVO CONOCIDO del ERP** (el operador: *«pasa en ocasiones, como que carga primero algo que no debería… sólo recargamos y ya se corrige»*) y es **la misma familia que este bug**: SH evalúa el permiso antes de tener el contexto completo, nosotros leíamos el encabezado antes de que React lo pintara — en ambos el segundo render acierta y en ambos el síntoma se reporta como *«a veces no jala»*. Corolarios: **no diagnosticar como rotura** un applet que sólo se apaga en esa pantalla degradada (no hay de dónde leer), y **una pantalla de permisos NO refuta nada** al medir en vivo. Sin reportar a SH. Tampoco hubo pasada end-to-end con el código publicado.
+
+**Pendiente: recompilar en Xcode.**
+
+· 0.5.66 (**config 1.11.48 — ✅ VALIDADO END-TO-END EN VIVO por el operador** (*«ya jala»*): el panel vuelve a pintar «Cuenta por línea» y la cuenta queda puesta, lo que cierra el `mousedown` del react-select que la verificación por automatización no cubría.
+
+**2026-08-03 — SH RENOMBRÓ la columna y el applet dejó de ver TODAS las líneas.** Reporte del operador: *«ni intenta encontrar la cuenta de income»* — y esa distinción era el diagnóstico: **no fallaba el llenado, fallaba la EXTRACCIÓN**.
+
+**Medido en vivo** reproduciendo el editor real (dom 344 → pestaña *Packing Slips* → CREAR FACTURA), no inferido de la captura: el `thead` trae hoy **11 columnas** y la última se llama **`Income/Liability Account`** (además `Línea` y `Departamento` son nuevas: SH metió las dimensiones contables ahí). La columna se buscaba con `/^\s*income\s+account\s*$/i` — **match EXACTO** → `false` → `incomeIdx=-1` → la línea se descarta con `continue` → `lines=[]`, y como la sección *«Cuenta por línea»* sólo se pinta con `lineAccounts.length>0`, **desaparece entera**: de ahí «ni intenta» y no «lo intentó y falló».
+
+**Falla SILENCIOSA** — Cliente/Divisa/TC/CXC seguían en verde, el panel se veía sano.
+
+**Fix:** núcleo puro `isIncomeAccountHeader`/`findIncomeAccountColumn` **fuera del IIFE** (requerible desde node), anclado **por TOKENS**: en EN basta `income` (cubre `Income`, `Income Account`, `Income/Liability Account`); en ES se exige `ingreso`+(`cuenta`|`pasivo`) para no morder un *«Fecha de Ingreso»* —y el ES **no es hipotético**: ese mismo `thead` ya viene mezclado—. El nombre legado sigue matcheando: **un anclaje no se cambia, se AMPLÍA**.
+
+**Red de seguridad para el próximo rename:** si nadie matchea por texto se usa la **última columna** y **sólo si su celda trae react-select**, con `warn()` que lo delata; sin esa evidencia positiva **no adivina** (escribir la cuenta contable en la columna equivocada es peor que no escribirla) y **el texto siempre gana sobre la posición**.
+
+**No había ancla estructural que usar** —medido: los `<th>` sólo traen `class`/`scope`/`style`, **ningún `data-steelhead-component-id`**—, así que el nivel 1 de la jerarquía no estaba disponible.
+
+**Verificado contra el DOM real** con la extracción corregida: **1 línea (antes 0)**, `by='text'`, `amount=511.6` (el `Total: $511.60` del reporte) y el host del fill es el `<td>` de ingreso (no alcanza los combos de `Product`/`Tax Code`). 13 golden nuevos, suite 91/0.
+
+**Lección: un applet que ancla por texto EXACTO no se degrada, se APAGA; y si lo que se apaga es la extracción y no el llenado, el panel no muestra error — muestra menos filas.** Y **no lo tumbó el locale sino un rename EN→EN**: esta deuda estaba fichada en `bilingual-anchoring-debt.md` como **PRIORIDAD 3 «menor impacto»** porque se priorizaba por «¿SH traducirá este string?» — pero un ancla exacta muere también por **rename dentro del mismo idioma**, que le pega a **todos a la vez**, y su impacto es el de **la decisión que gobierna** (aquí: si la línea existe), no el del texto que compara.
+
+**Pendiente: rebundle iPad** (el applet está en el bundle Safari ⇒ allá sigue ciego a las líneas).
+
+**Previo 0.5.65**: AR matcher reconoce divisa "M.N."=Moneda Nacional/pesos, no solo el código ISO — fix Hubbell "sin cuenta AR para MXN")
+
+
+---
+
+## `invoice-auto-regen`
+
+**Versión:** 0.5.37 · **Bitácora:** [`docs/applets/invoice-auto-regen.md`](invoice-auto-regen.md)
+
+
+
+
+---
+
+## `sensor-status-autofill`
+
+**Versión:** 0.5.58 · **Bitácora:** [`docs/applets/sensor-status-autofill.md`](sensor-status-autofill.md)
+
+
+
+
+---
+
+## `receiver-date-override`
+
+**Versión:** 0.5.81 · **Bitácora:** [`docs/applets/receiver-date-override.md`](receiver-date-override.md)
+
+**VIVO config 1.11.53, tag `v1.11.53`. 2026-08-03 — «ya no me aparece la fecha y ubicación»: el ancla que PARECÍA estructura era un hash de emotion.** Junto con `warehouse-location-prefill`, mismo día y misma causa.
+
+**El dato que orientó el diagnóstico venía en la captura del reporte: el ⚡ PESO SÍ aparecía** ⇒ la extensión cargaba y estaba inyectando applets en esa pantalla, lo que descartó de entrada gate por URL, deploy y versión de la extensión (los tres applets tienen los mismos `urlPatterns`, verificado) y acotó la búsqueda a lo que estos dos comparten y `weight-quick-entry` no: **dónde montan**. Medido por capas en vivo: los scripts cargaban, el modal se detectaba (`data-sa-rdo-attached` puesto) y aun así el campo no se pintaba, porque **`.css-iyrxkt` → 0 ocurrencias** (y `.css-xd9ivb` → 0): SH rehízo el encabezado de grid a flex y `p.closest('.css-iyrxkt')` daba `null` → `return` silencioso. Fix: subir por **relación estructural** desde el label ES+EN y **heredar las clases del vecino vivo**, en el core compartido `receive-modal-anchor-core.js` (**31 golden**, fixtures del layout de hoy y del viejo).
+
+**Modo de falla propio y peor que el bug:** el latch `saRdoAttached` se ponía **antes** de montar ⇒ el observer veía el latch y se iba, congelando el fallo **para siempre** — de ahí «desapareció» y no «tardó un render». Ahora `injectField` devuelve booleano y el latch marca el ÉXITO, no el intento. Verificado contra el DOM productivo: monta, y la fila queda en **4 columnas de 400px** (idéntico a antes — los campos reusan los huecos que SH ya deja). Bundle iPad 0.6.20.
+
+**NO se cerró** la pasada end-to-end con el código deployado: el renderer de la pestaña automatizada se congeló ×2 (falla del arnés, no del applet)
+
+
+---
+
+## `warehouse-location-prefill`
+
+**Versión:** 0.6.3 · **Bitácora:** [`docs/applets/warehouse-location-prefill.md`](warehouse-location-prefill.md)
+
+**VIVO config 1.11.53, tag `v1.11.53`. 2026-08-03 — la MISMA causa que `receiver-date-override` el mismo día: el ancla `.css-iyrxkt` era un HASH DE EMOTION y dejó de existir** cuando SH rehizo el encabezado del modal de recepción (de `.css-xd9ivb`+grids `auto 1fr` a **`.css-bomumo` con `.css-1xauu9w` flex-column por campo**). Medido: **0 ocurrencias** de `.css-iyrxkt` y de `.css-xd9ivb`; además el `gridColumn:1/2` que el applet fijaba ya no significaba nada.
+
+**TERCER sitio roto que el reporte no mencionaba:** `findHeaderComboByLabel` iteraba esas dos clases ⇒ devolvía `null` siempre y **dejaba HABILITADOS los campos que debían estar bloqueados** (Grupo de Piezas, Contenedor), sin aviso; reescrito con el patrón que este mismo archivo ya tenía validado en piso desde 0.6.1 (localizar el texto del label y subir al ancestro **más cercano** con un control react-select — subir por cercanía, y no «el primero que sigue en orden de documento», es lo que impide cruzarse al campo vecino).
+
+**El candado quedó VIVO todo el tiempo**, lo que cambia la severidad: la nota «⛔ Falta la ubicación inicial» seguía pintándose y la capa del **payload** seguía exigiendo `locationId` ⇒ el trabajo **no se volvió imposible, se volvió MANUAL** (ubicación renglón por renglón, y en el iPad con teclado en pantalla duele el doble). Es la contracara del diseño de 0.6.0: la capa del payload es idioma- y layout-independiente, así que sobrevivió al cambio que tumbó a la capa DOM.
+
+**No había nivel 1 que usar, y se midió antes de concluirlo: 0 `data-steelhead-component-id` y 0 `data-testid` en todo el diálogo.** Fix en el core compartido `receive-modal-anchor-core.js` (**31 golden**): entrada por texto ES+EN, subida por estructura, clases **heredadas del vecino vivo**, y reuso de los **huecos** que SH ya deja en la fila (`flex nowrap`, `flex:1 1 0%` ⇒ cada columna nueva angosta a todas) — medido en el DOM real: **antes 4×400px, después 4×400px**. Bundle iPad **0.6.20**.
+
+**NO se cerró** la pasada end-to-end con el código deployado: el renderer de la pestaña automatizada se congeló ×2 (falla del arnés)
+
+
+---
+
+## `weight-quick-entry`
+
+**Versión:** 0.5.82 · **Bitácora:** [`docs/applets/weight-quick-entry.md`](weight-quick-entry.md)
+
+**VIVO config 1.11.34, validado en vivo. 2026-07-30 — «de la fila 2 en adelante el peso rápido no aparece»: el applet detectaba UNA vez y quedaba inerte** — las filas agregadas después no lo recibían y al reabrir el modal ya no montaba.
+
+**La lógica de inyección NO era la culpable y eso se midió ANTES de tocarla**: ejecutando a mano la réplica de `findQuantitySectionsInTable`+`getUnitValue` sobre la fila 2 salía **`elegible: true`** (misma tabla, 5 celdas, `colIdx=1`, unidad vacía) — nunca se le llamaba. Sin esa medición el arreglo obvio habría sido tocar `getUnitValue`, el sospechoso natural por 0.5.81, sin cambiar nada.
+
+**La hipótesis de inanición del debounce también se descartó con datos** (6 mutaciones en 5 s, huecos de ~1000 ms).
+
+**La asimetría que señaló el fix:** en ese mismo modal y ese mismo instante, el candado de `warehouse-location-prefill` **sí** contaba las 2 líneas; la diferencia no es la lógica, es que el WLP tiene **poll** y el peso rápido dependía al 100% de MutationObservers. Fix: poll de líneas por modal + poll de re-detección (acotado a `[role="dialog"]` sin marcador, porque `scanForReceiveView` barre TODO el documento y corre cada segundo); observador y timers colgados del **NODO** del modal —`cleanupModal` de uno viejo podía apagar los del vigente—; y la inyección deja de colgar del `.then()` de la consulta del cliente. `init()` aísla cada paso en try/catch: un arranque a medias ya no es silencioso
+
+
+---
+
+## `create-order-autofill`
+
+**Versión:** 0.1.3 · **Bitácora:** [`docs/applets/create-order-autofill.md`](create-order-autofill.md)
+
+**2026-07-09**: 2ª pantalla `/Domains/<id>/SalesOrders` → "New Sales Order" → modal "Create Sales Order" EN. Mismos IDs RJSF → mismo autofill; se amplió el gate (`core.matchesCreateOrderUrl` incl. SalesOrders anclado a la lista) + heading bilingüe ES/EN (`core.isCreateOrderModalHeading`). Cliente vacío al abrir → panel espera en silencio hasta la selección; sin ship-to → Consolidar omitido (no falla). Core **14/14**. Run real OK (operador 2026-07-17).
+
+**Previo v0.1.1-0.1.2** (2026-07-03): fix "sin idInDomain" para TODOS — cliente por singleValue con badge `(#N)` + `getModalRoot` no confunde el título (`isDialogRootClass`) + fallback `idInDomain` por nombre vía `CustomerSearchByName`
+
+
+---
+
+## `unit-autoconvert`
+
+**Versión:** 0.1.0 · **Bitácora:** [`docs/applets/unit-autoconvert.md`](unit-autoconvert.md)
+
+**VIVO**; el toggle aparece inyectado.
+
+**Riesgo #1 RESUELTO** 2026-07-09: el SAVE hace merge—DMK no se borra—y el usuario configuró DMK como unidad parts-per → ahora tiene campo en el modal y el applet lo **DOM-llena automático** (enrutamiento dinámico, sin cambio de código; label `"DMK Decímetro Cuadrado / Part:"` confirmado vs `findPeerInput`). Pinear id DMK ya no aplica. Deuda: anclajes NO bilingües—ver audit repo-wide
+
+
+---
+
+## `archiver`
+
+**Versión:** 1.0.0 · **Bitácora:** [`docs/applets/archiver.md`](archiver.md)
+
+(Archivador Masivo)
+
+filtro por etiquetas AND/OR + archivar/desarchivar + fecha opcional + form en remoto; fase 2 pendiente: grupo/línea/departamento/proceso
+
+
+---
+
+## `wo-mover`
+
+**Versión:** 0.2.0 · **Bitácora:** [`docs/applets/wo-mover.md`](wo-mover.md)
+
+(mover OTs entre OVs)
+
+solo reasigna encabezado vía `CreateUpdateWorkOrdersChecked`; la parte/PT queda en la OV origen y se asocia manual — la UI no expone la asociación por API
+
+
+---
+
+## `wo-completer`
+
+**Versión:** 0.1.0 · **Bitácora:** [`docs/applets/wo-completer.md`](wo-completer.md)
+
+(Completar/Descompletar OTs)
+
+config 1.7.39; **run real VALIDADO 2026-07-22**; popup `WOCompleter.open`, 3 hashes + motor puro `wo-completer-engine.js`
+
+
+---
+
+## `wo-listing-columns`
+
+**Versión:** 0.8.2 · **Bitácora:** [`docs/applets/wo-listing-columns.md`](wo-listing-columns.md) · [`wo-label-pdf-buttons.md`](wo-label-pdf-buttons.md)
+
+(Columnas + Etiquetas en OTs)
+
+**v0.8.2 2026-07-31 — EL MISMO BUG DE LA FILA RECICLADA, encontrado porque el operador PIDIÓ REVISARLO.** Reportó el defecto en `pn-specs-column` (al archivar un NP el renglón mostraba la spec del archivado) y pidió revisar si el tablero de OTs lo tenía: **lo tenía** — este applet se hizo con ese molde y arrastró el defecto, con el agravante de que aquí el reciclaje ocurre al **filtrar, ordenar o paginar**, que es trabajo diario. Causa idéntica (`if (!td) {crear}` sin revalidar de quién es la celda) y **`applyToCells` busca por `[data-sa-woid]` en 6 lugares** ⇒ el fetch de la orden ANTERIOR se pinta sobre la fila de la NUEVA.
+
+**Segundo modo de falla propio de este applet:** el atributo se ponía condicionado (`if (woIdInDomain != null)`), así que una celda nacida antes de que la fila resolviera su link quedaba **sin `data-sa-woid`** y **huérfana mostrando «—» para siempre**; la revalidación la rescata. Fix con `isStaleNode` en `wo-schedule-core` —**gemela** de la de `pn-specs-column-core`, con un **test que corre ambas sobre los mismos casos y falla si divergen**—. Core **94** tests.
+
+**VIVO config 1.11.47, tag `v1.11.47`. Pendiente: rebundle iPad.**
+
+· 0.8.1 (**fix 2026-07-27: los toggles no aparecían al cargar** —`ensureToggles()` estaba detrás de `!anyOn()` en el observer; ver regla "UI de entrada"— **VIVO** config 1.7.201. autoInject en `/Domains/<d>/WorkOrders`: **4 toggles** — 3 columnas **al INICIO** (`moveToFront`) + botones en Acciones): **🔩 Número de Parte** (cada PN = link a `/PartNumbers/<id>`, N PNs + **etiquetas como chips** vía 2º query LIGERO `GetPartNumberForPartNumberPage` `34ed9de7…`) vía `PartNumbersByWorkOrderIdInDomain` + **📅 Programación** (estación · fecha · estado) vía **1 sola** `WorkOrderSchedule` por página (índice slim, descarta raw ~4.6MB) + **📦 Lote** (nombre**(idInDomain)** link + **PS Cliente** `DatosRecibo.PackingSlip` + **fecha de recibido** del receptor) vía **1 `WorkOrder({idInDomain})` por OT** (1156 campos → extracción SLIM `extractWorkOrderBatches`) + **🏷️ Etiquetas** (2 botones por fila en Acciones: **🏷️ JobTag** y **📋 Verbose** → **generan el PDF en IFRAME OCULTO** same-origin dentro del dashboard, sin pestaña/foco/throttle → auto-descarga `WO<num>.pdf`; **retry** del iframe + fallback a pestaña `?sa_print=` que maneja `wo-schedule-button` invisible; concurrencia 4; **JobTag validado en vivo 4/5 iframe**, commits `a4bff19`+`736e22b`; **detalle en `wo-label-pdf-buttons.md`**). Molde `pn-specs-column`, MutationObserver, memory-hardening. Core compartido `wo-schedule-core` **37/37**.
+
+**`AllWorkOrders` NO rotó** (el `aaeb9dc0…` de config sigue válido server-side; el front usa `4a1ce04a…` — sin acción; este applet ni lo llama)
+
+
+---
+
+## `wo-schedule-button`
+
+**Versión:** 0.9.0 · **Bitácora:** [`docs/applets/wo-schedule-button.md`](wo-schedule-button.md)
+
+(Programación en ficha de OT)
+
+**VIVO config 1.11.0. v0.9.0 2026-07-28 — PROGRAMAR POR TRATAMIENTO ANCLA, no tina por tina** (4 correcciones del primer uso en vivo, OT 16154). La v1 del modal ofrecía TODAS las tinas de la receta: **modelo mal entendido**. Solo son programables los nodos cuyo tratamiento corre en **estación con calendario** (los «Listo para procesar/niquelar» y las **satélites**), y no se programa un paso sino **la orden completa** por ancla — una misma orden puede correr en **varias líneas**, así que hay varios anclas y se crea **una tarea por cada uno** (checkbox, no select excluyente). Marcador: **grupo de tratamiento «Planificación» (2344)**, el mismo que el auto-ruteador ya usa para las stations `-LI`; confirmado con datos (2344 = `T110 (PLA)-CU-VARIOS`/`T202`/`T206`; `TR-PRM-001 Antitarnish Manual` cae en otro).
+
+**El árbol de la receta NO trae el grupo** → `RelatedSchedulingTreatments` (query chica, hash+ruta en `schedules-detail`).
+
+**(2) El rack default seguía al PN, no a la línea**: programando en T109 ofrecía `T111-RA01` porque precargaba `pnRacks[0]`; ahora `pickRackForLine` manda por el código de línea del ancla.
+
+**(3) Contraste**: solo el `datetime-local` era oscuro, el resto salía con el blanco nativo.
+
+**(4) 🔀 antes del 📅** — ése es el orden real del trabajo (a veces hay que rutear antes de programar); abre el panel de pistas, cuya primera fila es siempre «📋 Toda la orden» y cuyas pistas arrancan en «— pendiente —» (nada se mueve solo).
+
+**v0.8.0 — FASE 2b: crear tarea donde no hay + corregir el DATO MAESTRO en el acto.** Payload de `CreateManyScheduleTasks` capturado REAL y reproducido **byte a byte**; la evidencia corrigió 4 creencias de la bitácora (`rackTypeIdLineage` es **STRING** no array, `partSetUuid` es **UUID v4 del cliente**, los tiempos son `TreatmentTime.cycleTime`/**`totalTime`** como **Interval de Postgres**, y `recipeNodeId` lo trae `SchedulablePartLocations`).
+
+**Fórmula de duración validada contra 4 tareas reales**: `total = treatment + (ceil(partCount/partsPerBatch)−1)×cycle`.
+
+**El caso que rompe el piso no falla: CALCULA** — sin `partsPerRack` se asume **1 pieza por carga** y 13 504 piezas pasan de 141 min a **~112 días**; `diagnoseSchedulingData` lo nombra, **mide el efecto** y dice dónde se corrige.
+
+**Las piezas por carga son POR LÍNEA** (dato real: PN 3015610 → 4 en `T204-FL01`, 1 en `T205-FL01`), así que al re-rutear el dato **no está mal: NO EXISTE** → `resolveRackForStation` devuelve `yaExiste` que elige entre **AGREGAR** (`CreatePartNumberPerPerRackType`) y **CORREGIR** (`UpdatePartNumberPerPerRackType`) — no son intercambiables (el alta es insert-only, unique constraint en (pn,rackType)). Guardar el dato maestro es **botón APARTE** con confirmación propia: aplica a TODAS las órdenes de ese PN en ese rack. Decisión del operador: **captura quien programa**, porque está en piso y verifica el rack físicamente.
+
+**v0.7.0 — FASE 2a: programación INTENCIONAL desde la ficha.** Cada 📅 de u: programación INTENCIONAL desde la ficha.** Cada 📅 de una tarea EXISTENTE abre un modal dark-mode que fija su fecha/hora y la marca `isIntentional` (STATIC-SCHEDULED: el planificador deja de moverla), vía `UpdateManyScheduleTasks` — sin abrir el calendario nativo, que era el paso a ahorrar; si ya está fijada, ofrece **Quitar fijado**. El 📅 de «Sin programar» **NO** es clicable: la mutación es update-POR-ID y ofrecer un click que no puede escribir es peor que no ofrecerlo (crear tarea = Fase 2b).
+
+**La escritura se VERIFICA**: el servidor responde `{mnUpdateScheduleTaskById:{clientMutationId:null}}` —ni fecha ni flag ni tarea—, así que un `await` sin excepción NO prueba nada (mismo modo de fallo que el load-before-save del auto-ruteador); se relee `WorkOrder`+`WorkOrderSchedule` **saltando todos los caches** (el índice del interceptor es la foto anterior) y `verifyScheduleTaskApplied` compara el **instante**, no la cadena (el server normaliza el ISO).
+
+**La conversión de hora va en el núcleo puro** (`isoToLocalInput`/`localInputToIso`, offset explícito): ahí un error no truena, solo programa la OT a otra hora; el glue toma el offset de la FECHA en cuestión con segunda pasada por DST. 13 tests nuevos (round-trip en 4 husos, cruce de medianoche, payload real).
+
+**Ruta de regeneración declarada pero BLOQUEADA POR DATOS**: el disparador se verificó en vivo (📅 del header = `svg[data-testid="CalendarMonthIcon"]` → modal FullCalendar → evento → botón `Update`), pero la **OT Centinela no tiene ninguna tarea programada** → el `load` devuelve `name:''` y el ciclo no corre, en vez de clicar a ciegas; para habilitarlo hay que programar la OT Centinela en el tablero.
+
+**Hallazgo lateral: la OT Centinela se llama «Sentinela»** (errata: S inglesa + terminación española) y el gate `/Centinela/i` del autopilot **pasa por accidente**, salvado por otros 3 links de la ficha que sí dicen «Centinela» con C — si esos cambian, las TRES rutas que cuelgan de esa OT se apagan fail-closed en silencio.
+
+**Previo 0.3.0: VIVO**. autoInject en `/Domains/<d>/WorkOrders/<id>`: **readout INLINE** "📅 estación · fecha · estado" en el header entre EDITAR DETALLES y ABRIR PDF (ancla estable `data-steelhead-component-id="WORK_ORDER_PAGE_HEADER_OPEN_PDF_BUTTON"`) — **sin click**, la info sale sola (en iPad la tarjeta Cliente con el 📅 nativo se colapsa). F1: `WorkOrder`→id global + `WorkOrderSchedule` (hash `7b1b1127…`) → tareas de la OT; **INTERCEPTA** la `WorkOrderSchedule` que la ficha ya dispara (evita doble fetch de 4.6MB), fetch propio de fallback.
+
+**F2:** el 📅 se vuelve clicable → modal de programación intencional (crear; terreno virgen). Core compartido `wo-schedule-core` 18/18
+
+
+---
+
+## `auto-router`
+
+**Versión:** 0.4.1 · **Bitácora:** [`docs/applets/auto-router.md`](auto-router.md)
+
+(Auto-Ruteador)
+
+(**v0.4.1 2026-08-04 — `TX00` ES UN ÁREA TAMBIÉN PARA EL RUTEADOR. VIVO config 1.11.65, tag `v1.11.65`, bundle iPad 0.6.30.** Alineado con `surtido-guard` 0.4.1 **por decisión del operador**, tras plantearle que dos applets llamaban "línea" a cosas distintas.
+
+**La pregunta que `extractLineCode` respondía mal aquí es la del paso 1, el BYPASS** —*«¿este nodo pertenece a la línea que estoy moviendo?»*—: con el corte a 3 dígitos, dos células que no comparten nada (`T300-CE03` Antitarnish vs `T300-CE05` Limpieza Especial) respondían que **sí**, así que una orden que corriera dentro de un área podía re-rutearse entre células distintas como si fueran tinas hermanas.
+
+**El catálogo de 28 stations `-LI` que ya vivía en la bitácora es lo que sostiene la regla: ninguna termina en `00`.** **Verificado que el ground-truth NO se movió** — T204→T205 no toca ningún `TX00` ⇒ el cambio es **inerte** ahí: 34 nodos ruteados idénticos, **22/22 rutas deterministas exactas**, y el test `bypass: bloques T300 conservan su tina default` en verde (`T300-CE05` ≠ `T204` igual que antes `T300` ≠ `T204`). Los 6 consumidores (`panel`, `batch`, `lanes`) comparan por igualdad de string sobre la misma función ⇒ heredan el cambio sin supuestos de longitud (verificado: 0 `slice(0,4)`).
+
+**Guarda: el guion debe venir PEGADO al código** — `T100 (LMC)-CU/BR-VARIOS` es un nombre de PROCESO y sin esa condición el «segundo segmento» habría sido `CU`, un destino inexistente.
+
+**`process-shared`/`process-canon` se alinearon DESPUÉS el mismo día** (config 1.11.66, ver §Procesos) — con el matiz de que ahí `TX00` ya era un **satélite** con la semántica contraria y hubo que ampliar `SATELLITE_REGEX`; `auto-router` no carga `process-shared`, así que aquel cambio no afecta a este motor.
+
+**Trinquete nuevo `tools/test/line-code-area-parity.test.js`**: ata las DOS implementaciones (son dos a propósito — los regex base difieren) y fija el catálogo de las 28 líneas, así que se pone rojo si alguien toca una y no la otra, o el día que aparezca una línea `T?00`. Suite 100 archivos verde. 🔴 **Sin ver en vivo el caso donde el cambio SÍ actúa** (orden que corra dentro de un área): el golden T204→T205 no lo cubre)
+
+· 0.4.0 (**v0.4.0 2026-07-28 — PARTIR DESDE EL TABLERO.** El ✂️ vivía solo en la ficha de la OT, pero **partir es una decisión de planificación**: el operador ve el tablero, decide dividir un lote, y tenía que ir a buscar la ficha. Ahora el ✂️ también se monta en el Schedule Board y toma la orden de la **fila marcada** (mismo rastreo de selección del 🔀). La traducción selección→orden es núcleo puro (`splitTargetFromSelection`, 5 tests) y **no adivina**: 1 marcada abre, 0 pide marcar, N>1 dice cuántas hay y pide dejar una — tomar "la primera" en silencio cortaría material de una orden que nadie eligió; el FAB lleva badge con el conteo porque la selección sobrevive al scroll y no siempre está a la vista.
+
+**El tablero es una FOTO y hay que decirlo**: `ctx.fromBoard` advierte ANTES (las piezas se mueven de inmediato) y DESPUÉS ofrece **`🔄 Actualizar tablero`** como botón primario — ahí es donde los grupos nuevos ya se pueden **programar** (con la UI nativa: programar por API sería `CreateManyScheduleTasks`, sin hash ni ruta de regeneración = applet nuevo, deliberadamente fuera). Mismo trato para reagrupar y para el resultado del ruteo.
+
+**Carga en dos fases**: partir solo necesita las cuentas (`WorkOrder`, ligera); el árbol `StationTreatmentByWorkOrder` —la consulta pesada— se trae solo si se pide la vista de ruteo, que importa justo en el tablero, donde el `/graphql` de la sesión ya viene cargado. Tras mover piezas, `accounts`/`routeData` se invalidan (nacieron grupos: rutear sobre las pistas viejas apuntaría a material que ya no está ahí). El popup toma la orden de la selección en vez de preguntarla con `prompt()`, y devuelve el error AL POPUP (un `alert` sobre la página se pierde: el popup se cierra al hacer clic).
+
+**Previo 0.3.4: VIVO config 1.7.231, tag `v1.7.231`. 🔴 BLOQUEADO PARA USO REAL: el dropdown de LÍNEA DESTINO solo ofrece la línea actual** —reporte del operador *«no me está dando más que la estación default, no las posibles ruteables»*—.
+
+**Causa mecánica confirmada con datos en vivo:** `destinationLines()` busca las alternativas DENTRO del mismo `treatmentId`, pero **cada línea tiene su PROPIO tratamiento con distinto id**; para la OT 15990 tanto el árbol de la receta como `SearchStationsForTreatment(121415)` devuelven **1 sola** station (`T204-LI Plata y Estaño s/Cobre Colgado (16.1)`) → las dos fuentes coinciden, así que no falla la consulta: **la pregunta está mal hecha**. El catálogo real (`AllStations`: 775 stations, **28 de nivel-línea**) sí las junta, pero **falta el CRITERIO de filtrado** — decisión de dominio pendiente del operador, y hasta tenerla no se toca (elegir mal la línea manda material a la tina equivocada). Hipótesis de «familia numérica» (16, 16.1, 16.2, 16.3, 16.4) **DESCARTADA por el operador** pese a encajar con el T204→T205 validado; «línea que cubre toda la receta» tampoco sirve (ninguna cubre los 10 tratamientos). Catálogo de las 28 y siguientes pasos en la bitácora. El ruteo por PISTAS sigue SIN validar en vivo (el panel ABRE y lee bien —verificado sobre la OT 15990—, falta aplicar un ruteo real).
+
+**v0.3.3/0.3.4 2026-07-27 — UN FAB POR TRABAJO, NO POR PANEL.** El 📦 de 0.3.2 no resolvió: *«es confuso que traiga el mismo link»* — los dos FABs abrían el MISMO panel en la MISMA vista, así que la única diferencia era el ícono. El reparto correcto no es por panel sino por TRABAJO, y el operador lo nombró: *«no puedes rutear grupos hasta que se guardan»* → hay una **secuencia**. Ahora **🔀 verde = RUTEAR** (orden completa y/o cada grupo; nada se mueve hasta «Aplicar») y **✂️ oscuro = PARTIR/REAGRUPAR piezas** (mueve material real, va ANTES: un grupo no se rutea hasta que existe). En la ficha el 🔀 abre el panel de PISTAS —superset del single-order— y se monta SIEMPRE, sin badge (se carga del número de orden de la URL, no del contexto capturado); el ✂️ abre `AutoRouterLanes.openSplit` directo en la vista de partir, autosuficiente (su pie ofrece `🔀 Rutear` y `🔗 Reagrupar`). El panel de ruteo YA NO lleva los botones de partición, solo una nota que manda al ✂️.
+
+**El board no se tocó** (ahí el 🔀 conserva su batch). Popup e iPad quedan con **4 puertas**.
+
+**v0.3.4: el título no seguía a la vista** — `renderShell` corre una vez y las vistas solo cambiaban cuerpo y pie, así que al saltar de partir a rutear el encabezado seguía diciendo «✂️ Partir…» sobre la tabla de rutas; con títulos genéricos no se notaba, pero **en cuanto cada vista nombra un trabajo distinto un título pegado MIENTE sobre lo que estás por hacer** — y aquí uno de los dos mueve material.
+
+**v0.3.2 — FAB en la ficha de OT: cablear el botón no es hacerlo alcanzable.** Con el popup ya arreglado el operador SEGUÍA abriendo el single-order creyendo que era el de grupos, y con razón: los dos botones del popup se llaman casi igual, los dos modales son dark-mode y arrancan con «🔀 …· WO/OT 15990», y el **FAB 🔀 de la ficha abre el single-order**. Ahora el ruteo por grupos tiene entrada PROPIA y visible en la página: FAB **📦** oscuro (`#1c2430`, para no confundirse con los verdes) apilado sobre el 🔀, que **no depende del contexto capturado** (el panel de pistas necesita TODOS los grupos, no el que trae el modal nativo) y baja a ocupar el lugar del 🔀 si éste no está. El board se queda igual. Gate atado al `urlPatterns` del config (`tools/test/auto-router-lanes-fab.test.js`).
+
+**Lección: cuando dos flujos vecinos se parecen tanto que el operador escoge mal, el arreglo no es más documentación — es que el camino correcto sea el más visible desde donde ya está parado.** **v0.3.1 2026-07-27 — LAS TRES PUERTAS DEL POPUP NUNCA ESTUVIERON CABLEADAS** (reporte: *"no me sale y ya tengo actualizada la extensión"* — la extensión estaba bien). El popup NO habla con la página: manda `action.message` al background, que lo resuelve por un `case` de su switch o por su handler genérico, el cual exige un campo **`fn`** en la acción del config para ejecutarla con `executeScript({world:'MAIN'})`. Las 3 acciones se declararon **sin `fn` y sin case** → `Acción desconocida`. La entrada que el applet sí tenía, `chrome.runtime.onMessage`, **no existe en el mundo MAIN** y estaba envuelta en un `try/catch` que se tragaba el error: el código se veía correcto. `open-auto-router` y `-batch` sobrevivían por el **FAB 🔀**; el ruteo por grupos **no tiene FAB** → el popup era su única puerta y **nació inalcanzable**. Fix: `open{Panel,Batch,Lanes}FromPopup` en `window.AutoRouter` + `fn` en las 3 acciones; devuelven de inmediato y difieren la apertura (el `prompt()` del número de orden bloquearía el `executeScript` y colgaría el popup). Mismo hueco en el bundle Safari (su `LAUNCH_FN` no listaba lanes) → **bundle v0.6.1**.
+
+**Trinquete `tools/test/popup-actions-wired.test.js`**: toda acción `handler:"message"` necesita case o `fn`, y cada `fn` debe resolver a un método exportado; destapó **4 huérfanas más** (`run-wo-mover` + toggles de `invoice-listing-marker`/`create-order-autofill`/`invoice-autofill`, línea base: guardan estado en `chrome.storage`, inalcanzable desde MAIN → requieren republicar la extensión).
+
+**Lección: un botón del popup es un contrato entre TRES archivos y ninguno falla solo** —el botón se pinta, el config valida, el script deploya— así que la única señal es el clic en producción; todo canal así necesita un test que lo recorra de punta a punta. Fase 1 MVP: re-rutea una WO entre líneas (T204→T205) con motor puro **bypass→role-match→reúso de proceso→momentum serpentino** validado contra ground-truth (22/22 rutas críticas exactas). Intercepta `StationTreatmentByWorkOrder` → panel preview editable → `CreateUpdateDeleteRoutes` batch. Run real OK (operador 2026-07-17). Fases 2/2b/3: batch multi-orden, captura desde el board, ruteo directo sin modal, "rutear todas", tooltip de metal base.
+
+**v0.3.0 2026-07-27 — RUTEO POR GRUPOS DE PIEZAS.** Modelo confirmado en vivo (WO 15074/15075): una ruta con `partGroupId` null es la **GLOBAL** de la orden y una con `partGroupId` X es el **OVERRIDE** de ese grupo, que **toma precedencia**; las dos **COEXISTEN** para el mismo `recipeNode` y un grupo sin override **hereda** la global (sin ella, el default de receta) → **el ruteo por grupo es ADITIVO**: mover un grupo no obliga a reescribir las globales. El applet se rediseñó sobre **PISTAS** (la global + una por grupo), cada una con su línea destino o "— pendiente —" (no se toca).
+
+**2 BUGS PROPIOS con consecuencia FÍSICA** (material a la tina equivocada), encontrados al validar el modelo contra el código: `diffRoutes` y `effectiveStationByNode` indexaban **solo por `recipeNodeId`**, así que en una orden con override la ruta del grupo **pisaba a la global en el Map** → rutear la orden podía **mover el grupo sin querer** o **borrarle sus rutas**; fix: la unidad es la pista `(recipeNodeId, partGroupId)` + herencia real, con el borrado acotado a los grupos declarados (fail-safe: sin rutas deseadas no borra nada). Núcleo puro `auto-router-groups.js` (buildLanes/planSplit/planRegroup/reuseOrCreate/parseWorkOrderAccounts, **25 golden**) + panel `auto-router-lanes.js` (dark mode, convive con el single-order ya validado) + acción popup `open-auto-router-lanes`.
+
+**Partir/reagrupar**: `CreateManyPartsTransfersChecked` (1 cuenta → N grupos, destino `toAccount.partGroupId` **plano**) y `AddPartsToWorkOrders` (N cuentas → 1 grupo, `toAccount.partGroup.id` **anidado**) — **los shapes NO son intercambiables**. `CreateNewPartGroup` **no es idempotente** → se reúsan los grupos del cliente por nombre. Fuente de piezas: `WorkOrder{idInDomain}.currentPartsTransferAccounts` (`PartNumbersByWorkOrderIdInDomain` NO sirve: sin `partCount` ni id de cuenta).
+
+**Rutas de regeneración**: 3 entidades centinela sobre la OT **Centinela 11677** (captura-y-aborta) que cierran también la deuda vieja de **`CreateUpdateDeleteRoutes`** —LA mutation del applet, sin ruta desde su fase 1—; anclas por `data-steelhead-component-id` y `#stationRouting-section` porque esa pantalla **mezcla idiomas**)
+
+
+---
+
+## `file-uploader`
+
+**Versión:** 0.5.1 · **Bitácora:** [`docs/applets/file-uploader.md`](file-uploader.md)
+
+(Cargador de Archivos)
+
+carga masiva de fotos a PNs; convención `<PN>_<VISTA>_<num>` guion simple + whitelist FRO/POS/LIZ/LDE/SUP/INF/ISO; homónimos→todos, dedup vs bucket del PN, paginación; memory hardening `host-cleanup-shared`; núcleo puro `file-uploader-core.js` 33 golden; validado en vivo con dumps reales
+
+
+---
+
+## `surtido-guard`
+
+**Versión:** 0.4.1 · **Bitácora:** [`docs/applets/surtido-guard.md`](surtido-guard.md)
+
+(Candado de Surtido Programado)
+
+(**v0.4.1 2026-08-04 — `TX00` NO ES UNA LÍNEA: ES UN ÁREA. VIVO config 1.11.64, tag `v1.11.64`, bundle iPad 0.6.29.** Reporte del operador: *«las líneas con TX00 requieren su sufijo siguiente, es decir T100-CE01 o similar; en el filtro de siguiente estación sólo se cortan a T100, T200»*.
+
+**La bitácora ya lo tenía documentado sin haberlo notado**: la tabla de la capa 6 registra la tarjeta 12831 con destino `T300` cuando su estación es `T300-CE03-002`.
+
+**Medido sobre los nombres reales de estación del dominio:** las líneas de producción son `T101…T120`, `T201…T208`, `T301`, `T302`, `T401`, `T501` y **ninguna termina en `00`**; los códigos `T000/T100/T200/T300/T400/T500` son **áreas** que agrupan destinos sin relación entre sí — `T300`: CE03 Antitarnish · CE05 Limpieza Especial · IC00 Inspección/Empaque · FI00/FI01 · ME01 · OC01; `T100`: SA01 Sandblast · IC00 · HO01…HO07 hornos · CE02/CE07 · PU00/PU01 · EX00; `T000`: SPR Surtimiento · MA00…MA02 maquilas de TT · VC01…VC03 y VU00 vehículos. Cortar a 3 dígitos metía Antitarnish y Limpieza Especial **en el mismo renglón del dropdown**.
+
+**El cambio NO se generalizó, y ése es el punto:** para una línea real el corte a 3 dígitos sigue siendo el correcto porque sus `TI00`/`EN00`/`SE00`/`IC00` son **pasos de esa misma línea**, no destinos rivales — partir `T204` en cinco llenaría el dropdown de ruido y rompería lo que hoy funciona. Regla: **si el código base termina en `00`, el destino lleva el segundo segmento**. Vive en `lineCodeFromStationText`, el **único** punto por el que pasan las tres fuentes del filtro (tarjetas del DOM, `AllStations`, `WorkOrderSchedule`) ⇒ catálogo y tarjetas no pueden divergir.
+
+**Dos guardas, ambas por degradar antes que inventar:** el guion debe venir **pegado** al código (`T100 (LMC)-CU/BR-VARIOS` es un nombre de PROCESO: sin esa condición el «segundo segmento» habría sido `CU`, un destino inexistente) y un `TX00` sin segundo segmento degrada al área.
+
+**La misma regla se propagó el MISMO DÍA a los otros dos sitios que llamaban «línea» a otra cosa**, cada uno en su deploy y con su verificación: `auto-router-engine` (1.11.65, ground-truth intacto) y `process-shared`/`process-canon` (1.11.66, con `SATELLITE_REGEX` ampliada). Core **106/106** (10 golden nuevos + 4 actualizados que codificaban el corte viejo); suite del repo **101 archivos verde** al cierre de la tanda. 🔴 **Sin pasada end-to-end en el board real** ni recompilación en Xcode)
+
+· 0.4.0 (**v0.4.0 2026-07-30 — EL FALSO POSITIVO: la fuente de «programada» respondía OTRA PREGUNTA.** Reporte del operador con capturas: *«no me deja mover lo que sí está programada»* — la tarjeta decía `Tareas Programadas: T204 (PLA) at T204-LI … 24/7/2026 5:00 p.m.` y encima el modal decía `🔒 la orden no está programada`.
+
+**Causa medida en vivo, no inferida:** `GetRelatedScheduleData` la pide el front **filtrada por las estaciones del WORKBOARD** (`{stationIds:[]}` y `{stationIds:[13785,-1]}`, ambas capturadas) y **un board de ALMACÉN no tiene tareas en sus propias estaciones** — viven en las de **LÍNEA** (`T204-LI`, `T206-LI`), que es a donde el material VA. Devolvía `validScheduleTasks:[]` y tenía que devolverlo: la query no fallaba, **respondía otra pregunta**. Con el set vacío, `scheduled.has(acct)` daba `false` para TODA cuenta en un nodo de surtido ⇒ bloqueaba todo, y el síntoma salía al abrir el modal porque ése es el que llena el puente `accountNode`.
+
+**La fuente correcta ya viajaba gratis en el board:** `GetPartsInProcessNode4` —la query que PINTA las tarjetas— trae la señal **por cuenta** en `allPartLocations[].partsTransferAccountByAccountId.associatedScheduleTaskElements` (con `stationByStationId.name` y `expectedStartTime`). Mismo board, misma carga: **20 de 127 cuentas programadas vs 0** por la vía vieja; y en la cuenta exacta del reporte (`44812076`, WO global 1913029) la tarea `87752` en `T204-LI … (16.1)` a las `2026-07-24T23:00Z` = **el mismo 24/7 5:00 p.m. de la captura**.
+
+**Tres decisiones que salieron de aquí:** (1) **la fuente legada sólo AFIRMA, nunca niega** — al venir filtrada por estación, la ausencia de una cuenta no prueba que no esté programada, sólo que no lo está *en esas* estaciones; negar con ella ERA el bug (misma forma que la cascada de `wo-spec-params`: sólo puede absolver); (2) **«no hay programadas» ≠ «no tengo el dato»** — `evaluateMove` ya tenía el fail-safe por `found`, pero el glue le pasaba **`found:true` hardcodeado**, así que nunca se activó: un fail-safe que existe y no se conecta es un fail-safe que no existe; (3) **el fail-safe se DICE** — el modo de falla nuevo es silencioso (sin datos no bloquea), así que el modal muestra una nota **ámbar** «no pude verificar la programación — verifica a mano», distinta del rojo de bloqueo (lección `price-confirm-guard` 0.1.5 aplicada al modo de falla opuesto). Además `isPartsInProcessOp` matchea la **familia** `GetPartsInProcessNode\d*` (un match exacto a `…Node4` dejaría al candado sin fuente y por tanto APAGADO en silencio si SH sube la versión) y el árbitro del naranja pasa a contar las dos fuentes — con `scheduledAccountIds.size` siempre en 0, `isDomSignalBroken` **nunca podía dispararse**.
+
+**Corrige la bitácora:** el pendiente 🔴 decía que la query «no llega al interceptor» y es **falso** — llega (HTTP 200) y se procesa (la prueba: `lineCounts` dejaba de ser `null`, cosa que sólo pasa si `lastScheduleData` se pobló); su plan («que el candado pida la query él mismo») no habría servido, la habría pedido igual de filtrada. También explica la validación del 22/7: en un board de almacén el set está vacío SIEMPRE, así que lo que se verificó fue el bloqueo de una no-programada, correcto **por la razón equivocada**.
+
+**Lección: cuando una fuente devuelve vacío consistentemente, antes de investigar por qué «no llega», mira CON QUÉ VARIABLES se pide** — un filtro en la variable convierte «no hay» en una respuesta legítima a una pregunta que no era la tuya; y para un candado, «no tengo datos» jamás puede significar «prohibido». Core **32/32** (fixture REAL del board 10922, incl. la orden del reporte), suite **1433/1433**. ✅ **VIVO config 1.11.36**, tag `v1.11.36`, bundle iPad **0.6.18** (falta recompilar en Xcode).
+
+**Verificado en vivo con el applet publicado:** `accountsWithState 129 · scheduledKnown 20 · hasEvidence true` (antes 0/0/false) y el core vivo da `block:false` para la cuenta del reporte, `block:true` para una no programada y `block:false` sin datos. Falta que el operador vea el modal real.
+
+**Previo v0.3.0 2026-07-30 — FILTRO POR LÍNEA DESTINO. ✅ VIVO config 1.11.32, tag `v1.11.32`; validado end-to-end en vivo con la 1.11.24 y **el fix del dropdown acumulativo (1.11.26) SIN validar en vivo** (la pestaña se cerró; 5 tests de regresión lo cubren, pero es lo primero a revisar)** (filtrar por `T300` deja `1 visible · 5 sin programar ocultas` y la que sobrevive es la WO 12831, justo la programada a esa línea; `scrollHeight` 441/1034→51/401 con rects contiguos y limpiar vuelve sin residuos). Bundle Safari **0.6.13** sincronizado, falta recompilar en Xcode.
+
+**🔴→✅ Destapó el falso positivo del CANDADO** (`scheduledAccountIds` VACÍO en ese board). El diagnóstico de entonces —«`GetRelatedScheduleData` no llega al interceptor»— resultó **FALSO**: sí llega, viene **filtrada por las estaciones del workboard** y por eso sale vacía en cualquier board de almacén.
+
+**RESUELTO en v0.4.0**, ver arriba.
+
+**El bug propio que encontró la validación:** con el dropdown poblado SOLO desde la API, un board donde esa query no llega lo deja vacío y el filtro es inutilizable pese a tener la lógica bien → `mergeLineCatalog` UNE la API con las líneas que las tarjetas revelan, y las que solo vio el DOM van **sin número** (dar el conteo de lo montado como si fuera el total sería mentir en el dato con el que se decide). Pedido de operaciones: filtrar las tarjetas del step por **la línea a la que VA** el material (`T204`, `T300`…).
+
+**El nativo de SH no lo resuelve** —confirmado por el operador y con evidencia DOM— porque filtra por la estación donde la pieza está **PARADA** (`Estación: Proquipa.N1.A1`, una ubicación de almacén). Son preguntas opuestas y **composables**, así que conviven dos filtros de "estación" en la misma pantalla ⇒ etiqueta **`→ Línea destino`** con flecha + dark-mode: es el anti-patrón de `auto-router` 0.3.2, pero aquí escoger mal **surte material a la línea equivocada**.
+
+**LA TRAMPA, medida en 6 de 6 tarjetas del board real:** sacar el código del `textContent` **se equivoca en todas** — inventa líneas para las 5 NO programadas (`T205`,`T300`,`T400`,`T205`,`T205`) y en la única programada da **`T400`** (el del `Proceso:`) cuando su destino real es **`T300`**. El dato correcto vive en la celda **`td[1]`** de la `<table>` que sigue a `Tareas Programadas:`; `td[0]` tampoco sirve (el tratamiento a veces no trae código: `TR-PRM-001 Antitarnish Manual`).
+
+**Cero consultas nuevas:** `GetRelatedScheduleData` —que el candado YA interceptaba— trae el `stationId` **hermano** del set de programadas; `AllStations` (hash ya en config, 1 llamada) le pone nombre. El dropdown se puebla de la **API y no del DOM** porque el board está **virtualizado con react-virtuoso** y solo monta ~8 tarjetas: armarlo del DOM nacería incompleto y no dejaría elegir una línea cuya tarjeta no se ha montado.
+
+**ESCONDER sí es seguro con virtuoso (medido, no supuesto):** `display:none` sobre `[data-item-index]` lo hace re-medir solo — `scrollHeight` 1034→524 al ocultar 2, y 441/1034→51/401 al filtrar por T300, con los rects **contiguos** y revertido sin residuo. Dos guardas fail-safe: >200 items montados → **atenúa** en vez de esconder, y si la API reporta programadas pero **ninguna** tarjeta revela línea, **se apaga solo** (ahí el árbitro pesa más que en el naranja: un color errado se ve, **trabajo escondido no**). El box va **en flujo, sin `position:fixed`** — esa barra del header tiene `overflow:visible`, a diferencia de la que forzó el fixed en `batch-name-filter`.
+
+**No persiste** y **no toca el enforcement**: esconder es puramente visual y `display:none` no desmonta, así que el candado y el árbitro del naranja quedan intactos — fijado por `surtido-guard-filter-isolation.test.js`. Core **39/39** + 4 de aislamiento + 5 de contrato de config. Pendiente conocido: los **encabezados de grupo** (`Scheduled | Total QTY: 2291`) no se filtran y pueden quedar huérfanos.
+
+**v0.2.0 2026-07-20: marcado INVERTIDO — NARANJA en las NO movibles** (antes verde en las movibles); resalta la excepción/lo bloqueado. Señal DOM del marcado ahora **bilingüe ES+EN** (`Tareas Programadas:` / `Scheduled tasks:`, string EN provisto por el usuario) + **salvaguarda anti-falsa-alarma**: si ninguna tarjeta reconoce la señal pero la API sí reporta programadas → no marca (evita todo-naranja). Decisión pura en core (`hasScheduledCardSignal`/`isDomSignalBroken`/`shouldMarkNotMovable`), 16/16 golden.
+
+**v0.1.1**: estado `enforcementEnabled` movido a `window.__saSurtidoGuardEnabled` singleton — antes vivía en el closure y `injectAppScripts` re-evaluaba el IIFE en cada acción del popup creando una instancia nueva, así que apagar el candado mutaba una instancia distinta a la que tenía el interceptor de fetch latcheado → "Desactivado" sin efecto. Test `surtido-guard-toggle.test.js`. Bloquea mover piezas NO programadas del step "Preparando Surtido en Almacén" al siguiente proceso.
+
+**Programada = la pieza tiene tarea en el programa** — desde 0.4.0 la fuente es `GetPartsInProcessNode4` → `allPartLocations[].partsTransferAccountByAccountId.associatedScheduleTaskElements` (por cuenta, la query que ya pinta las tarjetas). `GetRelatedScheduleData` → `scheduleTaskElement.associatedPartsTransferAccounts.id` queda como fuente que **sólo afirma** (viene filtrada por estación; no puede negar). Interceptor de `fetch` bloquea `CreateManyPartsTransfersChecked` tipo STEP (cubre **modal MOVER y drag silencioso**) devolviendo error GraphQL sintético + toast; agrisa botones del modal. Scope por nombre de nodo (`allRecipeNodes`).
+
+**Fail-safe** ante dato faltante. Toggle no persistente en popup, default ON. Run real del bloqueo OK (operador 2026-07-17); pendiente validar el naranja en vivo)
+
+
+---
+
+## `batch-name-filter`
+
+**Versión:** 0.3.1 · **Bitácora:** [`docs/applets/batch-name-filter.md`](batch-name-filter.md)
+
+(Filtrar Lote por Nombre)
+
+**VIVO config 1.11.14, tag `v1.11.14`; bundle iPad 0.6.11. v0.3.1 2026-07-29 — VACÍO ES LA NORMA: fuera el aviso, marcado INVERTIDO, tope 600→1600.** Corrección de MODELO del operador que reencuadra el 0.3.0: *un lote es un CONTENEDOR que Steelhead VACÍA al convertirlo a OT —su contenido pasa a la orden—, así que TODO lote con OT ya está vacío; solo queda lleno si no se pasó a OT o no completo, y en ese punto el lote funciona como REFERENCIA*. Con ese marco el aviso «⚠️ los N están agotados: al aplicar la lista saldrá vacía» estaba mal EN LOS DOS SENTIDOS: salía **casi siempre** (la mayoría de los lotes que se buscan ya pasaron a OT) y presentaba **como problema el curso esperado** → retirado del render Y del core (`shouldWarnAllDepleted` se ELIMINA, no se deja muerta). Por lo mismo se **INVIERTE el marcado** (misma lección que `surtido-guard` 0.2.0): `· agotado` marcaba LA NORMA en casi cada renglón; ahora se resalta la EXCEPCIÓN —el lote que **aún tiene material**, verde y contado como «— N aún con material»—, que además es **el único enviable**.
+
+**Y el modelo corrigió un tope que quedó bajo:** los lotes vacíos se **ACUMULAN HISTÓRICAMENTE**, así que un nombre reutilizado por años junta cientos y `MAX_TOTAL_TO_PAGE=600` cortaba búsquedas **legítimas** pidiendo «el nombre completo» cuando YA estaba completo → **1600** (8 páginas × 200 por universo ⇒ 16 requests peor caso, debajo de las ~40-45 que cuelgan la sesión). Sigue habiendo tope por otra razón: cuando el substring trae mucho más de lo paginable, el subconjunto exacto queda incompleto de forma **IMPREDECIBLE** (orden `CREATED_AT_DESC`, no por relevancia) y un parcial silencioso es peor que pedir precisión. Medido: `'T-1'` (1 009) **sí** pagina, `'T'` (12 793) no.
+
+**LECCIÓN: 0.3.0 acertó el mecanismo y erró la INTERPRETACIÓN** —leyó `remaining=0` como defecto cuando es el ciclo de vida normal—; traer ambos universos seguía siendo correcto, lo que sobraba era el juicio de valor encima del dato.
+
+**El tope de 10 no existe desde 0.2.0** (era de `FilterSearch`, que además no pagina): confirmado en vivo, los **20** «T-125» salen completos vs los 10 del nativo. Core **43/43**.
+
+**VALIDADO EN VIVO por el operador** (*«ya parece jalar el filtro»*, config 1.11.14). Pendiente: recompilar en Xcode para el iPad.
+
+**Previo 0.3.0:** v0.3.0 2026-07-29 — `hideCompleted` NO ESCONDE: SELECCIONA UNIVERSO, y los dos son DISJUNTOS.** Reporte del operador: *«mi filtro de lote de Packing Slips está sin funcionar, simplemente no hace nada cuando le doy enter»*.
+
+**No era ninguno de los sospechosos** — descartados con evidencia en orden: el hash (validación del día, **0 stale** de 249), el deploy (main=gh-pages=vivo, invariante byte-a-byte ✓), el gate por URL (los 3 scripts cargan, `isShippingUrl`=true), el montaje del box (aparece junto a KGM/LBR) y el glue entero (con un lote del universo correcto el preview y la URL se construyen bien).
+
+**La causa medida en vivo (dom 344):** `hideCompleted` de `InventoryBatchViewQuery` no es un "esconder los completados" —donde `false` sería el superconjunto—: es un **selector de universo**, y los universos son **disjuntos**: `true` → **585 lotes CON material** (4.3%, 200/200 con `totalRemainingMicroQuantity`≠0) · `false` → **12 926 AGOTADOS** (95.7%, 200/200 en 0) · **solape 0**, unión 13 511 = todo el inventario. Comprobado POR PARES, no por inferencia: `T-233`/`T-232`/`2907202601` dan **1 con `true` y 0 con `false`**; `T-125` da **0 con `true` y 20 con `false`**. El applet consultaba solo `true` ⇒ **no veía el 95.7% de los lotes**: buscar «T-125» devolvía 0 aunque existen 20 —y el **dropdown NATIVO sí los ofrece** (verificado con `FilterSearch`: 10 items con sus dbIds)— el panel decía «Sin lotes «T-125»» (falso) y `applyCurrent()` retornaba sin ids: **ESE es el "no hace nada"**.
+
+**Por qué apareció con el TIEMPO y no de golpe** (la parte que explica el reporte): un lote **nace** en el universo CON MATERIAL y **se muda** al de AGOTADOS al consumirse, así que el applet solo servía con lotes frescos — por eso su validación del 2026-07-22 pasó (C-21568 tenía material ese día) y una semana después el mismo flujo ya no encontraba nada.
+
+**LECCIÓN GENERAL: un applet puede pasar su validación en vivo y estar roto por diseño si el dato de prueba era el caso favorable** — y la premisa que justificaba el flag («en Packing Slips los completados no se pueden filtrar») nunca se verificó contra el ERP: se supuso la semántica **por el NOMBRE del parámetro**, y era falsa por los dos lados (ni `false` incluye además, ni los agotados son infiltrables). Marcada como REFUTADA en la bitácora.
+
+**Fix:** se consultan AMBOS universos y se unen (`SEARCH_UNIVERSES`); el preview **DISTINGUE en vez de esconder** (`· agotado` por renglón, desglose «N con material, M agotados», los con material primero, aviso explícito cuando todos están agotados) — verificado en vivo que aplicar los 10 chips T-125 **sí filtra** y la lista sale vacía porque ya no tienen piezas: «20 lotes, todos agotados» **explica** ese vacío, «Sin lotes» lo tapaba con una mentira; `isDepletedBatch` devuelve **null** si falta el dato (ausente ≠ agotado, mismo fail-safe que no asumir 1 pieza por carga sin `partsPerRack`); y **guardarraíl de volumen** porque duplicar el universo duplica el tráfico — mínimo de 2 caracteres (`searchQuery:'T'`=**12 793** lotes), tope `tooBroad` por `totalCount` (`'T-1'`=**1 009** → pide el nombre completo en vez de bajar 5 000), cap de páginas que **se reporta**, `alive()` que corta las páginas en vuelo, debounce 300→450ms. Core **41/41** (11 nuevos sobre fixtures REALES, incluido el test de regresión: los T-125 agotados deben devolver ids, no cero).
+
+**⚠️ Incidente de método:** validando el fix **colgué el `/graphql` de la sesión** con una ráfaga de 5 búsquedas × 2 universos sin espera — renderer muerto, `Runtime.evaluate` timeout ×3, **no se recupera al recargar la pestaña** (modo de falla de `po-listing-filters`: ~40-45 requests, sin 429, **límite por SESIÓN no por pestaña**) ⇒ al validar contra el ERP productivo, **una búsqueda a la vez**; lo que colgó fue el arnés, no el applet (≤6 requests por búsqueda). Pendiente: cerrar el ciclo end-to-end en vivo + recompilar en Xcode.
+
+**Previo 0.2.1:** Box dark-mode en el header del Panel de Envío (`/Domains/<id>/Shipping`, antes de KGM/LBR): dado un **NOMBRE de lote** selecciona de un jalón TODOS los lotes con ese nombre exacto vía el parámetro de URL `?inventoryBatchIdFilter=<dbId>,…&offset=0` (SH deriva los chips y filtra **solo de la URL** — validado).
+
+**Fuente: `InventoryBatchViewQuery`** (`searchQuery` + paginación real `first`/`offset`, `hideCompleted:true`) → devuelve el **`name` ESTRUCTURADO** (matching exacto robusto, sin la colisión de nombres numéricos del `display` concatenado de FilterSearch) y **supera el tope de 10** de FilterSearch (probado: 18 T-125 con `hideCompleted:false`; en prod `true` porque en Packing Slips/Scheduling los completados no se filtran). UX: **preview en vivo** mientras escribe (lista `#idInDomain — name`) + **Enter aplica** (modo REEMPLAZAR) + botón `✕ lote`. Panel `position:fixed` en `document.body` (el header MuiPaper tiene `overflow:hidden` que recortaba un panel absolute). Apply por **recarga** (`pushState`+`popstate` congela el panel). Core puro `selectByExactName`/`buildFilterUrl`/`isShippingUrl`, **30/30 golden**. Hash `InventoryBatchViewQuery` `e4fc4cdf…`; `FilterSearch` variante `1cdd9e39…` queda como fuente LEGADA. Anclaje del header por el toggle KGM/LBR (estable, no idioma).
+
+**Fase 3 idea**: extender a Scheduling/otros filtros de lote
+
+
+---
+
+## `schedule-batch-highlighter`
+
+**Versión:** 0.2.0 · **Bitácora:** [`docs/applets/schedule-batch-highlighter.md`](schedule-batch-highlighter.md)
+
+(Resaltar y **Agrupar** Lote en Programación)
+
+(**VIVO config 1.11.43, tag `v1.11.43`, firma KMS verificada en vivo — pero SIN CORRIDA REAL: el glue nunca se ha ejecutado contra el ERP.** **v0.2.0 2026-07-30 — el 📦 cierra el paso que quedaba a mano: agrupar las órdenes del lote en UNA tarea del programa**, como el Task Builder nativo, cuyo mecanismo quedó capturado (`RackingRecipeNodes{workOrderIds}` → `CreateManyScheduleTasks` con **1 tarea de 5 elementos**).
+
+**Fórmula de duración verificada 2× contra el payload real**: `total = treatmentTime + (Σ ceil(partCount/partsPerBatch) − 1) × cycleTime` (45+40×30=**1245** real 1245; 45+40×15=**645** real 645) — los lotes se **SUMAN entre elementos**.
+
+**Tres cosas que la evidencia corrigió:** (1) **«T-2150» no es un lote: son 21 inventory batches DISTINTOS con el mismo nombre** (el ERP crea uno por orden) ⇒ la unidad de agrupación es el **NOMBRE**, que es el mismo hecho que rompe al filtro nativo; (2) una orden con **DOS nodos programables no es ambigua** — pasa por dos tratamientos y el nativo crea **dos tareas encadenadas** (el payload real: las mismas 5 piezas en 112435 y luego 91495) ⇒ el modelo es **una tarea por lote × tratamiento** y el preview lo anuncia en vez de decidirlo; (3) **`RackingRecipeNodes` (340 KB) NO hace falta** — `treatmentId` y tiempos ya viajan en **`RelatedSchedulingInformation`**, que el board dispara solo ⇒ **cero consultas nuevas** (patrón `surtido-guard` 0.4.0), fijado por test.
+
+**Se agrupa con DATOS, no con el DOM**: el resaltado matchea texto y la tabla **virtualiza**, así que agrupar «lo que alcanzaste a scrollear» crearía una tarea **incompleta en silencio** — el peor modo de falla porque se ve exitosa; el resaltado y el `cb.click()` quedan intactos.
+
+**Fail-safe con motivo visible** (sin `partsPerRack`, `partsPerBatch` caería a 1 y 141 min se vuelven **~112 días**, medido en `wo-schedule-button` 0.8.0): bloquea por falta de tiempos · tratamiento que no corre en este tablero · sin piezas por carga · duración >7 días · material ya programado.
+
+**Solo CREA** (las filas Unscheduled son candidatos, no tareas) y **no fija hora** (`UNSCHEDULED`/`isIntentional:false`: el planificador acomoda).
+
+**Cobertura medida sobre las 369 órdenes del board:** 325 con 1 nodo programable, 21 con 2, **23 con 0**; **335/367 (91%) traen tiempos**. Core nuevo `schedule-batch-group-core.js` **28 golden** sobre fixtures REALES —incluido reproducir el payload aceptado **byte a byte**— + glue `schedule-batch-group.js` (modal dark-mode) + **6 tests de cableado** (el botón es un contrato entre config, glue y hashes, y ninguno falla solo). Hash nuevo `RelatedSchedulingInformation` **con su ruta de regeneración desde el día uno** (`schedules-detail`), así el trinquete vuelve a su línea base.
+
+**Pendiente: corrida real** (un lote chico de un solo tratamiento, verificando que el material sale de los candidatos al refrescar).
+
+**El rebundle iPad se había dejado fuera a propósito** —el iPad es el dispositivo del piso y no conviene ampliar ahí la superficie de un applet que escribe el programa antes de su primera corrida— pero **se hizo el 2026-08-03 (bundle 0.6.19) por decisión explícita del usuario**, así que el 📦 ya está al alcance del operador en el iPad **sin haberse ejercido nunca contra el ERP**: la corrida real pasa de «pendiente» a **lo primero a vigilar**.)
+
+· 0.1.4 (**VIVO config 1.7.178, tag `v1.7.178`**.
+
+**v0.1.4 2026-07-23:** fix "aparecen los DOS buscadores" — el panel flotante viejo `#sa-sbh-panel` (v0.1.0/0.1.1) quedaba HUÉRFANO en el DOM cuando el remote loader reinyecta el inline SIN recargar la SPA → coexistía con el nuevo. `cleanupLegacy()` al init remueve los ids de versiones previas (`Core.LEGACY_NODE_IDS`, testeable, invariante anti-auto-remoción) + `injectStyles()` reemplaza el `<style>` obsoleto de id compartido.
+
+**VALIDADO EN VIVO 2026-07-23** — operador: "ya quedó, ya no salen los dos".
+
+**VALIDADO END-TO-END 2026-07-22** — el operador confirmó buscador inline + resaltado + des-marcado + tooltip ⓘ). Workaround del **bug de Steelhead** (reportado) en el filtro nativo "Received Batches" del **Schedule Board** (`/Schedules/<id>/ScheduleBoard/<id>`): su dropdown solo ofrece UN id por nombre → al filtrar un lote **homónimo** esconde las tareas de los OTROS lotes con ese nombre (validado: "210726" pasó de 2 a 1 tarea). El filtro nativo es **100% client-side (0 queries, no cambia URL)** → no reutilizable, y **ocultar** filas pelea con la **virtualización** de la tabla. Por eso NO filtra: **buscador INLINE en la barra de filtros nativa** (v0.1.2; el panel flotante de v0.1.0/0.1.1 era intrusivo) anclado **tras el último filtro oficial** (SO) vía `svg[data-testid="FilterListIcon"]`→`button`→contenedor + último `div[role="button"]` (idioma-agnóstico); estilo claro con acento verde (🏷️) = enriquecimiento de la barra nativa. Tecleas el NOMBRE → **RESALTA** (verde pastel `#dbf3e7`, v0.1.2 bajó la intensidad) las filas cuyo "Received Batches" coincide (todas las homónimas) y **MARCA su checkbox** (`cb.click()`, sin tocar React internals); **ícono ⓘ** con tooltip que avisa del scroll **y recomienda ORDENAR por la columna "Received Batches"** para juntar los homónimos (v0.1.3).
+
+**Limpiar des-marca** por 2 vías: refs vivas `S.checkedByUs` + **barrido de filas visibles del lote** (las refs se reciclan por la virtualización → el des-marcado por-ref fallaba, bug del operador). `MutationObserver` re-monta el widget si React lo borra + re-aplica al scrollear. Detección de columna por **alineación X**: la tabla es **MUI CSS-grid** y el header "Received Batches" es un **`<strong>` hoja dentro de un `<td>`** (no `<th>`) → el glue matchea el nodo hoja, **sube al `<td>` ancestro** para medir la columna del grid (no el `<strong>`, que solo mide el texto) y por fila toma la celda cuyo centro X esté más cerca (tol. 60px); sin header = fail-safe.
+
+**Bug del 1er deploy (1.7.170):** el selector no incluía `strong`/`td` → "No encuentro la columna" → corregido en 0.1.1. Core puro `isScheduleBoardUrl`/`rowMatchesBatchName`/`extractBatchNames`/`countMatches`, **14/14 golden**. 100% DOM (no usa `steelhead-api.js`), `autoInject:true`.
+
+
+---
+
+## `po-listing-filters`
+
+**Versión:** 0.4.0 · **Bitácora:** [`docs/applets/po-listing-filters.md`](po-listing-filters.md)
+
+(Buscador global de OC + Empresa)
+
+**VIVO config 1.7.213**, tags `v1.7.203`…`v1.7.213`, **VALIDADO end-to-end por el operador 2026-07-27** «ya quedó». autoInject en `/Domains/<d>/Purchasing/PurchaseOrders`: **2 widgets**.
+
+**🔎 Buscador global** (en el HEADER junto al toggle, **dark-mode pleno** — antes iba pegado al buscador nativo de la tabla y el operador lo confundía con el universal): busca a la vez en las **5 vistas** + proveedores + facturas, etiqueta cada hallazgo **OC / PROV / FACT** y dice **en qué vista vive**; renglones = **`<a href>` reales** (no listeners: sobreviven al re-render, soportan ⌘+clic) + **flechita ↗** que abre la FICHA en pestaña aparte + **teclado ↑↓/Enter/Esc**.
+
+**Dolor raíz medido en vivo: el `searchQuery` nativo NO busca por proveedor** — 'ATOTECH' → **0** aunque existe su OC (solo matchea PO#).
+
+**Salto del proveedor a la PRIMERA sección con resultados** (Draft → Issued **All** → Fulfilled **All**, nunca Open/Closed; `?billing=All` OMITE `billingOpen`); los 3 conteos se piden AL CLICAR (no en la búsqueda) → presupuesto de búsqueda fijo en **7 consultas** (`MAX_QUERIES_PER_SEARCH`, testeado). Una OC concreta va a SU vista exacta.
+
+**🏢 Toggle "Sólo Proquipa"** (binario): aplica las 2 direcciones de Proquipa de un jalón vía `billToLocationIdFilter` (**array con semántica OR** — verificado `[Eco]`=0, `[Proq]`=50, `[ambos]`=**50**; la limitación de elegir una es del FRONT). Direcciones **descubiertas en runtime** y agrupadas por **raíz del path anidado**.
+
+**El lado Ecoplating NO es expresable** (sus OC llevan la dirección del DOMINIO y el filtro nativo no la acepta → 79 de 129 sin match): **bug de SH con ticket abierto por el operador**; reponerlo = agregar un modo.
+
+**3 BUGS PROPIOS ENCONTRADOS VALIDANDO EN VIVO** (lecciones generalizables): (1) **anclajes** — `querySelector` toma el PRIMER match y el DOM de SH **duplica controles en variantes responsive** (el botón New PO existe 2×: `css-eabxx0` oculta / `css-165nl96` visible) y repite iconos (4× `SearchIcon`) → `pickVisibleCandidate`/`pickNearestByDepth`; (2) **host ficticio** — `new URL(rel, BASE)` + `u.toString()` PEGA la base y generaba enlaces a `x.invalid` → `serializeUrl` preserva relativo/absoluto; (3) **ids string en GraphQL** — `FilterSearch` da `identifier` como STRING y el schema es `[Int]`: **la consulta falla ENTERA (HTTP 400)** → los 3 conteos fallaban y siempre caía al fallback (vista vacía aunque el proveedor tuviera 35 OC) → `toIdList`/`coerceIdFilters`.
+
+**LECCIÓN OPERATIVA: el `/graphql` se cuelga bajo ráfaga** (~40-45 requests, **sin 429 ni error**, no se recupera al recargar) y **tumba la pantalla NATIVA** — el límite es por sesión, no por pestaña. NO subir la concurrencia. Hashes `PurchaseOrders`+`SearchBills` con ruta de auto-regeneración ya cubierta (`purchasing-list`/`bills-list`) → cero deuda.
+
+**VELOCIDAD (v0.3.0)**: primer resultado en **122ms**, total **356ms** medidos en vivo (antes 1.5-2.5s) — las 7 consultas al MISMO pool (antes los proveedores se esperaban EN SERIE), pool 2→4, **render incremental real** (`runPool(onEach)` repinta con cada respuesta), debounce 350→220ms, vista ACTUAL primero y caché de un slot.
+
+**Bug de inserción (1.7.210→212)**: `css-165nl96` es el wrapper responsive del BOTÓN, no la fila del header → la barra se dibujaba DENTRO del botón; `headerRowChild()` sube al hijo directo del MuiPaper.
+
+**v0.4.0 — las FACTURAS explican por qué aparecen**: `SearchBills.searchQuery` busca en VARIOS campos y no dice en cuál pegó → buscar «1841» devolvía 4 facturas «sin relación aparente» (reporte del operador). Investigado vs la tabla nativa: Bill#1841 pegó por su Bill#, Bill#2018 por su folio, Bill#1822 por substring del folio, y **Bill#2080 porque ES la factura DE la OC 1841** — justo la que buscaba, enterrada.
+
+**Hallazgo de shape**: el PO# de una factura vive en sus LÍNEAS (`billLinesByBillId.nodes[].purchaseOrderName`); `SearchBills` NO expone `purchaseOrderByPurchaseOrderId` (lo que el código asumía → la OC nunca se mostraba). Ahora cada factura muestra su OC + el motivo (`billMatchReason`) y las que coinciden por OC van PRIMERO. Core **80/80**, suite 962/962
+
+
+---
+
+## `price-confirm-guard`
+
+**Versión:** 0.1.5 · **Bitácora:** [`docs/applets/price-confirm-guard.md`](price-confirm-guard.md)
+
+(Candado de Confirmación de Precio)
+
+(**v0.1.5 2026-07-27 — el gate se volvió ESTRUCTURAL, no bilingüe.** Verificado en vivo: el sub-modal de precio se llama **«Precio del número de parte»** con la UI en español ⇒ `MODAL_TITLE_RE` (`/Part Number Price/i`) **nunca matcheaba** y el candado se sostenía ENTERO del ancla de schema `root_DatosPrecio*` agregada el 2026-07-16 (`dc0717b`) — antes de esa fecha **no se disparaba ahí**. Un anclaje por texto en un candado no falla ruidosamente: **se apaga en silencio** y el precio se guarda sin reconfirmar. Fix: decisión pura `PriceConfirmCore.isPriceModal({hasPriceSchema,title})` con **estructura primero** (RJSF `root_DatosPrecio*`, idioma-indep) y el título ES+EN solo como **red de seguridad** que AMPLÍA el gate, nunca lo reduce; el glue cae a la señal estructural si el core no cargó. También `isSaveErrorAlert` reconoce el string REAL en español **«Error al guardar el precio»** (capturado en producción, no traducido): ahí SÍ va bilingüe porque un `window.alert` **no tiene estructura que anclar**, y fallar el match **congela la pestaña** (el alert es bloqueante). Core 32/32.
+
+**Descartado como causa del borrado del asistente Editar NP** (bug de SH reportado a support): con el candado BLOQUEANDO los datos sobreviven; con el candado apagado se borran ⇒ lo borra el guardado del precio.
+
+**Previo v0.1.4**: **VIVO en gh-pages desde 2026-07-01, commit `9c8b411`; el usuario confirma que la doble captura funciona en producción sin problemas — 2026-07-09**. Iterado 4× sobre comportamiento real: v0.1.4 suprime el `alert` nativo que SH dispara *tras* nuestro bloqueo. En el bundle Safari/iPad desde v0.5.3 con kill-switch en popup; **rebundle v0.6.3 (2026-07-28)** para llevar el gate estructural y la supresión del alert en español al iPad. Candado core y preview multi-unidad de v0.1.3 validados en vivo (operador 2026-07-17)). Intercepta `window.fetch` sobre `SaveManyPartNumberPrices` **solo con el modal nativo "Part Number Price" abierto** (no toca la carga masiva de `bulk-upload`) → modal dark-mode que exige **reconfirmar el precio tipo password** (`pricesMatch` exacto normalizado), **muestra la divisa** y **bloquea si falta** (`customInputs.DatosPrecio.Divisa` vacío = sin divisa; fail-closed), **muestra la unidad** (`unitId` null=pieza) y calcula el **equivalente por pieza** sobre el valor reconfirmado (factor API-first `GetPartNumber`→`GetAvailableUnits`, fallback manual). Confirmar → deja pasar el fetch real; Cancelar/Esc/mismatch → `Response` sintético `{errors}`. Core puro `price-confirm-core.js`. Estado singleton `window.__saPriceGuard*` + latch idempotente (lección surtido-guard). Toggle popup default ON no persistente. `textContent` (no XSS). Fase 2: guardar factor, leer factor del DOM Panel A/B, persistir toggle)
+
+
+---
+
+## `sensor-graph-hide-all`
+
+**Versión:** 0.2.0 · **Bitácora:** [`docs/applets/sensor-graph-hide-all.md`](sensor-graph-hide-all.md)
+
+(Auto-ocultar sensores + combo aislar)
+
+(config 1.7.77).
+
+**Fase 1** (validada en vivo): al ENTRAR esconde todos.
+
+**Fase 2** (combo aislar UN sensor NUMBER en ambas vistas — inline + modo gráfica; intercepta `SensorDashboardQuery` para el tipo, ancla en `button[value="NUMBER"]`, aísla vía ojitos, sincroniza combos con `deriveComboValue`; core 20/20 golden; **VALIDADO en vivo end-to-end** — combo puebla vía replay de `SensorDashboardQuery` (el hook se perdía la carga inicial; hash estaba rotado `bde56bd6→038f4822`), aislar + Todos/Ninguno OK). Al ENTRAR a un Sensor Dashboard (`/Maintenance/SensorDashboards/<id>`) esconde TODOS los sensores de la gráfica (deja los ojitos tachados) para que el operador destache solo el que quiere ver. El ojito es **puro estado de React (0 mutaciones GraphQL)** → se resetea a "todos visibles" en cada carga; esconder es gratis/reversible. Auto-inyectado (`autoInject:true`, molde guards, **sin republicar extensión**), toggle popup vía handler genérico `fn`. Poll de entrada (no while-loop: clicar NO actualiza el DOM síncrono, React re-renderiza async) con contrato **"una vez por entrada"** — latchea y NO re-esconde lo que el operador destache/refreshee. Selectores por `aria-label` + fallback `data-testid` (VisibilityIcon/VisibilityOffIcon). Core 12/12 golden. Validación DOM en vivo parcial (14→0 en una pasada; timers congelados en tab oculta).
+
+
+---
+
+## `vale-almacen`
+
+**Versión:** 0.1.0 · **Bitácora:** [`docs/applets/vale-almacen.md`](vale-almacen.md)
+
+(Vale de Almacén)
+
+FAB 📦 en Producción/Mantenimiento/Sensores/Inventario → panel multi-línea que emite un evento de mantenimiento sobre nodo **Surtimiento** (raíz + 3 pasos; paso 0 = sensores `NUMBER` = artículos con cantidad vía `measurement`; también TEXT/BOOLEAN para EPP). Cada línea `artículo+cantidad+usuario` queda como **comentario estructurado parseable** `[VALE]…[/VALE]` (motor puro `vale-almacen-engine.js`, 19 tests) con núm. de empleado (`UserDialogQuery`→`customInputs.DatosLaborales.CodigoEmpleado`); "Asignado"=quien recoge. Modelo validado vs 2 scans reales. Hashes: `GetMaintenanceEvent`/`UpdateMaintenanceNodeEvent`/`UserDialogQuery`.
+
+**Deployado a gh-pages (config 1.7.37) + incluido en bundle Safari/iPad v0.3.0 (FAB).** Run real OK (operador 2026-07-17)
+
+
+---
+
+## `process-canon`
+
+**Versión:** varios · **Bitácora:** [`docs/processes-architecture.md`](../processes-architecture.md) (glosario §9)
+
+
+
+
+---
+
+## `hash-scanner`
+
+**Versión:** 0.6.24 · **Bitácora:** [`docs/applets/hash-scanner.md`](hash-scanner.md)
+
++ fix 2026-07-28 (**VIVO config 1.9.1. DEGRADAR antes que DESCARTAR.** El fix de 0.6.24 salvó las muestras de las ops nuevas pero **no alcanzó para las PESADAS**: `take()` hacía UN recorte (arrays a 8) y si aun así no cabía en `BACKUP_BYTES_PER_OP` (120 KB) tiraba la muestra **entera**, castigando justo a las más caras de recapturar.
+
+**`CreateManyScheduleTasks` llevaba desde el 2026-07-23 en 9 scans con hash y `count` pero SIN una sola variable** (su hermana `UpdateManyScheduleTasks`, 245 B, sí sobrevivía) → *«programar donde no hay tarea» estuvo bloqueado SEMANAS por una poda de backup, no por el ERP*, y el síntoma engañaba porque la entrada tenía hash y `count`: **parecía cubierta**. Fix: escalera `BACKUP_ARRAY_CAPS=[8,3,1]`, se guarda el **primer recorte que quepa** (con arrays de 1 la FORMA sigue documentando la llamada); si ni así cabe, `samplesLost:true` en vez de mudez. 6 tests + round-trip.
+
+**Lección (2ª vuelta de la misma): no basta decidir QUÉ se guarda por recuperabilidad — hay que decidir CÓMO se degrada cuando no cabe; un tope duro sin plan de degradación es un descarte silencioso disfrazado de límite.** **Previo 0.6.24 (config 1.7.211)**. El backup de recarga **tiraba justo los payloads que importan**: `slimForBackup()` guardaba a localStorage solo hash+count+screens con las muestras VACÍAS, y al recargar `start()` restauraba esas entradas huecas → una op nueva vista una sola vez quedaba con hash pero **sin variables ni respuesta**, inútil para escribir la llamada (destapado con las 8 ops del flujo "Agrupar/Serializar Piezas"). Fix: el backup distingue por `status` — las `known` siguen sin muestras (ya documentadas, son el grueso del volumen), las `new`/`changed` conservan 2 variables + 1 respuesta + 1 error, con `truncateForBackup` recortando arrays a 8 elementos (preserva la FORMA, que es lo que sirve), tope de 120 KB por op, presupuesto global de 1.5 MB y **dos vueltas** (variables de todas primero, respuestas después) para que una respuesta gigante no deje al resto sin nada; `persistBackup()` reintenta con el backup mínimo si revienta la cuota — perder muestras es malo, perder hashes es peor.
+
+**Lección: un backup dimensionado por TAMAÑO y no por RECUPERABILIDAD sacrifica justo lo irreemplazable.** 12 tests incluido el round-trip que reproduce la recarga)
+
+
+---
+
+## `audit-incomplete-pns`
+
+**Versión:** fix-2026-05-25 · **Bitácora:** [`docs/applets/audit-incomplete-pns.md`](audit-incomplete-pns.md)
+
+(DevTools, no extensión)
+
+(Fix MM) + tier scan 2026-05-26
+
+
+---
+
+## `integrity-tiers`
+
+**Versión:** 1.5.3 · **Bitácora:** [`docs/applets/integrity-tiers.md`](integrity-tiers.md)
+
+(módulo `duplicate-tiers.js` + UI en `auditor` + tier scan en DevTools tool)
+
+hotfix: slim detail + buckets parciales + render stopped
+
+
+---
+
+## **Power Tools / Low-Code (`.ts`)** — _movidos a repo aparte (2026-06-16)_
+
+**Versión:** **Ya NO viven aquí.** Repo dedicado: `SteelheadPowerTools` · **Bitácora:** Ver `CLAUDE.md`/`docs/` de **SteelheadPowerTools**
+
+(hermano de este repo; backup en `github.com/oviazcan/SteelheadPowerTools`). Incluye hooks `.ts`, lógica pura espejada + tests, `lowcode_sync.py` y todas las bitácoras `powertools-*`.
+
+
+---
+
+## `dual-source-recovery`
+
+**Versión:** 1.0.2 · **Bitácora:** [`docs/applets/dual-source-recovery.md`](dual-source-recovery.md)
+
+(tool standalone, no extensión)
+
+preservar casing Title Case + limpiar `(seleccione)` residual
+
+
+---
+
+## `wb-produccion-access`
+
+**Versión:** 1.0.0 · **Bitácora:** [`docs/applets/wb-produccion-access.md`](wb-produccion-access.md)
+
+(tool standalone DevTools, no extensión)
+
+panel inyectado: pega nombres → unión con acceso actual → `updateWorkboardLabelUsers` a labelId 9746; solo toca WB Producción, match por nombre, **run real OK (operador 2026-07-17)**
+
+
+---
+
+## `marcar-usepartcount-productos`
+
+**Versión:** 1.0.0 · **Bitácora:** [`docs/applets/marcar-usepartcount-productos.md`](marcar-usepartcount-productos.md)
+
+(tool standalone DevTools, no extensión)
+
+**✅ VALIDADO EN PRODUCCIÓN 2026-08-03, commit `08bc733` — el operador lo corrió y confirmó «ya quedó»**. Panel dark-mode que marca `usePartCountForQuantity` en **los 83 Productos** de la instancia.
+
+**Los Productos son GLOBALES, no por dominio** — su ruta es `/Products` sin prefijo `/Domains/<id>/` y la query no recibe `domainId` ⇒ se corre UNA vez, no una por dominio. `UpdateProduct` es mutation **PARCIAL** (`{id, usePartCountForQuantity}`): no reenvía nombre/grupo/precios, sin riesgo de borrar por omisión.
+
+**Verifica RELEYENDO**: la respuesta es `{clientMutationId:null}` —ni el valor ni el id— así que un `await` sin excepción NO prueba que se escribió (mismo modo de fallo que `wo-schedule-button` 0.7.0); solo cuenta como OK lo releído en `true`, y el banco de pruebas simula una escritura FANTASMA (200 que no persiste) exigiendo que se reporte como fallo.
+
+**Ritmo bajo por diseño**: lecturas pool 3, **escrituras EN SERIE**, pausa 120ms + backoff en 429 — una corrida son ~250 requests y el `/graphql` se cuelga bajo ráfaga **por SESIÓN, no por pestaña** (incidente `po-listing-filters`).
+
+**NO salta trabajo por checkpoint**: la fuente de verdad es el análisis que relee el estado real; el localStorage solo registra lo cambiado para DESHACER — saltar por «¿ya lo hice?» conservaría una mentira si alguien desmarcó a mano entre corridas (anti-patrón de `pn-specs-column` 0.3.3). Dry-run + confirmación + reversión al valor previo. Los 3 hashes van **hardcodeados, NO en `config.json`** a propósito: meterlos exigiría ruta de regeneración en el autopilot a cambio de nada, porque no viven en runtime.
+
+**13/13** en banco de pruebas que carga el archivo REAL con `/graphql` simulado
+
+
+---
+
+## `archive-inventory-batch-statuses`
+
+**Versión:** 1.0.0 · **Bitácora:** [`docs/applets/archive-inventory-batch-statuses.md`](archive-inventory-batch-statuses.md)
+
+(tool standalone DevTools, no extensión)
+
+panel: lista estatus por type con color/id + checkboxes + **detector de lotes en uso** vía `InventoryBatchViewQuery.pagedData.totalCount`.
+
+**Root cause:** `ArchiveInventoryBatchStatus` truena `"An unexpected error occurred."` solo si el estatus tiene lotes activos; **éxito = ausencia de `errors`**, NO el valor de `data` (siempre `null`). Callejones descartados: `archivedAt:"NOW"` y que `UpdateInventoryBatchStatus` no expone `archivedAt`. Run real: `#322` archivado OK
