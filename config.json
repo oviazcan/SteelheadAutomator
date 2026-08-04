@@ -1,6 +1,6 @@
 {
-  "version": "1.11.59",
-  "lastUpdated": "2026-08-03T20:26",
+  "version": "1.11.60",
+  "lastUpdated": "2026-08-03T20:41",
   "extensionVersion": "1.7.3",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -2888,7 +2888,7 @@
     "scripts/load-calculator-modal.js": "eb9c4252ce583e0a4939fedff018cdf30f057e1dc4f7bc99e917ddb2464c428a",
     "scripts/load-calculator-stations.js": "417ebe274fd3a649fcc70c02bc122afb3d57db5e2c53a9cb9bb24e0ecf43ef06",
     "scripts/load-calculator.js": "bf06e3cd6ed5063b62b5b62c9ef13ecf9546b2093d40320f450058576658b111",
-    "scripts/mui-icon-anchor-core.js": "818c189fe50a1d7eb8e5d42b9f3a3daee75541d3c2712a7091d0322d2bace01f",
+    "scripts/mui-icon-anchor-core.js": "dd232e48f6cf50ede6374d13cfbb93adc331976ff3653f92e7b9e51c8191849e",
     "scripts/ov-operations.js": "58f2fed723ba81a1f73c0bb58da934293aec5cda6cde81494682be4d9910989c",
     "scripts/paros-linea.js": "ccf14c09e6886c1eb480014de75c86c2a54fb1f10787aeb92409c4f12ed6c126",
     "scripts/pn-lifecycle-core.js": "81a8e694132873e3176eab07167324abfa77c616adac0690e6cbbfc8b39ff0c9",
