@@ -1,0 +1,231 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plantilla de Carga Masiva v13 — 5 rack types e Instrucciones de Empaque</title>
+<style>
+  :root{
+    --bg:#f7f8fa; --card:#ffffff; --ink:#1b2027; --muted:#5c6673; --line:#e2e6ec;
+    --accent:#13a36f; --accent-ink:#0b7d54; --warn:#b45309; --warn-bg:#fef3c7;
+    --danger:#b91c1c; --danger-bg:#fee2e2; --ok:#13a36f; --ok-bg:#dbf3e7;
+    --code-bg:#f2f4f7; --shadow:0 1px 3px rgba(16,24,40,.06),0 1px 2px rgba(16,24,40,.04);
+  }
+  @media (prefers-color-scheme: dark){
+    :root{
+      --bg:#151a21; --card:#1c2430; --ink:#e6e9ee; --muted:#9aa5b4; --line:#2b3542;
+      --accent:#13a36f; --accent-ink:#3ddc9a; --warn:#fbbf24; --warn-bg:#3a2f10;
+      --danger:#fca5a5; --danger-bg:#3b1a1a; --ok:#3ddc9a; --ok-bg:#123326;
+      --code-bg:#141a23; --shadow:none;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#151a21; --card:#1c2430; --ink:#e6e9ee; --muted:#9aa5b4; --line:#2b3542;
+    --accent:#13a36f; --accent-ink:#3ddc9a; --warn:#fbbf24; --warn-bg:#3a2f10;
+    --danger:#fca5a5; --danger-bg:#3b1a1a; --ok:#3ddc9a; --ok-bg:#123326;
+    --code-bg:#141a23; --shadow:none;
+  }
+  :root[data-theme="light"]{
+    --bg:#f7f8fa; --card:#ffffff; --ink:#1b2027; --muted:#5c6673; --line:#e2e6ec;
+    --accent:#13a36f; --accent-ink:#0b7d54; --warn:#b45309; --warn-bg:#fef3c7;
+    --danger:#b91c1c; --danger-bg:#fee2e2; --ok:#13a36f; --ok-bg:#dbf3e7;
+    --code-bg:#f2f4f7; --shadow:0 1px 3px rgba(16,24,40,.06),0 1px 2px rgba(16,24,40,.04);
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; padding:32px 20px 72px; background:var(--bg); color:var(--ink);
+    font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Roboto,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased;
+  }
+  .wrap{max-width:920px;margin:0 auto}
+  header.top{border-bottom:2px solid var(--accent);padding-bottom:18px;margin-bottom:28px}
+  .eyebrow{color:var(--accent-ink);font-weight:700;font-size:13px;letter-spacing:.08em;text-transform:uppercase;margin:0 0 6px}
+  h1{font-size:30px;line-height:1.25;margin:0 0 8px;letter-spacing:-.02em}
+  .sub{color:var(--muted);margin:0;font-size:15px}
+  h2{font-size:21px;margin:38px 0 12px;letter-spacing:-.01em;padding-top:6px}
+  h3{font-size:16.5px;margin:26px 0 8px}
+  p{margin:0 0 12px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:18px 20px;margin:16px 0;box-shadow:var(--shadow)}
+  .callout{border-left:4px solid var(--accent);border-radius:8px;padding:14px 16px;margin:16px 0;background:var(--card);border-top:1px solid var(--line);border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
+  .callout.warn{border-left-color:var(--warn);background:var(--warn-bg)}
+  .callout.danger{border-left-color:var(--danger);background:var(--danger-bg)}
+  .callout.ok{border-left-color:var(--ok);background:var(--ok-bg)}
+  .callout .t{font-weight:700;margin:0 0 6px;display:block}
+  code,kbd{font-family:ui-monospace,SFMono-Regular,"SF Mono",Menlo,Consolas,monospace;font-size:.9em}
+  code{background:var(--code-bg);padding:.13em .4em;border-radius:5px;border:1px solid var(--line)}
+  kbd{background:var(--code-bg);border:1px solid var(--line);border-bottom-width:2px;border-radius:5px;padding:.1em .45em}
+  pre{background:var(--code-bg);border:1px solid var(--line);border-radius:10px;padding:14px 16px;overflow-x:auto;margin:12px 0}
+  pre code{background:none;border:none;padding:0}
+  .tablewrap{overflow-x:auto;margin:14px 0;border:1px solid var(--line);border-radius:10px}
+  table{border-collapse:collapse;width:100%;font-size:14.5px;min-width:520px}
+  th,td{text-align:left;padding:9px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:var(--code-bg);font-weight:600;font-size:13px;letter-spacing:.02em}
+  tr:last-child td{border-bottom:none}
+  td.num{font-variant-numeric:tabular-nums;white-space:nowrap}
+  .new{color:var(--accent-ink);font-weight:700}
+  ul.tight{margin:8px 0;padding-left:22px}
+  ul.tight li{margin:5px 0}
+  .status{display:inline-block;font-size:12px;font-weight:700;padding:2px 9px;border-radius:999px;letter-spacing:.03em;white-space:nowrap}
+  .status.done{background:var(--ok-bg);color:var(--accent-ink);border:1px solid var(--accent)}
+  .status.todo{background:var(--warn-bg);color:var(--warn);border:1px solid var(--warn)}
+  footer{margin-top:52px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:13.5px}
+  .muted{color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="top">
+  <p class="eyebrow">SteelheadAutomator · Carga masiva</p>
+  <h1>Plantilla de Carga Masiva v13</h1>
+  <p class="sub">5 rack types por número de parte e Instrucciones de Empaque · 3 de agosto de 2026</p>
+</header>
+
+<h2>Qué trae la v13</h2>
+<p>Dos cambios, los dos <em>después</em> del bloque de racks, así que recorren todo lo posterior:</p>
+<ul class="tight">
+  <li><strong>5 rack types</strong> por número de parte, cada uno con sus piezas por carga (antes 2).</li>
+  <li><strong>Instrucciones de Empaque</strong>, una columna nueva en Datos de Referencia.</li>
+</ul>
+<p class="muted">La hoja pasa de 60 a 67 columnas visibles; el CSV que produce, de 73 a 80.</p>
+
+<div class="callout ok">
+  <span class="t">Estado: todo verificado en frío</span>
+  Tus dos plantillas (la moderna y la de compatibilidad) <strong>verifican verde</strong> contra el
+  parser real, y la v12 sigue funcionando sin cambios. La suite está en 94 archivos, 0 rojos.
+  Lo único que falta es una <strong>corrida real contra el ERP</strong>.
+</div>
+
+<h2>Lo que hay que saber de Instrucciones de Empaque</h2>
+
+<p>
+  Esta columna no se parece a las demás: <strong>no es un campo del número de parte</strong>. Es la
+  descripción del par <em>(número de parte, paso del proceso)</em> — lo que en la ficha del PN
+  aparece como <em>«Instrucciones del Número de Parte en “Preparando Embarque en Almacén”»</em>.
+</p>
+
+<div class="callout danger">
+  <span class="t">La confusión que había que evitar</span>
+  Ese mismo paso tiene <strong>otra</strong> descripción, la <strong>global del nodo</strong>, que
+  hoy trae el aviso rojo <em>«No olvidar empacar conforme a requerimientos del cliente…»</em> y que
+  <strong>comparten todos los números de parte del dominio</strong>. La carga masiva
+  <strong>no la toca</strong>: escribe sólo la del PN. De haberlas confundido, una sola corrida le
+  habría cambiado el aviso a toda la planta.
+</div>
+
+<h3>Cómo se comporta cada celda</h3>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>Celda</th><th>Qué hace</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Vacía</strong></td><td>No toca nada. El PN conserva las instrucciones que ya tenga.</td></tr>
+    <tr><td><strong><code>-</code></strong></td><td>Borra las instrucciones (se guarda texto vacío; no hay una operación de borrado aparte).</td></tr>
+    <tr><td><strong>Con texto</strong></td><td>Sustituye lo que hubiera por ese texto.</td></tr>
+  </tbody>
+</table>
+</div>
+<p>
+  Sólo un guión <em>solo</em> borra: <code>--</code>, <code>—</code> o <code>- ver anexo</code> se
+  tratan como texto normal. Y el texto admite <strong>formato</strong> (negritas, listas), porque el
+  campo del ERP guarda markdown: lo que escribas se guarda tal cual.
+</p>
+
+<div class="callout warn">
+  <span class="t">Vacío y guión no son lo mismo — y es la distinción más cara</span>
+  Dejar la celda en blanco <em>conserva</em>; poner un guión <em>borra</em>. Si se hubieran tratado
+  igual, cada carga con la columna en blanco habría borrado las instrucciones de todos los números
+  de parte de la corrida, sin avisar. Hay una prueba automática dedicada a que eso no pase.
+</div>
+
+<h3>A qué paso se escriben</h3>
+<p>
+  Al paso <strong>«Preparando Embarque en Almacén»</strong>, que es donde se empaca. El paso se
+  busca <strong>por nombre, no por número interno</strong> — tu observación sobre Monterrey era
+  correcta: los números internos cambian entre plantas, así que uno fijo funcionaría en Toluca y
+  escribiría en el lugar equivocado, o en ninguno, en Monterrey.
+</p>
+<p>
+  El nombre tiene que coincidir <strong>exacto</strong> y encontrar <strong>un solo</strong> paso.
+  No es un capricho: en la receta real conviven <strong>siete</strong> pasos que llevan la palabra
+  «Embarque» (<em>SP Preparación de Embarque en Almacén</em>, <em>Listo para Preparar Embarque…</em>,
+  <em>SP Embarque en Almacén</em>…). Si alguna vez no encontrara el paso, o encontrara varios,
+  <strong>no adivina</strong>: reporta ese PN y sigue.
+</p>
+<p class="muted">
+  El nombre del paso vive en la configuración, no en el código, así que se puede cambiar sin
+  reinstalar nada.
+</p>
+
+<h2>Mapa de columnas</h2>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>Columna</th><th>Contenido</th><th>En v12 estaba en</th></tr></thead>
+  <tbody>
+    <tr><td class="num">AI – AL</td><td>Rack 1 y 2 + sus piezas</td><td class="num">AI – AL <span class="muted">(igual)</span></td></tr>
+    <tr><td class="num new">AM – AR</td><td class="new">Rack 3, 4 y 5 + sus piezas</td><td class="muted">— nuevas —</td></tr>
+    <tr><td class="num">AS</td><td>Tipo de Geometría</td><td class="num">AM</td></tr>
+    <tr><td class="num">AT – AX</td><td>Longitud · Ancho · Alto · Diám. Ext · Diám. Int</td><td class="num">AN – AR</td></tr>
+    <tr><td class="num">AY – BG</td><td>Predictivos (Plata … Epóx. MTR)</td><td class="num">AS – BA</td></tr>
+    <tr><td class="num new">BH</td><td class="new">Instrucciones de Empaque</td><td class="muted">— nueva —</td></tr>
+    <tr><td class="num">BI – BL</td><td>Notas · QuoteIBMS · EstIBMS · Plano</td><td class="num">BB – BE</td></tr>
+    <tr><td class="num">BM – BO</td><td>Piezas por Carga · Cargas por Hora · Tiempo de Entrega</td><td class="num">BF – BH</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>Pendiente importante: la macro <code>Module5</code></h2>
+<div class="callout warn">
+  <span class="t">Sin esto, la plantilla exporta bien pero se ensucia sola</span>
+  <code>LimpiarDatos</code> y <code>LimpiarEspacios</code> recorren las columnas <strong>por
+  número</strong>, y esos números no se ajustan solos al insertar columnas. Hay que reemplazar el
+  módulo con <code>vbas/Module5_v18.bas</code>: <kbd>Alt</kbd>+<kbd>F11</kbd> →
+  <code>Module5</code> → seleccionar todo y pegar.
+</div>
+<p>Si no se hace, pasan tres cosas, y la primera es la que no se ve:</p>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>Qué queda mal</th><th>Efecto</th></tr></thead>
+  <tbody>
+    <tr><td>El recorrido llega sólo hasta la columna 60</td><td><strong>Las últimas 7 columnas nunca se limpian</strong>: los datos de la carga anterior sobreviven a <em>Limpiar Datos</em> y se vuelven a subir. La plantilla se ve limpia.</td></tr>
+    <tr><td>El marcador de Tipo de Geometría apunta al 39</td><td>Ese número ahora es <strong>Rack 3</strong>: escribiría «(seleccione o escriba)» dentro de una columna de rack.</td></tr>
+    <tr><td>Los racks 3, 4 y 5 no están en la lista</td><td>Se quedan sin el marcador «(seleccione)» que tienen los otros dos.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h2>Cómo comprobar una plantilla</h2>
+<pre><code>node tools/verify-template-layout.js remote/templates/Plantilla_CargaMasiva_v13.xlsm --expect v13</code></pre>
+<p>
+  Abre el archivo, reconstruye el CSV que produciría al exportar, le mete un valor distinto en cada
+  columna y lo pasa por el <strong>parser real</strong>, comprobando que cada valor llegue al campo
+  que le toca. Si algo quedó corrido, lo dice y muestra las posiciones.
+</p>
+<div class="callout">
+  <span class="t">Ya demostró que sirve</span>
+  Cuando agregaste la columna de Instrucciones de Empaque, el verificador la cazó sola:
+  <code>ancho del header canónico: 80 ← esperaba 79</code>, con todo lo demás en verde. Eso es
+  justo lo que evita que un corrimiento llegue a producción.
+</div>
+<div class="callout warn">
+  <span class="t">Qué NO cubre</span>
+  Comprueba el <strong>orden de las columnas</strong>, no que tengan su lista desplegable ni el
+  formato. Eso se ve a simple vista: haz clic en una celda de rack 3, 4 y 5 y confirma que aparece
+  el desplegable.
+</div>
+
+<h2>Antes de la primera carga grande</h2>
+<ul class="tight">
+  <li><strong>Estrena con un lote chico</strong>, con los 5 racks y la columna de empaque llenos. Nada de la v13 se ha ejecutado todavía contra el ERP.</li>
+  <li><strong>Ojo al volumen:</strong> 5 racks pueden multiplicar por 2.5 las escrituras de rack, y las instrucciones se escriben <em>una llamada por número de parte</em> (no se pueden agrupar). En una carga de 8,000 PNs eso es mucho tráfico, y esta herramienta ya ha topado con límites del servidor antes.</li>
+  <li>Falta publicar las plantillas en el sitio y subir la versión de la configuración.</li>
+</ul>
+
+<footer>
+  SteelheadAutomator · Ecoplating — Documento técnico de apoyo.
+  Detalle para desarrollo en <code>docs/applets/bulk-upload-v13.md</code>;
+  macro en <code>vbas/Module5_v18.bas</code>.
+</footer>
+
+</div>
+</body>
+</html>
