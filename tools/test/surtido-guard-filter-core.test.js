@@ -18,7 +18,68 @@ test('lineCodeFromStationText: ignora el prefijo "at" (literal EN en UI ES)', ()
 });
 
 test('lineCodeFromStationText: sirve para CÉLULAS, no solo líneas', () => {
-  assert.strictEqual(Core.lineCodeFromStationText('at T300-CE03-002 Célula de Antitarnish'), 'T300');
+  // Un TX00 NO es una línea (ver bloque de abajo): el destino es la CÉLULA, T300-CE03.
+  assert.strictEqual(Core.lineCodeFromStationText('at T300-CE03-002 Célula de Antitarnish'), 'T300-CE03');
+});
+
+// ── TX00: el código de 3 dígitos NO basta ─────────────────────────────────
+// Reporte del operador (2026-08-04): «las líneas con TX00 requieren su sufijo siguiente,
+// es decir T100-CE01 o similar; en el filtro sólo se cortan a T100, T200».
+//
+// POR QUÉ (medido sobre los nombres reales de estación del dominio): las líneas de producción
+// son T101…T120, T201…T208, T301, T302, T401, T501 — **ninguna termina en 00**. Los códigos
+// T000/T100/T200/T300/T400/T500 son ÁREAS que agrupan destinos INDEPENDIENTES entre sí:
+//   T300-CE03 Antitarnish · T300-CE05 Limpieza Especial · T300-IC00 Inspección y Empaque
+//   T100-SA01 Sandblast   · T100-IC00 Inspección/Empaque · T100-HO01 Horno
+//   T000-SPR Surtimiento  · T000-MA00 Maquila TT         · T000-VC01 Vehículo
+// Cortar a "T300" mete Antitarnish y Limpieza Especial en el MISMO renglón del dropdown ⇒ el
+// operador no puede distinguir a dónde va el material. Para una LÍNEA real el corte a 3 dígitos
+// sigue siendo el correcto: sus TI00/EN00/SE00 son PASOS de la misma línea, no destinos rivales.
+test('lineCodeFromStationText: TX00 lleva el segundo segmento (T300-CE03, no T300)', () => {
+  assert.strictEqual(Core.lineCodeFromStationText('at T300-CE03-002 Célula de Antitarnish'), 'T300-CE03');
+  assert.strictEqual(Core.lineCodeFromStationText('at T300-CE05-001 Célula de Limpieza Especial'), 'T300-CE05');
+});
+
+test('lineCodeFromStationText: TX00 — dos células del MISMA área no se colapsan', () => {
+  const a = Core.lineCodeFromStationText('T300-CE03-002 Célula de Antitarnish');
+  const b = Core.lineCodeFromStationText('T300-CE05-001 Célula de Limpieza Especial');
+  assert.notStrictEqual(a, b);   // el bug reportado era exactamente que a === b === 'T300'
+});
+
+test('lineCodeFromStationText: TX00 cubre las 6 áreas reales (T000/T100/T200/T300/T400/T500)', () => {
+  assert.strictEqual(Core.lineCodeFromStationText('T000-SPR-001 Surtimiento de Producción'), 'T000-SPR');
+  assert.strictEqual(Core.lineCodeFromStationText('T000-MA00-001 Maquila de Tratamiento Térmico Tetia'), 'T000-MA00');
+  assert.strictEqual(Core.lineCodeFromStationText('T100-SA01-001 Sandblast Sílico'), 'T100-SA01');
+  assert.strictEqual(Core.lineCodeFromStationText('T100-IC00-001 Inspección y Empaque'), 'T100-IC00');
+  assert.strictEqual(Core.lineCodeFromStationText('T200-CE06-001 Célula'), 'T200-CE06');
+  assert.strictEqual(Core.lineCodeFromStationText('T400-CE03-001 Célula de Antitarnish'), 'T400-CE03');
+  assert.strictEqual(Core.lineCodeFromStationText('T500-CE04-001 Célula de Ensamble de Kits'), 'T500-CE04');
+});
+
+test('lineCodeFromStationText: una LÍNEA real NO se parte por sus pasos internos', () => {
+  // El material va a la línea T204 completa; TI00/EN00/SE00 son pasos suyos, no destinos rivales.
+  assert.strictEqual(Core.lineCodeFromStationText('T204-LI Plata y Estaño s/Cobre Colgado (16.1)'), 'T204');
+  assert.strictEqual(Core.lineCodeFromStationText('T102-TI00-014 Enjuague'), 'T102');
+  assert.strictEqual(Core.lineCodeFromStationText('T101-EN00-001 Enracado'), 'T101');
+  assert.strictEqual(Core.lineCodeFromStationText('T401-CE01-005 Célula de Inspección y Empaque (Epóxico)'), 'T401');
+});
+
+test('lineCodeFromStationText: TX00 sin segundo segmento DEGRADA al área, no inventa', () => {
+  // El guion tiene que ser inmediato. Perder granularidad es tolerable; inventar un destino no.
+  assert.strictEqual(Core.lineCodeFromStationText('T100 Horneado Deshidrogenado'), 'T100');
+  assert.strictEqual(Core.lineCodeFromStationText('T300'), 'T300');
+  assert.strictEqual(Core.lineCodeFromStationText('T300- algo'), 'T300');
+});
+
+test('lineCodeFromStationText: TX00 con paréntesis (nombre de PROCESO) NO toma el segmento', () => {
+  // "T100 (LMC)-CU/BR-VARIOS (4.0)" es un PROCESO, no una estación. Sin guion inmediato al
+  // código, el segundo segmento no aplica: se degrada a T100 en vez de inventar "T100-CU".
+  assert.strictEqual(Core.lineCodeFromStationText('T100 (LMC)-CU/BR-VARIOS (4.0)'), 'T100');
+  assert.strictEqual(Core.lineCodeFromStationText('T100 (SAB)-T104 (EST)-CU/BR-HUBBELL'), 'T100');
+});
+
+test('lineCodeFromStationText: TX00 normaliza el segundo segmento a mayúsculas', () => {
+  assert.strictEqual(Core.lineCodeFromStationText('at t300-ce03-002 célula'), 'T300-CE03');
 });
 
 test('lineCodeFromStationText: sin prefijo también funciona', () => {
@@ -68,7 +129,7 @@ test('linesFromScheduledRows: estación sin código → lista vacía, no truena'
 test('linesFromScheduledRows: lee td[1], NUNCA td[0] — el tratamiento puede traer OTRO código', () => {
   // Caso real: Proceso dice T400, tratamiento sin código, estación T300. Manda la ESTACIÓN.
   const rows = [['T999 tratamiento con codigo enganoso', 'at T300-CE03-002 Célula', 'fecha']];
-  assert.deepStrictEqual(Core.linesFromScheduledRows(rows), ['T300']);
+  assert.deepStrictEqual(Core.linesFromScheduledRows(rows), ['T300-CE03']);
 });
 
 test('linesFromScheduledRows: dedup preservando orden de aparición', () => {
@@ -97,7 +158,7 @@ test('buildStationLineIndex: mapea stationId → código de línea', () => {
   const idx = Core.buildStationLineIndex(STATIONS);
   assert.strictEqual(idx[12090], 'T204');
   assert.strictEqual(idx[12091], 'T205');
-  assert.strictEqual(idx[12092], 'T300');
+  assert.strictEqual(idx[12092], 'T300-CE03');   // TX00 = área → el destino es la célula
 });
 
 test('buildStationLineIndex: una ubicación de almacén NO es una línea', () => {
@@ -183,7 +244,7 @@ test('buildLineCounts: lines viene ORDENADO alfabéticamente (dropdown estable)'
     ] } }] }
   };
   const r = Core.buildLineCounts(data, Core.buildStationLineIndex(STATIONS));
-  assert.deepStrictEqual(r.lines, ['T204', 'T300']);
+  assert.deepStrictEqual(r.lines, ['T204', 'T300-CE03']);
 });
 
 test('buildLineCounts: sin índice de estaciones → sin líneas, pero no truena', () => {

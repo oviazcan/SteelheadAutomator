@@ -2,11 +2,11 @@
   "_comment": "Filas de la tabla 'Tareas Programadas:' capturadas EN VIVO del board /Domains/344/Workboards/6234 (2026-07-29). Cada fila es [tratamiento, estación, fecha] = td[0], td[1], td[2]. La línea destino se lee de td[1]; NUNCA del textContent de la tarjeta (que trae 'Proceso: T400…' con otro código) ni de td[0] (que a veces no trae código).",
   "programadaCelula": {
     "wo": "12831",
-    "_comment": "Caso REAL: el 'Proceso:' de esta tarjeta dice T400 y su estación destino es T300.",
+    "_comment": "Caso REAL: el 'Proceso:' de esta tarjeta dice T400 y su estación destino es la célula T300-CE03. T300 es un ÁREA, no una línea: agrupa CE03 (Antitarnish) y CE05 (Limpieza Especial), que son destinos distintos → el código de destino lleva el segundo segmento.",
     "rows": [
       ["TR-PRM-001 Antitarnish Manual", "at T300-CE03-002 Célula de Antitarnish", "23/7/2026 - 11:14:20 p.m."]
     ],
-    "expectedLines": ["T300"]
+    "expectedLines": ["T300-CE03"]
   },
   "programadaLinea": {
     "wo": "15246",

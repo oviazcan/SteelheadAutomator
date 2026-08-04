@@ -111,6 +111,52 @@ Tampoco sirve `td[0]`: el tratamiento a veces no trae código (`TR-PRM-001 Antit
 El prefijo `at ` de `td[1]` es un literal **inglés en UI española** — se ignora al no anclar el
 regex al inicio, que es seguro porque el ámbito es **una sola celda**.
 
+### `TX00` no es una línea: es un ÁREA (v0.4.1, 2026-08-04)
+
+Reporte del operador: *«las líneas con TX00 requieren su sufijo siguiente, es decir `T100-CE01` o
+similar; en el filtro de siguiente estación sólo se cortan a `T100`, `T200`»*. Tenía razón, y el
+corte a 3 dígitos venía desde v0.3.0 — la tabla de arriba lo documenta sin haberlo notado: la
+tarjeta 12831 aparece con destino **`T300`** cuando su estación es `T300-CE03-002`.
+
+**Por qué el corte a 3 dígitos era correcto para unas y falso para otras** (medido sobre los
+nombres reales de estación del dominio): las líneas de producción son `T101…T120`, `T201…T208`,
+`T301`, `T302`, `T401`, `T501` — **ninguna termina en `00`**. Los códigos `T000/T100/T200/T300/
+T400/T500` son **áreas** que agrupan destinos que no tienen nada que ver entre sí:
+
+| Área | Destinos distintos que agrupa |
+|---|---|
+| `T300` | `CE03` Antitarnish · `CE05` Limpieza Especial · `CE08` · `IC00` Inspección/Empaque · `FI00`/`FI01` · `ME01` · `OC01` |
+| `T100` | `SA01` Sandblast · `IC00` Inspección/Empaque · `HO01…HO07` Hornos · `CE02`/`CE07` · `PU00`/`PU01` · `EX00` |
+| `T000` | `SPR` Surtimiento · `MA00…MA02` Maquilas de TT · `VC01…VC03` y `VU00` (vehículos) |
+| `T400` | `CE03` · `CE04` · `CE08` · `HO06` · `HP01` · `IC00` · `SA02` · `BY01` |
+| `T500` | `CE03` · `CE04` Ensamble de Kits · `BS01`/`BS04` · `FU02` · `HO04` · `MO01`/`MO02` |
+
+Cortar a `T300` mete **Antitarnish y Limpieza Especial en el mismo renglón del dropdown**: el
+operador filtra y no puede saber a cuál de las dos va el material. Para una línea real el corte a
+3 dígitos **sigue siendo el correcto** y por eso no se generalizó el cambio: sus `TI00`/`EN00`/
+`SE00`/`IC00` son **pasos de esa misma línea**, no destinos rivales — partir `T204` en
+`T204-LI`, `T204-TI00`, `T204-EN00`… llenaría el dropdown de ruido y rompería el filtro que hoy
+funciona.
+
+**La regla, en una línea:** si el código base termina en `00`, el destino incluye el **segundo
+segmento** (`T300-CE03`); si no, el código base basta (`T204`). Vive en
+`lineCodeFromStationText`, el **único** punto por el que pasan las tres fuentes del filtro
+(tarjetas del DOM, `AllStations`, `WorkOrderSchedule`), así que catálogo y tarjetas no pueden
+divergir.
+
+**Dos guardas, ambas por degradar antes que inventar:**
+- El guion debe venir **pegado** al código. `T100 (LMC)-CU/BR-VARIOS (4.0)` es un nombre de
+  **proceso**, no de estación; sin esa condición el "segundo segmento" habría sido `CU`, un
+  destino que no existe. Sin guion inmediato se degrada al área (`T100`).
+- `TX00` sin segundo segmento (`T100 Horneado Deshidrogenado`) → `T100`. Perder granularidad es
+  tolerable; inventar un destino no.
+
+**Deuda conocida, deliberada:** `auto-router-engine.js` tiene su propio `extractLineCode`, que
+sigue devolviendo `T300` para `T300-CE05-001` (fijado por su test). **No se tocó**: ese motor
+decide rutas —mueve material físicamente— y está validado 22/22 contra ground-truth; alinearlo
+es un cambio con consecuencia física que necesita su propia validación, no un efecto colateral de
+un fix de filtro. Queda anotado en Pendientes.
+
 ### El catálogo del dropdown viene de la API, no del DOM
 
 `GetRelatedScheduleData` —que el candado **ya interceptaba**— trae el `stationId` **hermano** del
@@ -448,6 +494,18 @@ convierte "no hay" en una respuesta legítima a una pregunta que no era la tuya.
 "no hay datos" nunca puede significar "prohibido".
 
 ## Pendientes
+- **Ver el dropdown de v0.4.1 en el board real.** El cambio es puro y está cubierto por 10 golden
+  nuevos, pero falta la pasada end-to-end: en un board con material hacia un área, el dropdown debe
+  ofrecer `T300-CE03` y `T300-CE05` **por separado** (antes uno solo, `T300`) y filtrar por uno no
+  debe dejar visible el otro. Ojo al **ancho del box**: los códigos crecieron de 4 a ~9 caracteres.
+- **Inconsistencia entre applets: `auto-router-engine.extractLineCode` sigue cortando a 3 dígitos**
+  (`T300-CE05-001` → `T300`, fijado por su test). Es deliberado —ese motor mueve material y está
+  validado 22/22— pero significa que hoy dos applets llaman "línea" a cosas distintas. Alinearlo
+  necesita su propia validación de dominio: ¿el auto-router debe poder rutear a `T300-CE03` como
+  destino distinto de `T300-CE05`, o para él el área sí es la unidad correcta?
+- **Idea (no hecha): mostrar el NOMBRE junto al código en el dropdown** (`T300-CE03 — Antitarnish`).
+  `AllStations` ya trae el nombre, así que no cuesta consulta; se dejó fuera porque el operador
+  nombra los destinos por código y ensanchar el box tiene su propio costo en una barra compartida.
 - **Filtro: los ENCABEZADOS DE GRUPO no se filtran (conocido, cosmético).** El board tiene items
   `[data-item-index]` que no son tarjetas sino headers del agrupador (`Scheduled | Total QTY: 2291`;
   3 de los 9 items montados). El filtro no los toca —correcto, son estructura— pero si un grupo
