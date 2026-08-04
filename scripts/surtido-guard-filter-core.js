@@ -14,15 +14,34 @@
 (function () {
   'use strict';
 
-  // Código de línea: letra + 3 dígitos (T204, T300…). SIN anclar al inicio, porque la celda
-  // empieza con el literal inglés "at " (la UI de SH mezcla idiomas). Es seguro no anclar
-  // PORQUE el ámbito es una sola celda que solo contiene el nombre de la estación.
-  const LINE_CODE_RE = /\b([A-Za-z]\d{3})\b/;
+  // Código base: letra + 3 dígitos (T204, T300…), seguido OPCIONALMENTE de `-<segmento>` pegado.
+  // SIN anclar al inicio, porque la celda empieza con el literal inglés "at " (la UI de SH mezcla
+  // idiomas). Es seguro no anclar PORQUE el ámbito es una sola celda que solo contiene el nombre
+  // de la estación.
+  const LINE_CODE_RE = /\b([A-Za-z]\d{3})\b(?:-([A-Za-z0-9]+))?/;
+
+  // Un código TXY0…0 terminado en "00" NO es una línea: es un ÁREA que agrupa destinos
+  // independientes entre sí. Medido sobre los nombres reales de estación del dominio —las líneas
+  // de producción son T101…T120, T201…T208, T301, T302, T401, T501 y NINGUNA termina en 00—:
+  //   T300-CE03 Antitarnish · T300-CE05 Limpieza Especial · T300-IC00 Inspección y Empaque
+  //   T100-SA01 Sandblast   · T100-IC00 Inspección/Empaque · T100-HO01 Horno
+  //   T000-SPR Surtimiento  · T000-MA00 Maquila TT         · T000-VC01 Vehículo
+  // Cortar a 3 dígitos mete Antitarnish y Limpieza Especial en el MISMO renglón del dropdown y el
+  // operador ya no puede saber a dónde va el material (reportado en piso 2026-08-04). Para una
+  // línea real el corte a 3 dígitos SÍ es el correcto: sus TI00/EN00/SE00/IC00 son PASOS de esa
+  // misma línea, no destinos rivales — partirla ahí llenaría el dropdown de ruido.
+  const AREA_CODE_RE = /00$/;
 
   function lineCodeFromStationText(text) {
     if (typeof text !== 'string' || text === '') return null;
     const m = text.match(LINE_CODE_RE);
-    return m ? m[1].toUpperCase() : null;
+    if (!m) return null;
+    const base = m[1].toUpperCase();
+    // El guion debe venir PEGADO al código: "T100 (LMC)-CU/BR-VARIOS" es un nombre de PROCESO, no
+    // una estación, y ahí el segmento no significa un destino. Sin él se degrada al área — perder
+    // granularidad es tolerable; inventar un destino que no existe no lo es.
+    if (!AREA_CODE_RE.test(base) || !m[2]) return base;
+    return base + '-' + m[2].toUpperCase();
   }
 
   // Filas de la tabla "Tareas Programadas:" → códigos de línea únicos, en orden de aparición.

@@ -1,6 +1,6 @@
 {
-  "version": "1.11.63",
-  "lastUpdated": "2026-08-03T21:22",
+  "version": "1.11.64",
+  "lastUpdated": "2026-08-04T09:03",
   "extensionVersion": "1.7.3",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -2932,7 +2932,7 @@
     "scripts/spec-shared.js": "9a4adf965ffac349fdc69dd05b6bc1c50bb4dcc298333c7ff245acd955d0b255",
     "scripts/steelhead-api.js": "9377271a0ee2dd11b2a17908717575951b904c0ce6184ef07819d90b93c5de32",
     "scripts/surtido-guard-core.js": "fa957a4f4fc55bf9f66a716c10644c281265f3d3f272d9e6afd459bd97f41478",
-    "scripts/surtido-guard-filter-core.js": "13c1d64d5a0dbc2201461b2e69ceddcd96761707291034022147205698700790",
+    "scripts/surtido-guard-filter-core.js": "79ea55253f2e4796e3622ab1f5bec4829305b06ff5e0c7a3f7da0833dbea4bd0",
     "scripts/surtido-guard.js": "3354c8a8027d094dc41d7f2062b1a0755906326649055939558b527cd748d0a1",
     "scripts/unit-autoconvert-core.js": "4c43e041cc6a1c249ab1f20c0a9c089bf1a38929d82a1b5f03c89814a113d633",
     "scripts/unit-autoconvert.js": "886b971f171619e74bb250a0c076b67b7aca12006fed195a4c2c9f50d827ef11",
