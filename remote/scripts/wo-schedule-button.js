@@ -20,6 +20,25 @@
 const WoScheduleButton = (() => {
   'use strict';
 
+  // ── Iconos de MUI sin `data-testid` ─────────────────────────────────────────────────
+  // SH publicó el 2026-08-03 un build que ELIMINA los `data-testid` de todos los iconos MUI
+  // (medido: 0 ocurrencias en tres pantallas distintas). Estos helpers pasan por el núcleo
+  // compartido, que resuelve testid (si SH lo repone) → FORMA del icono (medida en vivo) →
+  // aria-label bilingüe. Sin el core, se conserva el comportamiento anterior.
+  function saHasIcon(root, name) {
+    if (!root) return false;
+    const Icons = window.MuiIconAnchorCore;
+    if (Icons) return !!Icons.findIcon(root, name);
+    return !!(root.querySelector && root.querySelector('svg[data-testid="' + name + '"]'));
+  }
+  function saFindIconNode(root, name) {
+    if (!root) return null;
+    const Icons = window.MuiIconAnchorCore;
+    if (Icons) { const h = Icons.findIcon(root, name); return h ? h.node : null; }
+    return root.querySelector ? root.querySelector('svg[data-testid="' + name + '"]') : null;
+  }
+
+
   const Core = () => window.WoScheduleCore;
 
   const INLINE_ID = 'sa-wosched-inline';
@@ -932,7 +951,7 @@ const WoScheduleButton = (() => {
       if (btn) return btn;
       // vista chica: icono-solo (span aria-label con el QrCode2Icon, cursor:pointer)
       const icon = Array.prototype.slice.call(anchor.querySelectorAll('[aria-label]'))
-        .find(function (e) { return isVisible(e) && e.querySelector && e.querySelector('svg[data-testid="QrCode2Icon"]'); });
+        .find(function (e) { return isVisible(e) && saHasIcon(e, 'QrCode2Icon'); });
       if (icon) return icon;
       if (isVisible(anchor)) return anchor;   // último recurso: el propio contenedor (click bubbling)
     }
@@ -941,7 +960,7 @@ const WoScheduleButton = (() => {
     let byStruct = null;
     for (let i = 0; i < btns.length; i++) {
       const b = btns[i];
-      if (!b.querySelector('svg[data-testid="QrCode2Icon"]')) continue;
+      if (!saHasIcon(b, 'QrCode2Icon')) continue;
       if (PRINT_TRIGGER_RE.test(btnText(b))) return b;
       if (/MuiButton-outlined/.test(b.className || '') && !byStruct) byStruct = b;
     }
@@ -952,7 +971,7 @@ const WoScheduleButton = (() => {
     try {
       const anchor = document.querySelector(PRINT_ANCHOR);
       PLOG('ancla ' + (anchor ? ('presente, visible=' + isVisible(anchor)) : 'AUSENTE') +
-        ' · botones QrCode2Icon en página: ' + document.querySelectorAll('button svg[data-testid="QrCode2Icon"]').length);
+        ' · botones QrCode2Icon en página: ' + (window.MuiIconAnchorCore ? window.MuiIconAnchorCore.findIcons(document, 'QrCode2Icon').length : document.querySelectorAll('button svg[data-testid="QrCode2Icon"]').length));
     } catch (_) {}
   }
   // El modal de selección de plantilla (dialog con sus 2 MuiButton-contained de impresión).
@@ -964,7 +983,7 @@ const WoScheduleButton = (() => {
       const contained = d.querySelectorAll('button.MuiButton-contained');
       if (contained.length >= 1 && (Core().isPrintDialogHeading(btnText(heading)) || contained.length >= 2)) {
         // confirma que es el de impresión: algún contained trae QrCode2Icon
-        for (let k = 0; k < contained.length; k++) if (contained[k].querySelector('svg[data-testid="QrCode2Icon"]')) return d;
+        for (let k = 0; k < contained.length; k++) if (saHasIcon(contained[k], 'QrCode2Icon')) return d;
       }
     }
     return null;
@@ -976,7 +995,7 @@ const WoScheduleButton = (() => {
       const d = dialogs[i];
       const heading = d.querySelector('h2,h6,[id="form-dialog-title"]');
       if (Core().isPrintDialogHeading(btnText(heading))) return d;
-      if (d.querySelector('button.MuiButton-contained svg[data-testid="QrCode2Icon"]')) return d;
+      if (Array.prototype.slice.call(d.querySelectorAll('button.MuiButton-contained')).some(function (b) { return saHasIcon(b, 'QrCode2Icon'); })) return d;
     }
     return null;
   }
@@ -984,7 +1003,7 @@ const WoScheduleButton = (() => {
   function findModalPrintButton(dialog, typeKey) {
     const t = Core().printType(typeKey); if (!dialog || !t) return null;
     const btns = Array.prototype.slice.call(dialog.querySelectorAll('button.MuiButton-contained'))
-      .filter(function (b) { return b.querySelector('svg[data-testid="QrCode2Icon"]'); });
+      .filter(function (b) { return saHasIcon(b, 'QrCode2Icon'); });
     // 1) por texto exacto ES; 2) fallback por orden (0=Regular, 1=Detallado)
     const byText = btns.find(function (b) { return btnText(b).toLowerCase() === t.buttonTextEs.toLowerCase(); });
     if (byText) return byText;
@@ -1025,7 +1044,7 @@ const WoScheduleButton = (() => {
     document.querySelectorAll('[role="dialog"]').forEach(function (d) {
       const heading = d.querySelector('h2,h6');
       if (Core().isPrintPreviewHeading(btnText(heading)) || Core().isPrintDialogHeading(btnText(heading)) || d.querySelector('object[data*="/api/pdf/share/"]')) {
-        const closeBtn = d.querySelector('button svg[data-testid="CloseIcon"]');
+        const closeBtn = saFindIconNode(d, 'CloseIcon');
         const cancel = Array.prototype.slice.call(d.querySelectorAll('button')).find(function (b) { return /cancelar|cerrar|close|cancel/i.test(btnText(b)); });
         const b = (closeBtn && closeBtn.closest('button')) || cancel;
         if (b) { try { b.click(); } catch (_) {} }

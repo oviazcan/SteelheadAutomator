@@ -1,5 +1,14 @@
 # Detección de pendientes en `invoice-auto-regen` (lecciones 0.5.35 → 0.5.37)
 
+## 2026-08-03 — SH quitó los `data-testid`: este applet pasa por el núcleo de iconos
+
+Steelhead publicó un build que **elimina los `data-testid` de los iconos MUI** (medido: 0 ocurrencias en cinco pantallas cargadas y con contenido real). **Sólo los `data-testid`**: los `data-steelhead-component-id` y los ids RJSF **siguen vivos** (38 en la ficha de OT, 40 en la de NP) — afirmar lo contrario fue una sobregeneralización corregida el mismo día. Este applet anclaba a ellos, así que sus `querySelector` pasaron a devolver `null` **en silencio**.
+
+- **Ahora resuelve [`mui-icon-anchor-core.js`](../../remote/scripts/mui-icon-anchor-core.js)**, en cascada: `data-testid` (si SH lo repone) → **FORMA del icono** (`path d`, medida en vivo) → **`aria-label` bilingüe**. El comportamiento anterior queda como fallback si el core no cargó, y el core está declarado en `config.apps[].scripts` — atado por `tools/test/mui-icon-core-wiring.test.js`, porque olvidarlo dejaría el applet en el fallback ROTO sin ningún error visible.
+- **La forma es el ancla nueva de nivel 1:** SH no la puede cambiar sin cambiar lo que el operador VE. Los paths están **medidos**, no copiados de la doc de MUI: adivinarlos falla por diferencias de optimización SVGO entre versiones (el Edit real trae `a.996.996 0` donde el canónico dice `a.9959.9959 0`).
+- **El `aria-label` va al FINAL y con patrones estrechos.** Verificando en vivo se destapó que un aria laxo **no falla: acierta el icono EQUIVOCADO** — `/…|qr/i` matcheaba «Escanear Código QR» (la cámara) en una pantalla sin QR de etiquetas.
+- Contexto completo del incidente y estado del catálogo (7 iconos medidos, 5 pendientes con su motivo) en `CLAUDE.md` §"ESTRUCTURA antes que texto".
+
 El applet detecta facturas timbradas cuyo PDF actual es pre-timbre (necesita regenerar para que el PDF traiga sello SAT, QR, Folio Fiscal). Tres bugs encontrados al refactorizar a pull activo (vs el set acumulado en memoria que crecía sin parar):
 
 - **Shape de `ActiveInvoicesPaged` no trae `createdAt` en PDFs.** `inv.invoicePdfsByInvoiceId.nodes` solo expone `nodeId, invoicePdfViewLogsByInvoicePdfId, __typename` — sin `createdAt`. Por eso `maxPdfAt()` siempre devolvía 0 y `needsRegen()` daba true para TODA invoice con `writtenAt`. Solución: dos fases en `pullPendingCount()` — fase 1 con `ActiveInvoicesPaged` para candidatos preliminares (writtenAt en ventana, no voided, no recently regenerated), fase 2 con `InvoiceByIdInDomain` por candidato (concurrencia 5) que sí trae `pdfs[].createdAt` y permite `needsRegen({requireUuid:true})` real. (`invoice-auto-regen.js:642-758` en 0.5.36)

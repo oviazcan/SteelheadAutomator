@@ -80,7 +80,14 @@ const InvoiceListingMarker = (() => {
     return null;
   }
 
+  // Un renglón es BORRADOR si trae el botón de editar. El `data-testid` dejó de existir el
+  // 2026-08-03 (SH lo quitó de todos los iconos MUI) y el fallback `[aria-label="Edit Invoice"]`
+  // era mono-idioma: con la UI en español el aria real es «Editar», así que tampoco cubría.
+  // Ahora resuelve el núcleo (testid → forma medida → aria ES+EN), con el criterio viejo como
+  // último recurso si el core no cargó.
   function isDraft(row) {
+    const Icons = window.MuiIconAnchorCore;
+    if (Icons) return !!Icons.findIcon(row, 'EditIcon');
     return !!row.querySelector('svg[data-testid="EditIcon"], [aria-label="Edit Invoice"]');
   }
 

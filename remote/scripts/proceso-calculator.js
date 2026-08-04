@@ -360,8 +360,15 @@ const ProcesosCalculator = (() => {
   function readEtiquetasFromDom() {
     const nonFinish = _nonFinishSet();
     const labelCont = document.querySelector('[data-steelhead-component-id="CREATE_PART_NUMBER_DIALOG_LABELS"]');
+    // Cada chip de etiqueta trae una "X" para quitarlo; se usan esas X para contarlos.
+    // SH quitó los `data-testid` el 2026-08-03 → se resuelve por el núcleo compartido.
+    // OJO: `CloseIcon` es uno de los que TODAVÍA no tienen forma medida, así que aquí la que
+    // trabaja es la vía aria-label (ES+EN). Si tampoco hay aria, cae al segundo camino de este
+    // mismo `if`, que no depende de iconos.
+    const Icons = window.MuiIconAnchorCore;
     const chips = labelCont
-      ? [...labelCont.querySelectorAll('svg[data-testid="CloseIcon"]')].map(svg => svg.parentElement).filter(Boolean)
+      ? (Icons ? Icons.findIcons(labelCont, 'CloseIcon') : [...labelCont.querySelectorAll('svg[data-testid="CloseIcon"]')])
+          .map(svg => svg.parentElement).filter(Boolean)
       : [...document.querySelectorAll('.css-1owv9dy')].filter(chip => {
           const paper = chip.closest('.MuiPaper-root');
           return paper && paper.classList.contains('MuiPaper-elevation0');

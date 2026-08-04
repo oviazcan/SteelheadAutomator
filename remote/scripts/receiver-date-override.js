@@ -61,11 +61,17 @@ const ReceiverDateOverride = (() => {
 
   function onModalFound(modal) {
     if (modal.dataset.saRdoAttached === 'true') return;
-    modal.dataset.saRdoAttached = 'true';
     modalStates.set(modal, {});  // initialize empty state before any downstream code runs
-    console.log(LOG_PREFIX, 'Modal de recibo detectado');
     injectStyles();
-    injectField(modal);
+
+    // El latch se pone SÓLO si el campo quedó montado. Antes se ponía aquí arriba, así que
+    // un fallo del anclaje se volvía permanente: el observer volvía a pasar, veía el latch y
+    // se iba. Eso convirtió el rehash de emotion del 2026-08-03 en "la fecha desapareció"
+    // en vez de "la fecha tardó un render en aparecer". Si no montó, se reintenta.
+    if (!injectField(modal)) return;
+
+    modal.dataset.saRdoAttached = 'true';
+    console.log(LOG_PREFIX, 'Modal de recibo detectado');
     watchModalRemoval(modal);
   }
 
@@ -281,30 +287,35 @@ const ReceiverDateOverride = (() => {
     }
   }
 
+  // Devuelve true si el campo quedó montado. El booleano importa: de él depende que el
+  // latch de onModalFound no congele un fallo de anclaje (ver ahí).
   function injectField(modal) {
-    // Anclar dentro del .css-iyrxkt de "Cliente:" / "Customer:" como rows extra del grid
-    const labels = modal.querySelectorAll('p');
-    let customerWrapper = null;
-    for (const p of labels) {
-      if (/^(?:customer|cliente):?$/i.test(p.textContent.trim())) {
-        customerWrapper = p.closest('.css-iyrxkt');
-        break;
-      }
+    if (modal.querySelector('[data-sa-rdo-field="true"]')) return true;
+
+    // Se ENTRA por el label "Cliente:" / "Customer:" (ES+EN) y se SUBE por estructura.
+    // Hasta el 2026-08-03 aquí decía `p.closest('.css-iyrxkt')`: una clase GENERADA por
+    // emotion, que SH rehasheó al pasar el encabezado de grid a flex. Dejó de existir y
+    // este `return` se disparaba en silencio — el campo de fecha simplemente no aparecía.
+    const Anchor = window.ReceiveModalAnchorCore;
+    if (!Anchor) {
+      warnOnce(modal, 'Falta receive-modal-anchor-core — no se puede anclar');
+      return false;
     }
-    if (!customerWrapper) {
-      console.warn(LOG_PREFIX, 'No se localizó el wrapper de Cliente — layout cambió?');
-      return;
+    const labelNode = Anchor.findLabelNode(modal, Anchor.LABEL_CUSTOMER);
+    const anchor = labelNode && Anchor.findHeaderFieldAnchor(labelNode);
+    if (!anchor) {
+      warnOnce(modal, 'No se localizó el wrapper de Cliente — layout cambió?');
+      return false;
     }
-    if (customerWrapper.querySelector('[data-sa-rdo-field="true"]')) return;
 
     const label = document.createElement('p');
-    label.className = 'MuiTypography-root MuiTypography-body1 css-9l3uo3 sa-rdo-row-label';
-    label.style.gridColumn = '1';
+    // La clase se HEREDA del label vecino vivo: así el próximo rehash de emotion nos sigue
+    // vistiendo igual que a SH, en vez de dejarnos con un nombre de clase muerto.
+    label.className = `${anchor.labelClass} sa-rdo-row-label`.trim();
     label.textContent = 'Fecha real de recibido:';
     label.dataset.saRdoField = 'true';
 
     const controls = document.createElement('div');
-    controls.style.gridColumn = '2';
     controls.className = 'sa-rdo-controls sa-rdo-row-controls';
     controls.dataset.saRdoField = 'true';
 
@@ -339,8 +350,12 @@ const ReceiverDateOverride = (() => {
     warningEl.hidden = true;
     controls.appendChild(warningEl);
 
-    customerWrapper.appendChild(label);
-    customerWrapper.appendChild(controls);
+    const host = Anchor.mountHeaderField(document, anchor, label, controls);
+    if (!host) {
+      warnOnce(modal, 'No se pudo montar el campo de fecha');
+      return false;
+    }
+    host.dataset.saRdoField = 'true';
 
     // Estado por modal
     const state = modalStates.get(modal) || {};
@@ -367,6 +382,15 @@ const ReceiverDateOverride = (() => {
     }
 
     console.log(LOG_PREFIX, 'Campo de fecha inyectado, default=', input.value);
+    return true;
+  }
+
+  // Un aviso por modal: sin el latch, el observer reintenta en cada mutación y un warn por
+  // pasada llenaría la consola justo cuando hace falta leerla para diagnosticar.
+  function warnOnce(modal, msg) {
+    if (modal.dataset.saRdoWarned === 'true') return;
+    modal.dataset.saRdoWarned = 'true';
+    console.warn(LOG_PREFIX, msg);
   }
 
   return { init };

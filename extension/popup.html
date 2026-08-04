@@ -30,12 +30,42 @@
       --bg-results: #0f172a;
     }
 
+    /* El popup de Chromium NO puede pasar de 800x600. Si el documento pide más alto,
+       el navegador deja de ajustar la ventana al ancho preferido (340px) y la abre al
+       MÁXIMO: 800px de ancho con el contenido pegado a la izquierda y el resto vacío
+       —oscuro, porque el background del body se propaga al canvas—.
+
+       Antes esto se sostenía con un `max-height` en px por cada lista, calculado A MANO
+       contra el cromo fijo. Falló tres veces: al pasar de 5 a 7 acciones (2026-07-29), en
+       la vista de Configuración —que nunca se contó: 838px con el editor de permisos— y
+       con la barra de progreso, que es HERMANA de las vistas y suma 33px a cualquiera,
+       justo al dar clic a una acción (576 → 609). Las dos últimas, reportadas en piso el
+       2026-08-03: «ya no en la pantalla principal, pero sí en un submenú interno».
+
+       Ahora la aritmética la hace el navegador: el documento se topa a 590px y se reparte
+       como columna flex —el cromo no se encoge, la lista de la vista activa (.view-scroll)
+       toma lo que sobre y hace scroll—. Agregar acciones, permisos o piezas fijas ya no
+       obliga a rehacer ninguna cuenta. Ver docs/architecture/popup-sizing.md */
+    html { max-height: 590px; }
     body {
       width: 340px;
+      max-height: 590px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       background: var(--bg-body);
       color: var(--text-body);
     }
+    /* El cromo (header, banner, barra de estado, progreso, pie) nunca se encoge. */
+    body > * { flex: 0 0 auto; }
+
+    /* La lista que scrollea dentro de la vista activa. min-height:0 es obligatorio:
+       sin él un hijo flex no baja de su tamaño de contenido y el documento vuelve a crecer. */
+    .view-scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+    .view-scroll::-webkit-scrollbar { width: 6px; }
+    .view-scroll::-webkit-scrollbar-thumb { background: #c0c0c0; border-radius: 3px; }
+    .view-scroll::-webkit-scrollbar-track { background: transparent; }
 
     .header {
       background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
@@ -81,13 +111,14 @@
     .update-banner .btn-update-dismiss { background: transparent; color: #92400e; flex: 0 0 auto; padding: 6px; }
 
     .view { display: none; }
-    .view.active { display: block; }
+    /* La vista activa toma el alto que sobra del body y delega el scroll a su .view-scroll.
+       Tiene que ser flex (no block) o la cadena se corta aquí y la lista crece libre. */
+    .view.active { display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
 
-    .app-menu-wrap { position: relative; }
-    .app-menu { padding: 12px 16px 12px; display: flex; flex-direction: column; gap: 8px; max-height: 480px; overflow-y: auto; scroll-behavior: smooth; }
-    .app-menu::-webkit-scrollbar { width: 6px; }
-    .app-menu::-webkit-scrollbar-thumb { background: #c0c0c0; border-radius: 3px; }
-    .app-menu::-webkit-scrollbar-track { background: transparent; }
+    /* El wrap también reparte alto: es el intermediario entre la vista y la lista
+       scrollable, y sin min-height:0 corta la cadena del flex. */
+    .app-menu-wrap { position: relative; display: flex; flex-direction: column; flex: 1 1 auto; min-height: 0; }
+    .app-menu { padding: 12px 16px 12px; display: flex; flex-direction: column; gap: 8px; scroll-behavior: smooth; }
     .scroll-fade {
       position: absolute; left: 0; right: 0; bottom: 0; height: 36px;
       background: linear-gradient(to bottom, rgba(0,0,0,0) 0%, var(--bg-body) 100%);
@@ -114,10 +145,7 @@
     .app-card.disabled:hover { border-color: var(--border-card); box-shadow: none; }
 
     /* Grid view (3 columns) */
-    .app-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; padding: 10px; max-height: 480px; overflow-y: auto; }
-    .app-grid::-webkit-scrollbar { width: 6px; }
-    .app-grid::-webkit-scrollbar-thumb { background: #c0c0c0; border-radius: 3px; }
-    .app-grid::-webkit-scrollbar-track { background: transparent; }
+    .app-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; padding: 10px; align-content: start; }
     .app-tile {
       background: var(--bg-card); border: 1px solid var(--border-card); border-radius: 8px;
       padding: 10px 4px; text-align: center; cursor: pointer; transition: all 0.15s ease;
@@ -128,10 +156,7 @@
     .app-tile .tile-name { font-size: 9px; font-weight: 600; color: var(--text-body); margin-top: 3px; line-height: 1.2; }
 
     /* List view (categorized) */
-    .app-list { padding: 8px 12px; max-height: 480px; overflow-y: auto; }
-    .app-list::-webkit-scrollbar { width: 6px; }
-    .app-list::-webkit-scrollbar-thumb { background: #c0c0c0; border-radius: 3px; }
-    .app-list::-webkit-scrollbar-track { background: transparent; }
+    .app-list { padding: 8px 12px; }
     .app-list-cat {
       font-size: 9px; font-weight: 700; color: var(--text-soft); text-transform: uppercase;
       letter-spacing: 1px; padding: 8px 4px 4px; border-bottom: 1px solid var(--border-card);
@@ -168,6 +193,8 @@
       cursor: pointer; font-size: 14px; font-weight: 600; color: var(--text-body);
     }
     .app-view-header:hover { background: var(--bg-app-header-hover); }
+    /* El "◀ volver" se queda quieto; lo que scrollea es la lista de abajo. */
+    .app-view-header { flex: 0 0 auto; }
     .app-actions { padding: 12px 16px; display: flex; flex-direction: column; gap: 8px; }
 
     .btn {
@@ -194,7 +221,7 @@
     }
     .btn-theme-toggle:hover { opacity: 1; }
 
-    .results-panel { padding: 12px 16px; max-height: 350px; overflow-y: auto; font-size: 12px; }
+    .results-panel { padding: 12px 16px; font-size: 12px; }
     .results-panel h3 { font-size: 13px; margin-bottom: 8px; }
     .results-stats { display: flex; gap: 6px; margin-bottom: 10px; flex-wrap: wrap; }
     .results-stat { padding: 3px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; }
@@ -254,9 +281,9 @@
     .user-mgmt h3 { font-size: 13px; font-weight: 700; color: var(--text-body); margin-bottom: 8px; }
     .user-mgmt-loading { text-align: center; padding: 20px; color: var(--text-muted); font-size: 12px; }
 
-    .app-perms-editor { display: flex; flex-direction: column; gap: 10px; max-height: 340px; overflow-y: auto; }
-    .app-perms-editor::-webkit-scrollbar { width: 6px; }
-    .app-perms-editor::-webkit-scrollbar-thumb { background: #c0c0c0; border-radius: 3px; }
+    /* Sin tope propio: el scroll de Configuración es UNO solo (#settings-scroll), así el
+       editor de permisos no queda con una barra anidada dentro de otra. */
+    .app-perms-editor { display: flex; flex-direction: column; gap: 10px; }
     .app-perm-row { padding: 8px 10px; border-radius: 8px; background: var(--bg-card); border: 1px solid var(--border-card); }
     .app-perm-header { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
     .app-perm-icon { font-size: 14px; }
@@ -340,19 +367,19 @@
 
   <div id="view-menu" class="view active">
     <div class="app-menu-wrap">
-      <div class="app-menu" id="app-menu"></div>
+      <div class="app-menu view-scroll" id="app-menu"></div>
       <div class="scroll-fade" id="scroll-fade"><span class="scroll-fade-arrow">▼ más apps ▼</span></div>
     </div>
   </div>
 
   <div id="view-app" class="view">
     <div class="app-view-header" id="app-back"><span>◀</span><span id="app-title"></span></div>
-    <div class="app-actions" id="app-actions"></div>
+    <div class="app-actions view-scroll" id="app-actions"></div>
   </div>
 
   <div id="view-results" class="view">
     <div class="app-view-header" id="results-back"><span>◀</span><span id="results-title">Resultados</span></div>
-    <div class="results-panel" id="results-content"></div>
+    <div class="results-panel view-scroll" id="results-content"></div>
   </div>
 
   <div id="progress-container" class="progress-container">
@@ -362,6 +389,9 @@
 
   <div id="view-settings" class="view">
     <div class="app-view-header" id="settings-back"><span>◀</span><span>Configuración</span></div>
+    <!-- Configuración es la vista MÁS ALTA (con el editor de permisos de los 44 applets
+         pedía 838px). Todo lo que va debajo del "◀ volver" scrollea junto. -->
+    <div id="settings-scroll" class="view-scroll">
     <div class="settings-section">
       <h3>Claude API</h3>
       <div class="settings-field">
@@ -385,6 +415,7 @@
         🔓 Desactivar verificación de integridad (emergencia)
       </label>
       <span class="settings-hint">Solo para emergencias. Deja pasar scripts remotos sin verificar la firma.</span>
+    </div>
     </div>
   </div>
 

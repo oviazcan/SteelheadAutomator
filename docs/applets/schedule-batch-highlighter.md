@@ -91,10 +91,16 @@ igual que el nativo: **no fijamos hora**, el planificador la acomoda. Fijarla es
 - [ ] **Corrida real**: el glue no se ha ejecutado contra el ERP. Primero un lote chico y verificar
       que el material sale de los candidatos al refrescar el tablero.
 - [x] Deploy (config 1.11.43, firma KMS verificada en vivo, tag `v1.11.43`).
-- [ ] **Rebundle Safari/iPad — a propósito NO se hizo todavía.** El applet ya está en la lista blanca
-      y los dos scripts nuevos entrarían solos al expandir `config.apps[].scripts`, pero meter al iPad
-      un applet que escribe el programa **antes** de su primera corrida real amplía la superficie sin
-      necesidad: el iPad es justo el dispositivo del piso. Rebundlear después de validar.
+- [x] **Rebundle Safari/iPad — HECHO el 2026-08-03 (bundle 0.6.19), por decisión explícita del usuario.**
+      Se había dejado fuera **a propósito**: meter al iPad un applet que escribe el programa *antes* de su
+      primera corrida real amplía la superficie sin necesidad, y el iPad es justo el dispositivo del piso.
+      El usuario decidió integrarlo igual, así que **la corrida real sigue pendiente y ahora es lo primero
+      a vigilar** — el 📦 ya está al alcance del operador en el iPad sin haberse ejercido nunca contra el
+      ERP. Verificado en el ARTEFACTO (baseline 0 en las tres): `ScheduleBatchGroupCore` ×2,
+      `buildBatchGroups` ×3, `buildGroupedScheduleTaskInput` ×3, 4 bloques `BEGIN/END`; 1 736 732 bytes
+      (antes 1 688 217 — **bytes reales**, no los caracteres que imprime `build-safari.sh`).
+      `node --check` OK, `build-safari.test.js` 10/10. `Resources/` de Xcode sincronizado (md5 idénticos).
+      **Falta recompilar en Xcode.**
 
 ## v0.1.x — el resaltado (VIVO)
 
@@ -231,3 +237,9 @@ se auto-inyecta en la barra de filtros del Schedule Board por su propio gate (`a
 (resaltado + `cb.click()` + `MutationObserver`), no usa `steelhead-api.js`, ni `a.download`, ni portapapeles, ni
 `chrome.storage`. Deps en el bundle: `schedule-batch-highlighter-core.js`, `schedule-batch-highlighter.js`. **Tras editar
 el applet → recompilar en Xcode** (el bundle es estático).
+
+Desde **v0.6.19** (2026-08-03) el bundle incluye además los dos scripts del **agrupador**:
+`schedule-batch-group-core.js` y `schedule-batch-group.js`. Eso cambia la clasificación de riesgo del
+applet en el iPad: el resaltado es 100% DOM y no escribe nada, pero el 📦 **crea tareas en el programa**
+vía `CreateManyScheduleTasks`. Sigue sin bloqueadores iOS (no descarga, no portapapeles, no
+`chrome.storage`), pero **su primera corrida real no se ha hecho** — ver el plan de validación.
