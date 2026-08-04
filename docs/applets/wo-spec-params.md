@@ -338,12 +338,91 @@ huérfano.
 
 Al revés se migran órdenes que van a seguir naciendo torcidas.
 
+## 2026-08-04 — primera corrida real de `migrarAInspeccion`: 2,551 movidas y 2 casillas huecas
+
+El operador corrió el barrido con el check de mover encendido y **aplicó**: 2,551 casillas
+`MIGRAR` en 672 órdenes, 430 NPs. Es la primera vez que ese modo se ejerce contra el ERP.
+
+**El movimiento es de UBICACIÓN, no de contenido**: los 2,551 renglones traen `tenia == quedara`
+(medido: 100%, cero excepciones). No cambia ningún criterio de calidad, solo dónde vive.
+
+### Validación en vivo — 15 órdenes, 13 líneas, 46 de 48 casillas correctas
+
+Muestra deliberadamente diversa (T101, T102, T104, T105, T108, T109, T110, T112, T114, T201,
+T202, T204, T301; estaño, plata, zinc, níquel, níquel electroless, iridizado, fosfato de
+manganeso, lavado, decapado), consultada contra el ERP después de aplicar. **14 de 15 órdenes
+quedaron perfectas**: una sola fila viva, en el nodo de Inspección y Empaque, mismo valor.
+
+### El fallo: la OT 15928 perdió dos criterios de calidad
+
+```
+Primeras Piezas      · T104 (EST)-CU/BR-VARIOS (6.0) · archivada 2026-08-04T17:20:58Z
+Apariencia Homogénea · T104 (EST)-CU/BR-VARIOS (6.0) · archivada 2026-08-04T17:20:58Z
+→ ninguna fila viva en el destino T104-IC00-001 Inspeccionando y Empacando
+```
+
+Ese timestamp es la corrida (11:20:58 del centro, seis minutos antes de descargar el reporte).
+La orden tiene 72 filas de params, **68 vivas**: solo esas dos quedaron huecas. **El archivado
+se ejecutó y el alta no** — exactamente el modo de falla que el orden archiva-primero deja
+abierto. El código protege el caso inverso (si falla el archivado no agrega); éste no.
+
+### Causa: la casilla se planificó DOS veces
+
+**La 15928 es la única orden del reporte con casillas repetidas.** De 2,549 casillas `MIGRAR`,
+**2,547 aparecen una sola vez**; las 2 que aparecen **dos veces** son justamente las dos que
+quedaron huecas. La correlación es exacta y única en todo el universo del barrido.
+
+Una casilla planificada dos veces se ejecuta dos veces: la primera pasada archiva el origen y
+crea la fila en el destino; la segunda, con el plan viejo, **archiva lo que la primera acababa
+de crear** —o su alta choca con la restricción de unicidad—. En ambos caminos la casilla termina
+vacía.
+
+El duplicado sale de **reanudar** el barrido: `mergeCheckpoint` mezcla el avance guardado con lo
+que se vuelve a procesar y una orden puede quedar dos veces en `hallazgos`. La 15928 tiene **un
+solo `partNumberId`** (3798757), así que no es el reparto multi-PN.
+
+> **LECCIÓN: un renglón repetido en el reporte deja de ser cosmético en cuanto el modo ESCRIBE
+> borrando.** Sin `migrarAInspeccion` un hallazgo duplicado solo agrega dos veces lo mismo y el
+> segundo intento choca sin consecuencia. Con el modo encendido, el segundo intento **archiva lo
+> que el primero creó**: el duplicado pasa de ruido a pérdida de dato. La deduplicación de
+> `hallazgos` por `(idInDomain, partNumberId)` deja de ser higiene y se vuelve un requisito.
+
+### El reporte escondía justo lo que hacía falta ver
+
+**El CSV no exporta `fueraDeInspeccion`.** `downloadScanCsv` solo itera `h.cambios`, así que las
+casillas externas que viven fuera del nodo de inspección —las candidatas a `MIGRAR`— **son
+invisibles en el reporte mientras el check esté apagado**. Los 2,551 movimientos no aparecían por
+ningún lado en el escaneo de la noche anterior.
+
+**Y `anomalies` está muerta a propósito** desde que el universo EXTERNA cubre todos sus campos
+vivan donde vivan (lo dice el comentario del core). El CSV **sí** emite su renglón, que por eso
+sale siempre en cero. Un análisis que use `nAnomalias` como proxy de «¿hay algo fuera de lugar?»
+concluye **que no hay nada que mover** — y se equivoca por 2,551. Pasó en esta misma sesión.
+
+**Las omitidas tampoco viajan.** El panel dice *«… y N más (van en el CSV)»* para `plan.skipped`
+(`AMBIGUO` / `SIN_CATALOGO`), pero `downloadScanCsv` no las escribe. El mensaje promete algo que
+el archivo no cumple.
+
+### Cómo se encuentra el resto del daño
+
+No hace falta extrapolar de una muestra: la pantalla final imprime **`X parámetros archivados ·
+Y aplicados`**. Si **`Y < X`**, la diferencia **es** el número exacto de casillas huecas de la
+corrida. Ese contador ya existe y es la medición buena.
+
+Reparar es barato: una casilla hueca sale como `VACIO` en el siguiente escaneo y se repone sola.
+
 ## Pendientes
 
 1. **Corridas reales de las fases 2 y 3** (la 1 ya está validada).
-2. **Decidir qué hacer con las anomalías del nodo raíz** (ver la hipótesis de arriba).
-4. **Correr headless** las rutas de regeneración.
-5. Bundle Safari/iPad: evaluar si aplica.
+2. **Dedup de `hallazgos` en `mergeCheckpoint`** por `(idInDomain, partNumberId)` — con
+   `migrarAInspeccion` un duplicado **borra un dato** (incidente OT 15928, arriba). Mientras no
+   exista: **arrancar de cero, no reanudar**, cuando el check de mover esté encendido.
+3. **Exportar al CSV `fueraDeInspeccion` y `plan.skipped`.** Hoy el reporte omite las candidatas
+   a `MIGRAR` y las omitidas, y el panel promete estas últimas.
+4. **Reparar la OT 15928** (2 casillas) y las que revele la cuenta `archivados` vs `aplicados`.
+5. **Decidir qué hacer con las anomalías del nodo raíz** (ver la hipótesis de arriba).
+6. **Correr headless** las rutas de regeneración.
+7. Bundle Safari/iPad: evaluar si aplica.
 
 ## Bitácora
 
