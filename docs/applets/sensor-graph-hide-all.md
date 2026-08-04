@@ -1,5 +1,16 @@
 # `sensor-graph-hide-all` — Auto-ocultar sensores en la gráfica
 
+## 2026-08-03 — SH quitó los `data-testid`: este applet pasa por el núcleo de iconos
+
+Steelhead publicó un build que **elimina los `data-testid` de los iconos MUI** (medido: 0 ocurrencias en tres pantallas cargadas y con contenido real — `/Reporting/View` 189 svg, `/Receiving/CustomerParts` 159 svg, listado de OTs). Este applet anclaba a ellos, así que sus `querySelector` pasaron a devolver `null` **en silencio**.
+
+- **Ahora resuelve [`mui-icon-anchor-core.js`](../../remote/scripts/mui-icon-anchor-core.js)**, en cascada: `data-testid` (si SH lo repone) → **FORMA del icono** (`path d`, medida en vivo) → **`aria-label` bilingüe**. El comportamiento anterior queda como fallback si el core no cargó, y el core está declarado en `config.apps[].scripts` — atado por `tools/test/mui-icon-core-wiring.test.js`, porque olvidarlo dejaría el applet en el fallback ROTO sin ningún error visible.
+- **La forma es el ancla nueva de nivel 1:** SH no la puede cambiar sin cambiar lo que el operador VE. Los paths están **medidos**, no copiados de la doc de MUI: adivinarlos falla por diferencias de optimización SVGO entre versiones (el Edit real trae `a.996.996 0` donde el canónico dice `a.9959.9959 0`).
+- **El `aria-label` va al FINAL y con patrones estrechos.** Verificando en vivo se destapó que un aria laxo **no falla: acierta el icono EQUIVOCADO** — `/…|qr/i` matcheaba «Escanear Código QR» (la cámara) en una pantalla sin QR de etiquetas.
+- Contexto completo del incidente y estado del catálogo (7 iconos medidos, 5 pendientes con su motivo) en `CLAUDE.md` §"ESTRUCTURA antes que texto".
+
+**Nota de alcance (2026-08-03):** el dominio 344 **no tiene ningún Sensor Dashboard creado** (`/Domains/344/SensorDashboards` sale vacío), así que este applet **no tiene dónde correr ahí** y `VisibilityIcon`/`VisibilityOffIcon` **no se pudieron medir**. Su deuda real no es el path sino que ancla primero a un `aria-label` EXACTO **en inglés** (`'Hide this sensor in the graph.'`) con el `data-testid` como único fallback: si SH tradujo ese aria, **las dos señales caen juntas**. Verificarlo requiere un dashboard de sensores existente.
+
 ## Qué hace
 Al **entrar** a un Sensor Dashboard (`/Domains/<id>/Maintenance/SensorDashboards/<idInDomain>`),
 esconde automáticamente **todos** los sensores de la gráfica (deja todos los "ojitos" tachados)
