@@ -247,9 +247,30 @@ es el último recurso, no el primero):
    matiz que importa: el workboard usa **PrintIcon** para «Print Job Tags» mientras la ficha de
    OT usa **QrCode2Icon** para «Imprimir Etiquetas de Trabajo» — dos botones con la misma función
    nominal y distinto icono, y es justo por casos así que **la FORMA va antes que el aria**.
-   **Quedan 3 sin medir:** `SendIcon` y `RestorePageOutlinedIcon` (ninguno aparece en el modal
-   View/Edit Invoice; el primero vive en el de envío por correo) y `Visibility*` (sigue sin haber
-   Sensor Dashboards).
+   **12 de 13 MEDIDOS; queda 1.** El operador aportó también el HTML del modal «Send Invoice
+   Email» y del dashboard de sensores 117 (la ruta real es
+   `/Domains/<d>/Maintenance/SensorDashboards/<id>`, no la que se había intentado) ⇒ cerrados
+   **`SendIcon`**, **`VisibilityIcon`** y **`VisibilityOffIcon`**. Sólo falta
+   **`RestorePageOutlinedIcon`** (ficha de factura, para regenerar el PDF).
+   **La misma lección se confirmó TRES veces**: los canónicos de MUI de `CloseIcon`, `SendIcon`
+   y `VisibilityIcon` **eran correctos desde el principio** y daban `false` únicamente porque se
+   probaron en pantallas donde esos iconos no viven. **Probar un path en la pantalla equivocada
+   no dice nada sobre el path.** (Lo que sí es cierto es que `EditIcon` y `ArchiveIcon` SÍ
+   difieren del canónico por optimización SVGO — o sea que medir sigue siendo obligatorio; lo
+   que no se vale es concluir «el path está mal» desde un no-match en el lugar equivocado.)
+   **Ojo con `Visibility*`: la correspondencia icono↔acción es INVERSA** — el ojo TACHADO va en
+   el botón que dice «Show this sensor…» (está oculto, ofrece mostrarlo). Confundirlos
+   invertiría `sensor-graph-hide-all`; hay un test que lo fija.
+   **CIERRA ADEMÁS DOS PENDIENTES QUE VENÍAN DE ANTES:**
+   **(a) la deuda bilingüe de `sensor-graph-hide-all` NO muerde hoy** — sus dos `aria-label`
+   primarios siguen **EN INGLÉS** en la UI real (`"Hide this sensor in the graph."` /
+   `"Show this sensor in the graph."`), que es exactamente lo que el applet tiene hardcodeado.
+   Sigue siendo deuda (si SH los traduce, la primaria cae), pero ahora con el fallback por FORMA
+   detrás, ya no se queda sin red.
+   **(b) `cfdi-attacher` está VIVO y montando** — en el HTML del modal se ve su
+   `<tr id="sa-cfdi-toggle">` con el checkbox «Adjuntar XML(s) CFDI». Su `structMatch` encuentra
+   los 3 MuiSwitch y ahora, con `SendIcon` catalogado, tiene dos iconos válidos donde antes se
+   sostenía sólo del `EmailOutlinedIcon` del botón «Save Draft».
    **LECCIÓN DE MÉTODO, que es lo que conviene no perder: «0 ocurrencias en N pantallas» NO
    prueba «lo eliminaron»; prueba «no está en esas N».** Para afirmar una eliminación hay que
    medir donde el atributo debería estar. Verificado en consecuencia: `wo-schedule-button`

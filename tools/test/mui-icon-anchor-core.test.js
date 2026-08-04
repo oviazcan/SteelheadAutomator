@@ -232,7 +232,8 @@ test('report-regen: con varios sobres elige el que está en el header (con bread
 
 test('el catálogo trae los 7 iconos MEDIDOS en vivo el 2026-08-03', () => {
   for (const n of ['PlayArrowIcon', 'EmailOutlinedIcon', 'EditIcon', 'ArchiveIcon',
-                   'FilterListIcon', 'QrCode2Icon', 'CalendarMonthIcon', 'CloseIcon', 'PrintIcon']) {
+                   'FilterListIcon', 'QrCode2Icon', 'CalendarMonthIcon', 'CloseIcon', 'PrintIcon',
+                   'SendIcon', 'VisibilityIcon', 'VisibilityOffIcon']) {
     assert.ok(Core.ICON_SHAPES[n] && Core.ICON_SHAPES[n].length > 0, n + ' debe tener forma medida');
   }
 });
@@ -240,7 +241,7 @@ test('el catálogo trae los 7 iconos MEDIDOS en vivo el 2026-08-03', () => {
 test('los iconos PENDIENTES DE MEDIR siguen vacíos (no se adivinan paths)', () => {
   // Un path adivinado no matchea —se comprobó: el Edit canónico dice `a.9959.9959 0` y el
   // real `a.996.996 0`— y además finge cobertura. Mejor vacío y anotado.
-  for (const n of ['SendIcon', 'RestorePageOutlinedIcon', 'VisibilityIcon', 'VisibilityOffIcon']) {
+  for (const n of ['RestorePageOutlinedIcon']) {
     assert.equal(Core.ICON_SHAPES[n].length, 0, n + ': si ya lo mediste, muévelo a la lista de arriba');
   }
 });
@@ -379,4 +380,21 @@ test('PrintIcon NO se confunde con QrCode2Icon (son botones distintos con la mis
   const print = attachQuery(makeContainer([makeButton(makeSvg(Core.ICON_SHAPES.PrintIcon[0], null))]));
   assert.equal(Core.findIcon(print, 'QrCode2Icon'), null, 'PrintIcon no es QrCode2Icon');
   assert.ok(Core.findIcon(print, 'PrintIcon'));
+});
+
+test('Visibility vs VisibilityOff: son iconos DISTINTOS y no se confunden', () => {
+  // La correspondencia icono↔acción es inversa: el ojo TACHADO va en el botón que dice
+  // «Show this sensor…» (está oculto, ofrece mostrarlo). Confundirlos invertiría el applet.
+  const abierto = attachQuery(makeContainer([makeButton(makeSvg(Core.ICON_SHAPES.VisibilityIcon[0], null))]));
+  assert.ok(Core.findIcon(abierto, 'VisibilityIcon'));
+  assert.equal(Core.findIcon(abierto, 'VisibilityOffIcon'), null);
+  const tachado = attachQuery(makeContainer([makeButton(makeSvg(Core.ICON_SHAPES.VisibilityOffIcon[0], null))]));
+  assert.ok(Core.findIcon(tachado, 'VisibilityOffIcon'));
+  assert.equal(Core.findIcon(tachado, 'VisibilityIcon'), null);
+});
+
+test('SendIcon se resuelve por forma (botón Send del modal de correo)', () => {
+  const root = attachQuery(makeContainer([makeButton(makeSvg('M2.01 21 23 12 2.01 3 2 10l15 2-15 2z', null))]));
+  const hit = Core.findIcon(root, 'SendIcon');
+  assert.ok(hit && hit.by === 'shape');
 });

@@ -113,10 +113,20 @@
     // matcheaba antes porque este icono no existe en las pantallas donde se buscó, no porque
     // el path estuviera mal. Otro recordatorio de que «no aparece» ≠ «es distinto».
     CloseIcon: ['M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z'],
-    SendIcon: [],
+    // MEDIDO 2026-08-03 en el botón «Send» del modal «Send Invoice Email» (HTML del operador).
+    // Igual que CloseIcon, el canónico de MUI resultó correcto — no matcheaba antes porque el
+    // icono sólo existe en ese modal, que deliberadamente no se abrió por automatización.
+    SendIcon: ['M2.01 21 23 12 2.01 3 2 10l15 2-15 2z'],
     RestorePageOutlinedIcon: [],
-    VisibilityIcon: [],
-    VisibilityOffIcon: [],
+    // MEDIDO 2026-08-03 en el dashboard de sensores 117 (botón «Hide this sensor in the
+    // graph.» = ojo abierto = sensor visible). TERCERA confirmación de la misma lección: el
+    // canónico de MUI era correcto y había dado `false` al probarlo en Receiving sólo porque
+    // el icono no vive ahí. Probar un path en la pantalla equivocada no dice nada de él.
+    VisibilityIcon: ['M12 4.5C7 4.5 2.73 7.61 1 12c1.73 4.39 6 7.5 11 7.5s9.27-3.11 11-7.5c-1.73-4.39-6-7.5-11-7.5M12 17c-2.76 0-5-2.24-5-5s2.24-5 5-5 5 2.24 5 5-2.24 5-5 5m0-8c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3'],
+    // MEDIDO 2026-08-03 en el dashboard de sensores 117. El botón que lo lleva dice
+    // «Show this sensor in the graph.» — es decir, ojo TACHADO = sensor oculto = el botón
+    // ofrece mostrarlo. La correspondencia icono↔acción es inversa y conviene no confundirla.
+    VisibilityOffIcon: ['M12 7c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l2.92 2.92c1.51-1.26 2.7-2.89 3.43-4.75-1.73-4.39-6-7.5-11-7.5-1.4 0-2.74.25-3.98.7l2.16 2.16C10.74 7.13 11.35 7 12 7M2 4.27l2.28 2.28.46.46C3.08 8.3 1.78 10.02 1 12c1.73 4.39 6 7.5 11 7.5 1.55 0 3.03-.3 4.38-.84l.42.42L19.73 22 21 20.73 3.27 3zM7.53 9.8l1.55 1.55c-.05.21-.08.43-.08.65 0 1.66 1.34 3 3 3 .22 0 .44-.03.65-.08l1.55 1.55c-.67.33-1.41.53-2.2.53-2.76 0-5-2.24-5-5 0-.79.2-1.53.53-2.2m4.31-.78 3.15 3.15.02-.16c0-1.66-1.34-3-3-3z'],
     // MEDIDO 2026-08-03 en el workboard (aria «Print Job Tags»). OJO: ese botón usa
     // PrintIcon, NO QrCode2Icon — el de la ficha de OT sí es QrCode2. Dos botones con la
     // misma función nominal y distinto icono; por eso la FORMA va antes que el aria.
