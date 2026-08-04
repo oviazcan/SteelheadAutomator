@@ -273,9 +273,12 @@ Fase 1 + **Fase 2a/2b validadas en vivo 2026-07-22**; Fase 1: **Configurador de 
 
 **La medición buena ya existe y no requiere muestreo: la pantalla final imprime `X archivados · Y aplicados` — si `Y < X`, la diferencia ES el número de casillas huecas.** Reparar es barato: una hueca sale como `VACIO` al siguiente escaneo y se repone sola. · **VIVO config 1.11.51** — deployado el 2026-08-03 desde la rama `workbench` con `wb-deploy.sh`: primero el core (1.11.50) y luego el glue (1.11.51), en ese orden para no dejar un minuto con glue nuevo sobre core viejo; verificado en vivo `VERSION='0.6.0'` + md5 del core idéntico.
 
-**`wb-deploy` publica script + config, NO la doc** ⇒ la bitácora del 0.6.0 («rescate por receta maestra — la orden rota se veía sana», OT 10837) sigue en `workbench` commit `da5da96` **sin mergear a main**, y allá se lee «Sin deployar», que ya es falso.
+**`wb-deploy` publica script + config, NO la doc** ⇒ la bitácora del 0.6.0 («rescate por receta maestra — la orden rota se veía sana», OT 10837) se quedó en `workbench` commit `da5da96`, y allá se leía «Sin deployar», que ya era falso.
 
-**Pendiente: mergear `workbench`.**)
+**✅ RESUELTO 2026-08-04, commit `20a469a`: `workbench` mergeado a main (163 commits).** La bitácora
+de `wo-spec-params.md` quedó como UNION real de las dos narrativas (auto-merge de git, verificado:
+20078 base + 4931 main + 15969 workbench = 40978 bytes, con los 7 hits del rescate y los 10 de la
+corrida real). El «Sin deployar» del encabezado se corrigió en el mismo commit de cierre.)
 
 · 0.5.0 (**config 1.11.3, tag `v1.11.3`.** **2026-07-29 — EL BUG QUE EL OPERADOR CAZÓ MIRANDO EL PATRÓN:** la corrida de 4436 órdenes reportó **9551 cambios**, con casi todas diciendo exactamente `5 cambios · 1 forzada · 4 anomalías`; frenó porque **un hallazgo genuino no se repite idéntico 1890 veces**. Tenía razón: la cobertura se medía **por NODO en vez de por ORDEN** y los campos de la spec externa viven REPARTIDOS entre nodos que los declaran (el raíz y el de inspección declaran los mismos), así que se proponía agregar en el QA lo que ya existía en el PROCESS. Verificado en 3 órdenes: a las tres les faltaba SOLO el campo 33579; de 9551 cambios **~7660 habrían DUPLICADO parámetros**.
 
@@ -313,11 +316,17 @@ Fase 1 + **Fase 2a/2b validadas en vivo 2026-07-22**; Fase 1: **Configurador de 
 > perderlo**. Se traslapa parcialmente con la narrativa de arriba (la de la 1ª corrida real del
 > 2026-08-04): lo único que aporta de nuevo es el rescate por receta maestra.
 >
-> ⚠️ **Contradicción sin resolver, a la vista a propósito:** el bloque de arriba dice
-> `VIVO config 1.11.51` y este dice `VIVO config 1.11.52`. No se adjudicó ninguna de las dos —
-> el config vivo hoy es **1.11.66**, así que ambas son afirmaciones históricas sobre cuándo salió
-> 0.6.0. La fuente de verdad es [`wo-spec-params.md`](wo-spec-params.md), que sí trae las dos
-> narrativas mezcladas por git.
+> ✅ **Contradicción RESUELTA con evidencia (2026-08-04).** Este bloque decía `VIVO config 1.11.52`
+> y el de arriba `1.11.51`. Ganó **`1.11.51`**, medido en los commits de deploy de `gh-pages`:
+>
+> | Config | Qué publicó en realidad |
+> |---|---|
+> | `1.11.50` (`60f67a6`) | `scripts/wo-spec-params-core.js` — el núcleo |
+> | **`1.11.51`** (`93b5d91`) | `scripts/wo-spec-params.js` — el glue · **último deploy que tocó el applet** |
+> | `1.11.52` (`9b8baa6`) | `extensionVersion` 1.7.3 + `steelhead-automator.zip` — **ningún script de wo-spec-params** |
+>
+> El `1.11.52` atribuía el applet al bump siguiente, que fue el deploy del **popup** de otra sesión.
+> Corregido también en [`wo-spec-params.md`](wo-spec-params.md). El config vivo hoy es **1.11.66**.
 
 **VIVO config 1.11.52.** **2026-08-03 — 0.6.0 RESCATE POR RECETA MAESTRA + la orden rota se veía sana.** Reporte de piso: las OTs de `GDE1214700 Antitarnish` no aplicaron sus parámetros *«ni por el tratamiento ni por el número de parte»*.
 

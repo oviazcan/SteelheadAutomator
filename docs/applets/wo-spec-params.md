@@ -3,7 +3,9 @@
 ## 2026-08-03 — 0.6.0: «las de GDE1214700 Antitarnish no se aplicaron» (OT 10837)
 
 Reporte del operador: *"tengo en el tratamiento y además en el número de parte, así que chocan,
-pero debía haberse aplicado al menos una de las dos y no se aplicó ninguna"*. **Sin deployar.**
+pero debía haberse aplicado al menos una de las dos y no se aplicó ninguna"*.
+**✅ VIVO en config 1.11.51** (ver el bloque de estado al final; el «Sin deployar» que decía aquí
+quedó obsoleto el 2026-08-03 y se corrigió al mergear `workbench`, commit `20a469a`).
 
 ### El choque era real y tenía efecto, pero no el que parecía
 
@@ -294,7 +296,18 @@ de `AddParamsToPartNumber`.
 
 ---
 
-**Versión:** 0.6.0 · **Estado:** ✅ **VIVO — config 1.11.52** (deployado por la sesión paralela; el script servido es byte-idéntico al validado). Lectura y decisión **verificadas en vivo**; **la ESCRITURA del rescate sigue sin ejecutarse ni una vez** · fase 1 validada end-to-end el 2026-07-28; fases 2 y 3 y el modo *migrar* **sin corrida real**
+**Versión:** 0.6.0 · **Estado:** ✅ **VIVO — config 1.11.51** (deployado por la sesión paralela; el script servido es byte-idéntico al validado). Lectura y decisión **verificadas en vivo**; **la ESCRITURA del rescate sigue sin ejecutarse ni una vez** · fase 1 validada end-to-end el 2026-07-28; fases 2 y 3 **sin corrida real**
+
+> **Reconciliado el 2026-08-04 al mergear `workbench` (commit `20a469a`).** Este bloque venía de
+> `workbench` y traía DOS afirmaciones que el merge dejó en falso:
+> 1. **`config 1.11.52` → `1.11.51`.** Medido en los deploys de `gh-pages`: `1.11.50` (`60f67a6`)
+>    publicó el núcleo, **`1.11.51` (`93b5d91`) el glue — último deploy que tocó este applet**, y
+>    `1.11.52` (`9b8baa6`) fue `extensionVersion` 1.7.3 + el zip del **popup**, sin ningún script de
+>    aquí. El `1.11.52` atribuía el applet al bump siguiente, de otra sesión.
+> 2. **El modo `migrarAInspeccion` YA tuvo su 1ª corrida real** (2026-08-04, 672 órdenes, **2,551
+>    casillas movidas**, 46/48 correctas en la validación en vivo, 2 huecas en la OT 15928 por el
+>    único renglón con casillas repetidas). Ver la sección de esta misma bitácora; decir «sin
+>    corrida real» habría hecho que la próxima sesión repitiera el análisis ya hecho.
 **Bundle:** 5ª acción de *Ajuste Masivo de Specs* (`spec-migrator`)
 **Diseño:** [`docs/superpowers/specs/2026-07-28-wo-spec-params-reapply-design.md`](../superpowers/specs/2026-07-28-wo-spec-params-reapply-design.md)
 **Plan:** [`docs/superpowers/plans/2026-07-28-wo-spec-params-fase1.md`](../superpowers/plans/2026-07-28-wo-spec-params-fase1.md)

@@ -95,6 +95,9 @@ No subir la concurrencia; al validar contra el ERP productivo, **una búsqueda a
 - [`docs/api/portal-importer-ov-creation.md`](docs/api/portal-importer-ov-creation.md) — flujo de creación de OV y gotchas
 - [`docs/api/persisted-queries-playbook.md`](docs/api/persisted-queries-playbook.md) — diagnóstico de hashes rotados vs deprecados (HTTP 400 `"Must provide a query string."`)
 - [`docs/api/hash-coverage-multirepo.md`](docs/api/hash-coverage-multirepo.md) — cobertura y autohealing multi-repo
+- [`docs/api/spec-measurement-model.md`](docs/api/spec-measurement-model.md) — el modelo de mediciones
+  de specs en DOS EJES (**dónde** se mide vs **bajo qué criterio**). Es la causa estructural detrás de
+  los casos de `wo-spec-params`: **un campo sin nodo que lo declare nunca se pide.**
 
 ## Reglas de desarrollo
 - JavaScript vanilla (sin React, sin frameworks, sin bundlers)
@@ -153,6 +156,16 @@ pushea el otro repo automáticamente**. Ver `tools/hash-autopilot/README.md` y l
   pide** — un vacío consistente suele ser una respuesta legítima a una pregunta que no era la tuya.
 - **Un fail-safe que existe y no se conecta es un fail-safe que no existe.** Pasó con un `found:true`
   hardcodeado en el glue: la rama de degradación estaba escrita y jamás se activó.
+- **AUSENTE ≠ VACÍO, y ante la duda se MUESTRA.** Una lista vacía **no es conocimiento**: es la forma
+  que toma el dato cuando falla la consulta o cuando el ERP renombra el campo. El icono de *Ajuste
+  Masivo de Specs* desapareció del menú sin que nadie tocara su config porque `[]` viajaba como si
+  fuera una lista real de permisos (`Array.isArray(p)?p:[]` en el background convertía «no sé» en «no
+  tiene»; `x || null` en el popup lo dejaba pasar porque **`[]` es truthy**) y
+  `req.every(p => [].includes(p))` escondía **toda** app con `requiredPermissions`, en silencio y
+  sobreviviendo a las recargas. La asimetría decide el default: el gate del menú es **cosmético** —el
+  servidor valida cada mutación al ejecutarla— así que un falso «sí» cuesta un error visible al hacer
+  clic, y un falso «no» deja al operador sin herramienta **y sin explicación**. Decisión en el módulo
+  puro [`extension/permission-gate.js`](extension/permission-gate.js) (`tools/test/permission-gate.test.js`).
 
 ### Reglas de diseño
 - **UI propia en DARK MODE.** Todo modal, panel, popover o tooltip que inyecte la extensión va en
