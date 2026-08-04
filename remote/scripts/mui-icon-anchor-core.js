@@ -82,16 +82,24 @@
   // Por eso los patrones son bilingües ES+EN y por SUBCADENA: el texto real suele ser más
   // largo que el nombre del icono ("Archivar Orden de Trabajo", "Imprimir Etiquetas de
   // Trabajo"). Es la red que sostiene a los iconos cuya forma todavía no se ha medido.
+  // Los patrones son ESTRECHOS a propósito. Un aria demasiado laxo no falla: acierta el icono
+  // EQUIVOCADO, que es peor. Encontrado verificando en vivo el 2026-08-03: con `/…|qr/i`,
+  // `QrCode2Icon` matcheaba **«Escanear Código QR»** —el botón de la CÁMARA del header— en una
+  // pantalla donde el QR de imprimir etiquetas ni existe. `wo-schedule-button` habría abierto
+  // la cámara en lugar de generar el PDF. Por eso se exige la palabra que nombra la ACCIÓN
+  // (etiqueta/label/tag), no la tecnología (qr).
+  // Mismo motivo para `VisibilityIcon`: un `/ver/` suelto muerde «Ver Documentos» y «Ver
+  // Desglose de Ventas», que están en casi todas las pantallas.
   const ICON_ARIA = {
     EditIcon: /(?:^|\s)(?:editar|edit)(?:\s|$)/i,
-    ArchiveIcon: /archivar|archive/i,
-    FilterListIcon: /filtrar|filter/i,
-    QrCode2Icon: /etiquetas|labels?|qr/i,
-    CalendarMonthIcon: /schedule|programaci[oó]n|calendario/i,
+    ArchiveIcon: /(?:^|\s)(?:archivar|archive)(?:\s|$)/i,
+    FilterListIcon: /(?:^|\s)(?:filtrar|filter)(?:\s|$)/i,
+    QrCode2Icon: /etiquetas?\s+de\s+trabajo|job\s+tags?|print.*labels?/i,
+    CalendarMonthIcon: /(?:view|ver)\s+schedule|programaci[oó]n|calendario/i,
     CloseIcon: /^(?:cerrar|close)$/i,
-    SendIcon: /enviar|send/i,
-    VisibilityIcon: /mostrar|ver|show|visible/i,
-    VisibilityOffIcon: /ocultar|esconder|hide/i,
+    SendIcon: /(?:^|\s)(?:enviar|send)(?:\s|$)/i,
+    VisibilityIcon: /^(?:mostrar|show|visible)\b/i,
+    VisibilityOffIcon: /^(?:ocultar|esconder|hide)\b/i,
   };
 
   function norm(s) { return (s || '').trim(); }
