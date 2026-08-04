@@ -231,6 +231,20 @@ es el último recurso, no el primero):
    minúscula— y encima finge cobertura. Vacío + anotado degrada al estado de hoy, nunca peor.
    Dos tests registran esa deuda y **se ponen rojos si alguien mide un icono y no lo mueve de
    lista en el mismo commit**.
+   **Intento de medición de los 5 (2026-08-03): siguen abiertos, y NO por la misma razón** —
+   la distinción importa para decidir qué hacer con cada uno. **`VisibilityIcon`/`OffIcon` son
+   IMPOSIBLES hoy**: el dominio 344 no tiene ningún Sensor Dashboard creado (lista vacía), así
+   que no hay pantalla donde leerlos — y de paso, eso significa que `sensor-graph-hide-all`
+   tampoco tiene dónde correr aquí (prioridad real: baja; su deuda de verdad es que ancla a un
+   `aria-label` EXACTO en inglés, sin verificar contra el locale español). **`SendIcon` NO se
+   midió por SEGURIDAD**, no por falta de acceso: su único hogar es el modal de envío de
+   factura por correo, y abrirlo en el ERP productivo es una acción con efectos externos —
+   mientras tanto lo sostiene el aria, y `cfdi-attacher` acepta además `EmailOutlinedIcon`, que
+   sí está medido. **`CloseIcon` y `RestorePageOutlinedIcon` sólo faltó alcanzarlos**: los
+   modales no abrieron por automatización (la OT probada no tenía etiquetas; el listado de
+   facturas abre por omisión en Packing Slips) y el renderer se congeló varias veces — falla
+   del ARNÉS, ya documentada, no de la app. Se cierran con un intento desde la pantalla
+   correcta.
    **Tercera señal descubierta midiendo: SH conserva `aria-label` en muchos botones de icono**,
    traducido («Editar», «Archivar», «Imprimir Etiquetas de Trabajo»). Va al FINAL de la
    cascada, después de la forma, porque el texto sí cambia con el idioma — y porque **un aria
