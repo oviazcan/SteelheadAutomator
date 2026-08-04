@@ -1,3 +1,151 @@
+# INCIDENTE 2026-07-30 (c) — el reparador: tres bugs que se tapaban entre sí
+
+**Detectado por el operador mirando el patrón**, no por un error: *«esperaba sólo 11 correcciones»*
+y el panel iba en 63 con 11 de 81 clientes. Tenía razón: **ninguno de los dos números significaba
+lo que parecía**. Vivo en config **1.11.31**.
+
+## Bug 1 — `planRepairs` agrupaba por un criterio más fino que el del ERP
+
+```js
+const k = f.fieldId + '|' + f.sfsId;   // ← (campo, specFieldSpec)
+```
+
+El ERP restringe por **`specFieldId` a secas** (regla 1.4.38: *una fila viva por SpecField*). Un
+mismo campo puede venir de **dos specs del mismo NP** — caso real, NP `73449-553-04`:
+
+```
+Adherencia (15820)
+  sfs 150436  spec Níquel Electroless   ACTIVO
+  sfs 106116  spec Estaño               archivado
+```
+
+El bucket del Estaño se veía «sin activo» y proponía reponer un campo **ya cubierto**. El ERP lo
+rechazaba con `23P01` — **la restricción única es lo que protegió los datos**, no el código.
+
+**Es el MISMO error de agrupación que hizo que la primera validación reportara 51 campos rotos
+donde había cero.** Apareció dos veces el mismo día porque la corrección se anotó en la bitácora
+como *conclusión* y no se fue a buscar dónde más vivía ese criterio. Anotar una corrección no la
+propaga.
+
+## Bug 2 — el contador sumaba los rechazos como éxitos
+
+```js
+if (st !== 'ok' && st !== 'conflict' && st !== 'duplicate') throw new Error(st);
+out.repuestos++;   // ← también cuando el ERP dijo "ya existe"
+```
+
+Con el bug 1 proponiendo de más y este contándolo como reparado, el total se inflaba y **borraba
+la señal que importa**: cuántos campos estaban de verdad rotos. Ahora se cuentan aparte
+(`yaEstaban`) y el panel los nombra.
+
+## Bug 3 — reanudar no hacía nada porque no había nada que reanudar
+
+```js
+if (!interrumpido && !totales.errores) removeItem(DUP_REPAIR_KEY)
+```
+
+El avance solo se borraba si la corrida terminaba **sin un solo error**. La corrida completa
+(19 898 reparados · 11 errores) dejó los 81 clientes marcados como hechos y el checkpoint sin
+limpiar. Al reabrir: el modal ofrecía reanudar → la lista de pendientes salía **vacía** → el
+bucle no corría → el flujo caía al resumen final, que **repintaba los totales guardados en rojo**.
+Reporte del operador: *«me regresa al error anterior a la reanudación y se queda parado»*. No
+fallaba la reanudación: **no había nada que reanudar y el código no tenía cómo decirlo.**
+
+Y lo único que de verdad faltaba —los clientes que fallaron— **no tenía forma de reintentarse**:
+el checkpoint guardaba **cuántos** errores, no **cuáles**. Sin identidades, la única unidad de
+reintento era la corrida entera.
+
+`planRepairResume` nombra los tres estados que estaban colapsados en uno: **reanudar** (quedan
+sin revisar) · **reintentar** (todos revisados, N fallaron → solo esos) · **completo** (limpia el
+avance y lo dice). El borrado ahora se condiciona a *«no quedan fallidos»*, no a *«no hubo
+errores»*.
+
+## Por qué «11 errores» nunca significó «11 campos rotos»
+
+Un `errores++` se dispara en **tres niveles distintos**, y cada uno esconde una cantidad de
+trabajo muy diferente:
+
+| Dónde | Qué se pierde cuando falla | Cuánto suma |
+|---|---|---|
+| reposición de UN campo | ese campo | 1 |
+| `getPNDetail` de un NP | **todos** los campos de ese NP | 1 |
+| paginación `AllPartNumbers` (sin try/catch) | **el cliente completo**, cientos de NPs | 1 |
+
+Anoche el ERP devolvía HTTP 500 en masa (1 347 en consola). Con esa tasa, **11 errores pueden
+representar 11 NPs enteros —o clientes enteros— que nunca se revisaron**, y sus campos siguen
+rotos. Por eso una segunda corrida encuentra trabajo legítimo: no es daño nuevo, es el que la
+primera **nunca alcanzó a ver**.
+
+**Lección: un contador de errores solo es interpretable si todas sus unidades cuestan lo mismo.**
+Aquí un `1` podía valer un campo o un cliente completo, así que el número no permitía estimar
+nada — ni el daño restante, ni si valía la pena reintentar.
+
+## Estado
+Los tres corregidos y vivos (1.11.30 / 1.11.31). **Suite 1371/1371**, con tests de regresión para
+cada uno: el caso Adherencia de dos specs, la separación `repuestos`/`yaEstaban`, y los tres
+estados de la reanudación.
+
+**Pendiente:** los tres niveles de `errores++` siguen sumando al mismo contador. Separarlos
+(campo / NP / cliente) haría el número interpretable; hoy la bitácora en vivo es lo único que
+distingue.
+
+---
+
+# INCIDENTE 2026-07-30 — el icono desapareció del menú (AUSENTE ≠ VACÍO)
+
+**Síntoma:** *«desapareció el icono de menú de specs en la extensión»*. **Resuelto en config
+1.11.25** (deploy de config; el fix de fondo espera republicación del `.zip`).
+
+## Lo que NO era
+Descartado con evidencia, en orden y sin tocar la red: el config vivo trae la app con sus 7
+acciones y su categoría; los 6 scripts pasan la verificación de integridad byte-a-byte contra
+`scriptIntegrity`; `READ_SPECS`/`WRITE_SPECS` **sí existen** en el catálogo de 262 permisos (no
+es una fragmentación como la de `MANAGE_REPORTING`); y el `git log` de `remote/config.json`
+muestra esos dos permisos **sin cambios desde el primer commit** — nadie los tocó.
+
+Eso deja un silogismo cerrado: si la app está en el config vivo y no se ve, el **único** filtro
+entre "está declarada" y "se ve en el menú" es el de permisos.
+
+## La causa: "no sé" se escribía igual que "no tiene"
+
+```
+background.js  managedPermissions: Array.isArray(perms) ? perms : []   ← "no sé" → "no tiene"
+popup.js       d.sa_user_permissions || null                           ← [] es TRUTHY: pasa
+filtro         req.every(p => [].includes(p)) === false                ← esconde, en silencio
+```
+
+Un `[]` cacheado en `storage.local` **sobrevive a las recargas** y esconde TODA app con
+`requiredPermissions`. `spec-migrator` era la **única** app con `READ_SPECS`/`WRITE_SPECS`, lo
+que explica que desapareciera sola si la lista del usuario era real pero incompleta.
+
+**Es el mismo modo de falla que dejó invisible a `report-regen` (0.3.2)**, y reaparece porque la
+lección se había escrito en prosa en la bitácora de aquel applet, no en un test que la vigilara.
+
+## El arreglo, en dos capas
+1. **Llega hoy, sin republicar:** `requiredPermissions: []` en el config. El gate del menú es
+   **cosmético** — el servidor valida cada mutación al ejecutarla — así que un falso "sí" cuesta
+   un error visible al hacer clic, mientras que un falso "no" deja al operador sin herramienta y
+   **sin explicación**. Otras 12 apps ya corren así, incluida `spec-params-bulk`, que también
+   toca specs.
+2. **Fondo (requiere `.zip` nuevo):** módulo puro [`extension/permission-gate.js`](../../extension/permission-gate.js)
+   con **12 tests**: una lista vacía cuenta como **desconocida** y la app se muestra. Además
+   `background.js` manda `null` en vez de `[]` cuando el ERP no da la lista, y **no cachea listas
+   vacías**. El test incluye el trinquete que ata el módulo con `background.js`, `popup.js` y el
+   orden de carga de `popup.html` — el bug vivía repartido en tres archivos y ninguno fallaba solo.
+
+## Lección
+**Un valor vacío no es un dato: es la forma que toma la ausencia de dato.** Cuando el código lo
+trata como conocimiento, el fail-open se apaga justo cuando más falta hace. La regla —*ausente ≠
+vacío, y ante la duda se muestra*— ya se había aprendido con `report-regen`; lo que faltaba era
+un test que impidiera reaprenderla.
+
+**Nota operativa:** intentar leer los permisos del usuario desde la pestaña automatizada **colgó
+el renderer** (`Runtime.evaluate` timeout de 45 s). Es el modo de falla del arnés ya documentado
+—pestaña en background ⇒ Chrome congela los `fetch`—, no de la extensión. El caso se cerró con
+evidencia local, sin red.
+
+---
+
 # INCIDENTE 2026-07-29 — archivó 52 parámetros y repuso 0 (shape equivocado)
 
 **Alcance:** 13 NPs de GRUPO COLLADO, 52 parámetros. **Reparado y verificado el mismo día.**

@@ -382,3 +382,156 @@ test('slimResult: una orden sin nada que corregir queda mínima', () => {
   assert.equal(slim.tieneTrabajo, false);
   assert.ok(JSON.stringify(slim).length < 400);
 });
+
+// ── CSV: ancho de fila == ancho de encabezado ───────────────────────────────
+// Al agregar las columnas `origen` y `spec` (2026-07-30) una fila quedó en 12 contra 14 del
+// encabezado: la de anomalías. Un CSV desalineado es peor que uno sin la columna — corre los
+// valores de sitio y el analista lee "EXTERNA" donde dice el estado, sin que nada falle.
+test('CSV: todas las filas tienen tantas columnas como el encabezado', () => {
+  const fs = require('node:fs'), path = require('node:path');
+  const src = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'remote', 'scripts', 'wo-spec-params.js'), 'utf8');
+
+  // Cuenta elementos de primer nivel de un array literal, respetando anidamiento.
+  const anchoDe = (txt) => {
+    let d = 0, n = 1;
+    for (const ch of txt) {
+      if ('([{'.includes(ch)) d++;
+      else if (')]}'.includes(ch)) d--;
+      else if (ch === ',' && d === 1) n++;
+    }
+    return n;
+  };
+
+  for (const fn of ['function downloadScanCsv', 'function buildCsv']) {
+    const ini = src.indexOf(fn);
+    assert.ok(ini > 0, 'no encontré ' + fn);
+    const bloque = src.slice(ini, ini + 1900);
+    const head = bloque.match(/const rows = \[\[([\s\S]*?)\]\];/);
+    assert.ok(head, fn + ': no encontré el encabezado');
+    const nh = anchoDe('[' + head[1] + ']');
+    const pushes = bloque.match(/rows\.push\(\[[\s\S]*?\]\);/g) || [];
+    assert.ok(pushes.length > 0, fn + ': no encontré filas');
+    for (const p of pushes) {
+      const arr = p.slice(p.indexOf('['), p.lastIndexOf(']') + 1);
+      assert.equal(anchoDe(arr), nh,
+        fn + ': fila con ancho distinto al encabezado (' + nh + ') → ' + arr.slice(0, 80));
+    }
+  }
+});
+
+test('CSV: el origen del valor viaja en ambos exportadores', () => {
+  // Sin `origen` no se puede separar lo respaldado por el NP de la inferencia del catálogo,
+  // que es justo la decisión sobre las casillas de PROCESO.
+  const fs = require('node:fs'), path = require('node:path');
+  const src = fs.readFileSync(
+    path.join(__dirname, '..', '..', 'remote', 'scripts', 'wo-spec-params.js'), 'utf8');
+  const heads = src.match(/const rows = \[\[[\s\S]*?\]\];/g) || [];
+  assert.equal(heads.length, 2, 'se esperan dos exportadores de CSV');
+  for (const h of heads) assert.match(h, /'origen'/, 'falta la columna origen');
+});
+
+// ── La orden que no puede repararse tiene que DECIRLO ────────────────────────
+//
+// Caso OT 10837 (piso, 2026-08-03): el core detecta 3 campos de la spec del cliente que no
+// puede colocar (`faltantesSinDestino`) y correctamente no escribe nada. Pero el glue
+// guardaba esa lista sin contarla ni mostrarla: la orden aparecía con `touched: 0` y sin
+// una sola señal, indistinguible de una orden sana. En el barrido de fase 3 —que sólo
+// conserva el slim— la señal se perdía por completo.
+//
+// Es el modo de falla que este repo ya pagó en `price-confirm-guard` y `surtido-guard`:
+// «no tengo dónde ponerlo» se veía igual que «no hacía falta».
+const ANTITARNISH = JSON.parse(fs.readFileSync(
+  path.join(__dirname, 'fixtures', 'wo-spec-params-10837.json'), 'utf8'));
+
+test('slimResult: una orden con faltantes sin destino NO se ve como orden sana', () => {
+  const cls = Core.classifyWorkOrder(ANTITARNISH);
+  const plan = Core.buildWritePlan(cls, { partNumberId: 3016541 });
+  const slim = G.slimResult({ idInDomain: 10837, partNumberId: 3016541,
+    partNumberName: 'PHA20842', workOrderId: 1844453, tally: cls.tally, cells: cls.cells,
+    anomalies: cls.anomalies, orphans: cls.orphans,
+    faltantesSinDestino: cls.faltantesSinDestino, plan });
+  assert.equal(slim.tieneTrabajo, false, 'no hay nada que escribir, y eso es correcto');
+  assert.equal(slim.nSinDestino, 3,
+    'pero el conteo debe viajar en el slim: es la única señal de que quedó sin aplicar');
+});
+
+test('slimResult: sin faltantes el conteo es 0, no undefined', () => {
+  const slim = G.slimResult({ idInDomain: 1, partNumberId: 2, partNumberName: 'X',
+    tally: { OK: 5, VACIO: 0, DIFIERE: 0, DUPLICADO: 0, AMBIGUO: 0, SIN_CATALOGO: 0 },
+    cells: [], anomalies: [], orphans: [], faltantesSinDestino: [],
+    plan: { archiveIds: [], parametersToAdd: [], touched: 0, skipped: [] } });
+  assert.equal(slim.nSinDestino, 0);
+});
+
+test('summarize: agrega los faltantes sin destino de todas las órdenes', () => {
+  const cls = Core.classifyWorkOrder(ANTITARNISH);
+  const plan = Core.buildWritePlan(cls, { partNumberId: 3016541 });
+  const uno = Object.assign({}, cls, { plan });
+  const s = G.summarize([uno, uno]);
+  assert.equal(s.sinDestino, 6, 'dos órdenes con 3 campos cada una');
+});
+
+// ── Rescate por receta maestra: el cableado ─────────────────────────────────
+const ANTI = JSON.parse(fs.readFileSync(
+  path.join(__dirname, 'fixtures', 'wo-spec-params-10837.json'), 'utf8'));
+const MASTERS_G = JSON.parse(fs.readFileSync(
+  path.join(__dirname, 'fixtures', 'wo-spec-params-masters.json'), 'utf8'));
+
+function antiDeps(calls) {
+  G.resetMasterCache();   // la caché de recetas es global: cada test parte de cero
+  return {
+    getWorkOrderIds: async () => ({ id: 1844453, partNumberIds: [3016541] }),
+    getSpecsInfo: async () => ANTI.workOrder,
+    getPartNumber: async () => ANTI.partNumber,
+    getProcessNode: async (id, occ, rootId) => {
+      calls.push({ id, occ, rootId });
+      return MASTERS_G[String(id)] || null;
+    }
+  };
+}
+
+test('rescate: la OT 10837 se repara consultando la receta maestra', async () => {
+  const calls = [];
+  const res = await G.analyzeWorkOrder(10837, antiDeps(calls));
+  assert.equal(res.ok, true);
+  const r = res.results[0];
+  assert.equal(r.plan.parametersToAdd.length, 3, 'los 3 criterios del cliente se aplican');
+  assert.equal((r.faltantesSinDestino || []).length, 0);
+  for (const a of r.plan.parametersToAdd) assert.equal(a.recipeNodeId, 44947411);
+});
+
+test('rescate: GetProcessNode va con las TRES variables (id, ocurrencia y raíz)', async () => {
+  const calls = [];
+  await G.analyzeWorkOrder(10837, antiDeps(calls));
+  assert.ok(calls.length > 0, 'debe haber consultado la receta');
+  for (const c of calls) {
+    assert.ok(c.id != null, 'id');
+    assert.ok(c.occ != null, 'processNodeOccurrence — sin ella el server responde error, no datos');
+    assert.equal(c.rootId, 170989, 'rootId = maestro del nodo PROCESS de la orden');
+  }
+});
+
+test('rescate: una orden SIN faltantes no dispara ni una consulta extra', async () => {
+  const calls = [];
+  const deps = {
+    getWorkOrderIds: async () => ({ id: 1756468, partNumberIds: [3044551] }),
+    getSpecsInfo: async () => FIX.workOrder,
+    getPartNumber: async () => FIX.partNumber,
+    getProcessNode: async (id) => { calls.push(id); return null; }
+  };
+  await G.analyzeWorkOrder(5769, deps);
+  assert.equal(calls.length, 0,
+    'la consulta de receta es cara: sólo se paga cuando la orden dejó campos sin destino');
+});
+
+test('rescate: si la receta maestra no se puede leer, la orden no truena', async () => {
+  const deps = Object.assign(antiDeps([]), {
+    getProcessNode: async () => { throw new Error('403'); }
+  });
+  const res = await G.analyzeWorkOrder(10837, deps);
+  assert.equal(res.ok, true);
+  const r = res.results[0];
+  assert.equal(r.plan.parametersToAdd.length, 0, 'sin receta no se adivina destino');
+  assert.equal((r.faltantesSinDestino || []).length, 3, 'y se reporta lo que quedó sin aplicar');
+});

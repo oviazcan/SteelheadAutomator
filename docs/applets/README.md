@@ -304,6 +304,63 @@ Fase 1 + **Fase 2a/2b validadas en vivo 2026-07-22**; Fase 1: **Configurador de 
 **Checkpoint en IndexedDB** por lote de 100 → reanudable (localStorage no aguanta; misma razón que `bulk-upload`). Pool de **3** clavado en código; **las escrituras van EN SERIE** (la lectura tolera pool, escribir no). Fases 2 y 3 sin corrida real)
 
 
+
+### Narrativa que venía de `workbench` (rescate por receta maestra, 2026-08-03)
+
+> **Por qué está aquí:** al mergear `workbench` el 2026-08-04, `CLAUDE.md` chocó — main ya había
+> pasado la tabla de applets a este archivo y workbench había editado esta celda. El conflicto se
+> resolvió tomando la versión de main, así que **este texto se conserva aquí verbatim para no
+> perderlo**. Se traslapa parcialmente con la narrativa de arriba (la de la 1ª corrida real del
+> 2026-08-04): lo único que aporta de nuevo es el rescate por receta maestra.
+>
+> ⚠️ **Contradicción sin resolver, a la vista a propósito:** el bloque de arriba dice
+> `VIVO config 1.11.51` y este dice `VIVO config 1.11.52`. No se adjudicó ninguna de las dos —
+> el config vivo hoy es **1.11.66**, así que ambas son afirmaciones históricas sobre cuándo salió
+> 0.6.0. La fuente de verdad es [`wo-spec-params.md`](wo-spec-params.md), que sí trae las dos
+> narrativas mezcladas por git.
+
+**VIVO config 1.11.52.** **2026-08-03 — 0.6.0 RESCATE POR RECETA MAESTRA + la orden rota se veía sana.** Reporte de piso: las OTs de `GDE1214700 Antitarnish` no aplicaron sus parámetros *«ni por el tratamiento ni por el número de parte»*.
+
+**Causa medida:** las OTs 10837/10839 se crearon el **2026-07-02 16:01** y su processNode maestro (`268059`, del proceso `T400 (ANT)`) se **actualizó el 2026-07-07 22:48** — cinco días después. Copiaron la receta cuando aún no declaraba los campos, y **esa copia no se refresca**: no quedaron viejos los parámetros sino la **declaración de campos del nodo**, así que los 3 params del NP (sin nodo forzado) quedaron FUERA por la regla de herencia. Control: la OT 2472 (maestro `157804`) aplicó 5/5.
+
+**El «choque» que reportó el operador era real y SÍ hacía daño, pero en otro punto**: la misma spec entra por el NP y por el tratamiento, y `buildCatalogIndex` la contaba **dos veces** (mismo `specFieldSpecId`) ⇒ `AMBIGUO: el catálogo ofrece 2 opciones` ⇒ no escribía nada. Dedup **por `specFieldSpecId`, NO por specId** (dos specs distintas con el mismo campo sí son alternativas reales).
+
+**Rescate:** si ningún nodo de la orden toca la spec, se consulta el `processNode` MAESTRO (`processNodeByDerivedFrom`) y se elige el nodo cuyo maestro declara el campo — evidencia estructural, no match por nombre, y **la regla de exactamente-uno se mantiene**. Sólo consulta si hace falta, en serie, con caché por proceso que se vacía **al EMPEZAR** cada corrida (corregir la receta y volver a correr es el flujo esperado). `GetProcessNode` exige las **tres** variables (`id`/`processNodeOccurrence`/`rootId`) y **ya tenía ruta de regeneración** ⇒ cero deuda.
+
+**El defecto que lo hacía invisible:** `faltantesSinDestino` se calculaba desde 0.4.0 y **nunca se mostraba ni se contaba** — la orden reportaba `touched:0`, **indistinguible de una sana**, y en el barrido de fase 3 (sólo slim) la señal se perdía entera; mismo modo de falla que `price-confirm-guard` y `surtido-guard` 0.4.0. Corregido en slim/`summarize`/panel ámbar/CSV.
+
+**ALCANCE MEDIDO (428 órdenes activas anteriores al 4 jul, 1131 consultas, 0 fallos): 396 sanas · 12 las arregla el applet solo · 14 necesitan que un humano declare el specField** en 5 nodos y 6 campos. El dominio tiene **5428** activas pero >5000 nacieron sanas ⇒ **barrer todo trabajaría en balde**. El nodo destino se resolvió **con dato**: los campos hermanos de esas specs viven siempre en `Txxx-IC00-001 Inspeccionando y Empacando` (Estaño 4950 filas, Zinc 4950, Plata Mate 3745), nunca en recibo ni embarques.
+
+**Error propio corregido el mismo día:** el fixture tomaba el NP de `partNumberById` EMBEBIDO en `GetPartNumberWorkOrderSpecsInfo` —que no trae `specFieldSpec`— y sostenía que «la vía NP no puede resolver»; el applet usa `GetPartNumber`, que sí, así que la 10837 resuelve **por vía NP** y escribe la raíz de catálogo.
+
+**Lección: un fixture recortado a mano puede sostener una conclusión equivocada sin romper un solo test — lo destapó correr el applet vivo contra el ERP vivo, no la suite.** Core 69/69, glue 45/45, suite 91 archivos. 🔴 **LA ESCRITURA DEL RESCATE NUNCA SE HA EJECUTADO** (todo lo validado es lectura+decisión).
+
+**Previo 0.5.0 (config 1.11.3, tag `v1.11.3`):** **2026-07-29 — EL BUG QUE EL OPERADOR CAZÓ MIRANDO EL PATRÓN:** la corrida de 4436 órdenes reportó **9551 cambios**, con casi todas diciendo exactamente `5 cambios · 1 forzada · 4 anomalías`; frenó porque **un hallazgo genuino no se repite idéntico 1890 veces**. Tenía razón: la cobertura se medía **por NODO en vez de por ORDEN** y los campos de la spec externa viven REPARTIDOS entre nodos que los declaran (el raíz y el de inspección declaran los mismos), así que se proponía agregar en el QA lo que ya existía en el PROCESS. Verificado en 3 órdenes: a las tres les faltaba SOLO el campo 33579; de 9551 cambios **~7660 habrían DUPLICADO parámetros**.
+
+**Lección: la fase 1 se validó sobre la OT 5769, que el operador YA había tocado a mano** —su nodo de inspección tenía params— así que escondía el reparto normal; **validar sobre un caso ya tocado oculta el comportamiento típico**.
+
+**DIAGNÓSTICO DEL NODO RAÍZ, cerrado con git + datos en vivo:** el culpable es **`bulk-upload`**, que hasta el commit `046ec5b` (regla 1.4.38, 2026-05-25) escribía `processNodeId: part.processId || pn.defaultProcessNodeId` — forzaba el proceso DEFAULT del NP (verificado: el NP 80247-572-20 tiene 4 params con NODO=241753 y su `defaultProcessNodeId` ES 241753, mismo nombre que el nodo raíz de la OT).
+
+**Regla de herencia del ERP (del operador):** al crear la OT, un param SIN nodo forzado cae en el nodo que declare su specField y si ninguno lo declara queda FUERA; con nodo forzado va a ese nodo. El fix de mayo detuvo la sangría pero no limpió lo escrito, y **el deduplicador no lo alcanzaba por dos límites**: `if (bucket.params.length < 2) continue` (solo miraba DUPLICADOS, y estos casos tienen UNA fila) y su modo masivo **solo archivaba** (su propio comentario lo admitía: *"no podemos convertir un row con processNode en NULL"*).
+
+**Ambos levantados en 0.5.0** + `planForcedNodeRelease` (núcleo puro, 7 tests, con estado `ambiguous` que NO toca nada si los valores difieren) y el apply que **repone con `processNodeId:null` DESPUÉS de archivar**. Modo **`migrarAInspeccion`** para las OTs existentes (apagado por omisión; sin nodo de inspección identificado no mueve nada).
+
+**ORDEN DE EJECUCIÓN: primero el frente NP, luego el de OTs** — al revés se migran órdenes que seguirán naciendo torcidas. LAS TRES FASES. Fase 1 VALIDADA END-TO-END por el operador 2026-07-28** —desalineó parámetros a propósito y corrió el corrector: *"funciona perfecto"*—; fase 2 sin corrida real.
+
+**Fase 2 (0.2.0): pegas los NP corregidos y encuentra sus órdenes.** 3 hallazgos en vivo: (a) el `searchQuery` de `AllWorkOrders` **NO busca por Número de Parte** (0 resultados para un NP con órdenes; mismo patrón que `po-listing-filters` con proveedores) → la vía es **`partNumberIdFilter:[ids]`**, lista con semántica OR, que **no venía en el scan**; (b) los nombres parecidos (`partNumberIdsFilter`/`partNumberFilter`/`partNumberIds`) **el server los IGNORA EN SILENCIO** y devuelve el dominio ENTERO —**4284 órdenes en vez de 4**—, así que un typo no falla: procesa todo (test que fija el nombre dentro del cuerpo de la función); (c) **los nombres de NP NO son únicos**: `80236-167-07` resuelve a **9 NPs activos**, solo 2 con órdenes → un nombre se expande a TODOS los homónimos, y es seguro porque **cada orden se compara contra el NP que ELLA tiene asociado**, nunca contra el que pegaste.
+
+**El dominio tiene 4284 OTs activas, no 1000+** → a 0.87 MB por (OT × NP) el escaneo total serían ~3.7 GB, lo que deja la fase 2 como camino principal y la 3 como último recurso. —desalineó parámetros a propósito y corrió el corrector: *"funciona perfecto"*—. 5ª acción de *Ajuste Masivo de Specs*: alinea los parámetros de las specs de una OT con los del NP, sobre la orden en pantalla o una lista pegada. Existe porque `bulk-upload` corrigió los NP pero **las OTs generadas antes conservan el criterio viejo** — y hay 1000+ abiertas.
+
+**El ERP CLONA el parámetro al aplicarlo** (pides el id del catálogo, queda otro encadenado por `derivedFromId`) → hay TRES ids que no se confunden: el de la fila (se archiva), el del clon (nunca se manda) y el del catálogo (se escribe y se compara).
+
+**Modelo de DOS UNIVERSOS**: la spec EXTERNA (la del cliente; señal estructural `partNumberSpecByPartNumberSpecId != null`, 1 de las 7 en la OT 5769) va COMPLETA y **solo** en el nodo de inspección de la línea, forzando los campos que ese nodo no declare; las de PROCESO siguen `recipeNodeSpecFields`. El nodo destino se identifica por **TIPO** (`QUALITY_ASSURANCE_NODE`) **no por nombre**, pero hay TRES por orden → el bueno es el único que toca la spec externa; si no es exactamente uno **no fuerza nada**. Los parámetros de la spec externa en otro nodo son **ANOMALÍAS: se reportan, NO se tocan** (5 en la OT 5769, todas en la raíz).
+
+**LECCIÓN: la comparación por LINAJE no era la principal** — de 136 aciertos medidos, **132 salieron por identidad de valor y solo 4 por linaje**, porque el catálogo de una spec evoluciona y un parámetro aplicado puede descender de una versión ya reemplazada; un prototipo apoyado solo en linaje marcó **134 falsos DIFIERE** y habría reescrito la orden entera. La cascada **solo puede absolver**: un falso OK se corrige en la siguiente corrida, un falso DIFIERE cambia el criterio de calidad de una orden en piso. Archiva ANTES de agregar, y si el archivado falla NO agrega (dejaría dos filas vivas en la casilla). Lectura de **0.87 MB por (OT × NP)** → se destila y se descarta. Núcleo puro **34 golden** contra fixture REAL + glue 16. Rutas de regeneración con anclas ESTRUCTURALES verificadas en vivo (`WORK_ORDER_PAGE_PARTS_EDIT_SPECS_BUTTON`, `WORK_PARTS_INFO_SAVE_SPECS_AND_CLOSE_BUTTON`) — esa pantalla mezcla idiomas.
+
+**Fase 3 (0.3.0): escaneo de las 4284 órdenes** (~40 min) con el checklist de memory-hardening COMPLETO desde el día uno: `slimResult` guarda ~2 KB por orden en vez del crudo (**en 4284 órdenes esa diferencia ES el OOM**; test que falla si pasa de 4 KB), `workOrder=null` tras clasificar, caché de NP, `closePanel` suelta todo; y del lado del host `stopDatadogSessionReplay` al arrancar, `createMemMonitor` con **guardrail al 88% que DETIENE y guarda** (checkpoint antes que crash) y `makePeriodicDrain(50)`.
+
+**Checkpoint en IndexedDB** por lote de 100 → reanudable (localStorage no aguanta; misma razón que `bulk-upload`). Pool de **3** clavado en código; **las escrituras van EN SERIE** (la lectura tolera pool, escribir no). Fases 2 y 3 sin corrida real
+
 ---
 
 ## `invoice-autofill`

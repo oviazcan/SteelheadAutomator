@@ -1,0 +1,68 @@
+{
+ "268059": {
+  "id": 268059,
+  "name": "Inspeccionando y  Empacando Antitarnish",
+  "type": "QUALITY_ASSURANCE_NODE",
+  "processNodeSpecFieldsByProcessNodeId": {
+   "nodes": [
+    {
+     "id": 104528,
+     "processNodeId": 268059,
+     "specFieldBySpecFieldId": {
+      "id": 20570,
+      "name": "Protección - Sulfuro de sodio al 2.5%"
+     }
+    },
+    {
+     "id": 104529,
+     "processNodeId": 268059,
+     "specFieldBySpecFieldId": {
+      "id": 25415,
+      "name": "Apariencia Homogénea - Antitarnish"
+     }
+    },
+    {
+     "id": 104530,
+     "processNodeId": 268059,
+     "specFieldBySpecFieldId": {
+      "id": 22546,
+      "name": "Primeras Piezas Antitarnish"
+     }
+    }
+   ]
+  }
+ },
+ "157804": {
+  "id": 157804,
+  "name": "Inspeccionando y  Empacando Antitarnish",
+  "type": "QUALITY_ASSURANCE_NODE",
+  "processNodeSpecFieldsByProcessNodeId": {
+   "nodes": [
+    {
+     "id": 66126,
+     "processNodeId": 157804,
+     "specFieldBySpecFieldId": {
+      "id": 20570,
+      "name": "Protección - Sulfuro de sodio al 2.5%"
+     }
+    },
+    {
+     "id": 72300,
+     "processNodeId": 157804,
+     "specFieldBySpecFieldId": {
+      "id": 25415,
+      "name": "Apariencia Homogénea - Antitarnish"
+     }
+    },
+    {
+     "id": 66806,
+     "processNodeId": 157804,
+     "specFieldBySpecFieldId": {
+      "id": 22546,
+      "name": "Primeras Piezas Antitarnish"
+     }
+    }
+   ]
+  }
+ }
+}

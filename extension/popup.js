@@ -130,12 +130,12 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const { sa_app_permissions_overrides: permOverrides } = await new Promise(r =>
       chrome.storage.local.get('sa_app_permissions_overrides', d => r(d)));
-    const visibleApps = apps.filter(app => {
-      const req = permOverrides?.[app.id] ?? app.requiredPermissions;
-      if (!req || req.length === 0) return true;
-      if (!userPermissions) return true;
-      return req.every(p => userPermissions.includes(p));
-    });
+    // La decisión vive en permission-gate.js (módulo puro, con tests). Ahí una lista
+    // VACÍA cuenta como "no sé" y la app se muestra: un [] cacheado escondía en
+    // silencio toda app con requiredPermissions. Fallback defensivo por si el módulo
+    // no cargó — esconder por accidente es peor que mostrar de más.
+    const gate = self.SAPermissionGate;
+    const visibleApps = gate ? gate.selectVisibleApps(apps, userPermissions, permOverrides) : apps;
 
     if (viewMode === 'grid') {
       renderGridMenu(menuWrap, visibleApps);

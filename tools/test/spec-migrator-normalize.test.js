@@ -389,6 +389,170 @@ test('planRepairs: valores DISTINTOS entre los archivados → no se decide solo'
   assert.equal(r.length, 0, 'elegir el valor no le toca al reparador');
 });
 
+test('planRepairs: REGRESIÓN — un campo cubierto por OTRA spec del NP no se propone', () => {
+  // Caso real (NP 73449-553-04, campo Adherencia 15820): el campo vive en dos specs del mismo
+  // NP — sfs=150436 (Níquel) con su parámetro ACTIVO, y sfs=106116 (Estaño) archivado.
+  // Agrupando por (campo, sfs) el bucket del Estaño se veía "sin activo" y proponía reponer,
+  // aunque el campo YA estaba cubierto. El ERP lo rechazaba con 23P01 —no se corrompió nada—
+  // pero el contador sumaba esos intentos como "reparados" e inflaba el total: el operador vio
+  // 63 correcciones donde esperaba 11. El criterio correcto es el del ERP: 1 fila viva por
+  // specFieldId, sin importar de qué spec venga.
+  const filas = [
+    mk(1, null, null, 20902273, 'Sí o No', 15820, 150436),                 // ACTIVO, otra spec
+    mk(2, '2026-07-30T03:36:19Z', 241753, 28683577, 'Sí o No', 15820, 106116)
+  ];
+  assert.deepEqual(SMN.planRepairs(filas, CORTE), [],
+    'el campo ya tiene parámetro: no hay nada que reparar');
+});
+
+test('planRepairs: si NINGUNA spec lo cubre, sí se repara aunque haya varios sfs', () => {
+  const filas = [
+    mk(1, '2026-07-30T03:36:00Z', 241753, 900, 'Sí o No', 15820, 150436),
+    mk(2, '2026-07-30T03:36:19Z', 241753, 901, 'Sí o No', 15820, 106116)
+  ];
+  const r = SMN.planRepairs(filas, CORTE);
+  assert.equal(r.length, 1, 'un solo campo → una sola reposición');
+  assert.equal(r[0].specFieldParamId, 901, 'gana el archivado más reciente');
+});
+
+test('mergeSweepTotals: acumula yaEstaban aparte de repuestos', () => {
+  const t = SMN.mergeSweepTotals({ repuestos: 5, yaEstaban: 40, errores: 1, clientes: 2 },
+                                 { repuestos: 3, yaEstaban: 20, errores: 0 });
+  assert.equal(t.repuestos, 8, 'reparados = daño realmente corregido');
+  assert.equal(t.yaEstaban, 60, 'los rechazados por el ERP no inflan el total');
+  assert.equal(t.clientes, 3);
+});
+
+// ── Reanudación del reparador: los tres estados ─────────────────────────────
+const CLIS = [{ id: 1, name: 'A' }, { id: 2, name: 'B' }, { id: 3, name: 'C' }];
+
+test('planRepairResume: REGRESIÓN — todo revisado y con fallos NO es "reanudar"', () => {
+  // El bug (2026-07-30): el checkpoint solo se borraba si la corrida terminaba sin errores,
+  // así que una corrida COMPLETA con fallos quedaba "a medias" para siempre. Al aceptar
+  // reanudar, la lista de pendientes salía vacía, el bucle no corría y el panel repintaba el
+  // resumen viejo en rojo: "me regresa al error anterior y se queda parado".
+  const ck = { done: [1, 2, 3], fallidos: [2], totales: { repuestos: 19898, errores: 11 } };
+  const p = SMN.planRepairResume(CLIS, ck);
+  assert.equal(p.modo, 'reintentar', 'debe ofrecer reintentar, no reanudar en vacío');
+  assert.deepEqual(p.pendientes.map(c => c.id), [2], 'solo el que falló');
+  assert.equal(p.fallidos, 1);
+});
+
+test('planRepairResume: todo revisado y sin fallos → completo, sin pendientes', () => {
+  const p = SMN.planRepairResume(CLIS, { done: [1, 2, 3], fallidos: [], totales: {} });
+  assert.equal(p.modo, 'completo');
+  assert.deepEqual(p.pendientes, []);
+});
+
+test('planRepairResume: quedan clientes sin ver → reanudar con los que faltan', () => {
+  const p = SMN.planRepairResume(CLIS, { done: [1], fallidos: [], totales: { repuestos: 7 } });
+  assert.equal(p.modo, 'reanudar');
+  assert.deepEqual(p.pendientes.map(c => c.id), [2, 3]);
+  assert.equal(p.totales.repuestos, 7, 'conserva lo acumulado');
+});
+
+test('planRepairResume: un fallo con clientes pendientes NO adelanta el reintento', () => {
+  // Primero hay que terminar de recorrer; reintentar antes dejaría clientes sin ver.
+  const p = SMN.planRepairResume(CLIS, { done: [1], fallidos: [1], totales: {} });
+  assert.equal(p.modo, 'reanudar');
+  assert.deepEqual(p.pendientes.map(c => c.id), [2, 3]);
+  assert.equal(p.fallidos, 1, 'pero el fallo sigue contado');
+});
+
+test('planRepairResume: sin checkpoint es una corrida nueva', () => {
+  for (const vacio of [null, undefined, {}, { done: [] }]) {
+    const p = SMN.planRepairResume(CLIS, vacio);
+    assert.equal(p.modo, 'nuevo');
+    assert.equal(p.pendientes.length, 3);
+  }
+});
+
+test('planRepairResume: un checkpoint viejo SIN campo fallidos no truena', () => {
+  // Los checkpoints escritos antes de este fix no traen la lista de fallidos. Sin ella no se
+  // puede saber quién falló, así que se da por completo y se limpia: es preferible a dejarlo
+  // atorado, y volver a correr desde cero siempre es seguro (reponer lo puesto da 23P01).
+  const p = SMN.planRepairResume(CLIS, { done: [1, 2, 3], totales: { errores: 11 } });
+  assert.equal(p.modo, 'completo');
+});
+
+// ── Avance DENTRO de un cliente grande ──────────────────────────────────────
+// El checkpoint tenía al cliente como unidad mínima. SCHNEIDER ELECTRIC MEXICO tiene 17 716
+// NPs: a esa escala una corrida sin un solo error es prácticamente imposible, así que el
+// cliente quedaba fallido y el reintento volvía a empezar por el primero. Nunca terminaba.
+// Los NPs se piden con ID_DESC, así que "ya hecho" es exactamente id >= hastaId.
+const pnsDesc = (n, desde) => Array.from({ length: n }, (_, i) => ({ id: desde - i, name: 'PN' + (desde - i) }));
+
+test('planCustomerChunk: sin avance previo, procesa todos', () => {
+  const t = SMN.planCustomerChunk(pnsDesc(5, 100), null);
+  assert.equal(t.pendientes.length, 5);
+  assert.equal(t.yaHechos, 0);
+});
+
+test('planCustomerChunk: REGRESIÓN — retoma donde quedó, no desde el principio', () => {
+  // 17 716 NPs, se completaron hasta el id 9000: solo faltan los menores.
+  const todos = pnsDesc(17716, 20000);
+  const t = SMN.planCustomerChunk(todos, { hastaId: 9000, fallidos: [] });
+  assert.equal(t.pendientes.length, todos.filter(p => p.id < 9000).length);
+  assert.ok(t.pendientes.every(p => p.id < 9000), 'nada por encima del cursor');
+  assert.ok(t.yaHechos > 11000, 'el grueso ya no se repite');
+});
+
+test('planCustomerChunk: los NPs que fallaron se reintentan aunque estén sobre el cursor', () => {
+  const todos = pnsDesc(10, 100);           // ids 100..91
+  const t = SMN.planCustomerChunk(todos, { hastaId: 95, fallidos: [98, 97] });
+  const ids = t.pendientes.map(p => p.id).sort((a, b) => b - a);
+  assert.deepEqual(ids, [98, 97, 94, 93, 92, 91], 'los fallidos vuelven, el resto sigue hecho');
+  assert.equal(t.reintentos, 2);
+});
+
+test('planCustomerChunk: un NP nuevo (id mayor) queda fuera del reintento', () => {
+  // Nació después del daño: no necesita reparación, y meterlo desalinearía el cursor.
+  const todos = [{ id: 30000 }].concat(pnsDesc(5, 100));
+  const t = SMN.planCustomerChunk(todos, { hastaId: 98, fallidos: [] });
+  assert.ok(!t.pendientes.some(p => p.id === 30000));
+});
+
+test('planCustomerChunk: un cursor basura no esconde trabajo', () => {
+  for (const malo of [{ hastaId: null }, { hastaId: 'x' }, {}]) {
+    assert.equal(SMN.planCustomerChunk(pnsDesc(4, 50), malo).pendientes.length, 4);
+  }
+});
+
+test('avanzarCursor: toma el MENOR completado y nunca retrocede', () => {
+  assert.equal(SMN.avanzarCursor(null, [500, 480, 495]), 480);
+  assert.equal(SMN.avanzarCursor(480, [470, 475]), 470, 'avanza hacia abajo');
+  assert.equal(SMN.avanzarCursor(470, [900, 880]), 470, 'un id alto no lo hace retroceder');
+});
+
+test('avanzarCursor: sin completados conserva el cursor', () => {
+  assert.equal(SMN.avanzarCursor(300, []), 300);
+  assert.equal(SMN.avanzarCursor(null, []), null);
+});
+
+test('REGRESIÓN: detener a media corrida no puede borrar el avance', () => {
+  // El bug: al detener, repairOneCustomer regresa sin errores (solo se interrumpió), así que
+  // pnFallidos venía vacío, el `else` ponía parciales=null y el cliente entraba a `done`.
+  // Resultado: marcado como completo sin serlo Y sin cursor, así que al reanudar arrancaba
+  // desde el primer NP. En un cliente de 17 716 eso es no avanzar nunca.
+  // El glue distingue el corte; aquí se fija que el cursor guardado SIGA sirviendo.
+  const todos = pnsDesc(17716, 20000);
+  const trasCorte = { hastaId: 15000, fallidos: [] };   // lo que persistió antes de detener
+  const t = SMN.planCustomerChunk(todos, trasCorte);
+  assert.ok(t.yaHechos > 4900, 'lo revisado antes del corte no se repite');
+  assert.ok(t.pendientes.every(p => p.id < 15000));
+  // Y sin cursor —el estado que producía el bug— se repetiría TODO:
+  assert.equal(SMN.planCustomerChunk(todos, { hastaId: null, fallidos: [] }).pendientes.length,
+    todos.length, 'sin cursor no hay avance que aprovechar');
+});
+
+test('avanzarCursor: usa completados REALES, no el índice del bucle', () => {
+  // Con pool 3 hay NPs en vuelo al guardar. Si el cursor se tomara del índice, esos quedarían
+  // dados por hechos y su daño no se repararía nunca. Repetirlos no cuesta: reponer un
+  // parámetro ya puesto lo rechaza el ERP con 23P01.
+  assert.equal(SMN.avanzarCursor(null, [500, 498]), 498,
+    'el 499 sigue en vuelo: el cursor no lo rebasa');
+});
+
 test('planRepairs: campos distintos se reparan por separado', () => {
   const filas = [
     mk(1, '2026-07-30T03:40:00Z', 241753, 900, 'Sí o No', 15820, 500),
