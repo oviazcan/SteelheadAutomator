@@ -1,6 +1,6 @@
 {
-  "version": "1.11.62",
-  "lastUpdated": "2026-08-03T21:13",
+  "version": "1.11.63",
+  "lastUpdated": "2026-08-03T21:22",
   "extensionVersion": "1.7.3",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -11,6 +11,7 @@
     "apolloClientVersion": "4.0.8",
     "hashes": {
       "mutations": {
+        "SaveManyPartNumberProcessNodeDescriptionsAndFiles": "22bb77380c64f09e7a983140adc53c50f83b0812dc95cd916d731e08bf203cd6",
         "CreateStationInputSchema": "2abe86f7d8205cfd3c356e4cfeea91d857ee7820567fb82ecd9fa2688cabfa00",
         "UpdateStationInputs": "0237bbca4a0f168b800483bd21b6146829a11f158e033e00eef7c00ce53bb112",
         "CreateUpdateDeleteRoutes": "0597ad9896d1c2b87980183ac54835cf0c3fc68d777e55ade8950558f5d9a76e",
@@ -592,6 +593,11 @@
         "debug": {
           "logPredictiveParse": true,
           "logPredictiveSampleRows": 20
+        },
+        "packingInstructions": {
+          "_doc": "Columna 'Instrucciones de Empaque' (plantilla v13). Se escribe como ProcessNodeDescription sobre la tupla (PN, nodo). El nodo se liga por NOMBRE y no por id porque los ids son POR DOMINIO: uno fijo funcionaría en TLC y escribiría en el nodo equivocado -o en ninguno- en MTY. El match es exacto (normalizando acentos/espacios/mayusculas) y exige exactamente UNA coincidencia: el arbol real trae 7 nodos cuyo nombre incluye 'Embarque'. NO confundir con processNode.descriptionMarkdown, que es la descripcion GLOBAL del nodo y la comparten todos los PNs del dominio.",
+          "nodeName": "Preparando Embarque en Almacén",
+          "concurrency": 4
         }
       },
       "auditor": {
@@ -805,6 +811,7 @@
         "scripts/bulk-upload-parse.js",
         "scripts/bulk-upload-classify.js",
         "scripts/bulk-upload-batch.js",
+        "scripts/bulk-upload-packing.js",
         "scripts/bulk-upload.js",
         "scripts/catalog-fetcher.js"
       ],
@@ -823,21 +830,21 @@
         },
         {
           "id": "download-template",
-          "label": "Descargar Plantilla v12 (Excel 2021+)",
+          "label": "Descargar Plantilla v13 (Excel 2021+)",
           "sublabel": "Base + catálogos frescos",
           "icon": "📥",
           "handler": "open-url",
-          "url": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v12.xlsm",
+          "url": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v13.xlsm",
           "afterMessage": "update-catalogs",
           "notice": "Plantilla descargada. Recuerda: al abrirla por primera vez ejecuta el botón 'Refrescar Listas' del ribbon antes de pegar datos."
         },
         {
           "id": "download-template-compat",
           "label": "Versión de compatibilidad (Excel 2019)",
-          "sublabel": "Misma plantilla v12 para Excel 2019 y anteriores",
+          "sublabel": "Misma plantilla v13 para Excel 2019 y anteriores",
           "icon": "📥",
           "handler": "open-url",
-          "url": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v12_compatibilidad.xlsm",
+          "url": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v13_compatibilidad.xlsm",
           "afterMessage": "update-catalogs",
           "notice": "Plantilla descargada. Recuerda: al abrirla por primera vez ejecuta el botón 'Refrescar Listas' del ribbon antes de pegar datos."
         },
@@ -2843,10 +2850,11 @@
     "scripts/bulk-upload-cc.js",
     "scripts/bulk-upload-parse.js",
     "scripts/bulk-upload-classify.js",
+    "scripts/bulk-upload-packing.js",
     "scripts/bulk-upload.js",
     "scripts/catalog-fetcher.js"
   ],
-  "templateUrl": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v12.xlsm",
+  "templateUrl": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v13.xlsm",
   "scriptIntegrity": {
     "scripts/api-knowledge.js": "ae05a48d18b2e989e9a8a51be1693183f9e191b47a80cf05457c99325930b13d",
     "scripts/archiver.js": "f90382b4786080edc370bae87729af9b45efc38152190a2f9691bb3a4115403b",
@@ -2865,8 +2873,9 @@
     "scripts/bulk-upload-batch.js": "93ff56929eea67f5c79c35404601e827b785ab43d3fed633d2047ff3a7b2767e",
     "scripts/bulk-upload-cc.js": "20722ceedaec6208892cbff51fb1264d34a278ce7a41a3c5b4b6bb67d35b0a49",
     "scripts/bulk-upload-classify.js": "6ed19f27028976a39ff19ffc08705696f599c9c8559b70f234ab7a5557743abf",
-    "scripts/bulk-upload-parse.js": "e7c6bb1f97d336c85295764d0d4707723c06bac2b7c9ae3c03f703bf38e3ab15",
-    "scripts/bulk-upload.js": "6a0396ac92c9858fabb643b433285e028506dcb43ac4dca06e712aa8cf6e2732",
+    "scripts/bulk-upload-packing.js": "49d17ce5310e4f43735432539278a77864933c15d5a72d26e963a5936a5b1647",
+    "scripts/bulk-upload-parse.js": "c18ce1a292bcedfe9181d2283eb51e8ee95056838fb246a9244ec46a0e4cc5e5",
+    "scripts/bulk-upload.js": "343eae3d119a495f10cd53bf7f3ecf114f4315de1b007c97497d08a67ca9d383",
     "scripts/catalog-fetcher.js": "48f3f8a55ea94e7fa8626c95688cb7e9de7877fa14f7e5a52dda1490731cca63",
     "scripts/cfdi-attacher.js": "5eb2ef0570e68ec4e81cc1a0e495628b14787f5a7dbcb29193ed04fecc24a6f4",
     "scripts/claude-api.js": "15e112fd05c69ffa54b0f43752cb636b7c057e08e7953b7d5134534a9728cf7c",
