@@ -47,8 +47,22 @@ con basura — peor que no detectar.
 **Lo que NO quedó verificado, y por qué:** el fixture del caso del bug (el `textContent` con los
 botones pegados) es **reconstruido, no medido**. Al ir por el `outerHTML` real, `/Invoices` empezó
 a responder **«¡PERMISOS INSUFICIENTES! … READ_INVOICING»** en la misma pantalla que había abierto
-cinco minutos antes, y no cedió al recargar. Queda anotado en el propio test. Tampoco se cerró una
-pasada end-to-end con el código ya publicado.
+cinco minutos antes. Queda anotado en el propio test. Tampoco se cerró una pasada end-to-end con
+el código ya publicado.
+
+**Sobre ese «PERMISOS INSUFICIENTES»: es un falso negativo CONOCIDO del ERP, no una señal.** El
+operador lo describe como *«pasa en ocasiones, como que carga primero algo que no debería… es
+común y muy molesto; sólo recargamos y ya se corrige»*. **Anotarlo importa porque es la MISMA
+FAMILIA que el bug de esta lección**: Steelhead evalúa el permiso antes de tener el contexto
+completo y falla; nosotros leíamos el encabezado antes de que React lo hubiera pintado y
+fallábamos. En los dos casos el segundo render da el resultado correcto, y en los dos el síntoma
+se reporta como *«a veces no jala»*. Consecuencias prácticas: (1) **no diagnosticar como rotura**
+un applet que sólo se apaga en esa pantalla degradada — no hay de dónde leer, y ningún fix nuestro
+lo arregla; (2) al medir en vivo, **una pantalla de permisos no refuta nada** (es el mismo error
+de método que medir un `data-testid` en la pantalla equivocada); (3) es plausible que haya estado
+detrás de reportes intermitentes viejos — el gate de permisos ya tumbó a `report-regen` tres
+veces. **No está reportado a Steelhead**; si se reporta, va en inglés, breve, con una pantalla y
+una hora concretas.
 
 **Pendiente:** recompilar en Xcode (bundle 0.6.28 ya copiado a `Resources/`).
 
