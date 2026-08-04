@@ -63,7 +63,12 @@
       'M20 4H4c-1.1 0-1.99.9-1.99 2L2 18c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2m0 4-8 5-8-5V6l8 5 8-5z',
     ],
     // ── Medidos en /Domains/344/WorkOrders (identidad confirmada por el aria-label del botón)
-    EditIcon: ['M3 17.25V21h3.75L17.81 9.94l-3.75-3.75zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75z'],
+    EditIcon: [
+      'M3 17.25V21h3.75L17.81 9.94l-3.75-3.75zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75z',
+      // variante OUTLINED, medida en el modal de precio (aria «Editar número de
+      // pieza/agregar especificaciones»). SH usa las dos según el contexto.
+      'm14.06 9.02.92.92L5.92 19H5v-.92zM17.66 3c-.25 0-.51.1-.7.29l-1.83 1.83 3.75 3.75 1.83-1.83c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.2-.2-.45-.29-.71-.29m-3.6 3.19L3 17.25V21h3.75L17.81 9.94z',
+    ],
     ArchiveIcon: ['m20.54 5.23-1.39-1.68C18.88 3.21 18.47 3 18 3H6c-.47 0-.88.21-1.16.55L3.46 5.23C3.17 5.57 3 6.02 3 6.5V19c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V6.5c0-.48-.17-.93-.46-1.27M12 17.5 6.5 12H10v-2h4v2h3.5zM5.12 5l.81-1h12l.94 1z'],
     // ── Medido en el modal de recepción y en el filtro de OTs (doble confirmación)
     FilterListIcon: ['M10 18h4v-2h-4zM3 6v2h18V6zm3 7h12v-2H6z'],
@@ -103,11 +108,19 @@
     //       de falla del ARNÉS ya documentado, no de la app. Se cierran con un intento desde
     //       la pantalla correcta: cualquier modal con "X" para Close, y la ficha de una
     //       factura emitida para RestorePage.
-    CloseIcon: [],
+    // MEDIDO 2026-08-03 en el botón «Cancelar» del modal «Precio del número de parte»
+    // (HTML aportado por el operador). El canónico de MUI resultó ser el correcto aquí — no
+    // matcheaba antes porque este icono no existe en las pantallas donde se buscó, no porque
+    // el path estuviera mal. Otro recordatorio de que «no aparece» ≠ «es distinto».
+    CloseIcon: ['M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z'],
     SendIcon: [],
     RestorePageOutlinedIcon: [],
     VisibilityIcon: [],
     VisibilityOffIcon: [],
+    // MEDIDO 2026-08-03 en el workboard (aria «Print Job Tags»). OJO: ese botón usa
+    // PrintIcon, NO QrCode2Icon — el de la ficha de OT sí es QrCode2. Dos botones con la
+    // misma función nominal y distinto icono; por eso la FORMA va antes que el aria.
+    PrintIcon: ['M19 8H5c-1.66 0-3 1.34-3 3v6h4v4h12v-4h4v-6c0-1.66-1.34-3-3-3m-3 11H8v-5h8zm3-7c-.55 0-1-.45-1-1s.45-1 1-1 1 .45 1 1-.45 1-1 1m-1-9H6v4h12z'],
     // Path canónico de MUI. NO medido en vivo: al inspeccionar no había ningún timer
     // corriendo. Por eso el pausa sólo se usa como señal que AFIRMA, nunca como requisito.
     PauseIcon: ['M6 19h4V5H6zm8-14v14h4V5z'],
