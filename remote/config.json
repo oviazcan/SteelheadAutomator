@@ -11,6 +11,7 @@
     "apolloClientVersion": "4.0.8",
     "hashes": {
       "mutations": {
+        "SaveManyPartNumberProcessNodeDescriptionsAndFiles": "22bb77380c64f09e7a983140adc53c50f83b0812dc95cd916d731e08bf203cd6",
         "CreateStationInputSchema": "2abe86f7d8205cfd3c356e4cfeea91d857ee7820567fb82ecd9fa2688cabfa00",
         "UpdateStationInputs": "0237bbca4a0f168b800483bd21b6146829a11f158e033e00eef7c00ce53bb112",
         "CreateUpdateDeleteRoutes": "0597ad9896d1c2b87980183ac54835cf0c3fc68d777e55ade8950558f5d9a76e",
@@ -592,6 +593,11 @@
         "debug": {
           "logPredictiveParse": true,
           "logPredictiveSampleRows": 20
+        },
+        "packingInstructions": {
+          "_doc": "Columna 'Instrucciones de Empaque' (plantilla v13). Se escribe como ProcessNodeDescription sobre la tupla (PN, nodo). El nodo se liga por NOMBRE y no por id porque los ids son POR DOMINIO: uno fijo funcionaría en TLC y escribiría en el nodo equivocado -o en ninguno- en MTY. El match es exacto (normalizando acentos/espacios/mayusculas) y exige exactamente UNA coincidencia: el arbol real trae 7 nodos cuyo nombre incluye 'Embarque'. NO confundir con processNode.descriptionMarkdown, que es la descripcion GLOBAL del nodo y la comparten todos los PNs del dominio.",
+          "nodeName": "Preparando Embarque en Almacén",
+          "concurrency": 4
         }
       },
       "auditor": {
@@ -802,6 +808,7 @@
         "scripts/bulk-upload-parse.js",
         "scripts/bulk-upload-classify.js",
         "scripts/bulk-upload-batch.js",
+        "scripts/bulk-upload-packing.js",
         "scripts/bulk-upload.js",
         "scripts/catalog-fetcher.js"
       ],
@@ -820,21 +827,21 @@
         },
         {
           "id": "download-template",
-          "label": "Descargar Plantilla v12 (Excel 2021+)",
+          "label": "Descargar Plantilla v13 (Excel 2021+)",
           "sublabel": "Base + catálogos frescos",
           "icon": "📥",
           "handler": "open-url",
-          "url": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v12.xlsm",
+          "url": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v13.xlsm",
           "afterMessage": "update-catalogs",
           "notice": "Plantilla descargada. Recuerda: al abrirla por primera vez ejecuta el botón 'Refrescar Listas' del ribbon antes de pegar datos."
         },
         {
           "id": "download-template-compat",
           "label": "Versión de compatibilidad (Excel 2019)",
-          "sublabel": "Misma plantilla v12 para Excel 2019 y anteriores",
+          "sublabel": "Misma plantilla v13 para Excel 2019 y anteriores",
           "icon": "📥",
           "handler": "open-url",
-          "url": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v12_compatibilidad.xlsm",
+          "url": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v13_compatibilidad.xlsm",
           "afterMessage": "update-catalogs",
           "notice": "Plantilla descargada. Recuerda: al abrirla por primera vez ejecuta el botón 'Refrescar Listas' del ribbon antes de pegar datos."
         },
@@ -2832,10 +2839,11 @@
     "scripts/bulk-upload-cc.js",
     "scripts/bulk-upload-parse.js",
     "scripts/bulk-upload-classify.js",
+    "scripts/bulk-upload-packing.js",
     "scripts/bulk-upload.js",
     "scripts/catalog-fetcher.js"
   ],
-  "templateUrl": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v12.xlsm",
+  "templateUrl": "https://oviazcan.github.io/SteelheadAutomator/templates/Plantilla_CargaMasiva_v13.xlsm",
   "scriptIntegrity": {
     "scripts/api-knowledge.js": "ae05a48d18b2e989e9a8a51be1693183f9e191b47a80cf05457c99325930b13d",
     "scripts/archiver.js": "f90382b4786080edc370bae87729af9b45efc38152190a2f9691bb3a4115403b",

@@ -1,0 +1,385 @@
+{
+ "_fuente": "Árbol REAL del proceso de un PN de producción (solo id+name de nodos de proceso: catálogo, sin datos de negocio). Extraído de un scan del hash-scanner 2026-08-03.",
+ "id": 172624,
+ "name": "T300 (LES)-T204 (PLA)-T204 (ANT)-CU-VARIOS (16.1)",
+ "descendantRelationships": [
+  {
+   "processNodeByFromId": {
+    "id": 139820,
+    "name": "SP Inspección Recibo"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 112722,
+    "name": "SP Preparación de Surtido en Almacén"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 170639,
+    "name": "SP T300-CE05 Limpieza Especial"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 172523,
+    "name": "T204 Enracado"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 205213,
+    "name": "T204 Listo para Procesar (Plata s/Cobre)"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 172549,
+    "name": "T204-SE00-001 Secando Manual - Desenracando"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 172553,
+    "name": "T204 Inspección y Empaque"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 267679,
+    "name": "T204-CE03 Antitarnish en Línea 16.1"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 116917,
+    "name": "SP Preparación de Embarque en Almacén"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 144493,
+    "name": "SP Inspección de Calidad Embarques"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 109804,
+    "name": "SP Embarque en Almacén"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 267688,
+    "name": "Recibo de Orden"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 267696,
+    "name": "Listo para Antitarnish Manual"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 267700,
+    "name": "CE03 Aplicando Antitarnish Manual"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 267706,
+    "name": "Inspección y Empaque"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 268046,
+    "name": "Listo para Inspección y Empaque"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 268055,
+    "name": "Inspeccionando y  Empacando Antitarnish"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 205215,
+    "name": "T204-TI00-004 Desengrase Electrolítico Metex"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 205217,
+    "name": "T204-TI00-005 Enjuague"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 205216,
+    "name": "T204-TI00-006 Desengrase Electrolítico Metex"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 205217,
+    "name": "T204-TI00-005 Enjuague"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 205218,
+    "name": "T204-TI00-008 Decapado Ácido Nítrico"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 205219,
+    "name": "T204-TI00-007 Enjuague "
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 205216,
+    "name": "T204-TI00-006 Desengrase Electrolítico Metex"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 205218,
+    "name": "T204-TI00-008 Decapado Ácido Nítrico"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 205220,
+    "name": "T204-TI00-009 Abrillantado Ácido Crómico"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 205221,
+    "name": "T204-TI00-010 Enjuague "
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 205222,
+    "name": "T204-TI00-011 Enjuague "
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 205223,
+    "name": "T204-TI00-012/013 Activado Ácido Clorhídrico "
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 205224,
+    "name": "T204-TI00-014 Enjuague"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 205225,
+    "name": "T204-TI00-015 Enjuague"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 205226,
+    "name": "T204-TI00-016 Neutralizado Alcalino Cianuro"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 205227,
+    "name": "T204-TI00-017/018 Plata Silversene "
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 205228,
+    "name": "T204-TI00-019 Enjuague "
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 205229,
+    "name": "T204-TI00-020 Enjuague "
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 205230,
+    "name": "T204-TI00-028 Pasivado Evabrite "
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 205231,
+    "name": "T204-TI00-027 Enjuague "
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 205232,
+    "name": "T204-TI00-029 Enjuague"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 205233,
+    "name": "T204-TI00-030 Enjuague Caliente"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 172524,
+    "name": "T204 Recibo de Orden"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 172525,
+    "name": "T204 Listo para Enracar"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 172526,
+    "name": "T204-EN00-001 Enracando"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 172554,
+    "name": "T204 Listo para Inspeccionar y Empacar"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 172555,
+    "name": "T204-IC00-001 Inspeccionando y Empacando"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 295314,
+    "name": "Recibo de Orden de Limpieza Especial"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 170640,
+    "name": "Listo para Limpieza Especial"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 170641,
+    "name": "T300-CE05 Limpiando Especial"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 231174,
+    "name": "Validación de Ingeniería"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 231175,
+    "name": "Listo para Validación de Ingeniería"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 231176,
+    "name": "Validando Ingeniería"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 166805,
+    "name": "Listo para Inspección Recibo"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 166806,
+    "name": "Inspeccionando Recibo"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 167775,
+    "name": "Listo para Preparar Surtido"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 167776,
+    "name": "Preparando Surtido en Almacén"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 207565,
+    "name": "Recibo de Orden en Almacén"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 147990,
+    "name": "Listo para Preparar Embarque en Almacén"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 154303,
+    "name": "Preparando Embarque en Almacén"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 144494,
+    "name": "Listo para Inspección Embarques"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 144495,
+    "name": "Inspeccionando Calidad Embarques"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 109805,
+    "name": "Listo para Embarcar"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 109806,
+    "name": "Creando Remisión"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 213862,
+    "name": "$$$ Revisión de Precios"
+   }
+  },
+  {
+   "processNodeByFromId": {
+    "id": 109807,
+    "name": "Embarcando"
+   }
+  }
+ ]
+}

@@ -214,6 +214,17 @@
       ],
       "_estrategia": "capture-abort",
       "_nota": "Tiempos de tratamiento (payload real capturado 2026-05-15: treatmentId 88795 + stationId 12098 + cycleTime/totalTime como Interval). Se dispara al GUARDAR el dialogo de tiempos, cuya LECTURA (CreateEditTreatmentTimesDialogQuery) ya usa process-deep-audit. NO hay objeto Centinela para este catalogo -> el UNICO candado es el abort; no cambiar de estrategia sin repensarlo. PENDIENTE de correr headless: falta guionizar el DOM del dialogo. usedBy: wo-schedule-button."
+    },
+    "partNumberPackingDescription": {
+      "id": 3770957,
+      "screenPath": "/PartNumbers/{id}",
+      "marker": "Centinela",
+      "_para": [
+        "SaveManyPartNumberProcessNodeDescriptionsAndFiles"
+      ],
+      "_estrategia": "capture-abort",
+      "anchor": "span[data-steelhead-component-id=\"PART_NUMBER_PAGE_PART_NUMBER_INSTRUCTIONS\"]",
+      "_nota": "PN Centinela 3770957 (el mismo de la entidad partNumber). Op de la columna 'Instrucciones de Empaque' de la plantilla v13: escribe la ProcessNodeDescription de la tupla (PN, nodo), NO un campo del PN. RUTA (DOM verificado 2026-08-03 por captura del operador): en la ficha del PN, la seccion se ancla por data-steelhead-component-id=PART_NUMBER_PAGE_PART_NUMBER_INSTRUCTIONS -- ancla ESTRUCTURAL, idioma-independiente, nivel 1 de la jerarquia del repo. Su encabezado reza 'Instrucciones del Numero de Parte en \"<nodo>\" #<ocurrencia>' (p.ej. 'Preparando Embarque en Almacen' #1), lo que confirma DOS cosas: que la descripcion es POR PN y que el #N es processNodeOccurrence. Dentro de ese span hay un MuiIconButton cuyo svg es el path del LAPIZ de MUI (M3 17.25V21h3.75L17.81 9.94l-3.75-3.75z...): ese boton abre el dialogo, que se hidrata con ProcessNodeDescriptionDialogData {partNumberId, processNodeId, processNodeOccurrence}. Se edita el texto y se GUARDA -> dispara la mutation. Payload REAL capturado sobre el PN 3887933 / nodo 154303: {input:{partNumberId, processNodeDescriptions:[{processNodeId, processNodeOccurrence:1, otherOccurrences:[], descriptionMarkdown, cascadeToOccurrences:false, cascadeToRecipeNodes:false}]}}. El cuerpo renderiza markdown (el **Embarque** del payload sale como <strong>). CAPTURA-Y-ABORTA -> no se escribe ninguna descripcion. OJO: NO tocar processNode.descriptionMarkdown, que es la descripcion GLOBAL del nodo y la comparten todos los PNs del dominio (hoy trae el aviso rojo 'No olvidar empacar conforme a requerimientos del cliente'). PENDIENTE de correr headless. usedBy: carga-masiva."
     }
   },
   "_dominio": "TLC/344 (Toluca — los centinelas viven aquí; 344 es TLC, NO MTY. MTY es otro dominio sin datos aún)"

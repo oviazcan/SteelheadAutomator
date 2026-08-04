@@ -123,8 +123,15 @@
     const dimsHave = p.dims && Object.values(p.dims).some(v => v != null);
     const uc = p.unitConv || {};
     const ucHave = uc.kgm != null || uc.cmk != null || uc.lm != null || uc.minPzasLote != null;
+    // v13: "Instrucciones de Empaque" cuenta como enriquecimiento de línea. Dato y dash
+    // valen igual (escribir y borrar son ambos un cambio); sólo el vacío es null y no
+    // cuenta. Sin esta señal, una corrida de precio + instrucciones sobre PNs existentes
+    // se clasificaría SOLO_PRECIO y el preview anunciaría "sólo precios" mientras el
+    // STEP 7c reescribe instrucciones — el mismo molde del bug 1.5.42, donde una columna
+    // mal contabilizada dejó la clasificación mintiendo sobre lo que la corrida hace.
+    const packingHave = p.instruccionesEmpaque != null && String(p.instruccionesEmpaque).trim() !== '';
     return arr(p.labels) || arr(p.specs) || arr(p.racks) || arr(p.predictiveUsage) || arr(p.products)
-      || dimsHave || ucHave
+      || dimsHave || ucHave || packingHave
       || !!p.metalBase || !!p.pnAlterno || !!p.codigoSAT || !!p.procesoOverride;
   }
 

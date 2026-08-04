@@ -336,6 +336,7 @@ const BulkUpload = (() => {
   // Cargan ANTES que este script via el array `scripts` de carga-masiva en config.json.
   const Parse = window.SteelheadBulkParse;
   const Classify = window.SteelheadBulkClassify;
+  const Packing = window.SteelheadBulkPacking;
   if (!Parse || !Classify) {
     console.error('[bulk-upload] FALTA bulk-upload-parse.js / bulk-upload-classify.js en el array scripts de config.json');
   }
@@ -607,6 +608,17 @@ const BulkUpload = (() => {
       debug: {
         logPredictiveParse: !!(d.debug?.logPredictiveParse ?? false),
         logPredictiveSampleRows: d.debug?.logPredictiveSampleRows ?? 20,
+      },
+      // v13: columna "Instrucciones de Empaque". `nodeName` NO tiene default a propósito:
+      // es el nombre del nodo de proceso donde se escribe y es constante de DOMINIO (los
+      // ids difieren entre TLC y MTY, por eso se liga por nombre). Sin config, el STEP 7c
+      // reporta y NO escribe — inventar un nodo pondría instrucciones de empaque en un
+      // paso que el operador no mira, sin ningún error visible.
+      // Ojo con el shape: el bug 1.4.6 (arriba) fue exactamente esto — un campo que el
+      // config define pero el shape no expone queda muerto en silencio.
+      packingInstructions: {
+        nodeName: d.packingInstructions?.nodeName ?? '',
+        concurrency: d.packingInstructions?.concurrency ?? 4,
       },
     };
   };
@@ -1378,6 +1390,23 @@ const BulkUpload = (() => {
     // (SIN Departamento/SAT)
     // 57-65 Predictivos | 66 Notas adicionales | 67 QuoteIBMS | 68 EstIBMS | 69 Plano
     // 70 PiezasCarga | 71 CargasHora | 72 TiempoEntrega
+    //
+    // V13 column indices (0-indexed, 80 cols) — idéntico a v12 hasta MinPzasLote, con
+    // DOS cambios que corren lo posterior:
+    //   1) 5 pares de rack (vs 2) ⇒ +6 desde los racks. Un PN puede tener piezas-por-carga
+    //      distintas en cada línea (dato de dominio: el mismo PN va 4 pzas en T204-FL01 y
+    //      1 en T205-FL01), así que 2 slots se quedaban cortos.
+    //   2) "Instrucciones de Empaque" (72), NUEVA, entre los predictivos y Notas ⇒ +1 más
+    //      desde ahí. NO es un campo del PN: se escribe como ProcessNodeDescription sobre
+    //      el nodo compartido de empaque (ver STEP 7c).
+    // Layout MEDIDO sobre la plantilla real (67 visibles → 80 canónicas), no inferido.
+    // 0..46 idénticos a v12 (hasta MinPzasLote=46)
+    // 47 Rack 1 | 48 Pzas R.1 | 49 Rack 2 | 50 Pzas R.2 | 51 Rack 3 | 52 Pzas R.3
+    // 53 Rack 4 | 54 Pzas R.4 | 55 Rack 5 | 56 Pzas R.5
+    // 57 Tipo Geometria | 58 Long | 59 Ancho | 60 Alto | 61 D.Ext | 62 D.Int
+    // (SIN Departamento/SAT, igual que v12)
+    // 63-71 Predictivos | 72 Instrucciones de Empaque | 73 Notas adicionales
+    // 74 QuoteIBMS | 75 EstIBMS | 76 Plano | 77 PiezasCarga | 78 CargasHora | 79 TiempoEntrega
 
     // === v10 (legacy, 69 cols A..BQ) ===
     const V10_COLS = {
@@ -1391,7 +1420,7 @@ const BulkUpload = (() => {
       prods: [[21, 22, 23, 24], [25, 26, 27, 28], [29, 30, 31, 32]],  // [name,price,qty,unit] x3
       specs: [[33, 34], [35, 36]],
       kgm: 37, cmk: 38, lm: 39, minPzasLote: 40,
-      rackLinea: [41, 42], rackSec: [43, 44],
+      racks: [[41, 42], [43, 44]],   // [nombre, piezasPorRack] × 2
       tipoGeometria: -1,   // no existe
       dims: { length: 45, width: 46, height: 47, outerDiam: 48, innerDiam: 49 },
       linea: 50,           // AY
@@ -1410,6 +1439,7 @@ const BulkUpload = (() => {
       ],
       quoteIBMS: 62, estacionIBMS: 63, plano: 64,
       piezasCarga: 65, cargasHora: 66, tiempoEntrega: 67, notas: 68,
+      instruccionesEmpaque: -1,   // no existe (nació en v13)
     };
 
     // === v11 (71 cols A..BS) ===
@@ -1426,7 +1456,7 @@ const BulkUpload = (() => {
       prods: [[23, 24, 25, 26], [27, 28, 29, 30], [31, 32, 33, 34]],
       specs: [[35, 36], [37, 38]],
       kgm: 39, cmk: 40, lm: 41, minPzasLote: 42,
-      rackLinea: [43, 44], rackSec: [45, 46],
+      racks: [[43, 44], [45, 46]],   // [nombre, piezasPorRack] × 2
       tipoGeometria: 47,   // NUEVO (AV, Hybrid lista+free)
       dims: { length: 48, width: 49, height: 50, outerDiam: 51, innerDiam: 52 },
       departamento: 53, codigoSAT: 54,
@@ -1444,6 +1474,7 @@ const BulkUpload = (() => {
       notas: 64,
       quoteIBMS: 65, estacionIBMS: 66, plano: 67,
       piezasCarga: 68, cargasHora: 69, tiempoEntrega: 70,
+      instruccionesEmpaque: -1,   // no existe (nació en v13)
     };
 
     // === v12 (73 cols CSV canónico; 4 specs; sin Departamento/SAT) ===
@@ -1462,7 +1493,7 @@ const BulkUpload = (() => {
       prods: [[23, 24, 25, 26], [27, 28, 29, 30], [31, 32, 33, 34]],
       specs: [[35, 36], [37, 38], [39, 40], [41, 42]],   // 4 specs (vs 2 en v11)
       kgm: 43, cmk: 44, lm: 45, minPzasLote: 46,
-      rackLinea: [47, 48], rackSec: [49, 50],
+      racks: [[47, 48], [49, 50]],   // [nombre, piezasPorRack] × 2
       tipoGeometria: 51,
       dims: { length: 52, width: 53, height: 54, outerDiam: 55, innerDiam: 56 },
       departamento: -1,    // no se exporta en v12 → default aguas abajo
@@ -1481,6 +1512,46 @@ const BulkUpload = (() => {
       notas: 66,
       quoteIBMS: 67, estacionIBMS: 68, plano: 69,
       piezasCarga: 70, cargasHora: 71, tiempoEntrega: 72,
+      instruccionesEmpaque: -1,   // no existe (nació en v13)
+    };
+
+    // === v13 (79 cols CSV canónico; 4 specs; 5 racks; sin Departamento/SAT) ===
+    // Igual que v12 salvo los racks: 5 pares [nombre, pzas] en vez de 2 → +6 en todo
+    // lo posterior. El VBA ExportarCSV NO necesita cambios: es header-driven y emite
+    // 1:1 las columnas de la hoja, desambiguando los headers repetidos de rack con
+    // " 2".." 5" (helper AddOut). Agregar los slots es trabajo de la hoja Upload.
+    const V13_COLS = {
+      archivado: 0, validacion: 1, forzar: 2, archivar: 3,
+      idSh: 4,
+      cliente: 5, pn: 6, descripcion: 7, pnAlterno: 8, pnGroup: 9,
+      qty: 10, precio: 11, unidadPrecio: 12, divisa: 13, precioDefault: 14,
+      linea: 15,
+      metalBase: 16,
+      labels: [17, 18, 19, 20, 21],           // Etq1-4 + Planta Schneider
+      proceso: 22,
+      prods: [[23, 24, 25, 26], [27, 28, 29, 30], [31, 32, 33, 34]],
+      specs: [[35, 36], [37, 38], [39, 40], [41, 42]],   // 4 specs (igual que v12)
+      kgm: 43, cmk: 44, lm: 45, minPzasLote: 46,
+      racks: [[47, 48], [49, 50], [51, 52], [53, 54], [55, 56]],   // 5 racks (vs 2 en v12)
+      tipoGeometria: 57,
+      dims: { length: 58, width: 59, height: 60, outerDiam: 61, innerDiam: 62 },
+      departamento: -1,    // no se exporta en v13 → default aguas abajo
+      codigoSAT: -1,       // no se exporta en v13 → default aguas abajo
+      predictives: [        // 63..71, mismos 9 materiales/orden que v10/v11/v12
+        { col: 63, name: 'Plata' },
+        { col: 64, name: 'Estano' },
+        { col: 65, name: 'Niquel' },
+        { col: 66, name: 'Zinc' },
+        { col: 67, name: 'Cobre' },
+        { col: 68, name: 'Antitarnish' },
+        { col: 69, name: 'Epox. MT' },
+        { col: 70, name: 'Epox. BT' },
+        { col: 71, name: 'Epox. MTR' },
+      ],
+      instruccionesEmpaque: 72,   // NUEVO en v13 (ProcessNodeDescription, no campo del PN)
+      notas: 73,
+      quoteIBMS: 74, estacionIBMS: 75, plano: 76,
+      piezasCarga: 77, cargasHora: 78, tiempoEntrega: 79,
     };
 
     // Detectar esquema leyendo la row de headers (col A = "Archivado"), col E.
@@ -1489,6 +1560,20 @@ const BulkUpload = (() => {
     // v12 emite headers "Spec 1".."Spec 4" (≥3); v11 solo "Spec 1"/"Spec 2".
     const countSpecHeaders = (row) =>
       (row || []).filter(h => /^spec\s*\d+$/i.test((h || '').trim())).length;
+    // v12 y v13 comparten col E ("Id SH") y 4 specs — el ÚNICO discriminante es el nº
+    // de slots de rack. Confundirlos NO es benigno: v13 corre +6 desde los racks, así
+    // que leer un CSV v13 como v12 sacaría los predictivos de las columnas de dims y
+    // escribiría basura en producción SIN error visible. Por eso se usan DOS señales
+    // independientes y basta una para elegir v13 (fail-hacia-la-versión-ancha):
+    //   1) headers de rack (canónico: "Rack …" + " 2".." 5" del AddOut del VBA);
+    //   2) ancho total del header (v12=73, v13=80) — red de seguridad por si alguien
+    //      renombra el header de rack a algo que no empiece con "Rack".
+    // El header canónico siempre viene completo (su última celda, "Tiempo de Entrega",
+    // trae texto), así que su longitud es una señal confiable aunque las filas de datos
+    // lleguen cortas por el recorte de comas finales de Excel.
+    const countRackHeaders = (row) =>
+      (row || []).filter(h => /^rack\b/i.test((h || '').trim())).length;
+    const V13_MIN_WIDTH = 80;
     let COLS = V11_COLS; // default
     let schemaVersion = 'v11';
     for (let r = 0; r < Math.min(rows.length, 15); r++) {
@@ -1498,7 +1583,28 @@ const BulkUpload = (() => {
         if (rowE === 'Cliente') {
           COLS = V10_COLS; schemaVersion = 'v10';
         } else if (rowE === 'Id SH') {
-          if (countSpecHeaders(rows[r]) >= 3) { COLS = V12_COLS; schemaVersion = 'v12'; }
+          const nRack = countRackHeaders(rows[r]);
+          const headerWidth = (rows[r] || []).length;
+          const wide = headerWidth >= V13_MIN_WIDTH;
+          if (nRack >= 3 || (wide && countSpecHeaders(rows[r]) >= 3)) {
+            COLS = V13_COLS; schemaVersion = 'v13';
+            if (nRack < 3 || !wide) {
+              warn(`parseRows: v13 detectado con señales discrepantes (racks=${nRack}, ancho=${headerWidth}). Verifica el header canónico de la plantilla.`);
+            }
+            // La columna "Instrucciones de Empaque" (72) nació DESPUÉS de los 5 racks, así
+            // que existió una plantilla intermedia con racks pero sin ella. Ese header NO es
+            // "v13 al que le falta una columna": TODO lo posterior corre -1, así que apagar
+            // sólo el campo dejaría Notas/IBMS/Plano/Carga leyéndose de la celda de al lado
+            // —corrupción silenciosa—. Se mapea el layout de 79 completo.
+            if (headerWidth < V13_MIN_WIDTH) {
+              COLS = {
+                ...V13_COLS, instruccionesEmpaque: -1,
+                notas: 72, quoteIBMS: 73, estacionIBMS: 74, plano: 75,
+                piezasCarga: 76, cargasHora: 77, tiempoEntrega: 78,
+              };
+              warn('parseRows: header v13 angosto (sin "Instrucciones de Empaque") — se usa el layout de 79 columnas y esa columna se ignora.');
+            }
+          } else if (countSpecHeaders(rows[r]) >= 3) { COLS = V12_COLS; schemaVersion = 'v12'; }
           else { COLS = V11_COLS; schemaVersion = 'v11'; }
         } else {
           warn('parseRows: schema indeterminado (col E de la fila Archivado no es "Id SH" ni "Cliente"), asumiendo v11');
@@ -1584,9 +1690,16 @@ const BulkUpload = (() => {
         else specs.push({ name: raw, param: '' });
       }
 
+      // Racks: N pares [nombre, piezasPorRack] declarados por el schema (v10-v12 = 2,
+      // v13 = 5). Mismo loop genérico que specs/prods — agregar slots en una versión
+      // futura es solo alargar COLS.racks, sin tocar este código. Un slot con nombre
+      // vacío se omite (celda sin llenar); el sentinel "-" en el PRIMER slot borra
+      // todos los racks del PN y lo maneja STEP 7, que ya itera part.racks.
       const racks = [];
-      if (g(row, COLS.rackLinea[0])) racks.push({ name: g(row, COLS.rackLinea[0]), ppr: gn(row, COLS.rackLinea[1]) });
-      if (g(row, COLS.rackSec[0])) racks.push({ name: g(row, COLS.rackSec[0]), ppr: gn(row, COLS.rackSec[1]) });
+      for (const [rnIdx, rpIdx] of COLS.racks) {
+        const rname = g(row, rnIdx);
+        if (rname) racks.push({ name: rname, ppr: gn(row, rpIdx) });
+      }
 
       const predictiveUsage = [];
       // 1.3.1: sentinel "-" granular por material. Cada celda se evalúa en crudo:
@@ -1674,6 +1787,11 @@ const BulkUpload = (() => {
         cargasHora: g(row, COLS.cargasHora),
         tiempoEntrega: gn(row, COLS.tiempoEntrega),
         notasAdicionalesPN: g(row, COLS.notas),
+        // v13-only: instrucciones de empaque. NO es un campo del PN — se escribe como
+        // ProcessNodeDescription sobre el nodo compartido de empaque (STEP 7c). Se guarda
+        // el texto CRUDO (incluido el "-" sentinel) porque quien decide es el STEP:
+        // vacío/null → no tocar · "-" → borrar (descriptionMarkdown:"") · dato → escribir.
+        instruccionesEmpaque: COLS.instruccionesEmpaque >= 0 ? (g(row, COLS.instruccionesEmpaque) || null) : null,
         // v11-only fields (null en v10)
         idSh,
         tipoGeometria,
@@ -3646,7 +3764,7 @@ const BulkUpload = (() => {
       ? `<div style="background:#7f1d1d;border:1px solid #ef4444;border-radius:8px;padding:10px 12px;margin-bottom:12px;color:#fecaca;font-size:13px;line-height:1.45">🔴 <b>HASH(ES) ROTADO(S): ${rotOps.join(', ')}</b><br>Steelhead dejó de aceptar esa(s) persisted query(ies) (<i>"Must provide a query string"</i>). Los cambios que dependían de ellas <b>NO se aplicaron</b>. Avisa al equipo para re-escanear (hash-scanner) y actualizar <code>config.json</code> — luego recarga la extensión y vuelve a correr.</div>`
       : '';
     const titulo = rotOps.length ? '⚠️ Detenido por HASH ROTADO' : (errors.length ? 'Completado con errores' : 'Completado OK');
-    modal.innerHTML = `<h2>${titulo}</h2>${rotBanner}<div class="dl9-stats"><div class="dl9-stat"><b>Quote:</b> ${escHtml(stats.quoteName)} (#${stats.quoteIdInDomain})</div><div class="dl9-stat"><b>PNs creados:</b> ${stats.pnsCreated}</div><div class="dl9-stat"><b>PNs existentes:</b> ${stats.pnsExisting}</div><div class="dl9-stat"${(stats.pnsModified != null && stats.pnsModified < stats.pnsExisting) ? ' style="color:#fca5a5"' : ''}><b>PNs modificados:</b> ${stats.pnsModified ?? '—'}${(stats.pnsModified != null && stats.pnsModified < stats.pnsExisting) ? ` / ${stats.pnsExisting} ⚠️` : ''}</div><div class="dl9-stat"><b>Duplicados:</b> ${stats.pnsDuplicated}</div><div class="dl9-stat"><b>Products:</b> ${stats.productsSet}</div><div class="dl9-stat"><b>Labels:</b> ${stats.labelsSet}</div><div class="dl9-stat"><b>Specs:</b> ${stats.specsSet}</div><div class="dl9-stat"><b>UnitConv:</b> ${stats.unitConvSet}</div><div class="dl9-stat"><b>Racks:</b> ${stats.racksSet}</div><div class="dl9-stat"><b>CI:</b> ${stats.ciSet}</div><div class="dl9-stat"><b>Dims:</b> ${stats.dimsSet}</div><div class="dl9-stat"><b>PredUsage:</b> ${stats.predictiveSet}</div><div class="dl9-stat"><b>Default Price:</b> ${stats.defaultPriceSet}</div><div class="dl9-stat"><b>Archivados:</b> ${stats.archived}</div><div class="dl9-stat"><b>Ant.archivados:</b> ${stats.oldArchived}</div><div class="dl9-stat"><b>Valid.1erRecibo:</b> ${stats.validacionSet}</div></div>${errH}<div class="dl9-btnrow"><button class="dl9-btn dl9-btn-copy" id="dl9-copy-log">COPIAR LOG</button>${quoteUrl ? `<button class="dl9-btn dl9-btn-exec" id="dl9-open-quote">${lbl}</button>` : ''}<button class="dl9-btn dl9-btn-close" id="dl9-close">CERRAR</button></div>`;
+    modal.innerHTML = `<h2>${titulo}</h2>${rotBanner}<div class="dl9-stats"><div class="dl9-stat"><b>Quote:</b> ${escHtml(stats.quoteName)} (#${stats.quoteIdInDomain})</div><div class="dl9-stat"><b>PNs creados:</b> ${stats.pnsCreated}</div><div class="dl9-stat"><b>PNs existentes:</b> ${stats.pnsExisting}</div><div class="dl9-stat"${(stats.pnsModified != null && stats.pnsModified < stats.pnsExisting) ? ' style="color:#fca5a5"' : ''}><b>PNs modificados:</b> ${stats.pnsModified ?? '—'}${(stats.pnsModified != null && stats.pnsModified < stats.pnsExisting) ? ` / ${stats.pnsExisting} ⚠️` : ''}</div><div class="dl9-stat"><b>Duplicados:</b> ${stats.pnsDuplicated}</div><div class="dl9-stat"><b>Products:</b> ${stats.productsSet}</div><div class="dl9-stat"><b>Labels:</b> ${stats.labelsSet}</div><div class="dl9-stat"><b>Specs:</b> ${stats.specsSet}</div><div class="dl9-stat"><b>UnitConv:</b> ${stats.unitConvSet}</div><div class="dl9-stat"><b>Racks:</b> ${stats.racksSet}</div><div class="dl9-stat"><b>CI:</b> ${stats.ciSet}</div><div class="dl9-stat"><b>Dims:</b> ${stats.dimsSet}</div><div class="dl9-stat"><b>PredUsage:</b> ${stats.predictiveSet}</div><div class="dl9-stat"><b>Default Price:</b> ${stats.defaultPriceSet}</div><div class="dl9-stat"><b>Archivados:</b> ${stats.archived}</div><div class="dl9-stat"><b>Ant.archivados:</b> ${stats.oldArchived}</div><div class="dl9-stat"><b>Valid.1erRecibo:</b> ${stats.validacionSet}</div><div class="dl9-stat"><b>Instr.Empaque:</b> ${stats.packingSet}</div></div>${errH}<div class="dl9-btnrow"><button class="dl9-btn dl9-btn-copy" id="dl9-copy-log">COPIAR LOG</button>${quoteUrl ? `<button class="dl9-btn dl9-btn-exec" id="dl9-open-quote">${lbl}</button>` : ''}<button class="dl9-btn dl9-btn-close" id="dl9-close">CERRAR</button></div>`;
     // 1.4.18 Fix BB: scope a `modal.querySelector` (no `document.getElementById`) + null
     // guards. Antes, en runs grandes el outer catch capturaba "Cannot set properties of
     // null (setting 'onclick')" tras completar el pipeline: el árbol React de Steelhead
@@ -3691,7 +3809,7 @@ const BulkUpload = (() => {
       if (currentUserName === '(desconocido)') warn('ControlCambios: CurrentUserActiveSegments no devolvió name del usuario.');
     } catch (e) { warn(`ControlCambios: fallo al obtener usuario actual: ${String(e).substring(0, 80)}`); }
     const errors = [];
-    const stats = { quoteName: '', quoteIdInDomain: 0, pnsCreated: 0, pnsExisting: 0, pnsModified: null, pnsDuplicated: 0, productsSet: 0, labelsSet: 0, specsSet: 0, unitConvSet: 0, racksSet: 0, ciSet: 0, dimsSet: 0, defaultPriceSet: 0, archived: 0, oldArchived: 0, predictiveSet: 0, validacionSet: 0 };
+    const stats = { quoteName: '', quoteIdInDomain: 0, pnsCreated: 0, pnsExisting: 0, pnsModified: null, pnsDuplicated: 0, productsSet: 0, labelsSet: 0, specsSet: 0, unitConvSet: 0, racksSet: 0, ciSet: 0, dimsSet: 0, defaultPriceSet: 0, archived: 0, oldArchived: 0, predictiveSet: 0, validacionSet: 0, packingSet: 0 };
 
     // Cancellation token + panel: cada corrida obtiene un runId monotónico que
     // se propaga a runPool, withRetry, checkPNExistence y demás helpers async.
@@ -6983,6 +7101,114 @@ const BulkUpload = (() => {
         log(`  ⚠️ ${rackBatchFailures} batches fallaron (de ${Math.ceil(rackIn.length / 50)}), ${rackIndividualFailures} racks individuales sin asignar tras retry`);
       }
       stats.racksSet = rackIn.length + racksToDelete.size; log(`  Racks: ${rackIn.length} agregados, ${racksToDelete.size} PNs con racks eliminados`);
+
+      // ═══════════════════════════════════════════════════════════════════════
+      // STEP 7c: Instrucciones de Empaque (columna nueva de la plantilla v13)
+      // ═══════════════════════════════════════════════════════════════════════
+      // NO es un campo del PN: es una ProcessNodeDescription, o sea la descripción de la
+      // tupla (PN, nodo de proceso). Es la primera columna de la plantilla que escribe
+      // FUERA del PN, contra el árbol de procesos.
+      //
+      // Lo que NO se toca: `processNode.descriptionMarkdown` es la descripción GLOBAL del
+      // nodo y la comparten TODOS los PNs del dominio (hoy trae el aviso rojo "No olvidar
+      // empacar conforme a requerimientos del cliente..."). Escribir ahí le cambiaría el
+      // texto a todo el dominio. La mutation que usamos lleva `partNumberId` en el input,
+      // así que sólo afecta a ese PN.
+      //
+      // El nodo destino se liga por NOMBRE (config), nunca por id: los ids son POR DOMINIO
+      // y uno fijo funcionaría en TLC y escribiría en el nodo equivocado —o en ninguno— en
+      // MTY. El match exige exactamente UNA coincidencia porque el árbol real trae 7 nodos
+      // cuyo nombre incluye "Embarque"; ante 0 o >1, se reporta y NO se escribe.
+      // Sin guarda de versión: en v10-v12 `instruccionesEmpaque` es null en todas las filas,
+      // así que planPackingInstruction devuelve 'skip' y la lista de trabajos sale vacía.
+      if (Packing) {
+        const packingCfg = (bulkCfg().packingInstructions) || {};
+        const packingNodeName = packingCfg.nodeName || '';
+        const packingConcurrency = packingCfg.concurrency || 4;
+
+        // Recolectar los PNs con algo que hacer. Dedup por pnId: dos filas del CSV pueden
+        // apuntar al mismo PN físico, y escribir dos veces la misma descripción sólo gasta
+        // llamadas (la última ganaría igual).
+        const packingJobs = [];
+        const packingSeen = new Set();
+        for (let i = 0; i < parts.length; i++) {
+          const part = parts[i];
+          const plan = Packing.planPackingInstruction(part.instruccionesEmpaque);
+          if (plan.action === 'skip') continue;          // celda vacía → no tocar
+          const entry = pnLookup.get(i); if (!entry?.pn?.id) continue;
+          if (packingSeen.has(entry.pn.id)) continue;
+          packingSeen.add(entry.pn.id);
+          packingJobs.push({
+            pnId: entry.pn.id,
+            pnName: part.pn || String(entry.pn.id),
+            processId: entry.pn.defaultProcessNodeId || part.processId || null,
+            plan,
+          });
+        }
+
+        if (packingJobs.length && !packingNodeName) {
+          errors.push('Instrucciones de Empaque: falta bulkUpload.packingInstructions.nodeName en config — no se escribió ninguna.');
+          log('  ⚠️ Instrucciones de Empaque: sin nodo configurado, se omite el paso.');
+        } else if (packingJobs.length) {
+          setPanelPhase(`${isSoloPN ? 'Paso 4b/5' : 'Paso 7c/9'}: Instrucciones de Empaque...`);
+          setPanelProgress(0, packingJobs.length);
+
+          // El nodo de empaque es COMPARTIDO entre procesos, pero se resuelve por proceso y
+          // se cachea: así una receta que no lo tenga se reporta en vez de heredar el id de
+          // otra. En la práctica son 1-2 lecturas por corrida, no una por PN.
+          const packingNodeCache = new Map();   // processId → {ok, nodeId, reason, candidates}
+          async function resolveNodeForProcess(processId) {
+            if (processId == null) return { ok: false, reason: 'pn-sin-proceso', nodeId: null, candidates: [] };
+            if (packingNodeCache.has(processId)) return packingNodeCache.get(processId);
+            let res;
+            try {
+              const data = await withRetry(
+                () => api().query('GetProcessNode', { id: processId, processNodeOccurrence: 1, rootId: processId }, 'GetProcessNode'),
+                `GetProcessNode ${processId}`, myRunId
+              );
+              const nodes = Packing.flattenProcessNodes(data?.treeRoot || null);
+              res = Packing.resolvePackingNode(nodes, packingNodeName);
+            } catch (e) {
+              res = { ok: false, reason: `error-lectura: ${String(e).substring(0, 80)}`, nodeId: null, candidates: [] };
+            }
+            packingNodeCache.set(processId, res);
+            return res;
+          }
+
+          let packingDone = 0, packingSet = 0, packingCleared = 0, packingSkipped = 0;
+          const packingWorker = async (job) => {
+            bailIfStale(myRunId);
+            const res = await resolveNodeForProcess(job.processId);
+            if (!res.ok) {
+              packingSkipped++;
+              const extra = res.candidates?.length ? ` (candidatos: ${res.candidates.map(c => `${c.id}:${c.name}`).join(', ')})` : '';
+              errors.push(`Instrucciones de Empaque PN ${job.pnName}: nodo "${packingNodeName}" ${res.reason}${extra}`);
+              return;
+            }
+            try {
+              await withRetry(
+                () => api().query(
+                  'SaveManyPartNumberProcessNodeDescriptionsAndFiles',
+                  Packing.buildPackingPayload(job.pnId, res.nodeId, job.plan.markdown),
+                  'SaveManyPartNumberProcessNodeDescriptionsAndFiles'
+                ),
+                `Empaque PN ${job.pnId}`, myRunId
+              );
+              if (job.plan.action === 'clear') packingCleared++; else packingSet++;
+            } catch (e) {
+              errors.push(`Instrucciones de Empaque PN ${job.pnName}: ${String(e).substring(0, 120)}`);
+            }
+          };
+
+          await runPool(
+            packingJobs, packingWorker, packingConcurrency,
+            () => { packingDone++; setPanelProgress(packingDone, packingJobs.length); },
+            myRunId
+          );
+          stats.packingSet = packingSet + packingCleared;
+          log(`  Instrucciones de Empaque: ${packingSet} escritas, ${packingCleared} borradas, ${packingSkipped} sin nodo resuelto`);
+        }
+      }
 
       // STEP 7b: Delete prices (guión in precio column)
       // 1.2.11: iteramos con índice para resolver entry por rowIdx; dedup por pnId
