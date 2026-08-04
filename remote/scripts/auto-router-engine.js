@@ -31,12 +31,43 @@
 (function (root) {
   'use strict';
 
-  // Código de línea del prefijo del nombre: "T205-TI00-019…" → "T205". Espeja
-  // ProcessShared.extractLineCodeFromName (se re-implementa para mantener el
-  // módulo puro / testeable en node sin cargar process-shared).
+  // Código de línea del prefijo del nombre: "T205-TI00-019…" → "T205". Nació espejando a
+  // ProcessShared.extractLineCodeFromName (re-implementado para mantener el módulo puro /
+  // testeable en node sin cargar process-shared) y desde 2026-08-04 YA NO LO ESPEJA: aquél
+  // sigue cortando a 3 dígitos. Es deliberado — `process-shared` no rutea material, secciona
+  // árboles de proceso (`buildLineSections`) y agrupa procesos compartidos para auditoría, así
+  // que aplicarle esta regla cambiaría cómo se seccionan los árboles y cómo agregan los reportes
+  // históricos: es su propia decisión, no un efecto colateral de ésta. `auto-router` no carga
+  // `process-shared`, así que las dos conviven sin tocarse.
+  //
+  // EXCEPCIÓN TX00 (2026-08-04, a petición del operador): un código de letra + 3 dígitos que
+  // termina en "00" NO es una línea, es un ÁREA que agrupa destinos sin relación entre sí —
+  // T300-CE03 Antitarnish vs T300-CE05 Limpieza Especial; T100-SA01 Sandblast vs T100-IC00
+  // Inspección y Empaque; T000-SPR Surtimiento vs T000-MA00 Maquila. Las líneas de producción
+  // son T101…T120, T201…T208, T301, T302, T401, T501 y NINGUNA termina en 00.
+  //
+  // Por qué le importa AL RUTEADOR y no sólo al filtro: la pregunta que hace `computeRoutes` con
+  // este código es «¿este nodo pertenece a la línea que estoy moviendo?» (bypass). Con el corte a
+  // 3 dígitos, dos células que no comparten nada respondían que SÍ, así que una orden que corriera
+  // dentro de un área podía re-rutearse entre células distintas como si fueran tinas hermanas.
+  // Para una línea real el corte a 3 dígitos SIGUE siendo el correcto: sus TI00/EN00/SE00/LI son
+  // PASOS suyos, y partirlos rompería el ruteo T204→T205 validado 22/22 contra ground-truth.
+  //
+  // La misma regla vive en surtido-guard-filter-core.lineCodeFromStationText. Son dos
+  // implementaciones a propósito (los regex base difieren: aquí anclado al inicio y con T\d{2,4};
+  // allá sin anclar porque la celda trae el prefijo "at "), atadas por
+  // tools/test/line-code-area-parity.test.js para que no puedan derivar en silencio.
+  const AREA_CODE_RE = /^[A-Z]\d00$/;
+
   function extractLineCode(name) {
-    const m = String(name || '').trim().match(/^(T\d{2,4}|M\d{2,4})\b/i);
-    return m ? m[1].toUpperCase() : null;
+    // El segundo segmento sólo cuenta si el guion viene PEGADO al código: "T100 (LMC)-CU/BR-VARIOS"
+    // es un nombre de PROCESO, no de estación, y ahí "CU" no es ningún destino. Sin él se degrada
+    // al área — perder granularidad es tolerable; inventar un destino no.
+    const m = String(name || '').trim().match(/^(T\d{2,4}|M\d{2,4})\b(?:-([A-Za-z0-9]+))?/i);
+    if (!m) return null;
+    const base = m[1].toUpperCase();
+    if (!AREA_CODE_RE.test(base) || !m[2]) return base;
+    return base + '-' + m[2].toUpperCase();
   }
 
   // Posición física dentro de la línea: "T205-TI00-019 Enjuague" → 19,
