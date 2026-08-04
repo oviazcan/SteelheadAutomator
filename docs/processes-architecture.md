@@ -253,7 +253,8 @@ Las variantes de Enracado/Secado/Inspección y Empaque viven taggeadas en Steelh
 
 1. Localizar el tag de cada operación por nombre (`enracado`, `secado`, `inspEmpaque`).
 2. Paginar `ProcessesWithTag` con `offset/first`.
-3. Por cada nodo, extraer `lineCode = /^(T\d{2,4}|M\d{2,4})\b/i.exec(name)[1].toUpperCase()`.
+3. Por cada nodo, extraer el `lineCode` con `extractLineCodeFromName` (ver §6.1: desde 2026-08-04
+   los `TX00` llevan además su célula).
 4. Construir `Map<lineCode, Array<{id, name}>>` — una línea puede tener varias variantes en un mismo tag.
 
 Ejemplo: T102 tiene `Secando Manual – Desenracado` Y `Secando Centrífugo` bajo el tag de Secado. Cada proceso usa la suya. La detección acepta CUALQUIER variante del Set.
@@ -264,6 +265,51 @@ Ejemplo: T102 tiene `Secando Manual – Desenracado` Y `Secando Centrífugo` baj
 3. Si no tiene ninguna → default = primera variante del Set.
 
 Esto evita "T102 (EST) usa Centrífugo" → forzarlo a Manual.
+
+### 6.1 `TX00` es un satélite, y desde 2026-08-04 se parte por CÉLULA
+
+Un código letra + 3 dígitos terminado en `00` (`T000`, `T100`, `T200`, `T300`, `T400`, `T500`) **no
+nombra una línea**: las de producción son `T101…T120`, `T201…T208`, `T301`, `T302`, `T401`, `T501`
+y **ninguna termina en 00**. Aquí ese código ya tenía nombre propio —**satélite**, proceso
+auxiliar— y `isExcludedLineCode` lo saca del canon (`process-canon.js:609`: *"Línea T300
+(satélite/epóxico, no aplica canon)"*).
+
+Lo que faltaba es que **un satélite agrupa células que son procesos DISTINTOS**: `T300-CE03`
+Antitarnish vs `T300-CE05` Limpieza Especial; `T100-SA01` Sandblast vs `T100-IC00` Inspección y
+Empaque. `extractLineCodeFromName` las metía a todas bajo `T300`, así que dos auxiliares sin
+relación caían en el mismo bloque de `detectLineSections`. Ahora devuelve `T300-CE03`.
+
+> **Dos semánticas de `TX00` que conviene no confundir** — y que no se contradicen:
+> - En el **filtro del board** (`surtido-guard`) y en el **ruteador** (`auto-router`), `TX00` es un
+>   **área** y lo que importa es **distinguir** sus células: son destinos rivales.
+> - **Aquí, en procesos**, `TX00` es un **satélite** y lo que importa es **descartarlo** para
+>   quedarse con la línea real — `getLineCode("T300 (LES)-T204 (PLA)-CU/BR-VARIOS (16.1)")` es
+>   **`T204`**, no `T300`.
+>
+> Una pregunta *«¿a cuál célula va el material?»*; la otra *«¿de qué línea es este proceso?»*.
+
+**El blindaje que hace que esto sea una corrección y no una regresión:** `SATELLITE_REGEX` pasó de
+`/^[TM]\d+00$/` a `/^[TM]\d+00(?:-[A-Z0-9]+)?$/`. Sin ese sufijo opcional, un `T300-CE03` **dejaría
+de reconocerse como satélite**, y el sitio donde eso mordía está medido:
+`process-deep-audit.js:113-116` encadena las dos funciones —
+`const code = extractLineCodeFromName(p.name); if (code && isSatelliteCode(code))` — que es el
+**descubrimiento** de procesos satélite. Habría dejado de descubrir Antitarnish, en silencio.
+
+**Lo que NO se movió, y se fijó con tests para que se note si alguien lo mueve:** `getLineCode` usa
+su **propio** regex (`matchAll` sobre todos los códigos del nombre) y sigue descartando satélites
+para elegir la línea real; el guion debe venir **pegado** al código, porque los nombres de proceso
+llevan el acabado entre paréntesis (`T300 (ANT)-CU-VARIOS` → `T300`, no `T300-CU`); y los globales
+`SP …` siguen sin código (el regex está anclado al inicio).
+
+**Cambio observable:** en `process-deep-audit`, dos células consecutivas del mismo satélite en el
+top-level ahora son **dos secciones** en vez de una, y la columna `LineCode` de sus reportes dice
+`T300-CE03` en vez de `T300`.
+
+**Red de tests:** `tools/test/process-line-code.test.js` (15 casos) — estos módulos **no tenían
+ninguno** pese a mutar árboles en el ERP productivo. Cubre las dos funciones, el pipeline real de
+descubrimiento de satélites, `getLineCode`, `detectLineSections`, y **ata las copias** de
+`process-shared` y `process-canon` (cada uno re-implementa las dos funciones) para que no deriven
+en silencio. Verificado que muerde: revirtiendo `SATELLITE_REGEX` fallan 4.
 
 ## 7. Diagnóstico — playbook
 
