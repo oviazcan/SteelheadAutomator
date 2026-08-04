@@ -205,13 +205,26 @@ es el último recurso, no el primero):
    idioma y son las únicas que sirven en un candado**, donde un gate que no matchea **se apaga
    en silencio** (caso `price-confirm-guard` v0.1.5: con la UI en español el título era «Precio
    del número de parte» y el gate por texto llevaba semanas sin disparar).
-   ⚠️ **`data-steelhead-component-id` y `data-testid` YA NO son confiables (2026-08-03).**
-   Estaban en este nivel 1 y **SH publicó un build que los ELIMINA**. Medido en tres pantallas
-   distintas, todas cargadas y con contenido real —`/Reporting/View` (189 svg),
-   `/Receiving/CustomerParts` (159 svg) y la lista de reportes—: **0 `[data-testid]` y 0
-   `[data-steelhead-component-id]`** en cada una. Los únicos dos testid que sobreviven en la
-   app (`sentinelStart`/`sentinelEnd`) los pone **react-virtuoso**, no SH. Se siguen buscando
-   PRIMERO (si SH los repone, sirven), pero **ninguna decisión puede depender sólo de ellos**.
+   ⚠️ **`data-testid` YA NO es confiable (2026-08-03): SH publicó un build que lo ELIMINA.**
+   Medido en **cinco** pantallas cargadas y con contenido real —`/Reporting/View` (189 svg),
+   `/Receiving/CustomerParts` (159 svg), y los listados de reportes, OTs y NPs—: **0
+   `[data-testid]`** en todas. Los únicos dos que sobreviven en la app
+   (`sentinelStart`/`sentinelEnd`) los pone **react-virtuoso**, no SH. Se sigue buscando
+   PRIMERO (si SH lo repone, sirve), pero **ninguna decisión puede depender sólo de él**.
+   ✅ **`data-steelhead-component-id` SIGUE VIVO — corrección del mismo día.** La primera
+   redacción de esta regla decía que SH lo había eliminado también: **era una
+   sobregeneralización**. Se midió 0 en tres pantallas y se concluyó "lo eliminó", cuando esas
+   tres simplemente no tienen ninguno. Medido después donde SÍ debería estar: **38 en la ficha
+   de OT y 40 en la ficha de NP**, incluidos los anclajes que el repo usa
+   (`WORK_ORDER_PAGE_HEADER_OPEN_PDF_BUTTON`, `WORK_ORDER_PAGE_HEADER_PRINT_JOB_TAGS_BUTTON`,
+   `PART_NUMBER_PAGE_UNITS*`). Viven en **fichas de detalle, no en listados**. Los ids de
+   schema RJSF (`root_*`) también siguen vivos.
+   **LECCIÓN DE MÉTODO, que es lo que conviene no perder: «0 ocurrencias en N pantallas» NO
+   prueba «lo eliminaron»; prueba «no está en esas N».** Para afirmar una eliminación hay que
+   medir donde el atributo debería estar. Verificado en consecuencia: `wo-schedule-button`
+   monta su readout (`🔀📅 Sin programar`) junto al ancla PDF, y el ancla de
+   `price-confirm-guard` existe ⇒ **el «pendiente de mayor riesgo» que se había apuntado (los
+   candados sin ancla) NO EXISTE**.
    La alternativa que sí aguantó: **el `d` del `<path>` del icono** — SH no lo puede cambiar sin
    cambiar lo que el operador VE. Núcleo
    [`mui-icon-anchor-core.js`](remote/scripts/mui-icon-anchor-core.js) (15 golden): busca por

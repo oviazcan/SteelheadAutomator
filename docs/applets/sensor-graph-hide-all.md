@@ -2,7 +2,7 @@
 
 ## 2026-08-03 — SH quitó los `data-testid`: este applet pasa por el núcleo de iconos
 
-Steelhead publicó un build que **elimina los `data-testid` de los iconos MUI** (medido: 0 ocurrencias en tres pantallas cargadas y con contenido real — `/Reporting/View` 189 svg, `/Receiving/CustomerParts` 159 svg, listado de OTs). Este applet anclaba a ellos, así que sus `querySelector` pasaron a devolver `null` **en silencio**.
+Steelhead publicó un build que **elimina los `data-testid` de los iconos MUI** (medido: 0 ocurrencias en cinco pantallas cargadas y con contenido real). **Sólo los `data-testid`**: los `data-steelhead-component-id` y los ids RJSF **siguen vivos** (38 en la ficha de OT, 40 en la de NP) — afirmar lo contrario fue una sobregeneralización corregida el mismo día. Este applet anclaba a ellos, así que sus `querySelector` pasaron a devolver `null` **en silencio**.
 
 - **Ahora resuelve [`mui-icon-anchor-core.js`](../../remote/scripts/mui-icon-anchor-core.js)**, en cascada: `data-testid` (si SH lo repone) → **FORMA del icono** (`path d`, medida en vivo) → **`aria-label` bilingüe**. El comportamiento anterior queda como fallback si el core no cargó, y el core está declarado en `config.apps[].scripts` — atado por `tools/test/mui-icon-core-wiring.test.js`, porque olvidarlo dejaría el applet en el fallback ROTO sin ningún error visible.
 - **La forma es el ancla nueva de nivel 1:** SH no la puede cambiar sin cambiar lo que el operador VE. Los paths están **medidos**, no copiados de la doc de MUI: adivinarlos falla por diferencias de optimización SVGO entre versiones (el Edit real trae `a.996.996 0` donde el canónico dice `a.9959.9959 0`).
