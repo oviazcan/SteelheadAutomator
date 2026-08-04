@@ -224,8 +224,12 @@ const ProcessShared = (() => {
   ]);
   const PREP_CODES = new Set(['T101']);
 
-  // Satélites: T100, T200, T300, T400, T500 (procesos auxiliares).
-  const SATELLITE_REGEX = /^[TM]\d+00$/;
+  // Satélites: T100, T200, T300, T400, T500 (procesos auxiliares), con o sin la célula que los
+  // desambigua (T300-CE03, T100-SA01). El sufijo opcional NO es cosmético: desde 2026-08-04
+  // extractLineCodeFromName parte los TX00 por célula, así que sin él un "T300-CE03" dejaría de
+  // reconocerse como satélite y el canon dejaría de cortarlo con "no aplica canon" — una
+  // regresión silenciosa. La familia se reconoce igual, partida o no.
+  const SATELLITE_REGEX = /^[TM]\d+00(?:-[A-Z0-9]+)?$/;
   function isSatelliteCode(code) { return SATELLITE_REGEX.test(String(code || '')); }
   function isExcludedLineCode(code) { return isSatelliteCode(code) || code === 'T401'; }
   function isExcludedProcessName(name) {
@@ -291,9 +295,28 @@ const ProcessShared = (() => {
     return [0, 1, 2, 3, 4, 5, 6, 7, 8];
   }
 
+  // Código de línea del prefijo del nombre de un NODO. Ojo: no confundir con getLineCode(), que
+  // decide de qué línea es un PROCESO y para eso DESCARTA los satélites.
+  //
+  // EXCEPCIÓN TX00 (2026-08-04): un código letra + 3 dígitos terminado en "00" no nombra una línea
+  // —las de producción son T101…T120, T201…T208, T301, T302, T401, T501 y ninguna termina en 00—
+  // sino un ÁREA/satélite que agrupa células sin relación entre sí: T300-CE03 Antitarnish vs
+  // T300-CE05 Limpieza Especial, T100-SA01 Sandblast vs T100-IC00 Inspección y Empaque. Agruparlas
+  // bajo "T300" mete dos procesos auxiliares distintos en el mismo bloque de detectLineSections.
+  //
+  // La familia sigue reconociéndose como satélite gracias al sufijo opcional de SATELLITE_REGEX;
+  // sin eso este cambio sería una regresión, no una corrección.
+  //
+  // El guion debe venir PEGADO al código: los nombres de proceso llevan el acabado entre
+  // paréntesis y el guion después ("T300 (ANT)-CU-VARIOS"), donde "CU" no es ninguna célula.
+  const AREA_CODE_RE = /^[A-Z]\d00$/;
+
   function extractLineCodeFromName(name) {
-    const m = String(name || '').trim().match(/^(T\d{2,4}|M\d{2,4})\b/i);
-    return m ? m[1].toUpperCase() : null;
+    const m = String(name || '').trim().match(/^(T\d{2,4}|M\d{2,4})\b(?:-([A-Za-z0-9]+))?/i);
+    if (!m) return null;
+    const base = m[1].toUpperCase();
+    if (!AREA_CODE_RE.test(base) || !m[2]) return base;
+    return base + '-' + m[2].toUpperCase();
   }
 
   // Detecta secciones de línea principal en el top-level. Cada sección es un
