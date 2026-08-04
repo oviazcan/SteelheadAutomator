@@ -268,6 +268,10 @@ Esto evita "T102 (EST) usa Centrífugo" → forzarlo a Manual.
 
 ### 6.1 `TX00` es un satélite, y desde 2026-08-04 se parte por CÉLULA
 
+> **Estado: VIVO en config `1.11.66`**, tag `v1.11.66` (commits `ec48c74` tests + `89c5133` fix).
+> Los dos scripts servidos verificados con **md5 idéntico** al local. **No requiere rebundle
+> Safari**: `bundle.json` no lista ninguna app de procesos (verificado, no supuesto).
+
 Un código letra + 3 dígitos terminado en `00` (`T000`, `T100`, `T200`, `T300`, `T400`, `T500`) **no
 nombra una línea**: las de producción son `T101…T120`, `T201…T208`, `T301`, `T302`, `T401`, `T501`
 y **ninguna termina en 00**. Aquí ese código ya tenía nombre propio —**satélite**, proceso

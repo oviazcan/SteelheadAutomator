@@ -138,6 +138,9 @@ operador filtra y no puede saber a cuál de las dos va el material. Para una lí
 `T204-LI`, `T204-TI00`, `T204-EN00`… llenaría el dropdown de ruido y rompería el filtro que hoy
 funciona.
 
+**Estado:** VIVO en **config 1.11.64**, tag `v1.11.64`, bundle iPad **0.6.29** (falta recompilar en
+Xcode). Core 106/106; suite 99 archivos verde. Sin pasada end-to-end en el board real.
+
 **La regla, en una línea:** si el código base termina en `00`, el destino incluye el **segundo
 segmento** (`T300-CE03`); si no, el código base basta (`T204`). Vive en
 `lineCodeFromStationText`, el **único** punto por el que pasan las tres fuentes del filtro
@@ -164,9 +167,13 @@ Son **dos implementaciones a propósito** —los regex base difieren: allá ancl
 `tools/test/line-code-area-parity.test.js`, que se pone rojo si alguien toca una y no la otra. El
 repo ya pagó el precio de dos copias de una misma decisión con el anclaje del modal de recepción.
 
-**Sigue SIN alinear, a propósito:** `process-shared.extractLineCodeFromName` y su gemela de
-`process-canon` cortan a 3 dígitos. No rutean material —seccionan árboles de proceso y agregan los
-reportes de `process-deep-audit`—, así que es su propia decisión de dominio.
+**`process-shared`/`process-canon` también se alinearon** el mismo día (config 1.11.66), por
+decisión del operador — pero **con un matiz que conviene no perder**: ahí `TX00` ya tenía otro
+nombre y la semántica **contraria**. Es un **satélite** (proceso auxiliar) y lo que importa es
+**descartarlo** para quedarse con la línea real, no distinguir sus células. Alinearlo obligó a
+ampliar `SATELLITE_REGEX` para que un `T300-CE03` siga siendo satélite; sin eso se habría roto el
+descubrimiento de satélites de `process-deep-audit`. Ver
+[`processes-architecture.md § 6.1`](../processes-architecture.md).
 
 ### El catálogo del dropdown viene de la API, no del DOM
 

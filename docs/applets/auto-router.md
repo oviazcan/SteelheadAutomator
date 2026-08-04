@@ -105,12 +105,15 @@ es *inerte* ahí — 34 nodos ruteados idénticos, 22 rutas deterministas exacta
 (4.0)` es un nombre de **proceso**, no de estación; sin esa condición el "segundo segmento" habría
 sido `CU`, un destino que no existe. Sin guion inmediato se degrada al área.
 
-**Qué NO se tocó, con su motivo:** `process-shared.extractLineCodeFromName` y su gemela de
-`process-canon` **siguen cortando a 3 dígitos**. No rutean material: seccionan árboles de proceso
-(`buildLineSections`) y agrupan procesos compartidos para `process-deep-audit`, así que aplicarles
-esta regla cambiaría cómo se seccionan los árboles y cómo agregan los reportes históricos — es su
-propia decisión de dominio, no un efecto colateral de ésta. `auto-router` no carga `process-shared`,
-así que conviven sin tocarse.
+**`process-shared`/`process-canon` se alinearon DESPUÉS, el mismo día** (config 1.11.66), por
+decisión del operador. Se documentan aparte porque **ahí `TX00` ya tenía otro nombre y otra
+semántica**: es un **satélite** —proceso auxiliar— y lo que importa es **descartarlo** para quedarse
+con la línea real (`getLineCode("T300 (LES)-T204 (PLA)-CU/BR-VARIOS (16.1)")` = `T204`), no
+distinguir sus células. Aplicar la regla ahí obligó a **ampliar `SATELLITE_REGEX`** para que un
+`T300-CE03` siga reconociéndose como satélite; sin eso habría roto el descubrimiento de satélites
+de `process-deep-audit`. Ver
+[`processes-architecture.md § 6.1`](../processes-architecture.md). `auto-router` **no** carga
+`process-shared`, así que el cambio de allá no afecta a este motor.
 
 La regla vive además en `surtido-guard-filter-core.lineCodeFromStationText`. Son **dos**
 implementaciones a propósito (los regex base difieren: aquí anclado al inicio y con `T\d{2,4}`;
@@ -159,6 +162,11 @@ se rutean, y **omite** (no-op) los iguales. El panel lo aplica así (ya NO bloqu
 muestra `+creadas ~actualizadas -eliminadas`. Validado end-to-end con el shape real.
 
 ## Pendientes
+- **Ver en vivo el caso donde el cambio de `TX00` SÍ actúa (2026-08-04).** El golden T204→T205 no
+  toca ningún `TX00`, así que probó que la regla **no rompe** el ruteo validado, pero **no** el
+  comportamiento nuevo: una orden que corra dentro de un área (línea origen `T300-CE03`) ahora manda
+  sus nodos de `T300-CE05` a **bypass** —conservan su tina default— en vez de tratarlos como tinas
+  hermanas. Es lo pedido; falta verlo con datos reales.
 - **Fase 0 (opcional, fidelidad del test):** capturar `SearchStationsForTreatment` por treatment multi-tina
   para confirmar candidatas autoritativas (la línea T205 ya se reconstruyó completa del catálogo de 772
   estaciones — el fixture está confirmado). No bloquea: el applet llama `SearchStationsForTreatment` en vivo.
