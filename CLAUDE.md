@@ -217,15 +217,29 @@ es el último recurso, no el primero):
    [`mui-icon-anchor-core.js`](remote/scripts/mui-icon-anchor-core.js) (15 golden): busca por
    testid → por forma, y **devuelve `by: 'testid'|'shape'`** para que se pueda ver por qué
    matcheó y detectar el día que SH reponga o vuelva a quitar los atributos.
-   **DEUDA ABIERTA — 8 applets siguen anclados a `data-testid` y NO se han verificado:**
-   `cfdi-attacher` (SendIcon/EmailOutlinedIcon), `invoice-auto-regen` (RestorePageOutlinedIcon),
-   `invoice-listing-marker` (EditIcon, tiene fallback `aria-label`), `proceso-calculator`
-   (CloseIcon), `sensor-graph-hide-all` (Visibility*, es fallback de un `aria-label`),
-   `schedule-batch-highlighter` (FilterListIcon), `wo-listing-columns` (Edit/Archive/QrCode2),
-   `wo-schedule-button` (QrCode2/Close). Otros 8 archivos usan `data-steelhead-component-id`,
-   incluidos `surtido-guard` y `price-confirm-guard` — **este último es un CANDADO**, y su
-   ancla real son los ids RJSF `root_DatosPrecio*` (nivel 1 que SÍ sobrevive), pero conviene
-   confirmarlo antes de asumirlo. Sólo `report-regen` quedó saldado el 2026-08-03.
+   **BARRIDO COMPLETO (2026-08-03): los 9 applets pasan por el núcleo.** `report-regen`,
+   `cfdi-attacher`, `invoice-auto-regen`, `invoice-listing-marker`, `proceso-calculator`,
+   `sensor-graph-hide-all`, `schedule-batch-highlighter`, `wo-listing-columns` y
+   `wo-schedule-button`. Cada uno conserva su comportamiento anterior como fallback por si el
+   core no cargó, y **`tools/test/mui-icon-core-wiring.test.js` (4 tests) ata config↔código**:
+   un applet que usa el núcleo pero no lo declara en `config.apps[].scripts` caería al
+   fallback ROTO **en silencio** — el mismo molde que `popup-actions-wired`.
+   **7 iconos con forma MEDIDA en vivo** (Play, Email, Edit, Archive, FilterList, QrCode2,
+   CalendarMonth) y **5 pendientes de medir** (Close, Send, RestorePage, Visibility,
+   VisibilityOff), que van con la lista VACÍA a propósito: un path adivinado no matchea —el
+   Edit canónico dice `a.9959.9959 0` y el real `a.996.996 0`; el Archive real empieza con `m`
+   minúscula— y encima finge cobertura. Vacío + anotado degrada al estado de hoy, nunca peor.
+   Dos tests registran esa deuda y **se ponen rojos si alguien mide un icono y no lo mueve de
+   lista en el mismo commit**.
+   **Tercera señal descubierta midiendo: SH conserva `aria-label` en muchos botones de icono**,
+   traducido («Editar», «Archivar», «Imprimir Etiquetas de Trabajo»). Va al FINAL de la
+   cascada, después de la forma, porque el texto sí cambia con el idioma — y porque **un aria
+   laxo no falla: acierta el icono EQUIVOCADO**. Encontrado verificando en vivo: con `/…|qr/i`,
+   `QrCode2Icon` matcheaba **«Escanear Código QR»**, el botón de la CÁMARA, en una pantalla
+   donde el QR de etiquetas ni existe ⇒ `wo-schedule-button` habría abierto la cámara en vez de
+   generar el PDF. Los patrones se endurecieron para exigir la palabra que nombra la ACCIÓN
+   (etiqueta/label/tag), no la tecnología; `/ver/` se quitó de `VisibilityIcon` porque mordía
+   «Ver Documentos». 5 tests de regresión con los textos reales.
 2. **Texto ES+EN como red de seguridad** — encima de la estructural, para que solo AMPLÍE el
    match (si SH renombra el schema, el applet sigue vivo). Nunca como única señal de un gate.
 3. **Bilingüe puro** — únicamente cuando **no hay estructura que anclar**: `window.alert`,
