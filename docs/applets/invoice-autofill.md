@@ -1,6 +1,56 @@
 # `invoice-autofill` — bitácora completa
 
-Ciclos documentados: 0.5.26 → 0.5.34 (modal manual) + 0.5.60 → 0.5.63 (PS-embedded) + 0.5.64 (modal OV/PS rediseñado: AR Account label, income commit, gate del panel) + 0.5.65 (AR matcher: divisa "M.N.") + 0.5.66 (SH renombró la columna de ingreso). Para deploy y reglas generales, ver `../../CLAUDE.md`. Para patrones de DOM, ver `../architecture/dom-patterns.md`.
+Ciclos documentados: 0.5.26 → 0.5.34 (modal manual) + 0.5.60 → 0.5.63 (PS-embedded) + 0.5.64 (modal OV/PS rediseñado: AR Account label, income commit, gate del panel) + 0.5.65 (AR matcher: divisa "M.N.") + 0.5.66 (SH renombró la columna de ingreso) + 0.5.67 (carrera al leer el cliente del encabezado). Para deploy y reglas generales, ver `../../CLAUDE.md`. Para patrones de DOM, ver `../architecture/dom-patterns.md`.
+
+## Lección 0.5.67 (2026-08-03) — «no detecta el cliente»: no era una rotura, era una CARRERA
+
+**VIVO config 1.11.62, tag `v1.11.62`. Bundle iPad 0.6.28.** Reporte de piso, horas después de
+validar el 0.5.66: *«ahora no detecta el cliente porque el modal ya no lo jala, se queda detrás
+cuando se selecciona un documento que ya tiene un cliente»*.
+
+**Lo primero que se descartó, con evidencia:** el fix del mismo día. El diff de `19467eb` **no
+tocó** `extractCustomerFromDOM` ni el gate — sólo la extracción de líneas —, así que la
+coincidencia temporal no implicaba causa.
+
+**Medido en vivo** (`/Invoices` → pestaña *Packing Slips* → PS #001559 de SCHNEIDER ELECTRIC
+MEXICO → **CREAR FACTURA**): el encabezado **SÍ** traía `Creating Invoice for SCHNEIDER ELECTRIC
+MEXICO` y el panel arrancó en «Analizando…». **El fallo no se reprodujo** ⇒ el operador lo
+reclasificó como intermitencia. Eso cambia la pregunta: no «¿qué se rompió?», sino «¿por dónde
+puede fallar A VECES?».
+
+**La ventana de carrera está en la LECTURA del encabezado.** Se concatenaban sólo los text nodes
+**directos** del `h*`, con `break` al primer elemento que no fuera `span/em/strong/b`. Si en ese
+instante React no había pintado el nombre como texto plano —o lo metía dentro de un `<a>`/`<div>`,
+que es justo lo que hacen los botones anexos del encabezado— quedaba `txt = "Creating Invoice
+for"` **sin el nombre**. El regex no matcheaba; y como `txt` **no estaba vacío**, el fallback a
+`h.textContent` (que existía desde siempre, condicionado a `if (!txt)`) **nunca corría**. Síntoma
+exacto: el panel se queda en *«Esperando selección de cliente…»* y se arregla solo al siguiente
+re-render — que es como se ve una intermitencia desde el piso.
+
+**Fix — el anclaje no se cambia, se AMPLÍA:** núcleo puro `parseCustomerFromHeadingText` (fuera
+del IIFE, requerible sin DOM) y el mismo parseo se intenta contra **las dos lecturas**, la directa
+y el `textContent` completo. Dos detalles que salieron al escribirlo:
+
+- El regex era `(.+?)$` **sin flag `s`**: `.` no cruza `\n`, así que en cuanto el `textContent`
+  traía un salto de línea el match fallaba. Ahora corta en **fin de línea** (`[^\n\r]+`).
+- Leer el encabezado completo arrastra los botones (`+ View Customer Custom Inputs`,
+  `<> EDIT POWER TOOLS`, `Total: $X`). El corte por keywords ya existía, pero deja el `+` del
+  botón pegado (`…MEXICO+`) ⇒ se limpian los adornos finales. **El punto NO se toca**: se lo
+  llevaría la abreviatura de la razón social (`ACME S.A. DE C.V.`).
+
+**Guarda que importa:** un encabezado sin nombre devuelve **`null`**, nunca cadena vacía ni el
+verbo suelto. Si devolviera algo truthy, el applet lo tomaría por cliente y dispararía un autofill
+con basura — peor que no detectar.
+
+**12 golden** en `tools/test/invoice-autofill-customer-heading.test.js`; suite 94 archivos, 0 rojos.
+
+**Lo que NO quedó verificado, y por qué:** el fixture del caso del bug (el `textContent` con los
+botones pegados) es **reconstruido, no medido**. Al ir por el `outerHTML` real, `/Invoices` empezó
+a responder **«¡PERMISOS INSUFICIENTES! … READ_INVOICING»** en la misma pantalla que había abierto
+cinco minutos antes, y no cedió al recargar. Queda anotado en el propio test. Tampoco se cerró una
+pasada end-to-end con el código ya publicado.
+
+**Pendiente:** recompilar en Xcode (bundle 0.6.28 ya copiado a `Resources/`).
 
 ## Lección 0.5.66 (2026-08-03) — SH RENOMBRÓ la columna y el applet dejó de ver TODAS las líneas
 
