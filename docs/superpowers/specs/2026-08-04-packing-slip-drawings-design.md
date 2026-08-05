@@ -185,8 +185,19 @@ En la columna Acciones hay **7 botones**. Medidos en vivo:
 bitácora del 2026-08-03), y el botón de correo **no tiene `aria-label` ni `title`**. El tooltip
 **«Enviar Albarán»** lo inyecta MUI **solo al hacer hover**, así que **no sirve como ancla estática**.
 
-⇒ **La forma del `path` es la ÚNICA ancla viable** para el botón de correo. Entra al catálogo de
-`mui-icon-anchor-core.js` como forma medida (no copiada del canónico de MUI).
+⇒ **La forma del `path` es la ÚNICA ancla viable** para el botón de correo.
+
+✅ **Y ya está catalogada.** El path medido coincide **byte por byte** con la primera entrada de
+`ICON_SHAPES.EmailOutlinedIcon` en `mui-icon-anchor-core.js` (medida en su día en `/Reporting/View`).
+**No hay que agregar nada al catálogo**: `MuiIconAnchorCore.findIconButton(root, 'EmailOutlinedIcon')`
+ya encuentra este botón por forma. Lo que sí aporta el reconocimiento es la **confirmación de que la
+misma forma se reusa en el listado de albaranes**, y que aquí **no hay aria de respaldo** — en esta
+pantalla la forma no es la segunda opción, es la única.
+
+**Oportunidad pendiente (barata):** el catálogo lista `SendIcon` y `CloseIcon` como *no medidos*, con
+la nota «no se toca sin que el operador lo pida» — precisamente porque viven en modales de envío. El
+modal de la remisión **tiene ambos** y hoy sí se abrió con permiso. Medir sus `path` es una llamada
+de un renglón la próxima vez que se abra.
 
 ### Deuda bilingüe declarada
 
@@ -343,6 +354,7 @@ escribir selectores (regla del repo: una inspección resuelve lo que diez deploy
     "scripts/mui-icon-anchor-core.js",
     "scripts/lib/pdf-lib.min.js",
     "scripts/packing-slip-drawings-core.js",
+    "scripts/packing-slip-modal-core.js",
     "scripts/packing-slip-print.js",
     "scripts/packing-slip-drawings.js"
   ],
