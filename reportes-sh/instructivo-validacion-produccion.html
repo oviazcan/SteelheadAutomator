@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Instructivo — Validación de Datos Maestros en Piso · Producción</title>
+<style>
+:root{
+  --ground:#f7f9fb;--paper:#ffffff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;
+  --hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;
+  --ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;
+  --warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7;
+  --shadow:0 1px 2px rgba(24,34,49,.05),0 6px 20px -8px rgba(24,34,49,.12);
+  --measure:68ch;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){:root{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512;--shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -10px rgba(0,0,0,.5)}}
+:root[data-theme="light"]{--ground:#f7f9fb;--paper:#fff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;--hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;--ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7}
+:root[data-theme="dark"]{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.6;-webkit-font-smoothing:antialiased}
+.wrap{max-width:920px;margin:0 auto;padding:0 24px 80px}
+.masthead{border-bottom:2px solid var(--ku);padding:36px 0 20px}
+.brandbar{display:flex;align-items:center;gap:10px;margin-bottom:14px;flex-wrap:wrap}
+.brandmark{width:26px;height:26px;border-radius:6px;background:var(--steel);display:grid;place-items:center;flex:0 0 auto}
+.brandmark span{color:#fff;font-weight:800;font-size:.9rem;font-family:var(--mono)}
+.brandname{font-weight:700;letter-spacing:.02em;font-size:.95rem}
+.eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.14em;color:var(--ku);font-weight:800;margin:0 0 10px}
+.masthead h1{font-size:clamp(1.9rem,4.4vw,2.55rem);line-height:1.06;letter-spacing:-.02em;margin:0 0 10px;font-weight:800;text-wrap:balance}
+.masthead .sub{font-size:1.1rem;color:var(--muted);margin:0;max-width:60ch}
+.audchips{display:flex;gap:8px;margin-top:14px;flex-wrap:wrap}
+.audchip{font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.05em}
+.audchip.ku{background:var(--ku-wash);color:var(--ku)}
+.tldr{background:var(--paper);border:1px solid var(--hair);border-left:4px solid var(--ku);border-radius:12px;padding:18px 20px;margin:24px 0;box-shadow:var(--shadow)}
+.tldr .ct{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--ku);margin:0 0 8px}
+.tldr p{margin:0;font-size:1.05rem}
+h2.sec{font-size:1.42rem;letter-spacing:-.01em;margin:44px 0 4px;font-weight:800;text-wrap:balance}
+h2.sec .num{font-family:var(--mono);font-size:.85rem;color:var(--ku);font-weight:700;border:1px solid var(--hair-2);border-radius:6px;padding:1px 7px;margin-right:10px;vertical-align:.15em}
+h3.sub{font-size:1.12rem;margin:28px 0 6px;letter-spacing:-.01em;font-weight:700}
+.sec-lead{color:var(--muted);margin:.4rem 0 1.1rem;max-width:var(--measure)}
+p{margin:0 0 .9rem;max-width:var(--measure)}
+a{color:var(--accent-ink);text-underline-offset:2px}
+code{font-family:var(--mono);font-size:.85em;background:var(--hair);padding:1px 5px;border-radius:5px}
+ul,ol{max-width:var(--measure);padding-left:1.25em} li{margin:.3rem 0}
+.callout{border-radius:10px;padding:14px 16px 14px 46px;position:relative;margin:20px 0;font-size:.95rem;border:1px solid var(--hair);background:var(--paper);max-width:none}
+.callout .ct{font-weight:800;margin:0 0 4px;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em}
+.callout p{max-width:none;margin:.3rem 0 0}
+.callout::before{position:absolute;left:14px;top:13px;font-size:1.15rem;line-height:1}
+.callout.meta{border-left:4px solid var(--steel);background:color-mix(in srgb,var(--steel) 6%,var(--paper))} .callout.meta .ct{color:var(--steel)} .callout.meta::before{content:"💡"}
+.callout.info{border-left:4px solid var(--ti);background:var(--ti-wash)} .callout.info .ct{color:var(--ti)} .callout.info::before{content:"ℹ";color:var(--ti);font-weight:800}
+.callout.warn{border-left:4px solid var(--warn);background:var(--warn-wash)} .callout.warn .ct{color:var(--warn)} .callout.warn::before{content:"⚠"}
+.callout.danger{border-left:4px solid var(--danger);background:var(--danger-wash)} .callout.danger .ct{color:var(--danger)} .callout.danger::before{content:"⛔"}
+.callout.tip{border-left:4px solid var(--accent);background:var(--accent-wash)} .callout.tip .ct{color:var(--accent-ink)} .callout.tip::before{content:"✓";color:var(--accent-ink);font-weight:800}
+.stages{list-style:none;padding:0;margin:22px 0;display:flex;flex-direction:column;gap:2px}
+.stages li{display:grid;grid-template-columns:44px 1fr;gap:16px;padding:14px 0;border-bottom:1px solid var(--hair);align-items:start}
+.stages li:last-child{border-bottom:none}
+.stages .k{width:38px;height:38px;border-radius:9px;background:var(--ku);color:#fff;display:grid;place-items:center;font-weight:800;font-family:var(--mono);font-size:1rem}
+.stages h4{margin:0 0 3px;font-size:1.06rem}
+.stages p{margin:0;font-size:.94rem;color:var(--muted);max-width:none}
+.tablewrap{overflow-x:auto;border:1px solid var(--hair);border-radius:12px;box-shadow:var(--shadow);margin:18px 0}
+table{border-collapse:collapse;width:100%;font-size:.9rem;background:var(--paper);min-width:560px}
+thead th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:700;padding:10px 13px;border-bottom:2px solid var(--hair-2);background:var(--ground)}
+tbody td{padding:10px 13px;border-bottom:1px solid var(--hair);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+.foot{margin-top:56px;padding-top:20px;border-top:1px solid var(--hair-2);color:var(--faint);font-size:.85rem;display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:999px}
+.badge.perenne{background:var(--ti-wash);color:var(--ti)} .badge.perenne::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.doc-credit{margin-top:10px;padding-top:12px;border-top:1px solid var(--hair);display:flex;align-items:center;gap:12px;font-size:.78rem;color:var(--faint)}
+.doc-credit a{color:var(--accent-ink);text-decoration:none} .doc-credit a.name{font-weight:600}
+.doc-credit img{height:30px;width:auto;display:block}
+
+/* ── Las tres marcas ─────────────────────────────────────────────────────── */
+.marcas{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin:22px 0}
+@media (max-width:720px){.marcas{grid-template-columns:1fr}}
+.marca{border:1px solid var(--hair);border-radius:12px;background:var(--paper);box-shadow:var(--shadow);padding:16px 16px 14px;text-align:center}
+.marca .demo{background:#fff;border:1px solid #c9d2da;border-radius:8px;height:58px;display:grid;place-items:center;margin-bottom:10px;color:#182231}
+.marca .t{font-weight:800;font-size:.95rem;margin-bottom:3px}
+.marca .d{font-size:.88rem;color:var(--muted)}
+.marca.ok{border-top:4px solid var(--accent)} .marca.corr{border-top:4px solid var(--warn)} .marca.nada{border-top:4px solid var(--faint)}
+
+/* ── Facsímil ────────────────────────────────────────────────────────────── */
+.fac{margin:24px 0}
+.fac-cap{font-size:.78rem;color:var(--faint);margin:0 0 8px;text-transform:uppercase;letter-spacing:.08em;font-weight:700}
+.fac-scroll{overflow-x:auto;border:1px solid var(--hair-2);border-radius:12px;box-shadow:var(--shadow);background:#fff}
+table.hoja{border-collapse:collapse;width:100%;min-width:680px;font-size:10.5px;line-height:1.3;background:#fff;color:#182231;font-family:var(--sans);margin:0}
+table.hoja th,table.hoja td{border:1px solid #c9d2da;padding:4px 5px;vertical-align:top;position:relative}
+table.hoja thead th{text-transform:none;letter-spacing:0}
+table.hoja .grupos th{background:#2b3f52;color:#fff;text-align:center;font-size:9px;letter-spacing:.09em;text-transform:uppercase;font-weight:800;padding:3px 4px}
+table.hoja .grupos th.refh{background:#55677a}
+table.hoja .cols th{background:#eef2f6;color:#182231;text-align:center;font-size:9px;font-weight:700;padding:5px 4px;border-bottom:2px solid #97a6b4}
+table.hoja .cols th.chk{width:26px}
+table.hoja td.ref{background:#f7f9fb;color:#55677a;font-size:9.5px}
+table.hoja td.np{font-weight:700;color:#182231;font-size:11px}
+table.hoja td.chk{background:#fff}
+table.hoja tr.seccion td{background:#182231;color:#fff;font-weight:800;font-size:10.5px;padding:4px 6px}
+table.hoja .dato-n{font-size:12.5px;font-weight:700;display:block;text-align:center}
+table.hoja .lin{font-size:8.5px;color:#7b8a99;display:block;text-align:center}
+table.hoja .uni{font-size:8.5px;color:#7b8a99}
+table.hoja .esp{color:#55677a}
+table.hoja .vacio{color:#b6c0ca}
+.mano{font-family:"Bradley Hand","Segoe Script","Brush Script MT","Comic Sans MS",cursive;color:#14459c;font-weight:700;font-size:12.5px;display:inline-block;transform:rotate(-1.2deg)}
+.mano.chico{font-size:11px;display:block;text-align:center}
+.pal{font-family:var(--sans);color:#14459c;font-weight:700;font-size:14px;display:block;text-align:center;transform:rotate(-6deg)}
+.tach{text-decoration:line-through;text-decoration-color:#c62828;text-decoration-thickness:1.5px;color:#95a0ab}
+.globo{position:absolute;top:-7px;right:-7px;z-index:3;width:17px;height:17px;border-radius:50%;background:#c0632e;color:#fff;font-family:var(--sans);font-size:10px;font-weight:800;display:grid;place-items:center;box-shadow:0 1px 3px rgba(0,0,0,.35)}
+.globo.izq{left:-7px;right:auto}
+.globo.inline{position:static;display:inline-grid;vertical-align:middle;margin-left:7px}
+.fac-nota{font-size:.82rem;color:var(--faint);margin:8px 0 0;font-style:italic}
+.leyenda{list-style:none;padding:0;margin:14px 0 0;display:grid;gap:8px;max-width:none}
+.leyenda li{display:grid;grid-template-columns:22px 1fr;gap:10px;align-items:start;font-size:.93rem;margin:0}
+.leyenda .g{width:19px;height:19px;border-radius:50%;background:var(--ku);color:#fff;font-size:11px;font-weight:800;display:grid;place-items:center;margin-top:3px}
+.firmas-demo{display:flex;gap:26px;flex-wrap:wrap;background:#fff;border:1px solid #c9d2da;border-top:none;padding:12px 14px;font-size:10px;color:#55677a;font-family:var(--sans)}
+.firmas-demo div{min-width:120px}
+.firmas-demo .ln{border-bottom:1px solid #182231;height:22px;margin-bottom:3px;position:relative}
+.firmas-demo .ln .mano{position:absolute;bottom:-1px;left:6px;font-size:13px}
+
+@media print{
+  .firmas-demo{display:none}
+  :root{--ground:#fff;--paper:#fff;--shadow:none}
+  @page{size:letter;margin:11mm 12mm}
+  body{font-size:8.6pt;line-height:1.32}
+  .wrap{max-width:none;padding:0}
+  p{margin:0 0 .5rem;max-width:none}
+  .sec-lead{margin:.2rem 0 .5rem;max-width:none}
+  /* Encabezado compacto: en papel el instructivo no necesita masthead de portada */
+  .masthead{padding:0 0 8px;margin-bottom:8px}
+  .brandbar,.audchips{display:none}
+  .masthead h1{font-size:16pt;margin-bottom:4px}
+  .masthead .sub{font-size:9pt}
+  .eyebrow{font-size:7pt;margin-bottom:4px}
+  .tldr{margin:8px 0;padding:8px 11px;border-radius:8px}
+  .tldr p{font-size:9.4pt}
+  .tldr .ct{font-size:6.6pt;margin-bottom:3px}
+  h2.sec{font-size:12pt;margin:14px 0 2px}
+  h2.sec .num{font-size:7pt;padding:0 5px}
+  h3.sub{font-size:10pt;margin:10px 0 3px}
+  .callout{margin:8px 0;padding:8px 10px 8px 34px;font-size:8.4pt;border-radius:8px}
+  .callout::before{left:11px;top:8px;font-size:.95rem}
+  .callout .ct{font-size:6.6pt}
+  .marcas{gap:8px;margin:10px 0}
+  .marca{padding:9px 10px} .marca .demo{height:34px;margin-bottom:6px}
+  .marca .t{font-size:9.4pt} .marca .d{font-size:8.2pt}
+  .stages{margin:10px 0} .stages li{padding:6px 0;grid-template-columns:30px 1fr;gap:10px}
+  .stages .k{width:26px;height:26px;border-radius:6px;font-size:8.4pt}
+  .stages h4{font-size:9.4pt} .stages p{font-size:8.4pt}
+  .tablewrap{margin:8px 0;border-radius:8px}
+  table{font-size:8.2pt;min-width:0}
+  thead th{padding:5px 7px;font-size:6.4pt}
+  tbody td{padding:5px 7px}
+  .fac{margin:10px 0} .fac-cap{font-size:6.8pt;margin-bottom:5px}
+  .fac-scroll{overflow:visible;break-inside:avoid;border-radius:8px}
+  table.hoja{min-width:0;font-size:7pt;table-layout:fixed}
+  table.hoja th,table.hoja td{padding:2px 3px;word-break:break-word}
+  table.hoja .dato-n{font-size:8.4pt} .mano{font-size:8.4pt} .pal{font-size:9.4pt}
+  .leyenda{margin-top:7px;gap:4px} .leyenda li{font-size:8.2pt;grid-template-columns:17px 1fr;gap:7px}
+  .leyenda .g{width:14px;height:14px;font-size:7pt}
+  .fac-nota{font-size:7.4pt;margin-top:5px}
+  .firmas-demo{padding:7px 10px;font-size:7pt} .firmas-demo .ln{height:16px}
+  .foot{margin-top:14px;padding-top:8px;font-size:7pt}
+  .doc-credit{margin-top:5px;padding-top:6px;font-size:6.8pt} .doc-credit img{height:18px}
+  .callout,.tablewrap,.stages li,.marca,.leyenda li{break-inside:avoid}
+  h2.sec,h3.sub{break-after:avoid}
+  a{color:var(--ink);text-decoration:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brandbar">
+      <span class="brandmark"><span>SH</span></span>
+      <span class="brandname">Reportes SH · Paquete de capacitación</span>
+      <a href="00-mapa-empieza-aqui.html" style="margin-left:auto;font-size:.82rem;color:var(--faint);text-decoration:none;white-space:nowrap">← Índice del paquete</a>
+    </div>
+    <p class="eyebrow">Instructivo de piso · Producción</p>
+    <h1>Cómo llenar el formato de Validación de Datos Maestros</h1>
+    <p class="sub">Ingeniería te entrega la hoja impresa. Tú confrontas lo que dice el sistema contra la pieza y el rack que tienes enfrente, y anotas lo que no cuadra.</p>
+    <div class="audchips">
+      <span class="audchip ku">Operador y supervisor de línea</span>
+    </div>
+  </header>
+
+  <div class="tldr">
+    <p class="ct">En una frase</p>
+    <p>Si el dato del sistema coincide con la pieza, marca <strong>✓</strong>. Si no coincide, <strong>tacha y escribe el valor correcto</strong>. Si no lo revisaste, <strong>déjalo en blanco</strong>.</p>
+  </div>
+
+  <h2 class="sec"><span class="num">01</span>Qué es esta hoja</h2>
+  <p class="sec-lead">Es la ficha que el sistema tiene cargada de cada pieza que corre en tu línea, impresa para revisarla con la pieza en la mano.</p>
+
+  <p>El sistema usa esos datos todos los días: cuántas piezas caben en un rack, a qué ritmo corre la línea, qué acabado y qué espesor lleva la pieza. Si alguno está mal, el programa, el costo y la carga salen mal. Nadie puede detectarlo desde una oficina: sólo se ve <strong>junto a la pieza</strong>.</p>
+
+  <p>Cada renglón es <strong>una pieza en una línea</strong>: si una pieza corre en dos líneas, aparece dos veces y en cada renglón trae los datos de <strong>esa</strong> línea. La barra negra que corta la hoja te dice en qué línea vas. Las primeras cinco columnas, bajo el letrero <strong>«Referencias — no se validan»</strong>, son para ubicar la pieza; lo que se revisa es lo que trae una casilla <strong>✓</strong> al lado.</p>
+
+  <h2 class="sec"><span class="num">02</span>Las tres marcas</h2>
+  <p class="sec-lead">Sólo hay tres cosas que puedes dejar en una casilla, y cada una quiere decir algo distinto. Los tres estados importan igual.</p>
+
+  <div class="marcas">
+    <div class="marca ok">
+      <div class="demo"><span class="pal" style="font-size:26px">✓</span></div>
+      <div class="t">Palomita</div>
+      <div class="d">Lo revisé y <strong>está bien</strong>.</div>
+    </div>
+    <div class="marca corr">
+      <div class="demo"><span><span class="tach" style="font-size:15px;font-weight:700">224</span> <span class="mano">96</span></span></div>
+      <div class="t">Tachado y corregido</div>
+      <div class="d">Lo revisé, <strong>está mal</strong>, y éste es el bueno. La casilla ✓ se queda vacía.</div>
+    </div>
+    <div class="marca nada">
+      <div class="demo"><span style="color:#b6c0ca;font-size:13px">(en blanco)</span></div>
+      <div class="t">Nada</div>
+      <div class="d"><strong>No lo revisé.</strong> No significa que esté bien.</div>
+    </div>
+  </div>
+
+  <div class="callout warn">
+    <p class="ct">No palomees de corrido</p>
+    <p>Una hoja con todo palomeado y sin una sola corrección es sospechosa: en la práctica siempre sale algo. Es preferible entregar la hoja con la mitad revisada de verdad que con todo palomeado por costumbre — una palomita falsa deja el error cargado en el sistema y con sello de aprobado.</p>
+  </div>
+
+  <h2 class="sec"><span class="num">03</span>La hoja, renglón por renglón</h2>
+  <p class="sec-lead">Un ejemplo real ya llenado. En el papel las columnas van seguidas; aquí se parte en dos para que se alcance a leer.</p>
+
+  <div class="fac">
+    <p class="fac-cap">Mitad izquierda</p>
+    <div class="fac-scroll">
+      <table class="hoja">
+        <thead>
+          <tr class="grupos">
+            <th class="refh" colspan="5">Referencias — no se validan</th>
+            <th colspan="6">Carga</th>
+          </tr>
+          <tr class="cols">
+            <th>Cliente</th><th>Id SH</th><th>Número de parte</th><th>Etiquetas</th><th>Línea default</th>
+            <th>Pzas por carga</th><th class="chk">✓</th>
+            <th>Ritmo por línea (cgs/h)</th><th class="chk">✓</th>
+            <th>Línea</th><th class="chk">✓</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="seccion"><td colspan="11">T204-LI Plata y Estaño s/Cobre Colgado (16.1)<span class="globo inline">1</span></td></tr>
+          <tr>
+            <td class="ref">CLIENTE EJEMPLO A</td>
+            <td class="ref">1000001</td>
+            <td class="np">NP-1001-A</td>
+            <td class="ref">Plata</td>
+            <td class="ref">T204-LI Plata y Estaño s/Cobre Colgado (16.1)</td>
+            <td><span class="lin">T204</span><span class="dato-n">60</span><span class="globo">2</span></td>
+            <td class="chk"><span class="pal">✓</span></td>
+            <td><span class="lin">T204</span><span class="dato-n">4</span><span class="globo">3</span></td>
+            <td class="chk"><span class="pal">✓</span></td>
+            <td style="text-align:center">T204</td>
+            <td class="chk"><span class="pal">✓</span></td>
+          </tr>
+          <tr>
+            <td class="ref">CLIENTE EJEMPLO B</td>
+            <td class="ref">1000002</td>
+            <td class="np">NP-2002-B</td>
+            <td class="ref">Plata</td>
+            <td class="ref">T204-LI Plata y Estaño s/Cobre Colgado (16.1)</td>
+            <td><span class="lin">T204</span><span class="dato-n tach">224</span><span class="mano chico">96</span><span class="globo">4</span></td>
+            <td class="chk"></td>
+            <td><span class="lin">T204</span><span class="dato-n">4</span></td>
+            <td class="chk"><span class="pal">✓</span></td>
+            <td style="text-align:center">T204</td>
+            <td class="chk"><span class="pal">✓</span></td>
+          </tr>
+          <tr>
+            <td class="ref">CLIENTE EJEMPLO A</td>
+            <td class="ref">1000003</td>
+            <td class="np">NP-3003-C</td>
+            <td class="ref">Plata</td>
+            <td class="ref">T204-LI Plata y Estaño s/Cobre Colgado (16.1)</td>
+            <td><span class="lin">T204</span><span class="dato-n">90</span><span class="globo">5</span></td>
+            <td class="chk"><span class="pal">✓</span></td>
+            <td><span class="lin">T204</span><span class="dato-n">4</span></td>
+            <td class="chk"><span class="pal">✓</span></td>
+            <td style="text-align:center">T204</td>
+            <td class="chk"><span class="pal">✓</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <ul class="leyenda">
+      <li><span class="g">1</span><div><strong>La barra negra es la línea.</strong> Todo lo que va debajo pertenece a esa línea hasta la siguiente barra.</div></li>
+      <li><span class="g">2</span><div><strong>Piezas por carga.</strong> Arriba, chiquito, el código de la línea; abajo, en grande, el número. Cuéntalas en el rack armado, no de memoria.</div></li>
+      <li><span class="g">3</span><div><strong>Ritmo</strong> en cargas por hora. Lo revisa el <strong>supervisor</strong>, no el operador. Si dice <code>pzas/h</code> es una operación manual y ahí se cuentan piezas, no cargas.</div></li>
+      <li><span class="g">4</span><div><strong>Así se corrige:</strong> una raya sobre el número malo y el bueno al lado. Nada de borrar ni encimar. La casilla ✓ se queda vacía.</div></li>
+      <li><span class="g">5</span><div>Esta pieza también corre en otras líneas con racks distintos. En este renglón sólo aparece <strong>lo de T204</strong>; lo de las otras líneas viene en sus propias secciones.</div></li>
+    </ul>
+    <p class="fac-nota">Versión pública: los clientes y números de parte del ejemplo son genéricos. La copia interna usa piezas reales del sistema.</p>
+  </div>
+
+  <div class="fac">
+    <p class="fac-cap">Mitad derecha <span style="text-transform:none;letter-spacing:0;font-weight:400">(el número de parte se repite aquí sólo para ubicarte)</span></p>
+    <div class="fac-scroll">
+      <table class="hoja">
+        <thead>
+          <tr class="grupos">
+            <th class="refh">Ref.</th>
+            <th colspan="2">Material</th>
+            <th colspan="2">Especificación</th>
+            <th colspan="2">Empaque</th>
+          </tr>
+          <tr class="cols">
+            <th>Número de parte</th>
+            <th>Metal · Geometría</th><th class="chk">✓</th>
+            <th>Spec + Espesor</th><th class="chk">✓</th>
+            <th>Notas de empaque</th><th class="chk">✓</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="np">NP-1001-A</td>
+            <td>Cobre<br><span class="uni vacio">–</span><span class="globo">6</span></td>
+            <td class="chk"><span class="pal">✓</span></td>
+            <td>SP-100 (Plata Mate) <span class="esp">· 0.3 - 0.6 µm</span></td>
+            <td class="chk"><span class="pal">✓</span></td>
+            <td><span class="mano chico">Bolsa individual<br>+ separador</span><span class="globo inline">7</span></td>
+            <td class="chk"></td>
+          </tr>
+          <tr>
+            <td class="np">NP-2002-B</td>
+            <td>Cobre<br><span class="uni">Genérica</span></td>
+            <td class="chk"><span class="pal">✓</span></td>
+            <td>SP-200 (Plata) <span class="esp">· 1.27 - 3.81 µm / 1.27 - 2.54 µm</span><span class="globo inline">8</span></td>
+            <td class="chk"><span class="pal">✓</span></td>
+            <td></td>
+            <td class="chk"></td>
+          </tr>
+          <tr>
+            <td class="np">NP-3003-C</td>
+            <td><span class="tach">Cobre</span> <span class="mano chico">Latón</span><span class="globo inline">9</span><br><span class="uni vacio">–</span></td>
+            <td class="chk"></td>
+            <td>SP-100 (Plata Mate) <span class="esp">· 0.3 - 0.6 µm / 0.3-0.8 µm / 0.508 - 1.016 µm</span></td>
+            <td class="chk"><span class="pal">✓</span></td>
+            <td></td>
+            <td class="chk"></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="firmas-demo">
+      <div><div class="ln"><span class="mano">J. Ramírez</span></div>Validó (nombre y firma)</div>
+      <div><div class="ln"><span class="mano">M. Salas</span></div>Revisó Ingeniería</div>
+      <div><div class="ln"><span class="mano">12/08/26</span></div>Fecha</div>
+    </div>
+    <ul class="leyenda">
+      <li><span class="g">6</span><div><strong>Metal arriba, forma abajo.</strong> El guion gris quiere decir que el sistema no tiene ese dato: no está mal, está vacío.</div></li>
+      <li><span class="g">7</span><div><strong>Notas de empaque.</strong> Si la pieza lleva una instrucción especial y el renglón viene vacío, escríbela. Es de las cosas que sólo se saben en el piso.</div></li>
+      <li><span class="g">8</span><div><strong>Dos espesores</strong> en la misma spec es normal (varias capas o revisiones). No lo corrijas por eso.</div></li>
+      <li><span class="g">9</span><div><strong>El material no coincide con la pieza:</strong> se tacha y se escribe el que es. Éste es de los errores más caros del sistema.</div></li>
+    </ul>
+    <p class="fac-nota">Versión pública: los clientes y números de parte del ejemplo son genéricos. La copia interna usa piezas reales del sistema.</p>
+  </div>
+
+  <h2 class="sec"><span class="num">04</span>Qué revisar en cada columna</h2>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Columna</th><th>Qué dice</th><th>Contra qué se compara</th><th>Quién</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Pzas por carga</strong></td>
+          <td>Cuántas piezas caben en el rack de esta línea.</td>
+          <td>El <strong>rack armado</strong>. Cuéntalas una vez; si el rack se carga distinto según el turno, anótalo.</td>
+          <td>Operador</td>
+        </tr>
+        <tr>
+          <td><strong>Ritmo por línea</strong></td>
+          <td>Cargas por hora que el sistema espera de esta pieza. Si dice <code>pzas/h</code>, son piezas por hora (operación manual).</td>
+          <td>Lo que la línea realmente da en un turno normal, sin paros.</td>
+          <td>Supervisor</td>
+        </tr>
+        <tr>
+          <td><strong>Línea</strong></td>
+          <td>El código de la línea del renglón.</td>
+          <td>Que la pieza efectivamente corra ahí. Si nunca ha corrido en esta línea, anótalo.</td>
+          <td>Supervisor</td>
+        </tr>
+        <tr>
+          <td><strong>Metal · Geometría</strong></td>
+          <td>Material base de la pieza y su forma general.</td>
+          <td>La <strong>pieza en la mano</strong>. Cobre, latón, fierro, aluminio.</td>
+          <td>Operador</td>
+        </tr>
+        <tr>
+          <td><strong>Spec + Espesor</strong></td>
+          <td>El acabado que lleva y en qué rango de micras.</td>
+          <td>La orden de trabajo y lo que se está corriendo. Si mides fuera de rango, escribe el valor medido.</td>
+          <td>Operador con Calidad</td>
+        </tr>
+        <tr>
+          <td><strong>Notas de empaque</strong></td>
+          <td>Instrucciones especiales para empacar esa pieza.</td>
+          <td>Cómo se empaca de verdad: bolsa individual, separador, tarima, orientación.</td>
+          <td>Operador</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="sec"><span class="num">05</span>Casos que se repiten</h2>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Lo que ves</th><th>Qué hacer</th></tr></thead>
+      <tbody>
+        <tr><td>Una celda <strong>vacía</strong> con un guion gris</td><td>El sistema no tiene ese dato. Si lo sabes, escríbelo: es justo lo que se busca. Si no, déjalo.</td></tr>
+        <tr><td><strong>Piezas por carga en blanco</strong></td><td>El sistema dice que esa pieza no se carga en esta línea. Si en la práctica sí se carga aquí, anótalo — falta dar de alta el rack.</td></tr>
+        <tr><td><strong>· · ·</strong> (tres puntos)</td><td>La hoja se imprimió incompleta. Devuélvela a Ingeniería para que la vuelva a sacar; no la llenes.</td></tr>
+        <tr><td>La <strong>foto no es la pieza</strong></td><td>Anótalo junto al número de parte. La foto se cambia en el sistema.</td></tr>
+        <tr><td>La pieza <strong>ya no se corre</strong></td><td>Escribe «ya no se corre» en el renglón. Ahorra revisiones futuras.</td></tr>
+        <tr><td>Dudas de si el dato está mal</td><td>No adivines: deja la casilla en blanco y coméntalo con el supervisor. Un dato inventado es peor que un dato faltante.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 class="sec"><span class="num">06</span>Al terminar</h2>
+
+  <ol class="stages">
+    <li><span class="k">1</span><div><h4>Firma abajo, en «Validó»</h4><p>Nombre y firma de quien revisó las piezas. Es la única forma de volver a preguntarte si algo no cuadra.</p></div></li>
+    <li><span class="k">2</span><div><h4>El supervisor revisa y firma</h4><p>Confirma las correcciones y revisa lo que le toca: ritmo y línea. Firma en «Revisó Ingeniería» y anota la fecha.</p></div></li>
+    <li><span class="k">3</span><div><h4>Entrega el paquete completo a Ingeniería</h4><p>Todas las hojas, incluidas las que quedaron sin correcciones. Una hoja perdida es una línea que queda sin validar.</p></div></li>
+  </ol>
+
+  <div class="callout tip">
+    <p class="ct">Qué pasa después</p>
+    <p>Ingeniería captura tus correcciones en el sistema y vuelve a sacar la hoja de tu línea. Si el ciclo cerró bien, la siguiente vez que la veas ya trae tus números. Eso es lo que hace que valga la pena revisarla con calma.</p>
+  </div>
+
+  <footer class="foot">
+    <div><span class="badge perenne">Perenne</span> &nbsp; Instructivo de Validación de Datos Maestros en Piso · Producción</div>
+    <div>Corte de referencia: 05/08/2026</div>
+    <div class="doc-credit">
+      <a href="https://capazconsultoria.com" target="_blank" rel="noopener" aria-label="Capaz Consultoría" style="flex:0 0 auto;display:inline-flex"><img src="assets/capaz-c.png" alt="Capaz Consultoría"></a>
+      <span>Documento elaborado por <a class="name" href="mailto:oviazcan@capazconsultoria.com">Omar Viazcán</a> · <a href="https://capazconsultoria.com" target="_blank" rel="noopener">Capaz Consultoría</a></span>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>

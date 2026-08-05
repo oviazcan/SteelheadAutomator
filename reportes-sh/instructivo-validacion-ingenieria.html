@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Instructivo — Validación de Datos Maestros en Piso · Ingeniería</title>
+<style>
+:root{
+  --ground:#f7f9fb;--paper:#ffffff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;
+  --hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;
+  --ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;
+  --warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7;
+  --shadow:0 1px 2px rgba(24,34,49,.05),0 6px 20px -8px rgba(24,34,49,.12);
+  --measure:68ch;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+}
+@media (prefers-color-scheme:dark){:root{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512;--shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -10px rgba(0,0,0,.5)}}
+:root[data-theme="light"]{--ground:#f7f9fb;--paper:#fff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;--hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;--ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7}
+:root[data-theme="dark"]{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.62;-webkit-font-smoothing:antialiased}
+.wrap{max-width:920px;margin:0 auto;padding:0 24px 96px}
+.masthead{border-bottom:2px solid var(--ku);padding:40px 0 22px}
+.brandbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.brandmark{width:26px;height:26px;border-radius:6px;background:var(--steel);display:grid;place-items:center;flex:0 0 auto}
+.brandmark span{color:#fff;font-weight:800;font-size:.9rem;font-family:var(--mono)}
+.brandname{font-weight:700;letter-spacing:.02em;font-size:.95rem}
+.eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.14em;color:var(--ku);font-weight:800;margin:0 0 10px}
+.masthead h1{font-size:clamp(2rem,4.6vw,2.7rem);line-height:1.06;letter-spacing:-.02em;margin:0 0 10px;font-weight:800;text-wrap:balance}
+.masthead .sub{font-size:1.12rem;color:var(--muted);margin:0;max-width:60ch}
+.audchips{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.audchip{font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.05em}
+.audchip.ku{background:var(--ku-wash);color:var(--ku)} .audchip.v{background:var(--accent-wash);color:var(--accent-ink)}
+.tldr{background:var(--paper);border:1px solid var(--hair);border-left:4px solid var(--ku);border-radius:12px;padding:20px 22px;margin:26px 0;box-shadow:var(--shadow)}
+.tldr .ct{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--ku);margin:0 0 8px}
+.tldr p{margin:0;font-size:1.05rem}
+h2.sec{font-size:1.5rem;letter-spacing:-.01em;margin:54px 0 4px;font-weight:800;text-wrap:balance}
+h2.sec .num{font-family:var(--mono);font-size:.85rem;color:var(--ku);font-weight:700;border:1px solid var(--hair-2);border-radius:6px;padding:1px 7px;margin-right:10px;vertical-align:.15em}
+h3.sub{font-size:1.16rem;margin:32px 0 6px;letter-spacing:-.01em;font-weight:700}
+.sec-lead{color:var(--muted);margin:.4rem 0 1.2rem;max-width:var(--measure)}
+p{margin:0 0 1rem;max-width:var(--measure)}
+a{color:var(--accent-ink);text-underline-offset:2px}
+code{font-family:var(--mono);font-size:.85em;background:var(--hair);padding:1px 5px;border-radius:5px;word-break:break-word}
+ul,ol{max-width:var(--measure);padding-left:1.25em} li{margin:.35rem 0}
+strong{font-weight:700}
+.callout{border-radius:10px;padding:15px 17px 15px 48px;position:relative;margin:22px 0;font-size:.95rem;border:1px solid var(--hair);background:var(--paper);max-width:none}
+.callout .ct{font-weight:800;margin:0 0 4px;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em}
+.callout p{max-width:none;margin:.3rem 0 0}
+.callout::before{position:absolute;left:15px;top:14px;font-size:1.15rem;line-height:1}
+.callout.meta{border-left:4px solid var(--steel);background:color-mix(in srgb,var(--steel) 6%,var(--paper))} .callout.meta .ct{color:var(--steel)} .callout.meta::before{content:"💡"}
+.callout.info{border-left:4px solid var(--ti);background:var(--ti-wash)} .callout.info .ct{color:var(--ti)} .callout.info::before{content:"ℹ";color:var(--ti);font-weight:800}
+.callout.warn{border-left:4px solid var(--warn);background:var(--warn-wash)} .callout.warn .ct{color:var(--warn)} .callout.warn::before{content:"⚠"}
+.callout.danger{border-left:4px solid var(--danger);background:var(--danger-wash)} .callout.danger .ct{color:var(--danger)} .callout.danger::before{content:"⛔"}
+.callout.tip{border-left:4px solid var(--accent);background:var(--accent-wash)} .callout.tip .ct{color:var(--accent-ink)} .callout.tip::before{content:"✓";color:var(--accent-ink);font-weight:800}
+.stages{list-style:none;padding:0;margin:24px 0;display:flex;flex-direction:column;gap:2px}
+.stages li{display:grid;grid-template-columns:44px 1fr;gap:16px;padding:16px 0;border-bottom:1px solid var(--hair);align-items:start}
+.stages li:last-child{border-bottom:none}
+.stages .k{width:38px;height:38px;border-radius:9px;background:var(--ku);color:#fff;display:grid;place-items:center;font-weight:800;font-family:var(--mono);font-size:1rem}
+.stages h4{margin:0 0 3px;font-size:1.08rem}
+.stages p{margin:0;font-size:.94rem;color:var(--muted);max-width:none}
+.tablewrap{overflow-x:auto;border:1px solid var(--hair);border-radius:12px;box-shadow:var(--shadow);margin:20px 0}
+table{border-collapse:collapse;width:100%;font-size:.9rem;background:var(--paper);min-width:560px}
+thead th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:700;padding:11px 14px;border-bottom:2px solid var(--hair-2);background:var(--ground)}
+tbody td{padding:11px 14px;border-bottom:1px solid var(--hair);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+td code{white-space:nowrap}
+.foot{margin-top:64px;padding-top:22px;border-top:1px solid var(--hair-2);color:var(--faint);font-size:.85rem;display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:999px}
+.badge.vivo{background:var(--accent-wash);color:var(--accent-ink)} .badge.vivo::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.doc-credit{margin-top:10px;padding-top:12px;border-top:1px solid var(--hair);display:flex;align-items:center;gap:12px;font-size:.78rem;color:var(--faint)}
+.doc-credit a{color:var(--accent-ink);text-decoration:none} .doc-credit a.name{font-weight:600}
+.doc-credit img{height:30px;width:auto;display:block}
+.liga{display:block;background:var(--paper);border:1px solid var(--hair-2);border-left:4px solid var(--accent);border-radius:10px;padding:14px 16px;margin:18px 0;font-family:var(--mono);font-size:.82rem;word-break:break-all;box-shadow:var(--shadow)}
+
+/* ── Facsímil del formato impreso ───────────────────────────────────────── */
+.fac{margin:26px 0}
+.fac-cap{font-size:.78rem;color:var(--faint);margin:0 0 8px;text-transform:uppercase;letter-spacing:.08em;font-weight:700}
+.fac-scroll{overflow-x:auto;border:1px solid var(--hair-2);border-radius:12px;box-shadow:var(--shadow);background:#fff}
+table.hoja{border-collapse:collapse;width:100%;min-width:700px;font-size:10.5px;line-height:1.3;background:#fff;color:#182231;font-family:var(--sans);margin:0}
+table.hoja th,table.hoja td{border:1px solid #c9d2da;padding:4px 5px;vertical-align:top;position:relative}
+table.hoja thead th{text-transform:none;letter-spacing:0}
+table.hoja .grupos th{background:#2b3f52;color:#fff;text-align:center;font-size:9px;letter-spacing:.09em;text-transform:uppercase;font-weight:800;padding:3px 4px}
+table.hoja .grupos th.refh{background:#55677a}
+table.hoja .cols th{background:#eef2f6;color:#182231;text-align:center;font-size:9px;font-weight:700;padding:5px 4px;border-bottom:2px solid #97a6b4}
+table.hoja .cols th.chk{width:26px}
+table.hoja td.ref{background:#f7f9fb;color:#55677a;font-size:9.5px}
+table.hoja td.np{font-weight:700;color:#182231;font-size:11px}
+table.hoja td.chk{background:#fff}
+table.hoja tr.seccion td{background:#182231;color:#fff;font-weight:800;font-size:10.5px;letter-spacing:.02em;padding:4px 6px}
+table.hoja .dato-n{font-size:12.5px;font-weight:700;display:block;text-align:center}
+table.hoja .lin{font-size:8.5px;color:#7b8a99;display:block;text-align:center}
+table.hoja .uni{font-size:8.5px;color:#7b8a99}
+table.hoja .esp{color:#55677a}
+table.hoja .vacio{color:#b6c0ca}
+.mano{font-family:"Bradley Hand","Segoe Script","Brush Script MT","Comic Sans MS",cursive;color:#14459c;font-weight:700;font-size:12.5px;display:inline-block;transform:rotate(-1.2deg)}
+.mano.chico{font-size:11px;display:block;text-align:center}
+.mano.libre{text-align:left}
+.pal{font-family:var(--sans);color:#14459c;font-weight:700;font-size:14px;display:block;text-align:center;transform:rotate(-6deg)}
+.tach{text-decoration:line-through;text-decoration-color:#c62828;text-decoration-thickness:1.5px;color:#95a0ab}
+.globo{position:absolute;top:-7px;right:-7px;z-index:3;width:17px;height:17px;border-radius:50%;background:#c0632e;color:#fff;font-family:var(--sans);font-size:10px;font-weight:800;display:grid;place-items:center;box-shadow:0 1px 3px rgba(0,0,0,.35);transform:none}
+.globo.izq{left:-7px;right:auto}
+.globo.inline{position:static;display:inline-grid;vertical-align:middle;margin-left:7px}
+.fac-nota{font-size:.82rem;color:var(--faint);margin:8px 0 0;font-style:italic}
+.leyenda{list-style:none;padding:0;margin:14px 0 0;display:grid;gap:8px;max-width:none}
+.leyenda li{display:grid;grid-template-columns:22px 1fr;gap:10px;align-items:start;font-size:.93rem;margin:0}
+.leyenda .g{width:19px;height:19px;border-radius:50%;background:var(--ku);color:#fff;font-size:11px;font-weight:800;display:grid;place-items:center;margin-top:3px}
+.firmas-demo{display:flex;gap:26px;flex-wrap:wrap;background:#fff;border:1px solid #c9d2da;border-top:none;padding:12px 14px;font-size:10px;color:#55677a;font-family:var(--sans)}
+.firmas-demo div{min-width:120px}
+.firmas-demo .ln{border-bottom:1px solid #182231;height:22px;margin-bottom:3px;position:relative}
+.firmas-demo .ln .mano{position:absolute;bottom:-1px;left:6px;font-size:13px}
+
+@media print{
+  :root{--ground:#fff;--paper:#fff;--shadow:none}
+  @page{size:letter;margin:12mm}
+  body{font-size:9.4pt;line-height:1.4}
+  .wrap{max-width:none;padding:0}
+  p{margin:0 0 .55rem;max-width:none}
+  .sec-lead{margin:.25rem 0 .6rem;max-width:none}
+  .masthead{padding:0 0 10px;margin-bottom:10px}
+  .brandbar{display:none}
+  .masthead h1{font-size:19pt;margin-bottom:5px}
+  .masthead .sub{font-size:10pt}
+  .audchips{margin-top:8px}
+  .tldr{margin:10px 0;padding:10px 13px}
+  .tldr p{font-size:10pt}
+  h2.sec{font-size:13pt;margin:20px 0 2px}
+  h3.sub{font-size:11pt;margin:13px 0 3px}
+  .callout{margin:10px 0;padding:9px 12px 9px 36px;font-size:9pt}
+  .callout::before{left:12px;top:9px;font-size:1rem}
+  .stages{margin:12px 0} .stages li{padding:8px 0;grid-template-columns:32px 1fr;gap:12px}
+  .stages .k{width:27px;height:27px;border-radius:7px;font-size:9pt}
+  .stages h4{font-size:10pt} .stages p{font-size:9pt}
+  .tablewrap{margin:10px 0}
+  table{font-size:8.8pt;min-width:0}
+  thead th{padding:6px 8px;font-size:6.8pt}
+  tbody td{padding:6px 8px}
+  .liga{font-size:8.6pt;padding:10px 12px;margin:12px 0}
+  .fac{margin:12px 0}
+  .fac-scroll{overflow:visible;break-inside:avoid}
+  table.hoja{min-width:0;font-size:7.2pt;table-layout:fixed}
+  table.hoja th,table.hoja td{padding:2px 3px;word-break:break-word}
+  table.hoja .dato-n{font-size:8.6pt} .mano{font-size:8.6pt} .pal{font-size:9.6pt}
+  .leyenda{margin-top:8px;gap:5px} .leyenda li{font-size:8.8pt;grid-template-columns:18px 1fr;gap:8px}
+  .leyenda .g{width:15px;height:15px;font-size:7.4pt}
+  .fac-nota{font-size:8pt}
+  .firmas-demo{padding:8px 11px;font-size:7.4pt} .firmas-demo .ln{height:17px}
+  .foot{margin-top:18px;padding-top:10px;font-size:7.6pt}
+  .doc-credit{margin-top:6px;padding-top:7px;font-size:7.2pt} .doc-credit img{height:20px}
+  figure,.callout,.tablewrap,.stages li,.liga,.leyenda li{break-inside:avoid}
+  h2.sec,h3.sub{break-after:avoid}
+  a{color:var(--ink);text-decoration:none}
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="brandbar">
+      <span class="brandmark"><span>SH</span></span>
+      <span class="brandname">Reportes SH · Paquete de capacitación</span>
+      <a href="00-mapa-empieza-aqui.html" style="margin-left:auto;font-size:.82rem;color:var(--faint);text-decoration:none;white-space:nowrap">← Índice del paquete</a>
+    </div>
+    <p class="eyebrow">Instructivo de operación · Ingeniería</p>
+    <h1>Validación de Datos Maestros en Piso</h1>
+    <p class="sub">Cómo generar, imprimir y cerrar el ciclo del formato en vivo: de la pantalla de Steelhead al papel, y del papel de regreso al ERP.</p>
+    <div class="audchips">
+      <span class="audchip ku">Ingeniería</span>
+      <span class="audchip v">Documento vivo</span>
+    </div>
+  </header>
+
+  <div class="callout info">
+    <p class="ct">Documento vivo — verifica antes de asumir</p>
+    <p>Refleja el formato publicado el <strong>4 de agosto de 2026</strong> para el dominio <strong>TLC</strong>, con catálogo de procesos del <strong>3 de agosto de 2026</strong>. La liga cambia cada vez que se vuelve a publicar el formato: si la de la sección 2 no abre, pide la vigente antes de repartir instructivos.</p>
+  </div>
+
+  <div class="tldr">
+    <p class="ct">En una frase</p>
+    <p>Armas el lote en pantalla, lo imprimes en <strong>modo Producción</strong> para el piso, recibes las hojas firmadas y capturas las correcciones en Steelhead. El formato lee los datos <strong>en vivo</strong>: lo que ves en pantalla es lo que el ERP tiene en ese momento.</p>
+  </div>
+
+  <h2 class="sec"><span class="num">01</span>Qué es y qué no es</h2>
+  <p class="sec-lead">El formato pone en una hoja lo que el ERP cree de cada número de parte, para que el piso lo confronte contra la pieza que tiene enfrente.</p>
+
+  <p>Cada renglón es un <strong>número de parte en una línea</strong>. La misma pieza aparece una vez por cada línea por la que pasa, y en cada renglón se muestran <strong>sólo los datos de esa línea</strong>: su rack, sus piezas por carga, su ritmo. Es a propósito — un renglón por pieza mezclaba el rack de una línea con el trabajo de otra.</p>
+
+  <p>El universo son los números de parte <strong>activos que tienen al menos una orden de trabajo</strong>. Sin OT no hay nada que validar. En TLC eso reduce 26,899 números de parte activos a <strong>4,176</strong> que realmente se fabrican, que salen en <strong>6,840 renglones</strong> (1.64 líneas por pieza en promedio).</p>
+
+  <div class="callout meta">
+    <p class="ct">Lo que el formato reveló</p>
+    <p>Sobre esos 4,176 números de parte, lo que alimenta costeo y programación está casi completo: <strong>peso 98.5 %</strong>, <strong>superficie 98.6 %</strong>, <strong>piezas por carga 97.8 %</strong>, <strong>spec y espesor 99.5 %</strong>. En cambio la geometría física casi no está cargada: <strong>largo, ancho y alto rondan el 14-15 %</strong> y los diámetros el <strong>0.02 %</strong> (un solo número de parte). En los hechos, el formato sirve más para <strong>capturar</strong> dimensiones que para validarlas — y por eso conviene que Ingeniería lo trate como una campaña de captura, no como una auditoría.</p>
+  </div>
+
+  <h2 class="sec"><span class="num">02</span>Antes de empezar</h2>
+
+  <ol class="stages">
+    <li><span class="k">1</span><div><h4>Inicia sesión en Steelhead</h4><p>Con la misma cuenta con la que consultas el ERP, en el mismo navegador. El formato lee los datos con tu sesión: si no hay sesión, no hay datos.</p></div></li>
+    <li><span class="k">2</span><div><h4>Abre la liga del formato</h4><p>Es un archivo servido por Steelhead. Guárdala en favoritos; no requiere instalar nada.</p></div></li>
+    <li><span class="k">3</span><div><h4>Ten claro qué vas a validar</h4><p>Una línea, un cliente, lo programado de la semana, o una campaña para llenar huecos de geometría. Eso decide cómo armas el lote en la sección 3.</p></div></li>
+  </ol>
+
+  <div class="callout info"><p class="ct">La liga te la da el responsable del sistema</p><p>El formato se sirve desde Steelhead con una liga propia de tu planta. <strong>No se publica aquí a propósito</strong>: cambia cada vez que el formato se vuelve a publicar y sólo debe circular dentro de la empresa. Pídela y guárdala en favoritos.</p></div>
+
+  <div class="callout warn">
+    <p class="ct">Si aparece «No hay sesión de Steelhead»</p>
+    <p>Significa que abriste el formato sin sesión iniciada, o que la sesión caducó. Abre Steelhead en otra pestaña, entra normalmente, y vuelve a pulsar <strong>Cargar lote</strong>. No hace falta recargar el formato.</p>
+  </div>
+
+  <div class="callout danger">
+    <p class="ct">La liga vieja no avisa que es vieja</p>
+    <p>Cuando el formato se vuelve a publicar, la liga <strong>cambia</strong> y la anterior <strong>sigue abriendo</strong> la versión superada, sin ningún aviso. Reparte siempre la liga que te dé el responsable del sistema y no la copies de un correo viejo. Hoy sólo está publicado el formato de <strong>TLC</strong>; para MTY hay que publicar el suyo.</p>
+  </div>
+
+  <h2 class="sec"><span class="num">03</span>Paso 1 · Armar el lote</h2>
+  <p class="sec-lead">El desplegable <strong>«Traer por»</strong> decide de dónde salen los números de parte. Cada vía sirve a un propósito distinto y trae cosas distintas.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Vía</th><th>Cuándo usarla</th><th>Qué pide</th><th>Qué trae</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Órdenes de trabajo recientes</strong></td>
+          <td>El caso normal: validar lo que se está corriendo estos días.</td>
+          <td>Cuántas OTs mirar hacia atrás (150 por omisión; hasta 2,000).</td>
+          <td>Los números de parte de esas OTs, <strong>con racks y specs incluidos</strong>.</td>
+        </tr>
+        <tr>
+          <td><strong>Fecha de recibo</strong></td>
+          <td>Validar lo que entró en un periodo: una semana, un mes.</td>
+          <td>Desde y/o hasta (al menos una fecha).</td>
+          <td>Igual que la anterior, acotado a las OTs recibidas en esa ventana.</td>
+        </tr>
+        <tr>
+          <td><strong>Programa de producción</strong></td>
+          <td>Validar <em>antes</em> de correr: lo que está agendado para mañana o esta semana.</td>
+          <td>Desde y/o hasta del programa.</td>
+          <td>Los números de parte de las tareas programadas en esa ventana, con su estación.</td>
+        </tr>
+        <tr>
+          <td><strong>Rango de folio de OT</strong></td>
+          <td>Cuando te dieron folios concretos («de la 12400 a la 12480»).</td>
+          <td>Folio mínimo y máximo.</td>
+          <td>Sólo las OTs de ese rango — <strong>ver la advertencia de abajo</strong>.</td>
+        </tr>
+        <tr>
+          <td><strong>Búsqueda de número de parte</strong></td>
+          <td>Un cliente, una familia de piezas, o cuando necesitas ver las <strong>notas de empaque</strong>.</td>
+          <td>Texto: número de parte o nombre de cliente.</td>
+          <td>Hasta 200 números de parte. Es la <strong>única vía que trae las notas de empaque</strong>.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout warn">
+    <p class="ct">Trampa del rango de folio</p>
+    <p>El rango se aplica <strong>sobre las últimas OTs traídas</strong>, no sobre todo el histórico. Con el valor por omisión eso son las <strong>últimas 150</strong>: si pides folios más viejos, el lote sale vacío aunque las OTs existan. Solución: primero elige <em>Órdenes de trabajo recientes</em>, sube «Últimas OTs» a un número que alcance a cubrirlos (por ejemplo 2,000), y luego cambia a <em>Rango de folio</em>.</p>
+  </div>
+
+  <p>Pulsa <strong>Cargar lote</strong>. Abajo verás el avance y, al terminar, cuántos números de parte y cuántas líneas trajo.</p>
+
+  <h2 class="sec"><span class="num">04</span>Paso 2 · Elegir el modo</h2>
+  <p class="sec-lead">El modo decide qué columnas salen en la hoja. No cambia los datos, sólo lo que se imprime.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Modo</th><th>Columnas de dato</th><th>Para qué</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Ingeniería</strong></td>
+          <td>Las 9: piezas por carga, ritmo, línea, metal y geometría, <strong>dimensiones</strong>, <strong>conversiones</strong>, spec y espesor, <strong>proceso</strong>, notas de empaque.</td>
+          <td>Tu revisión de escritorio y las campañas de captura de geometría.</td>
+        </tr>
+        <tr>
+          <td><strong>Producción</strong></td>
+          <td>6: se ocultan dimensiones, conversiones y proceso. El ancho liberado se reparte entre las que quedan.</td>
+          <td><strong>Lo que mandas al piso.</strong> El operador valida lo que ve y toca en la carga, no la geometría ni los factores de costeo.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout tip">
+    <p class="ct">Regla práctica</p>
+    <p>Imprime para el piso <strong>siempre en modo Producción</strong>: la hoja queda con menos columnas y letra más holgada, que es lo que se puede leer parado junto a un rack. Guarda el modo Ingeniería para tu propia revisión en pantalla.</p>
+  </div>
+
+  <h3 class="sub">Fotos</h3>
+  <p>El interruptor <strong>«Cargar fotos»</strong> viene <strong>apagado</strong> porque cada miniatura es una descarga de unos 300 KB. Enciéndelo cuando la foto ayude a identificar la pieza en piso. El filtro <strong>«Sólo sin foto»</strong> deja en la lista únicamente los números de parte que no tienen ninguna imagen: es la lista de trabajo para quien vaya a fotografiar (hoy tienen foto el <strong>59.8 %</strong>).</p>
+
+  <h2 class="sec"><span class="num">05</span>Paso 3 · Filtrar</h2>
+  <p>Los desplegables <strong>Línea</strong> y <strong>Cliente</strong> se llenan con lo que trajo el lote. Al elegir una línea, la hoja se queda con los renglones de esa línea y desaparecen las secciones de las demás — que es como conviene entregarla: un paquete por línea, para un supervisor.</p>
+
+  <h2 class="sec"><span class="num">06</span>Paso 4 · Imprimir</h2>
+
+  <ol class="stages">
+    <li><span class="k">1</span><div><h4>Si aparece «Traer racks y specs», púlsalo</h4><p>Sólo sale cuando faltan esos datos: en las vías por OT, fecha y programa ya vienen incluidos. Es la parte pesada (unos 2.4 MB por número de parte), por eso se pide sólo para lo que quedó filtrado. Arriba de 120 números de parte te pedirá confirmación.</p></div></li>
+    <li><span class="k">2</span><div><h4>Elige papel y tamaño de letra</h4><p>Carta, Oficio o Tabloide; seis tamaños de letra. Recomendado: <strong>Oficio</strong> con letra <strong>Normal</strong> — así caben 14-15 números de parte por hoja y todo se lee. En Carta la tabla se aprieta.</p></div></li>
+    <li><span class="k">3</span><div><h4>Pulsa Imprimir y confirma que el diálogo diga Horizontal</h4><p>El formato pide horizontal por su cuenta; si tu navegador quedó en vertical, cámbialo a mano. En vertical las columnas se encogen y los encabezados se enciman.</p></div></li>
+  </ol>
+
+  <div class="callout meta">
+    <p class="ct">Por qué tanto cuidado con el ancho</p>
+    <p>Con los cinco campos de dimensión por separado el formato llegaba a 38 columnas: en Carta cada una quedaba de unos 5 mm, con «Fierro» partido como «Fierr/o» y 7 piezas por hoja. Por eso las dimensiones van agrupadas en una sola celda y el peso, la superficie y el metro lineal van apilados con su etiqueta. El ancho de una tabla se verifica imprimiéndola: en pantalla el navegador la deja pasar porque tiene barra de desplazamiento, y el papel no.</p>
+  </div>
+
+  <h2 class="sec"><span class="num">07</span>Anatomía de la hoja</h2>
+  <p class="sec-lead">Así se ve una hoja ya llenada. Las columnas van en el mismo orden en el papel; aquí se parte en dos mitades para que quepa en la pantalla.</p>
+
+  <div class="fac">
+    <p class="fac-cap">Mitad izquierda · referencias y carga</p>
+    <div class="fac-scroll">
+      <table class="hoja">
+        <thead>
+          <tr class="grupos">
+            <th class="refh" colspan="5">Referencias — no se validan</th>
+            <th colspan="6">Carga</th>
+          </tr>
+          <tr class="cols">
+            <th>Cliente</th><th>Id SH</th><th>Número de parte</th><th>Etiquetas</th><th>Línea default</th>
+            <th>Pzas por carga</th><th class="chk">✓</th>
+            <th>Ritmo por línea (cgs/h)</th><th class="chk">✓</th>
+            <th>Línea</th><th class="chk">✓</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="seccion"><td colspan="11">T204-LI Plata y Estaño s/Cobre Colgado (16.1)</td></tr>
+          <tr>
+            <td class="ref">CLIENTE EJEMPLO A</td>
+            <td class="ref">1000001</td>
+            <td class="np">NP-1001-A<span class="globo">1</span></td>
+            <td class="ref">Plata</td>
+            <td class="ref">T204-LI Plata y Estaño s/Cobre Colgado (16.1)</td>
+            <td><span class="lin">T204</span><span class="dato-n">60</span></td>
+            <td class="chk"><span class="pal">✓</span></td>
+            <td><span class="lin">T204</span><span class="dato-n">4</span></td>
+            <td class="chk"><span class="pal">✓</span></td>
+            <td style="text-align:center">T204</td>
+            <td class="chk"><span class="pal">✓</span></td>
+          </tr>
+          <tr>
+            <td class="ref">CLIENTE EJEMPLO B</td>
+            <td class="ref">1000002</td>
+            <td class="np">NP-2002-B</td>
+            <td class="ref">Plata</td>
+            <td class="ref">T204-LI Plata y Estaño s/Cobre Colgado (16.1)</td>
+            <td><span class="lin">T204</span><span class="dato-n tach">224</span><span class="mano chico">96</span><span class="globo">2</span></td>
+            <td class="chk"></td>
+            <td><span class="lin">T204</span><span class="dato-n">4</span></td>
+            <td class="chk"><span class="pal">✓</span></td>
+            <td style="text-align:center">T204</td>
+            <td class="chk"><span class="pal">✓</span></td>
+          </tr>
+          <tr>
+            <td class="ref">CLIENTE EJEMPLO A</td>
+            <td class="ref">1000003</td>
+            <td class="np">NP-3003-C</td>
+            <td class="ref">Plata</td>
+            <td class="ref">T204-LI Plata y Estaño s/Cobre Colgado (16.1)</td>
+            <td><span class="lin">T204</span><span class="dato-n">90</span><span class="globo">3</span></td>
+            <td class="chk"><span class="pal">✓</span></td>
+            <td><span class="lin">T204</span><span class="dato-n">4</span></td>
+            <td class="chk"><span class="pal">✓</span></td>
+            <td style="text-align:center">T204</td>
+            <td class="chk"><span class="pal">✓</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <ul class="leyenda">
+      <li><span class="g">1</span><div>El <strong>número de parte es un enlace</strong> a su ficha en Steelhead. En papel sale en negro; en pantalla, un clic te lleva a corregirlo sin buscarlo a mano.</div></li>
+      <li><span class="g">2</span><div><strong>Dato incorrecto:</strong> se tacha y se escribe el bueno al lado. La casilla ✓ se deja vacía — un dato corregido no se paloma.</div></li>
+      <li><span class="g">3</span><div>Esta pieza también corre en <strong>M102 y T205</strong> con racks distintos (60 y 60). Aquí sólo aparece el de <strong>T204</strong>, porque la sección es T204: la misma pieza sale otra vez, con sus propios datos, en la sección de cada línea.</div></li>
+    </ul>
+    <p class="fac-nota">Versión pública: los clientes y números de parte del ejemplo son genéricos. La copia interna usa piezas reales del sistema.</p>
+  </div>
+
+  <div class="fac">
+    <p class="fac-cap">Mitad derecha · material, especificación y empaque <span style="text-transform:none;letter-spacing:0;font-weight:400">(el número de parte se repite aquí sólo para ubicarte; en el papel va una sola vez)</span></p>
+    <div class="fac-scroll">
+      <table class="hoja">
+        <thead>
+          <tr class="grupos">
+            <th class="refh">Ref.</th>
+            <th colspan="2">Material</th>
+            <th colspan="2">Dimensiones (m)</th>
+            <th colspan="2">Conversiones</th>
+            <th colspan="2">Especificación</th>
+            <th colspan="2">Proceso</th>
+            <th colspan="2">Empaque</th>
+          </tr>
+          <tr class="cols">
+            <th>Número de parte</th>
+            <th>Metal · Geometría</th><th class="chk">✓</th>
+            <th>Largo × Ancho × Alto · Ø int/ext</th><th class="chk">✓</th>
+            <th>Peso · Superficie · LM</th><th class="chk">✓</th>
+            <th>Spec + Espesor</th><th class="chk">✓</th>
+            <th>Proceso default</th><th class="chk">✓</th>
+            <th>Notas de empaque</th><th class="chk">✓</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="np">NP-1001-A</td>
+            <td>Cobre<br><span class="uni vacio">–</span><span class="globo">4</span></td>
+            <td class="chk"><span class="pal">✓</span></td>
+            <td><span class="vacio">–</span><span class="mano chico" style="display:block">0.120 × 0.045<br>× 0.006</span><span class="globo">5</span></td>
+            <td class="chk"></td>
+            <td><span class="uni">Peso</span> <strong>0.235</strong><br><span class="uni">Sup.</span> <strong>129.00</strong><br><span class="uni">LM</span> <strong>–</strong></td>
+            <td class="chk"><span class="pal">✓</span></td>
+            <td>SP-100 (Plata Mate) <span class="esp">· 0.3 - 0.6 µm</span></td>
+            <td class="chk"><span class="pal">✓</span></td>
+            <td>T204 (PLA)-CU/BR-VARIOS (16.1)</td>
+            <td class="chk"><span class="pal">✓</span></td>
+            <td><span class="globo">6</span></td>
+            <td class="chk"></td>
+          </tr>
+          <tr>
+            <td class="np">NP-2002-B</td>
+            <td>Cobre<br><span class="uni">Genérica</span></td>
+            <td class="chk"><span class="pal">✓</span></td>
+            <td>0.080 × 0.011 × 0.001</td>
+            <td class="chk"><span class="pal">✓</span></td>
+            <td><span class="uni">Peso</span> <strong>0.060</strong><br><span class="uni">Sup.</span> <strong>66.99</strong><br><span class="uni">LM</span> <strong>0.22</strong></td>
+            <td class="chk"><span class="pal">✓</span></td>
+            <td>SP-200 (Plata) <span class="esp">· 1.27 - 3.81 µm / 1.27 - 2.54 µm</span><span class="globo inline">7</span></td>
+            <td class="chk"><span class="pal">✓</span></td>
+            <td>T300 (LES)-T204 (PLA)-CU/BR-VARIOS (16.1)</td>
+            <td class="chk"><span class="pal">✓</span></td>
+            <td></td>
+            <td class="chk"></td>
+          </tr>
+          <tr>
+            <td class="np">NP-3003-C</td>
+            <td>Cobre<br><span class="uni vacio">–</span></td>
+            <td class="chk"><span class="pal">✓</span></td>
+            <td><span class="vacio">–</span></td>
+            <td class="chk"></td>
+            <td><span class="uni">Peso</span> <strong>0.900</strong><br><span class="uni">Sup.</span> <strong>363.52</strong><br><span class="uni">LM</span> <strong>–</strong></td>
+            <td class="chk"><span class="pal">✓</span></td>
+            <td>SP-100 (Plata Mate) <span class="esp">· 0.3 - 0.6 µm / 0.3-0.8 µm / 0.508 - 1.016 µm</span></td>
+            <td class="chk"><span class="pal">✓</span></td>
+            <td>T300 (LES)-T204 (PLA)-CU/BR-VARIOS (16.1)</td>
+            <td class="chk"><span class="pal">✓</span></td>
+            <td></td>
+            <td class="chk"></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="firmas-demo">
+      <div><div class="ln"><span class="mano">J. Ramírez</span></div>Validó (nombre y firma)</div>
+      <div><div class="ln"><span class="mano">M. Salas</span></div>Revisó Ingeniería</div>
+      <div><div class="ln"><span class="mano">12/08/26</span></div>Fecha</div>
+    </div>
+    <ul class="leyenda">
+      <li><span class="g">4</span><div><strong>Metal arriba, geometría abajo.</strong> El guion gris significa que el ERP no tiene tipo de geometría para esa pieza.</div></li>
+      <li><span class="g">5</span><div><strong>Celda vacía = dato que falta capturar.</strong> El piso escribe la medida real; Ingeniería la carga. Es el caso más común: sólo 14-15 % de las piezas tienen largo, ancho y alto.</div></li>
+      <li><span class="g">6</span><div><strong>Notas de empaque en blanco.</strong> Ojo: en las vías por OT, fecha y programa <strong>siempre</strong> salen vacías, aunque existan. Ver la advertencia de la sección 8.</div></li>
+      <li><span class="g">7</span><div><strong>Dos espesores en la misma spec</strong> es normal cuando hay varias capas o revisiones. Si el piso mide algo fuera de esos rangos, se anota el valor medido y lo revisa Calidad.</div></li>
+    </ul>
+  </div>
+
+  <div class="callout tip">
+    <p class="ct">La convención de las tres marcas</p>
+    <p><strong>✓</strong> = lo revisé y está bien. &nbsp;·&nbsp; <strong>Valor escrito</strong> (con el viejo tachado) = lo revisé y está mal, éste es el bueno. &nbsp;·&nbsp; <strong>Casilla en blanco</strong> = no lo revisé. Los tres estados son distintos: una casilla vacía nunca debe leerse como «está bien».</p>
+  </div>
+
+  <h2 class="sec"><span class="num">08</span>Los tres blancos, y qué significa cada uno</h2>
+  <p class="sec-lead">Una celda vacía en el formato puede querer decir tres cosas muy distintas. Confundirlas manda al piso a buscar datos que no faltan.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Lo que ves</th><th>Qué significa</th><th>Qué hacer</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Celda vacía</strong> en piezas por carga</td>
+          <td>Ese número de parte <strong>no tiene rack de esa línea</strong>. El blanco es información, no un hueco.</td>
+          <td>Nada, salvo que en piso sí se cargue ahí — entonces falta dar de alta el rack.</td>
+        </tr>
+        <tr>
+          <td><strong>· · ·</strong> (tres puntos grises)</td>
+          <td>Falta traer el detalle pesado. Sale sólo en la vía de búsqueda con muchos resultados.</td>
+          <td>Pulsa <strong>«Traer racks y specs»</strong> antes de imprimir.</td>
+        </tr>
+        <tr>
+          <td><strong>Notas de empaque vacías</strong></td>
+          <td>Depende de cómo armaste el lote. Ver la advertencia de abajo.</td>
+          <td>Si necesitas verlas, arma el lote por <strong>búsqueda de número de parte</strong>.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout danger">
+    <p class="ct">Las notas de empaque no viajan por la vía de OT</p>
+    <p>El pie de la hoja dice que una nota de empaque en blanco significa que aún no está cargada. Eso <strong>sólo es cierto si armaste el lote por búsqueda de número de parte</strong>. En las vías por OT, fecha de recibo y programa, la consulta que trae el detalle no incluye esas notas, así que la columna sale <strong>vacía siempre</strong>, tenga o no tenga nota. No mandes a capturar instrucciones de empaque a partir de una hoja armada por OT.</p>
+  </div>
+
+  <h2 class="sec"><span class="num">09</span>De regreso: capturar las correcciones</h2>
+  <p class="sec-lead">Las hojas vuelven del piso firmadas por el supervisor. Cada columna se corrige en un lugar distinto de Steelhead — y una de ellas no se corrige en el número de parte.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Columna del formato</th><th>De dónde sale</th><th>Dónde se corrige</th></tr></thead>
+      <tbody>
+        <tr><td><strong>Pzas por carga</strong></td><td>El rack asignado al número de parte y sus piezas por rack.</td><td>Ficha del número de parte → racks. La línea sale del nombre del rack (<code>T204-FL01</code> es de la T204).</td></tr>
+        <tr><td><strong>Ritmo por línea</strong></td><td>El tiempo del tratamiento más lento de esa línea dentro del proceso.</td><td><strong>No está en el número de parte.</strong> Se corrige en el catálogo de tratamientos y afecta a todas las piezas que usan ese proceso: va con Ingeniería de procesos, no como corrección de una pieza.</td></tr>
+        <tr><td><strong>Línea</strong></td><td>Se deduce del rack y del proceso de la pieza.</td><td>Se arregla asignando el rack o el proceso correcto, no escribiendo la línea.</td></tr>
+        <tr><td><strong>Metal · Geometría</strong></td><td>Metal base de los datos adicionales; tipo de geometría del número de parte.</td><td>Ficha del número de parte.</td></tr>
+        <tr><td><strong>Dimensiones</strong></td><td>Las dimensiones capturadas de la pieza.</td><td>Ficha del número de parte → dimensiones. <strong>Se capturan en metros</strong>; hay unas pocas piezas capturadas en pulgadas o milímetros, verifica la unidad antes de teclear.</td></tr>
+        <tr><td><strong>Peso · Superficie · LM</strong></td><td>Conversiones de unidad del artículo de inventario (kilogramo, centímetro cuadrado, metro lineal).</td><td>Conversiones del artículo de inventario ligado a la pieza. Son factores de costeo: un cambio aquí mueve precios.</td></tr>
+        <tr><td><strong>Spec + Espesor</strong></td><td>Las specs vigentes asignadas y su parámetro de espesor.</td><td>Ficha del número de parte → especificaciones. El renglón «Intermedio» es <strong>otra capa</strong> (normalmente níquel), no el espesor principal.</td></tr>
+        <tr><td><strong>Proceso default</strong></td><td>Proceso por omisión del número de parte.</td><td>Ficha del número de parte.</td></tr>
+        <tr><td><strong>Notas de empaque</strong></td><td>Descripción de la pieza <strong>en un nodo de proceso</strong> (normalmente «Preparando Embarque en Almacén»).</td><td>Se captura desde el nodo de proceso, no en la ficha general de la pieza.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout info">
+    <p class="ct">Atajo</p>
+    <p>En pantalla, el número de parte de cada renglón es un enlace directo a su ficha. Ten el formato abierto en una pestaña mientras capturas: es más rápido que buscar cada pieza por su nombre.</p>
+  </div>
+
+  <h3 class="sub">Cierre del ciclo</h3>
+  <ol class="stages">
+    <li><span class="k">1</span><div><h4>Recibe y separa</h4><p>Hojas con correcciones a un lado; hojas todas palomeadas al otro. Las segundas sólo se archivan.</p></div></li>
+    <li><span class="k">2</span><div><h4>Captura lo que es de la pieza</h4><p>Dimensiones, metal, geometría, racks, specs, conversiones. Es el grueso.</p></div></li>
+    <li><span class="k">3</span><div><h4>Escala lo que es del proceso</h4><p>Ritmos y tiempos de tratamiento no se corrigen pieza por pieza. Junta los reportes y revísalos como un solo cambio de proceso.</p></div></li>
+    <li><span class="k">4</span><div><h4>Vuelve a generar la hoja de esa línea</h4><p>El formato lee en vivo: al recargar y volver a cargar el lote, ya debe mostrar lo que capturaste. Es la comprobación de que el ciclo cerró.</p></div></li>
+    <li><span class="k">5</span><div><h4>Archiva las hojas firmadas</h4><p>Son la evidencia de quién validó qué y cuándo.</p></div></li>
+  </ol>
+
+  <h2 class="sec"><span class="num">10</span>Cuando algo no sale</h2>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Síntoma</th><th>Causa</th><th>Qué hacer</th></tr></thead>
+      <tbody>
+        <tr><td>«No hay sesión de Steelhead»</td><td>El formato se abrió sin sesión o caducó.</td><td>Entra a Steelhead en otra pestaña y vuelve a pulsar <strong>Cargar lote</strong>.</td></tr>
+        <tr><td>«El lote salió vacío»</td><td>Los filtros no alcanzan nada: rango de folio fuera de las últimas OTs, ventana de fechas sin movimiento, búsqueda sin coincidencias.</td><td>Amplía la ventana o sube «Últimas OTs». Revisa la trampa del rango de folio (sección 3).</td></tr>
+        <tr><td>«Must provide a query string»</td><td>Steelhead actualizó y cambió las llaves internas con las que el formato consulta.</td><td>No es algo que se arregle desde el formato: repórtalo al responsable del sistema para que lo republique.</td></tr>
+        <tr><td>Tarda mucho al pulsar «Traer racks y specs»</td><td>Es la parte pesada: unos 2.4 MB por número de parte.</td><td>Filtra por línea o cliente <strong>antes</strong> de pulsarlo. Sólo trae el detalle de lo filtrado.</td></tr>
+        <tr><td>Los números salen con puntos y comas al revés</td><td>Es el idioma del navegador, no el formato.</td><td>En Chrome → Configuración → Idiomas, sube <strong>Español (México)</strong> al primer lugar.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <footer class="foot">
+    <div><span class="badge vivo">Vivo</span> &nbsp; Instructivo de Validación de Datos Maestros en Piso · Ingeniería</div>
+    <div>Corte de referencia: 05/08/2026 · dominio TLC</div>
+    <div class="doc-credit">
+      <a href="https://capazconsultoria.com" target="_blank" rel="noopener" aria-label="Capaz Consultoría" style="flex:0 0 auto;display:inline-flex"><img src="assets/capaz-c.png" alt="Capaz Consultoría"></a>
+      <span>Documento elaborado por <a class="name" href="mailto:oviazcan@capazconsultoria.com">Omar Viazcán</a> · <a href="https://capazconsultoria.com" target="_blank" rel="noopener">Capaz Consultoría</a></span>
+    </div>
+  </footer>
+
+</div>
+</body>
+</html>
