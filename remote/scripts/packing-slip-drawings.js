@@ -201,12 +201,38 @@ const PackingSlipDrawings = (() => {
   // Devuelve true SÓLO si logró montar. El latch marca el ÉXITO, no el INTENTO:
   // si se marcara antes y el montaje fallara por un render a medias, el panel
   // se congelaría "desaparecido" para siempre.
+  // El observer dispara en cuanto APARECE el diálogo, pero el preview del correo
+  // —que es de donde salen el número de remisión y la tabla de partes— se carga
+  // DESPUÉS, asíncrono. Leer de inmediato daba `psNumber = null` y con ello el
+  // ámbar «no pude verificar» sobre datos que sí iban a llegar: una degradación
+  // honesta pero prematura, que es su propio modo de falla (el operador aprende
+  // a ignorar un aviso que casi siempre miente).
+  //
+  // Se espera al contenido con un tope corto. Si nunca llega, se degrada igual
+  // —el ámbar sigue siendo la respuesta correcta cuando el dato REALMENTE falta.
+  function waitForModalContent(dlg, tries = 20, delayMs = 250) {
+    return new Promise((resolve) => {
+      let n = 0;
+      const tick = () => {
+        if (!dlg.isConnected) return resolve(false);
+        const ps = Modal().extractPackingSlipNumber(dlg.innerText || '');
+        if (ps) return resolve(true);
+        if (++n >= tries) return resolve(false);
+        setTimeout(tick, delayMs);
+      };
+      tick();
+    });
+  }
+
   async function mountPanel(dlg) {
     // Defensa en profundidad sobre el latch: se pregunta por el NODO, no sólo
     // por el atributo. Si ya hay una fila nuestra, no se monta otra.
     if (dlg.querySelector('tr[data-sa-ps-drawings]')) return true;
     const row = findAttachmentsRow(dlg);
     if (!row) return false;
+
+    await waitForModalContent(dlg);
+    if (!dlg.isConnected) return false;   // el operador cerró el modal mientras tanto
 
     const parts = Modal().extractPartNumbers(
       [].map.call(dlg.querySelectorAll('tr'), (tr) => tr.innerText || '')
