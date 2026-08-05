@@ -1,6 +1,6 @@
 {
-  "version": "1.11.78",
-  "lastUpdated": "2026-08-05T09:42",
+  "version": "1.11.79",
+  "lastUpdated": "2026-08-05T09:46",
   "extensionVersion": "1.7.3",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -90,7 +90,7 @@
       },
       "queries": {
         "AllStations": "834516258e392dcd9c666c2349992e3f6744aaf536cb127cb8c9eb4347f883f7",
-        "GetStation": "a41cfd01d2e5f218add4c8c5d4179b198d7ccf6ab8a361f346a252ec46c6ca52",
+        "GetStation": "17b32d82eb0987eadd20715098a7342cc9cc4475f7b0bbcc53ea199814bbb050",
         "GetStationInputSchema": "c6ecbaae2df073010d5a667875037a132ae4eadb369fbd0798bb991a01a93dce",
         "CreateEditPartsPerRackTypeQuery": "59defeb5a1b2530737b04c32ca7857a03d16ba8ba531567eb8366eadb3b5f380",
         "StationTreatmentByWorkOrder": "1d0e7eb3c04864afcd1e3dc2e9f2493841e62a5369156f093fab3beefe5dd143",
