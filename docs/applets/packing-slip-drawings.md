@@ -1,7 +1,7 @@
 # `packing-slip-drawings` — Planos en Remisión
 
-**Versión:** 0.1.3 · **Estado:** **DESPLEGADO Y VIVO** (config 1.11.72) · pendiente canario con
-FISHER y verificación de adjunto/impresión
+**Versión:** 0.2.0 · **Estado:** **DESPLEGADO Y VIVO** (config 1.11.81) · validado en piso con
+FISHER · pendiente: PDF de la remisión en la impresión y verificar el adjunto en el correo
 **Spec:** [`2026-08-04-packing-slip-drawings-design.md`](../superpowers/specs/2026-08-04-packing-slip-drawings-design.md)
 **Plan:** [`2026-08-04-packing-slip-drawings.md`](../superpowers/plans/2026-08-04-packing-slip-drawings.md)
 
@@ -205,7 +205,31 @@ apoyándose en el `__typename` que Apollo estampa en cada nodo — sin necesidad
 Se limpia al cerrar el modal: si sobreviviera, el siguiente decidiría con el dueño anterior — el
 nodo stale del `CLAUDE.md`, sólo que en una variable.
 
-### 7 · El panel va en estilo NATIVO, no dark mode
+### 7 · Homónimos: el error que MIENTE en vez de fallar (v0.1.5)
+
+El ERP tiene números de parte **duplicados**. Medido: `S49B0531A7` existe dos veces para FISHER,
+ambos activos, y los archivos cuelgan sólo del registro **viejo** (3027607) mientras el nuevo
+(3657419) está vacío. Como se pedía `orderBy: ID_DESC` y se tomaba el primero, se leía justo el vacío
+y el panel afirmaba **«sin archivos cargados» sobre un NP que sí tiene plano**.
+
+> Es el peor error que este applet puede cometer, y no por su tamaño: **no falla ruidosamente,
+> miente en voz baja**. Hace exactamente aquello que el applet existe para evitar — que el cliente no
+> reciba lo que pidió y nadie se entere. Un ámbar falso es más dañino que no tener ámbar.
+
+Se **unen** los archivos de todos los homónimos (tope de 3 por nombre) y el dedup por `filename`
+limpia los repetidos. El link del NP apunta al registro que **sí** tiene archivos.
+
+### 8 · Rutas: parecerse a las vecinas no es estar medida (v0.2.0)
+
+La ficha de un número de parte es **`/PartNumbers/<id>`, SIN prefijo de dominio**. La primera versión
+antepuso `/Domains/<d>/` por analogía con el resto de rutas de la app (`/Domains/344/Shipping`,
+`/Invoices`…) y daba 404. **El dato estaba en el propio repo y no se leyó**: `pn-specs-column` ancla
+a `a[href^="/PartNumbers/"]`. Una ruta inventada por simetría falla igual que una adivinada.
+
+En cambio `/api/files/<userFile.name>` **sí se midió** antes de usarla: HTTP 200, `application/pdf`.
+Cierra R4 y sostiene tanto los enlaces como la descarga para imprimir.
+
+### 9 · El panel va en estilo NATIVO, no dark mode
 
 Excepción deliberada a la regla del repo, con **precedente exacto encontrado en vivo**: SH ya tiene
 en este mismo modal una fila **«Incluir Certificado»** con checkbox y link. Nuestro panel es su
