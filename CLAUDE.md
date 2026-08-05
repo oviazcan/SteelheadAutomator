@@ -98,6 +98,12 @@ No subir la concurrencia; al validar contra el ERP productivo, **una búsqueda a
 - [`docs/api/spec-measurement-model.md`](docs/api/spec-measurement-model.md) — el modelo de mediciones
   de specs en DOS EJES (**dónde** se mide vs **bajo qué criterio**). Es la causa estructural detrás de
   los casos de `wo-spec-params`: **un campo sin nodo que lo declare nunca se pide.**
+  El **eje 1 no existe en la base de reportes** y se extrae del ERP con
+  [`tools/extract-process-tree.mjs`](tools/extract-process-tree.mjs) — un `GetProcessNode` por proceso
+  RAÍZ trae el árbol completo con los specFields embebidos (~260 peticiones, no ~6000). Alimenta los
+  3 CSV de `Reportes SH/eje1_specfields/`. **Al re-correr esa auditoría hay que refrescar los DOS
+  ejes**: el 1 con este script y el 2 con `regenerate_duckdb.py`; con uno solo fresco el avance se
+  lee mal (medido: 79.3% cuando el real era 82.1%).
 
 ## Reglas de desarrollo
 - JavaScript vanilla (sin React, sin frameworks, sin bundlers)
