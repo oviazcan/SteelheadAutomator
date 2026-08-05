@@ -131,17 +131,28 @@ fi
 # fija se apagaba sola en la primera re-subida del payload — el mismo defecto
 # que este trabajo vino a eliminar. FORMATO_VALIDACION_DOMINIOS="" (vacío,
 # explícito) desactiva el chequeo a propósito; sin definir, corre para "tlc".
+#
+# Rastro por corrida (2026-08-05): antes sólo el código 1 (desalineado) dejaba
+# huella — 0 (al día) y 2 (no se pudo comprobar) corrían en silencio total, sin
+# ni un `echo`. El 2 llevaba TRES semanas siendo el resultado real de cada tick
+# (el artefacto con el nombre nuevo aún no se publica) y nadie podía notarlo
+# mirando el log. Cada código deja UNA línea discreta en STDOUT (→
+# launchd.out.log, no `hash-validation-log.md`: ese archivo es el registro de
+# ALARMAS reales, no un log de progreso) — ni 0 ni 2 son alarma, así que no
+# generan correo ni entrada ahí; sólo el 1 sigue con su tratamiento completo.
 DOMINIOS_FMT="${FORMATO_VALIDACION_DOMINIOS-tlc}"
-if [[ -n "$DOMINIOS_FMT" && -x /usr/bin/python3 ]]; then
-  RSH="/Users/oviazcan/Projects/Ecoplating/Reportes SH"
-  if [[ -f "$RSH/scripts/verifica_formato_publicado.py" ]]; then
+if [[ -n "$DOMINIOS_FMT" && -x "$PYTHON" ]]; then
+  if [[ -f "$REPORTES_SH/scripts/verifica_formato_publicado.py" ]]; then
     for DOM_FMT in $DOMINIOS_FMT; do
-      SALIDA_FMT="$(/usr/bin/python3 "$RSH/scripts/verifica_formato_publicado.py" \
+      SALIDA_FMT="$("$PYTHON" "$REPORTES_SH/scripts/verifica_formato_publicado.py" \
                      --domain "$DOM_FMT" 2>&1)" && CODIGO_FMT=0 || CODIGO_FMT=$?
-      if [[ "$CODIGO_FMT" == "1" ]]; then
-        echo "$SALIDA_FMT"
-        echo "$SALIDA_FMT" >> "$REPO_ROOT/docs/api/hash-validation-log.md"
-      fi
+      case "$CODIGO_FMT" in
+        0) echo "$(date '+%F %T') Formato publicado ($DOM_FMT): al día." ;;
+        1) echo "$SALIDA_FMT"
+           echo "$SALIDA_FMT" >> "$REPO_ROOT/docs/api/hash-validation-log.md" ;;
+        2) echo "$(date '+%F %T') Formato publicado ($DOM_FMT): no se pudo comprobar (código 2)." ;;
+        *) echo "$(date '+%F %T') Formato publicado ($DOM_FMT): código inesperado $CODIGO_FMT." ;;
+      esac
     done
   fi
 fi
