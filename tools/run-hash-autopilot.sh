@@ -24,8 +24,14 @@
 # servidor 24/7 (migración pendiente) el costo es trivial.
 #
 # Overrides opcionales por env var: REPO_ROOT, NODE, PYTHON, REPORTES_SH
-#   LIGA_FORMATO_VALIDACION — URL del PAYLOAD publicado del formato de
-#     validación en piso (Reportes SH). Si está vacía, el chequeo se salta.
+#   FORMATO_VALIDACION_DOMINIOS — dominios (Reportes SH) donde chequear la
+#     frescura del formato de validación en piso publicado, separados por
+#     espacio. Default "tlc" (hoy el único con el formato publicado —
+#     docs/numeros-parte.md § Liga publicada y estado por dominio). El chequeo
+#     ya NO recibe una URL: `verifica_formato_publicado.py --domain <dom>` se
+#     resuelve solo (SearchUserFilesQuery + prefijo, del lado servidor) contra
+#     el payload publicado más reciente — una URL fija se apagaría sola en la
+#     primera re-subida del payload (docs/superpowers/specs/…-design.md § 7).
 set -uo pipefail
 
 # launchd arranca con PATH mínimo: agrégale homebrew + system para hallar node/git/curl.
@@ -121,16 +127,22 @@ fi
 # puede re-subir solo (POST /api/files exige navegador). Sin esto, el formato se
 # muere en silencio y se entera el piso. Código 2 = no se pudo comprobar: no se
 # avisa de una rotación que no se midió.
-LIGA_FORMATO="${LIGA_FORMATO_VALIDACION:-}"
-if [[ -n "$LIGA_FORMATO" && -x /usr/bin/python3 ]]; then
+# El script se resuelve SOLO por dominio, sin URL (§ 7 del diseño): una liga
+# fija se apagaba sola en la primera re-subida del payload — el mismo defecto
+# que este trabajo vino a eliminar. FORMATO_VALIDACION_DOMINIOS="" (vacío,
+# explícito) desactiva el chequeo a propósito; sin definir, corre para "tlc".
+DOMINIOS_FMT="${FORMATO_VALIDACION_DOMINIOS-tlc}"
+if [[ -n "$DOMINIOS_FMT" && -x /usr/bin/python3 ]]; then
   RSH="/Users/oviazcan/Projects/Ecoplating/Reportes SH"
   if [[ -f "$RSH/scripts/verifica_formato_publicado.py" ]]; then
-    SALIDA_FMT="$(/usr/bin/python3 "$RSH/scripts/verifica_formato_publicado.py" \
-                   --liga "$LIGA_FORMATO" 2>&1)" && CODIGO_FMT=0 || CODIGO_FMT=$?
-    if [[ "$CODIGO_FMT" == "1" ]]; then
-      echo "$SALIDA_FMT"
-      echo "$SALIDA_FMT" >> "$REPO_ROOT/docs/api/hash-validation-log.md"
-    fi
+    for DOM_FMT in $DOMINIOS_FMT; do
+      SALIDA_FMT="$(/usr/bin/python3 "$RSH/scripts/verifica_formato_publicado.py" \
+                     --domain "$DOM_FMT" 2>&1)" && CODIGO_FMT=0 || CODIGO_FMT=$?
+      if [[ "$CODIGO_FMT" == "1" ]]; then
+        echo "$SALIDA_FMT"
+        echo "$SALIDA_FMT" >> "$REPO_ROOT/docs/api/hash-validation-log.md"
+      fi
+    done
   fi
 fi
 
