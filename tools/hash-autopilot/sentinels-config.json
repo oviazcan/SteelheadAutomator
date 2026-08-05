@@ -225,6 +225,20 @@
       "_estrategia": "capture-abort",
       "anchor": "span[data-steelhead-component-id=\"PART_NUMBER_PAGE_PART_NUMBER_INSTRUCTIONS\"]",
       "_nota": "PN Centinela 3770957 (el mismo de la entidad partNumber). Op de la columna 'Instrucciones de Empaque' de la plantilla v13: escribe la ProcessNodeDescription de la tupla (PN, nodo), NO un campo del PN. RUTA (DOM verificado 2026-08-03 por captura del operador): en la ficha del PN, la seccion se ancla por data-steelhead-component-id=PART_NUMBER_PAGE_PART_NUMBER_INSTRUCTIONS -- ancla ESTRUCTURAL, idioma-independiente, nivel 1 de la jerarquia del repo. Su encabezado reza 'Instrucciones del Numero de Parte en \"<nodo>\" #<ocurrencia>' (p.ej. 'Preparando Embarque en Almacen' #1), lo que confirma DOS cosas: que la descripcion es POR PN y que el #N es processNodeOccurrence. Dentro de ese span hay un MuiIconButton cuyo svg es el path del LAPIZ de MUI (M3 17.25V21h3.75L17.81 9.94l-3.75-3.75z...): ese boton abre el dialogo, que se hidrata con ProcessNodeDescriptionDialogData {partNumberId, processNodeId, processNodeOccurrence}. Se edita el texto y se GUARDA -> dispara la mutation. Payload REAL capturado sobre el PN 3887933 / nodo 154303: {input:{partNumberId, processNodeDescriptions:[{processNodeId, processNodeOccurrence:1, otherOccurrences:[], descriptionMarkdown, cascadeToOccurrences:false, cascadeToRecipeNodes:false}]}}. El cuerpo renderiza markdown (el **Embarque** del payload sale como <strong>). CAPTURA-Y-ABORTA -> no se escribe ninguna descripcion. OJO: NO tocar processNode.descriptionMarkdown, que es la descripcion GLOBAL del nodo y la comparten todos los PNs del dominio (hoy trae el aviso rojo 'No olvidar empacar conforme a requerimientos del cliente'). PENDIENTE de correr headless. usedBy: carga-masiva."
+    },
+    "partNumberSpecParams": {
+      "id": 3770957,
+      "screenPath": "/PartNumbers/{id}",
+      "marker": "Centinela",
+      "_para": [
+        "AddParamsToPartNumber",
+        "SaveMultipleSpecFieldParams",
+        "UpdatePartNumberSpecParam"
+      ],
+      "_estrategia": "capture-abort",
+      "anchor": "span[data-steelhead-component-id=\"PART_NUMBER_PAGE_SPEC\"]",
+      "_bloqueo": "PENDIENTE — el PN centinela esta ARCHIVADO y eso deja la seccion de specs READ-ONLY (Edit Selected Params disabled).",
+      "_nota": "PN Centinela 3770957 (el mismo de partNumber/partNumberRackType/partNumberPackingDescription), reusado por decision del operador (2026-08-05). Las 3 ops son la MISMA familia (parametros de spec sobre un PN) y salen de la seccion anclada por data-steelhead-component-id=PART_NUMBER_PAGE_SPEC (ancla ESTRUCTURAL nivel 1). El PN SI tiene spec asignada: '1.28.001 (Zinc Negro Azul) - Rev. D1'. Botones de la seccion: 'Add Spec', 'Edit Selected Params', 'Expand All Specs', 'Collapse All Fields'. OJO — LA RUTA ES /PartNumbers/{id} SIN /Domains/{d}: con el dominio delante la ficha NO hidrata (mismo hallazgo que packing-slip-drawings, commit 1192e2e). BLOQUEO MEDIDO EN VIVO 2026-08-05: la ficha rinde 'This is an archived part number. This should not be modified unless it is unarchived first.' y 'Edit Selected Params' sale DISABLED=true. El estado BASE de este centinela es ARCHIVADO (por eso la entidad partNumber usa archived-mutate-restore: desarchiva -> muta -> re-archiva). Consecuencia: las 3 mutations de specs NO se pueden disparar con captura-y-aborta a secas; el ciclo tiene que DESARCHIVAR primero (toggle del checkbox 'Archived', la misma accion que dispara UpdatePartNumber) y re-archivar SIEMPRE en el finally. Mientras este archivado la tabla de parametros no despliega sus checkboxes, asi que el DOM del paso 'seleccionar params -> Edit Selected Params' TODAVIA NO esta guionizado. Decision pendiente del operador: (a) ciclo que desarchiva/re-archiva, o (b) ruta por la pantalla de la SPEC (/Specs/{id}), que quiza no exija tocar el PN."
     }
   },
   "_dominio": "TLC/344 (Toluca — los centinelas viven aquí; 344 es TLC, NO MTY. MTY es otro dominio sin datos aún)"
