@@ -228,14 +228,13 @@ const PackingSlipDrawings = (() => {
   const AMBER = '#b26a00';
   const DIM = '#6b7280';
 
-  // Ficha del número de parte: /Domains/<d>/PartNumbers/<id>. El dominio sale de
-  // la URL actual (el applet sólo vive bajo /Domains/<d>/Shipping). Sin dominio
-  // o sin id se devuelve null y el nombre queda como texto plano — un link roto
-  // sería peor que ninguno.
+  // Ficha del número de parte: `/PartNumbers/<id>`, SIN prefijo de dominio.
+  // Verificado por el operador (2026-08-05) y consistente con `pn-specs-column`,
+  // que ancla a `a[href^="/PartNumbers/"]`. La primera versión anteponía
+  // `/Domains/<d>/` por analogía con el resto de rutas de la app y daba 404:
+  // parecerse a las rutas vecinas no es lo mismo que estar medida.
   function pnHref(pnId) {
-    if (pnId == null) return null;
-    const m = location.pathname.match(/^\/Domains\/(\d+)\//);
-    return m ? `/Domains/${m[1]}/PartNumbers/${pnId}` : null;
+    return pnId == null ? null : `/PartNumbers/${pnId}`;
   }
 
   // Los nombres de PN y de archivo vienen de GraphQL ⇒ vector cross-user.
