@@ -197,9 +197,52 @@ G checkout main >/dev/null 2>&1
 trap - EXIT
 
 # --- push ambas ramas ---
+# REINTENTO CON REBASE ante non-fast-forward (incidente 2026-08-05). `gh-pages` es una
+# rama COMPARTIDA: la publican los deploys de la extension Y los tres paquetes de
+# documentacion, y el `pre-push` EXIME los push "solo-docs" de bumpear version. Que un
+# push de docs se adelante al del autopilot es NORMAL, no excepcional — y cuando pasaba,
+# el push salia rechazado y el hash quedaba corregido en el repo pero ROTO EN VIVO.
+#
+# El rebase es seguro aqui porque los cambios NO se solapan (docs tocan */*.html, el
+# deploy toca config.json + scripts/*.js). Si SI se solapan, el rebase falla, se aborta y
+# se propaga el error: preferimos fallar ruidoso a resolver un conflicto a ciegas sobre
+# una rama publicada.
+push_con_rebase() {
+  local rama="$1"
+  if G push origin "$rama" 2>/tmp/sa-push-err.txt; then return 0; fi
+  cat /tmp/sa-push-err.txt >&2
+  if ! grep -qEi 'non-fast-forward|fetch first|Updates were rejected' /tmp/sa-push-err.txt; then
+    echo "🛑 push de $rama rechazado por una causa que NO es non-fast-forward — no reintento." >&2
+    return 1
+  fi
+  echo "⚠️  push de $rama rechazado (non-fast-forward) — otra sesion publico primero. Rebase y reintento…" >&2
+  G fetch origin "$rama" || { echo "🛑 fetch de $rama fallo" >&2; return 1; }
+  # OJO: este repo maneja gh-pages con checkout IDA Y VUELTA en el worktree de main (no
+  # hay worktree dedicado), y al llegar aqui el worktree esta en `main`. Un `git rebase
+  # origin/X X` haria checkout de X y DEJARIA el worktree en X, rompiendo el estado que el
+  # resto del script asume. Por eso: checkout explicito + restauracion garantizada.
+  local previa; previa="$(G rev-parse --abbrev-ref HEAD)"
+  local volver=0
+  if [ "$previa" != "$rama" ]; then
+    G checkout "$rama" >/dev/null 2>&1 || { echo "🛑 no pude checkout $rama para rebasear" >&2; return 1; }
+    volver=1
+  fi
+  local rc=0
+  if G rebase "origin/$rama"; then
+    echo "→ rebase de $rama OK — reintentando push"
+    G push origin "$rama" || { echo "🛑 el re-push de $rama fallo incluso tras rebase." >&2; rc=1; }
+  else
+    G rebase --abort 2>/dev/null || true
+    echo "🛑 rebase de $rama con CONFLICTO — los cambios se solapan. Resuelve a mano; NO publico a ciegas." >&2
+    rc=1
+  fi
+  [ "$volver" = "1" ] && { G checkout "$previa" >/dev/null 2>&1 || echo "⚠️  no pude volver a $previa — revisa el worktree" >&2; }
+  return $rc
+}
+
 echo "→ push origin main gh-pages"
-G push origin main
-G push origin gh-pages
+push_con_rebase main
+push_con_rebase gh-pages
 
 # --- tag de release (ancla de rollback) ---
 # Cada deploy queda anclado a un tag vX.Y.Z sobre el commit de main del bump, para

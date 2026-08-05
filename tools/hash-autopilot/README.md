@@ -456,3 +456,56 @@ de deployar es que SH revierta el release y el autopilot re-deploye los viejos e
 probe en vez de al conteo. Mientras tanto existe `--mass-brake=N` (**flag MANUAL**; el cron nunca lo
 pasa, su umbral de 6 sigue intacto) para ejecutar la conclusión de la revisión humana que el freno pide,
 sin editar el default ni saltarse la validación por-op (solo se deploya lo que sigue `rotadoValidado`).
+
+## "Commiteé" no es "publiqué": el deploy que no llegó a producción (2026-08-05)
+
+**Lo que pasó.** Tres deploys del autopilot quedaron atorados sin llegar al sitio. `main`
+iba en `1.11.80` y GitHub Pages servía `1.11.77`, dejando **corregidos en el repo pero
+ROTOS EN VIVO** a `InvoiceByIdInDomain` (applet `cfdi-attacher`), `GetStation` y
+`WorkboardById`. Causa: otra sesión publicó documentación en `gh-pages` —rama
+**compartida** por los deploys de la extensión y los 3 paquetes de docs— y el `git push`
+del autopilot salió rechazado por **non-fast-forward**. Lo detectó el **operador a mano**,
+no el sistema. El escenario es **normal, no excepcional**: el `pre-push` exime a los push
+"solo-docs" de bumpear versión, así que un push de docs puede adelantarse en cualquier momento.
+
+**Por qué fue invisible — tres agujeros, los tres verificados en el código:**
+
+1. **El motor no mentía: se CALLABA.** El correo nunca dijo "corregida" en falso (la
+   sección `✅ CORREGIDAS Y DEPLOYADAS` está tras `if (deployed && …)`). El problema era el
+   contrario y es peor: con el deploy fallido **no se empujaba ninguna sección**, y como el
+   correo solo sale `if (sec.length)`, un fallo de deploy con todo lo demás sano producía
+   **cero correo**. El fallo vivía en un `console.log` del log de launchd que nadie lee.
+   *Un vigilante que se calla al fallar es peor que uno que miente: no hay nada que contradecir.*
+2. **`main` sí se pusheaba** (`deploy.sh` hace `push origin main` **antes** que
+   `push origin gh-pages`). Desde la corrida siguiente, `classifyOp` comparaba el `cfgHash`
+   **del repo** —ya con el hash nuevo— contra el `liveHash` capturado: **iguales ⇒ `vigente`**
+   ⇒ la op **salía del radar para siempre** mientras el sitio servía el viejo. **El sistema
+   se auto-convencía de estar sano.** Éste es el mecanismo del "lleva tiempo pasando sin que
+   nadie se entere".
+3. **`deploy-status.sh` compara la rama `gh-pages` LOCAL** (`git show gh-pages:…`), no
+   `origin/gh-pages`. Con el push rechazado, local va adelante y el sitio atrás: sale
+   `⚠️ Desalineado … vivo=X`, **que se lee igual que un lag del CDN** — y así se leyó en la
+   sesión del incidente. *Una señal ambigua entre dos causas de gravedad opuesta no es una señal.*
+
+> **REGLA DE FONDO:** todo el aparato de vigilancia medía el **REPO**, y lo que los
+> operadores ejecutan es el **SITIO**. El heartbeat prueba que el autopilot **corrió**; el
+> validador prueba que el **repo** está bien; **nadie probaba que el sitio sirve lo correcto.**
+> El watchdog de latido **no cubre este caso** y nunca lo cubrirá: son preguntas distintas.
+
+**Blindaje (núcleo puro `deploy-verify-core.mjs` + cableado):**
+
+| Pieza | Qué hace |
+|---|---|
+| `verifyLiveDeploy(liveConfig, pares)` | tras deployar, confirma contra `oviazcan.github.io/…/config.json` que el sitio **sirve** los hashes. **Fail-closed:** sitio ilegible ⇒ `ok:false` («no sé» ≠ «está bien») |
+| corre **fuera** del `try/catch` | el exit 0 del script **no** prueba publicación (`main` se pushea antes que `gh-pages`) |
+| `detectLiveDrift(repo, origin/gh-pages)` | caza en **cada** corrida el drift **heredado** de un deploy anterior atorado (tapa el agujero 2) |
+| árbitro = **`origin/gh-pages`**, no el CDN | separa *push atorado* (grave) de *lag de Pages* (inocuo) **sin depender del reloj** — si se midiera contra el sitio, cada deploy sano daría falso positivo y volveríamos al cry-wolf |
+| `formatDeployNotLiveAlert` | nombra el estado **real** («corregido en el repo, **SIGUE ROTO** en vivo»), no un genérico «el deploy falló»: la acción del operador depende de esa diferencia |
+| `nUrgentes += nDeployRoto` | **rompe el silencio**: el correo se manda aunque no hubiera ninguna otra categoría |
+| `tipo = nDeployRoto > 0 ? 'fallo'` | un deploy no publicado es `fallo` **siempre**; que otras ops sí se corrigieran **no** lo degrada a `revision` |
+| `push_con_rebase()` en `deploy.sh` | reintenta con **rebase** solo ante non-fast-forward; **conflicto ⇒ aborta** (no publica a ciegas) y **restaura la rama** (gh-pages se maneja con checkout ida y vuelta en el worktree de `main`) |
+
+**Pruebas** (`tools/test/deploy-verify-core.test.js` 14 casos + `deploy-live-verification-wired.test.js`
+9 de cableado). Se verificó que **fallan de verdad**: al quitar `nDeployRoto` del conteo, o al
+neutralizar el `tipo='fallo'`, la suite se pone roja. También validado **contra producción**:
+el config en vivo se lee y un hash no publicado se detecta como `ok:false`.

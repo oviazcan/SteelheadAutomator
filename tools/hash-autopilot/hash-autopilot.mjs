@@ -20,6 +20,44 @@ import { appletsForOp, formatOpLine } from './applet-attribution.mjs';
 import { classifyProbe, summarizeProbes, gateByProbe, isProbeSessionDegraded } from './probe-classify.mjs';
 import { probeOnPage } from './probe-run.mjs';
 import { fetchProductUpdates, formatUpdatesContext } from './product-updates.mjs';
+import { verifyLiveDeploy, detectLiveDrift, formatDeployNotLiveAlert } from './deploy-verify-core.mjs';
+
+// URL del config que REALMENTE ejecutan los operadores (GitHub Pages). El repo NO es la
+// fuente de verdad de lo que corre en las maquinas: `main` puede ir adelante del sitio si
+// el push a gh-pages fue rechazado (incidente 2026-08-05, ver deploy-verify-core.mjs).
+const LIVE_CONFIG_URL = 'https://oviazcan.github.io/SteelheadAutomator/config.json';
+
+// Lee el config EN VIVO saltando cachES. Devuelve null si no se pudo leer — y `null`
+// significa "no se", que NO es "esta bien": los consumidores fallan CERRADO.
+// Reintenta porque GitHub Pages tarda ~30-60 s en publicar (+ cache de CDN): sin espera,
+// un deploy sano se reportaria como fallido y volveriamos al cry-wolf.
+// Config tal como esta en el REMOTO (origin/gh-pages). Es el arbitro que separa las dos
+// causas que `deploy-status.sh` confunde bajo el mismo mensaje:
+//   - el hash SI esta en origin/gh-pages pero no en el sitio  => lag de GitHub Pages/CDN (inocuo)
+//   - el hash NO esta en origin/gh-pages                      => EL PUSH NO LLEGO (grave)
+// Determinista y sin esperas: no depende de cuanto tarde el CDN. Devuelve null si no se
+// puede leer (=> "no se", y los consumidores fallan cerrado).
+export function readOriginGhPagesConfig(repoDir) {
+  try {
+    execFileSync('git', ['-C', repoDir, 'fetch', '--quiet', 'origin', 'gh-pages'], { stdio: 'ignore' });
+  } catch { /* sin red: seguimos con lo que haya en el ref local de origin */ }
+  try {
+    const out = execFileSync('git', ['-C', repoDir, 'show', 'origin/gh-pages:config.json'], { encoding: 'utf8' });
+    return JSON.parse(out);
+  } catch { return null; }
+}
+
+export async function fetchLiveConfig(url = LIVE_CONFIG_URL, { attempts = 6, waitMs = 15000, sleep } = {}) {
+  const nap = sleep || ((ms) => new Promise((r) => setTimeout(r, ms)));
+  for (let i = 0; i < attempts; i++) {
+    try {
+      const r = await fetch(`${url}?cb=${Date.now()}_${i}`, { headers: { 'Cache-Control': 'no-cache' } });
+      if (r.ok) return await r.json();
+    } catch { /* blip de red -> reintenta */ }
+    if (i < attempts - 1) await nap(waitMs);
+  }
+  return null;
+}
 
 // Fecha YYYY-MM-DD en hora LOCAL — debe coincidir con la que validate-hashes.py
 // usa para nombrar tools/.hash-validation/<date>.json (datetime.now(), local). NO
@@ -317,6 +355,8 @@ async function main() {
   // Clasificar cada op target: liveHash capturado vs config; validación por
   // RESPUESTA capturada (responseOk = el frontend obtuvo data sin errors).
   const cfgHashes = readConfigHashes(CONFIG_PATH);
+  // Version del config del REPO — se contrasta contra la del SITIO para delatar el drift.
+  const cfgVersionLocal = (() => { try { return JSON.parse(readFileSync(CONFIG_PATH, 'utf8')).version ?? null; } catch { return null; } })();
   const results = [...wantOps, ...capturableMuts].map((op) => {
     const liveHash = sink.hashes[op] ?? null;
     const cfgHash = cfgHashes[op] ?? null;
@@ -342,16 +382,47 @@ async function main() {
   persistResult({ date: RUN_DATE, authFailed: false, results, plan, probeVerdicts, productUpdates: { entries: productUpdates.entries || [], url: productUpdates.url || '' } });
 
   // Auto-deploy de los rotados validados (salvo dry-run / freno de masa).
+  //
+  // `deployed` = el script de deploy salio 0 (commiteo y CREE que pusheo).
+  // `liveOk`   = el SITIO EN VIVO sirve de verdad los hashes deployados.
+  // Son estados DISTINTOS y confundirlos es lo que dejo 3 hashes rotos en produccion el
+  // 2026-08-05 sin que nadie se enterara: "commitee" no es "publique", y solo lo segundo
+  // le consta al operador. `deployed` gobierna el texto "CORREGIDAS Y DEPLOYADAS";
+  // `liveOk` gobierna si eso es cierto.
   let deployed = false;
+  let liveOk = null;          // null = no aplica (no hubo deploy); true/false = verificado
+  let liveMissing = [];       // pares que el sitio NO sirve
+  let pushError = null;       // stderr del deploy fallido (alimenta el diagnostico)
+  let liveVersion = null;
   if (!DRY && !NO_DEPLOY && plan.toDeploy.length && !plan.massBrake) {
     const pairs = plan.toDeploy.map((r) => `${r.op}=${r.liveHash}`);
     console.log(`\n→ Auto-deploy: ${pairs.join(' ')}`);
     try {
-      execFileSync(join(__dirname, 'autopilot-deploy.sh'), pairs, { stdio: 'inherit' });
+      // stderr a 'pipe' para poder CITAR la causa del rechazo en el correo (antes se
+      // perdia en el log de launchd). Se re-imprime en el catch para no perderlo del log.
+      execFileSync(join(__dirname, 'autopilot-deploy.sh'), pairs, { stdio: ['inherit', 'inherit', 'pipe'] });
       deployed = true;
-      console.log('✓ deploy OK');
+      console.log('✓ deploy OK (commit+push) — falta confirmar que el SITIO lo sirva');
     } catch (e) {
+      pushError = (e.stderr && e.stderr.toString()) || `exit ${e.status ?? '?'}`;
       console.log(`✗ auto-deploy falló (exit ${e.status ?? '?'}) — requiere revisión humana`);
+      if (e.stderr) console.log(String(e.stderr).slice(0, 2000));
+    }
+    // VERIFICACION CONTRA EL SITIO EN VIVO — el paso que faltaba. Se corre SIEMPRE, haya
+    // salido 0 o no: un push rechazado deja `main` pusheado y gh-pages atras, asi que el
+    // exito del script NO prueba publicacion. Fail-closed: si el sitio no se puede leer,
+    // `verifyLiveDeploy` devuelve ok:false (no sabemos != esta bien).
+    console.log('→ verificando que el deploy llegó al SITIO EN VIVO…');
+    const liveCfg = await fetchLiveConfig();
+    liveVersion = liveCfg?.version ?? null;
+    const v = verifyLiveDeploy(liveCfg, plan.toDeploy.map((r) => ({ op: r.op, liveHash: r.liveHash })));
+    liveOk = v.ok;
+    liveMissing = v.missing;  // los applets se anexan en el reporte (appletsOf se define despues)
+    if (liveOk) {
+      console.log(`✓ EN VIVO confirmado (config ${liveVersion ?? '?'}) — los ${plan.toDeploy.length} hash(es) ya se sirven`);
+    } else {
+      console.log(`🚨 EL DEPLOY NO LLEGÓ AL SITIO (${v.reason}) — repo=${cfgVersionLocal ?? '?'} vivo=${liveVersion ?? '(no responde)'}`);
+      for (const m of liveMissing) console.log(`   • ${m.op}: repo=${String(m.expected).slice(0, 8)}… vivo=${m.live ? String(m.live).slice(0, 8) + '…' : '(ausente)'}`);
     }
   }
 
@@ -466,13 +537,52 @@ async function main() {
     const knownOps = loadKnownOperations();
     const appletsOf = (op) => appletsForOp(op, scriptSources, (knownOps[op] || {}).usedBy || '');
     const line = (op) => `   • ${formatOpLine(op, appletsOf(op))}`;
+    // DRIFT HEREDADO: compara el config del REPO contra el PUBLICADO en origin/gh-pages.
+    // Cubre el agujero que hizo invisible el incidente: si un deploy anterior quedo
+    // atorado, `main` ya trae el hash bueno y desde la corrida siguiente el motor lo ve
+    // "vigente" (compara contra el REPO) mientras el operador ejecuta el viejo. Se mide
+    // contra origin/gh-pages y NO contra el sitio para no confundir un push atorado con
+    // un lag del CDN. Solo en corrida productiva (en modo prueba el repo esta a medias).
+    let liveDrift = null;
+    if (!DRY && !NO_DEPLOY) {
+      const ghp = readOriginGhPagesConfig(join(__dirname, '../..'));
+      if (ghp) {
+        try {
+          liveDrift = detectLiveDrift(JSON.parse(readFileSync(CONFIG_PATH, 'utf8')), ghp);
+          if (liveDrift.drift) console.log(`🚨 DRIFT: origin/gh-pages NO trae ${liveDrift.ops.length} hash(es) que el repo ya dice tener (deploy atorado): ${liveDrift.ops.map((o) => o.op).join(', ')}`);
+        } catch { liveDrift = null; }
+      } else {
+        console.log('⚠️ no pude leer origin/gh-pages — no verifico drift esta corrida');
+      }
+    }
     const sec = [];
     // Centinela ROTO/ARCHIVADO (identidad no verificada en Fase C): un centinela declarado
     // que quedó archivado hace abortar su ciclo en silencio. Alerta accionable (desarchivar).
     const sentinelBroken = classifyCycleOutcomes(cycleOutcomes, { suppressPending: [...SUPPRESS_PENDING] }).broken;
     const sentinelAlert = formatSentinelAlert(sentinelBroken);
     if (sentinelAlert) sec.push(sentinelAlert);
-    if (deployed && plan.toDeploy.length) {
+    // DEPLOY QUE NO LLEGO AL SITIO — la alerta que faltaba (incidente 2026-08-05).
+    // Va ANTES que todo: significa "hay applets rotos AHORA en las maquinas del operador",
+    // y ademas desmiente el "CORREGIDAS Y DEPLOYADAS" que vendria abajo.
+    const deployNotLive = liveOk === false;
+    if (deployNotLive) {
+      sec.push(formatDeployNotLiveAlert(
+        liveMissing.map((m) => ({ ...m, applets: appletsOf(m.op) })),
+        { version: cfgVersionLocal, liveVersion, pushError },
+      ));
+    }
+    // Drift HEREDADO de una corrida anterior: el sitio sirve un hash distinto al del repo
+    // para ops que este ciclo ni toco. Sin esto, un deploy atorado se vuelve INVISIBLE a
+    // partir de la corrida siguiente (cfgHash==liveHash => "vigente"), que es justo como
+    // el incidente sobrevivio dias. Se omite si ya lo dice la alerta de arriba.
+    if (!deployNotLive && liveDrift && liveDrift.drift) {
+      const filas = liveDrift.ops.slice(0, 12).map(
+        (o) => `   • ${o.op}: repo=${o.repo.slice(0, 8)}… vivo=${o.live.slice(0, 8)}… — applets: ${appletsOf(o.op).join(', ') || '—'}`,
+      );
+      const mas = liveDrift.ops.length > 12 ? `\n   …y ${liveDrift.ops.length - 12} mas.` : '';
+      sec.push(`🚨 EL SITIO EN VIVO NO SIRVE LO QUE DICE EL REPO (${liveDrift.ops.length}) — deploy anterior ATORADO: el repo ya trae el hash bueno pero el operador sigue ejecutando el viejo.\n   Versión: repo=${liveDrift.version ?? '?'} · EN VIVO=${liveDrift.liveVersion ?? '(no responde)'}\n${filas.join('\n')}${mas}\n   Acción: git fetch origin gh-pages → rebase → re-push (o tools/deploy-status.sh).`);
+    }
+    if (deployed && !deployNotLive && plan.toDeploy.length) {
       sec.push(`✅ CORREGIDAS Y DEPLOYADAS (${plan.toDeploy.length}):\n${plan.toDeploy.map((r) => `   • ${r.op}: ${r.cfgHash.slice(0, 8)}… → ${r.liveHash.slice(0, 8)}… — applets: ${appletsOf(r.op).join(', ') || '—'}`).join('\n')}`);
     }
     if (plan.massBrake) {
@@ -522,13 +632,21 @@ async function main() {
       //     mutation rota sin capturar, centinela archivado).
       //   POR REVISAR = señal blanda no confirmada (probe no concluyente por auth/red;
       //     sospechoso = difiere del config pero sin data OK, típico de captura-y-aborta).
-      const nUrgentes = realStaleRows.length + uncoveredNew.length + pendingMuts.length + sentinelBroken.length;
+      // Un deploy que no llego al sitio es LA urgencia: hay applets rotos en produccion
+      // con el repo diciendo que estan bien. Suma al conteo para que el asunto lo grite y
+      // para que el correo se mande AUNQUE no haya ninguna otra categoria.
+      const nDeployRoto = (liveOk === false ? liveMissing.length : 0) + (liveOk !== false && liveDrift && liveDrift.drift ? liveDrift.ops.length : 0);
+      const nUrgentes = realStaleRows.length + uncoveredNew.length + pendingMuts.length + sentinelBroken.length + nDeployRoto;
       // Las externas son accionables pero NO urgentes para la extensión (no rompen
       // ningún applet: su hash vive en otro repo) → cuentan como "por revisar".
       const nPorRevisar = unconfirmedRows.length + plan.suspicious.length + (plan.external || []).length;
       const nPendientes = nUrgentes + nPorRevisar;
       // 'fallo' SOLO si hay urgentes sin corregir; solo-blandas → 'revision' (no alarmar).
-      const tipo = plan.massBrake ? 'revision'
+      // Un deploy que no llego a produccion es 'fallo' SIEMPRE — no lo degrada a
+      // 'revision' el hecho de que otras ops si se corrigieran. Es la regla que impide
+      // que el peor estado (repo sano / produccion rota) viaje con tono tranquilo.
+      const tipo = nDeployRoto > 0 ? 'fallo'
+        : plan.massBrake ? 'revision'
         : nPendientes === 0 ? 'exito'
         : nUrgentes === 0 ? 'revision'
         : nCorregidas > 0 ? 'revision'
@@ -537,7 +655,7 @@ async function main() {
         ? `hash-autopilot: ${nCorregidas} corregida(s), 0 pendiente(s)`
         : `hash-autopilot: ${nCorregidas} corregida(s), ${nUrgentes} urgente(s) / ${nPorRevisar} por revisar`;
       const ctx = formatUpdatesContext(productUpdates);
-      const cuerpo = `=== hash-autopilot · ${RUN_DATE} ===\n\n${sec.join('\n\n')}${ctx ? '\n\n' + ctx : ''}\n${deployed ? '\nconfig.json bumpeado + gh-pages actualizado.' : ''}`;
+      const cuerpo = `=== hash-autopilot · ${RUN_DATE} ===\n\n${sec.join('\n\n')}${ctx ? '\n\n' + ctx : ''}\n${deployed && liveOk !== false ? '\nconfig.json bumpeado + gh-pages actualizado y CONFIRMADO en vivo.' : ''}`;
       // Correo SOLO en corrida productiva. En modo prueba (--dry-run/--no-deploy/--only)
       // no se notifica: son corridas de depuración y el reporte es parcial/engañoso.
       if (DRY || NO_DEPLOY || ONLY) {
