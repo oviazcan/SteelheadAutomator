@@ -24,6 +24,8 @@
 # servidor 24/7 (migración pendiente) el costo es trivial.
 #
 # Overrides opcionales por env var: REPO_ROOT, NODE, PYTHON, REPORTES_SH
+#   LIGA_FORMATO_VALIDACION — URL del PAYLOAD publicado del formato de
+#     validación en piso (Reportes SH). Si está vacía, el chequeo se salta.
 set -uo pipefail
 
 # launchd arranca con PATH mínimo: agrégale homebrew + system para hallar node/git/curl.
@@ -107,7 +109,29 @@ if [ "$VAL_RC" = "1" ]; then
   echo "$(date '+%F %T') Stale detectado → motor completo (auto-captura + deploy)…"
   cd "$AUTOPILOT_DIR"
   "$NODE" hash-autopilot.mjs
-  exit $?
+  RUN_RC=$?
+else
+  echo "$(date '+%F %T') 0 stale (las enmascaradas ya se recapturaron en la capa 1)."
+  RUN_RC="$MASKED_RC"
 fi
-echo "$(date '+%F %T') 0 stale (las enmascaradas ya se recapturaron en la capa 1)."
-exit "$MASKED_RC"
+
+# ── Frescura del formato de validación publicado ─────────────────────────────
+# El autopilot arregla el CATÁLOGO. Este chequeo mira el artefacto PUBLICADO en
+# Steelhead, que conserva los hashes con los que se generó y que ningún script
+# puede re-subir solo (POST /api/files exige navegador). Sin esto, el formato se
+# muere en silencio y se entera el piso. Código 2 = no se pudo comprobar: no se
+# avisa de una rotación que no se midió.
+LIGA_FORMATO="${LIGA_FORMATO_VALIDACION:-}"
+if [[ -n "$LIGA_FORMATO" && -x /usr/bin/python3 ]]; then
+  RSH="/Users/oviazcan/Projects/Ecoplating/Reportes SH"
+  if [[ -f "$RSH/scripts/verifica_formato_publicado.py" ]]; then
+    SALIDA_FMT="$(/usr/bin/python3 "$RSH/scripts/verifica_formato_publicado.py" \
+                   --liga "$LIGA_FORMATO" 2>&1)" && CODIGO_FMT=0 || CODIGO_FMT=$?
+    if [[ "$CODIGO_FMT" == "1" ]]; then
+      echo "$SALIDA_FMT"
+      echo "$SALIDA_FMT" >> "$REPO_ROOT/docs/api/hash-validation-log.md"
+    fi
+  fi
+fi
+
+exit "$RUN_RC"
