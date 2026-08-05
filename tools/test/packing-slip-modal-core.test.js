@@ -192,3 +192,57 @@ test('extractPackingSlipNumber: un "#1770" suelto (la OC) NO se confunde con la 
   // palabra que nombra al documento.
   assert.equal(Modal.extractPackingSlipNumber('Orden de Compra: 4300016123 (#1770)'), null);
 });
+
+// ---------- findCustomerName ----------
+// Identifica al cliente desde una respuesta de Apollo sin conocer su shape.
+// Es el respaldo para cuando el modal NO se abre desde la lista de albaranes
+// (p. ej. el módulo de Envío), donde no hay tabla `#NNNN | Cliente` que leer.
+
+test('findCustomerName: lo encuentra anidado por __typename', () => {
+  const resp = {
+    emailCustomerContactsByCustomerIds: {
+      nodes: [
+        { __typename: 'CustomerContact', name: 'Elizabeth Morales', email: 'Ely.Morales@se.com',
+          customerByCustomerId: { __typename: 'Customer', id: 7, name: 'SCHNEIDER ELECTRIC MEXICO' } },
+      ],
+    },
+  };
+  assert.equal(Modal.findCustomerName(resp), 'SCHNEIDER ELECTRIC MEXICO');
+});
+
+test('findCustomerName: NO confunde al contacto con el cliente', () => {
+  // El contacto también tiene `name`; sólo cuenta __typename === 'Customer'.
+  const resp = { nodes: [{ __typename: 'CustomerContact', name: 'Elizabeth Morales' }] };
+  assert.equal(Modal.findCustomerName(resp), null);
+});
+
+test('findCustomerName: recorre arrays y objetos anidados', () => {
+  const resp = { a: [{ b: { c: [{ __typename: 'Customer', name: 'FISHER CONTROLES DE MEXICO' }] } }] };
+  assert.equal(Modal.findCustomerName(resp), 'FISHER CONTROLES DE MEXICO');
+});
+
+test('findCustomerName: recorta espacios', () => {
+  assert.equal(Modal.findCustomerName({ __typename: 'Customer', name: '  ACME  ' }), 'ACME');
+});
+
+test('findCustomerName: un Customer sin nombre usable no cuenta', () => {
+  assert.equal(Modal.findCustomerName({ __typename: 'Customer', name: '   ' }), null);
+  assert.equal(Modal.findCustomerName({ __typename: 'Customer', name: null }), null);
+  assert.equal(Modal.findCustomerName({ __typename: 'Customer', id: 7 }), null);
+});
+
+test('findCustomerName: entrada vacía o basura devuelve null', () => {
+  assert.equal(Modal.findCustomerName(null), null);
+  assert.equal(Modal.findCustomerName(undefined), null);
+  assert.equal(Modal.findCustomerName({}), null);
+  assert.equal(Modal.findCustomerName('texto'), null);
+  assert.equal(Modal.findCustomerName(42), null);
+});
+
+test('findCustomerName: no se cuelga con anidamiento profundo', () => {
+  // Tope de profundidad: más allá de 6 niveles deja de buscar en vez de
+  // recorrer respuestas gigantes en el hilo principal.
+  let deep = { __typename: 'Customer', name: 'MUY-PROFUNDO' };
+  for (let i = 0; i < 12; i++) deep = { wrap: deep };
+  assert.equal(Modal.findCustomerName(deep), null);
+});

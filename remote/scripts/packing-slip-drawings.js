@@ -38,6 +38,10 @@ const PackingSlipDrawings = (() => {
   const selected = new Map();   // filename → {filename, displayName, kind, url}
   let observerActive = false;
   let origFetch = null;
+  // Nombre del cliente visto en la última query del modal. Es el respaldo para
+  // cuando el modal NO se abre desde la lista de albaranes (p. ej. el módulo de
+  // Envío), donde no hay una tabla `#NNNN | Cliente` de dónde leerlo.
+  let lastCustomerName = null;
 
   // ── Reconocimiento del modal ────────────────────────────────────────────────
 
@@ -210,13 +214,16 @@ const PackingSlipDrawings = (() => {
   //
   // Se espera al contenido con un tope corto. Si nunca llega, se degrada igual
   // —el ámbar sigue siendo la respuesta correcta cuando el dato REALMENTE falta.
+  // Espera a poder IDENTIFICAR AL CLIENTE, que es lo que gobierna todo lo demás.
+  // Vale cualquiera de las dos vías: el número de remisión (que permite leer la
+  // fila correcta de la lista) o el nombre visto en las respuestas del modal.
   function waitForModalContent(dlg, tries = 20, delayMs = 250) {
     return new Promise((resolve) => {
       let n = 0;
       const tick = () => {
         if (!dlg.isConnected) return resolve(false);
         const ps = Modal().extractPackingSlipNumber(dlg.innerText || '');
-        if (ps) return resolve(true);
+        if ((ps && readCustomerNameFromList(ps)) || lastCustomerName) return resolve(true);
         if (++n >= tries) return resolve(false);
         setTimeout(tick, delayMs);
       };
@@ -239,10 +246,10 @@ const PackingSlipDrawings = (() => {
     );
 
     const psNumber = Modal().extractPackingSlipNumber(dlg.innerText || '');
-    const customerName = readCustomerNameFromList(psNumber);
+    const customerName = readCustomerNameFromList(psNumber) || lastCustomerName;
     const incluirPlanos = await resolveIncluirPlanos(customerName);
 
-    // `false` = el cliente NO quiere planos ⇒ el applet queda inerte, cero UI.
+    // `false` = el cliente NO quiere planos ⇒ el applet queda INERTE, cero UI.
     // Es lo correcto para 74 de los 81 clientes activos.
     if (incluirPlanos === false) {
       console.log(LOG, `"${customerName}" no pide planos; sin panel`);
@@ -258,13 +265,46 @@ const PackingSlipDrawings = (() => {
     if (cells[0]) tdLabel.className = cells[0].className;
     if (cells[1]) tdBody.className = cells[1].className;
     tdLabel.textContent = '📐 Planos';
-    tdBody.textContent = 'Buscando planos…';
     tr.appendChild(tdLabel);
     tr.appendChild(tdBody);
     row.parentElement.insertBefore(tr, row.nextSibling);
 
-    loadFilesFor(parts, tdBody, incluirPlanos);      // async: pinta cuando llega
+    // ⚠️ EL GATE MÁS IMPORTANTE DEL APPLET.
+    //
+    // Resolver los archivos cuesta DOS queries por número de parte. Una remisión
+    // real de Fisher trae 88 NP ⇒ 176 peticiones en ráfaga. El `/graphql` de SH
+    // se cuelga a las ~40 y el límite es POR SESIÓN: tumbaría también la pantalla
+    // nativa del operador. Disparar eso en CADA correo de remisión —cuando 80 de
+    // 81 clientes ni siquiera quieren planos— es castigar al ERP por nada.
+    //
+    // Así que sólo se carga automáticamente con un `true` CONFIRMADO. Con `null`
+    // («no pude verificar») se ofrece un botón y decide el operador: se conserva
+    // la salida de emergencia sin pagar el costo por defecto.
+    if (incluirPlanos === true) {
+      tdBody.textContent = 'Buscando planos…';
+      loadFilesFor(parts, tdBody, incluirPlanos);    // async: pinta cuando llega
+    } else {
+      renderUnverified(tdBody, parts, customerName);
+    }
     return true;
+  }
+
+  // Estado `null`: una sola línea discreta, sin cargar nada. El panel completo
+  // en TODOS los correos sería ruido para 80 de 81 clientes — y un aviso que
+  // casi siempre sobra es un aviso que el operador aprende a ignorar.
+  function renderUnverified(container, parts, customerName) {
+    const quien = customerName ? `«${escHtml(customerName)}»` : 'este cliente';
+    container.innerHTML =
+      `<span style="color:${AMBER}">No pude verificar si ${quien} pide planos.</span> ` +
+      `<button type="button" data-sa-buscar="1" style="margin-left:6px;padding:4px 10px;cursor:pointer">` +
+      `Buscar planos de ${parts.length} NP</button>`;
+    const btn = container.querySelector('button[data-sa-buscar]');
+    if (btn) {
+      btn.addEventListener('click', () => {
+        container.textContent = 'Buscando planos…';
+        loadFilesFor(parts, container, null);
+      });
+    }
   }
 
   // Pinta el plan. Estados que NO se confunden entre sí:
@@ -393,6 +433,9 @@ const PackingSlipDrawings = (() => {
 
   // ── Interceptor ─────────────────────────────────────────────────────────────
 
+  // Operaciones que dispara el modal al abrirse y que pueden traer al cliente.
+  const CUSTOMER_HINT_OPS = ['EmailCustomerContactsByCustomerIds', 'GetPackingSlip', 'PreviousEmailConfiguration'];
+
   function patchFetch() {
     if (window.__saPsDrawingsFetchPatched) return;
     window.__saPsDrawingsFetchPatched = true;
@@ -400,6 +443,23 @@ const PackingSlipDrawings = (() => {
 
     window.fetch = function (...args) {
       const [url, opts] = args;
+
+      // Escucha PASIVA para identificar al cliente. Va antes de las guardas del
+      // envío porque debe correr aunque no haya nada seleccionado.
+      if (typeof url === 'string' && url.indexOf('/graphql') >= 0
+          && opts && typeof opts.body === 'string'
+          && CUSTOMER_HINT_OPS.some((op) => opts.body.indexOf('"' + op + '"') >= 0)) {
+        const p = origFetch.apply(this, args);
+        p.then((resp) => {
+          try {
+            resp.clone().json().then((j) => {
+              const n = Modal().findCustomerName(j && j.data, 0);
+              if (n) { lastCustomerName = n; console.log(LOG, 'cliente identificado:', n); }
+            }).catch(() => {});
+          } catch (_) {}
+        }).catch(() => {});
+        return p;
+      }
       // Guardas BARATAS primero. El payload de SendEmailChecked pesa ~11.8 KB
       // (medido) y lleva el HTML completo del correo: hacer trabajo síncrono
       // sobre él congela la pestaña. Nada de regex globales; un solo parse, y
@@ -413,6 +473,11 @@ const PackingSlipDrawings = (() => {
       try { bodyObj = JSON.parse(opts.body); } catch (_) { return origFetch.apply(this, args); }
       const opName = bodyObj && bodyObj.operationName;
       if (!opName || SEND_OPS.indexOf(opName) < 0) return origFetch.apply(this, args);
+      // Última red: si el envío trae customerId y no habíamos resuelto nada, al
+      // menos queda en el log para diagnosticar por qué falló la identificación.
+      if (!lastCustomerName && bodyObj.variables && bodyObj.variables.customerId != null) {
+        console.log(LOG, 'customerId del envío (sin resolver antes):', bodyObj.variables.customerId);
+      }
 
       try {
         const extra = Core().toAttachments(Array.from(selected.values()));
@@ -439,7 +504,11 @@ const PackingSlipDrawings = (() => {
     observerActive = true;
     const obs = new MutationObserver(() => {
       const dlg = document.querySelector('.MuiDialog-paper, [role="dialog"]');
-      if (!dlg) { currentPlan = null; selected.clear(); return; }
+      // Al cerrarse el modal se limpia TODO, incluido el cliente identificado.
+      // Si sobreviviera, el próximo modal decidiría con el dueño anterior — el
+      // clásico nodo stale, sólo que en una variable: la mentira se refresca
+      // sola y encima parece coherente.
+      if (!dlg) { currentPlan = null; selected.clear(); lastCustomerName = null; return; }
       // El guard rechaza '1' Y 'pending': `mountPanel` es async, así que entre el
       // disparo del observer y su `.then()` caben varias mutaciones más. Mirar
       // sólo '1' dejaba montar el panel DOS veces (visto en producción, v0.1.0).
