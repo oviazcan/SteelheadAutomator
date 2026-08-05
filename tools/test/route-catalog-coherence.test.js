@@ -36,6 +36,19 @@ const EXPECTED = {
   // el home dejó de dispararla el 2026-07-22 y solo se capturaba de REBOTE por el paso 0 de
   // maintenance-sensordashboards-detail (misma lista, sink compartido). Ahora vive SOLO aquí.
   AllSensorDashboards: 'sensordashboards-list',
+  // Nivel B 2026-08-05 (rotación masiva de SH: 21 hashes stale). Las 3 rutas que
+  // declaraban estas ops NUNCA las capturaron —0 aciertos en el log histórico— y nadie
+  // lo notó porque solo se ejercitan cuando la op rota. Cada una por un motivo distinto:
+  //  · GetMaintenanceEvent: hrefMatches '/Maintenance/\\d+' no puede matchear
+  //    '/Maintenance/Events/\\d+' (id tras la SUB-ENTIDAD, como purchasing-po-detail).
+  //  · inventario: la ficha del TIPO está dos niveles arriba del lote (tipo→item→batch).
+  //  · WorkboardById: la lista no rinde <a> de detalle; los tableros viven en carpetas
+  //    colapsadas y hay que expandir una primero.
+  GetMaintenanceEvent: 'maintenance-events-detail',
+  GetInventoryBatch: 'inventory-item-batch-detail',
+  GetInventoryItem: 'inventory-item-batch-detail',
+  SearchInventoryItemBatches: 'inventory-item-batch-detail',
+  WorkboardById: 'workboards-folder-detail',
 };
 
 test('cada op manual está SOLO en su ruta dedicada (no en rutas de pathname)', () => {
@@ -45,7 +58,7 @@ test('cada op manual está SOLO en su ruta dedicada (no en rutas de pathname)', 
   }
 });
 
-test('_interactionOps + _manualRouteOps cubren exactamente las 17 ops manuales', () => {
+test('_interactionOps + _manualRouteOps cubren exactamente las 22 ops manuales', () => {
   const manual = new Set([...(cat._interactionOps || []), ...(cat._manualRouteOps || [])]);
   assert.deepEqual([...manual].sort(), Object.keys(EXPECTED).sort());
 });
@@ -96,6 +109,51 @@ test('ruta FilterSearch: abre un filtro de columna de Work Orders (clic estructu
   assert.match(r.steps[1].clickFirst, /ArrowDropDownIcon/);
   assert.match(r.steps[1].clickFirst, /:not\(\.MuiSelect-icon\)/);
   assert.deepEqual(r.captures, ['FilterSearch']);
+});
+
+// ── Nivel B 2026-08-05 ────────────────────────────────────────────────────────────
+// Trinquetes de las 3 recetas re-descubiertas. Cada assert fija el detalle EXACTO que
+// las hacía fallar: sin ellos, un rebuild o un "simplificado" los pierde en silencio y
+// la op vuelve a no capturarse hasta la próxima rotación (que es cuando duele).
+test('ruta GetMaintenanceEvent: lista /Events + id tras la SUB-ENTIDAD', () => {
+  const r = cat.routes['maintenance-events-detail'];
+  assert.equal(r.steps[0].goto, '/Domains/{domain}/Maintenance/Events');
+  // el id va tras Events, no tras el module Maintenance (ese era el bug)
+  assert.equal(r.steps[1].hrefMatches, '/Maintenance/Events/\\d+');
+  assert.deepEqual(r.captures, ['GetMaintenanceEvent']);
+});
+
+test('ruta de lote de inventario: cadena tipo→item→batch con hrefMatches anclados al final', () => {
+  const r = cat.routes['inventory-item-batch-detail'];
+  assert.equal(r.steps[0].goto, '/InventoryTypes');
+  // El '$' evita que el paso del TIPO reclique un href de /Items/ ya presente en su ficha.
+  assert.equal(r.steps[1].hrefMatches, '/InventoryTypes/\\d+$');
+  assert.equal(r.steps[2].hrefMatches, '/InventoryTypes/\\d+/Items/\\d+$');
+  assert.equal(r.steps[3].hrefMatches, '/Items/\\d+/Batches/\\d+');
+  assert.deepEqual(r.captures, ['GetInventoryBatch', 'GetInventoryItem', 'SearchInventoryItemBatches']);
+});
+
+test('ruta WorkboardById: expande carpeta (once) y EXCLUYE el breadcrumb antes de clicar el tablero', () => {
+  const r = cat.routes['workboards-folder-detail'];
+  assert.equal(r.steps[0].goto, '/Domains/{domain}/Workboards');
+  // sin los :not(), el selector toma el breadcrumb y navega al home — medido en vivo
+  assert.match(r.steps[1].clickFirst, /:not\(nav span\)/);
+  assert.match(r.steps[1].clickFirst, /:not\(\.MuiBreadcrumbs-root span\)/);
+  assert.equal(r.steps[1].once, true); // expandir es setup: re-clicar la colapsaría
+  assert.equal(r.steps[2].hrefMatches, '/Workboards/\\d+');
+  assert.deepEqual(r.captures, ['WorkboardById']);
+});
+
+test('las rutas re-descubiertas usan ids que build-catalog NO auto-genera', () => {
+  // generateCatalog solo produce `<module>-list` y `<module>-detail`; si estas rutas
+  // se llamaran así, un rebuild SOBRESCRIBIRÍA sus steps (mergedRoutes[id] = {...route}).
+  for (const id of ['maintenance-events-detail', 'inventory-item-batch-detail', 'workboards-folder-detail']) {
+    assert.ok(cat.routes[id], `falta la ruta ${id}`);
+    assert.equal(cat.routes[id].curated, true, `${id} debe ir marcada curated`);
+    const mod = cat.routes[id].module.toLowerCase();
+    assert.notEqual(id, `${mod}-detail`);
+    assert.notEqual(id, `${mod}-list`);
+  }
 });
 
 test('ruta SearchPartNumbers: modal Agregar Filtro (setup once) + typeInto captura', () => {

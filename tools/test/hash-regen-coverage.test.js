@@ -36,7 +36,15 @@ function opsCubiertas() {
 
 // Línea base del trinquete: hashes sin ruta al 2026-07-27. Si BAJA, actualízala en el
 // mismo commit que salda la deuda — así el número solo puede ir hacia abajo.
-const HUERFANAS_BASE = 59;
+// 2026-08-05 (Nivel B, rotación masiva): 59→58 al darle ruta a GetPartNumber.
+//
+// OJO con lo que este número mide: DECLARACIÓN, no captura. Ese mismo día se
+// re-descubrieron 4 recetas más (GetMaintenanceEvent, GetInventoryBatch,
+// SearchInventoryItemBatches, WorkboardById) que llevaban meses declaradas en rutas
+// que NUNCA las capturaron —0 aciertos en el log histórico— y aquí contaban como
+// cubiertas. La deuda REAL era 63. Un `captures` que nadie verifica contra el log es
+// la misma mentira silenciosa que documenta ESCALATION.md § 2026-07-28.
+const HUERFANAS_BASE = 58;
 
 test('las ops del ruteo por grupos tienen ruta de regeneración', () => {
   const cubiertas = opsCubiertas();

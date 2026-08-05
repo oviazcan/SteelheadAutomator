@@ -22,144 +22,18 @@
     "GetPartNumberInventoryBatch",
     "GetInsightsReportDetails",
     "GetInsightsReportColumnConfigs",
-    "AllSensorDashboards"
+    "AllSensorDashboards",
+    "GetMaintenanceEvent",
+    "GetInventoryBatch",
+    "GetInventoryItem",
+    "SearchInventoryItemBatches",
+    "WorkboardById"
   ],
   "_docInsightsRoute": "Ruta reporting-insights-detail (re-descubierta por el Nivel B, 2026-07-22): los INSIGHTS de /Reporting/View son reportes prefabricados de Steelhead, agrupados por categoría (Sales & Finance, Production, Supply Chain, Quality Management, Shipping & Receiving, Other) dentro del acordeón INSIGHTS del sidebar. Abrir uno navega a /Reporting/View?id=<INSIGHT_ID>&type=insight y dispara GetInsightsReportDetails + GetInsightsReportColumnConfigs. El deep-link CON query params SÍ hidrata headless (validado: ambas ops con responseOk), así que la receta es UN solo goto. Las ops van en _manualRouteOps porque la ruta auto-generada por pathname sería /Reporting/View SIN params y no las dispara. NOTA: sus hashes NO viven en remote/config.json sino en Reportes SH (steelhead_client.py) → planDeploy las marca 'external' y NO las auto-deploya (evita bump+push sin cambio real en cada corrida).",
   "_docManualRoute": "Ops de DETALLE cuya ruta auto-generada apuntaba MAL (hrefMatches por module, no por sub-entidad: /Purchasing/PurchaseOrders/<id> NO matchea /Purchasing/\\d+; y colision de routeId Maintenance/Nodes vs Maintenance/SensorDashboards). Rutas manuales validadas headless 2026-07-14. El generador las excluye del auto-agrupamiento (union con _interactionOps).",
   "_docAllSensorDashboards": "AllSensorDashboards (Nivel B 2026-07-28): la op vivia en TRES rutas — home-list (goto /), sensor-dashboards (goto /Dashboards + clic) y sensordashboards-list (goto /Domains/{domain}/SensorDashboards). El set-cover greedy elegia home-list (cubria 2 ops pendientes: AllSensorDashboards + CurrentUser) y las otras dos NUNCA corrian. Medido en el log del launchd: el home DEJO de dispararla el 2026-07-22 (0/41 ese dia y 0 en las ~126 corridas siguientes; antes iba 26/35). Desde entonces solo se capturaba de REBOTE, porque el paso 0 de maintenance-sensordashboards-detail visita la misma lista y el sink es COMPARTIDO entre rutas — asi que salia 'vigente' cada dia por una ruta que no era la suya. El 2026-07-28 esa ruta fallo por un blip de red y AllSensorDashboards cayo con ella, destapando el acoplamiento. Ahora la op vive SOLO en sensordashboards-list (goto directo, verificado headless 2/2 el 2026-07-28) y esta en _manualRouteOps para que build-catalog.mjs no la reagrupe en Home desde un scan viejo. Leccion: una captura declarada en una ruta que NO la dispara no falla — la absorbe otra ruta y el catalogo miente en silencio.",
   "_docInvoiceSafety": "SEGURIDAD (ruta invoices-packingslips-addinvoice): clica 'Add Invoice' (aria-label, icono NoteAddIcon) de un packing slip → abre el modal de facturación que dispara GetReceivedOrdersWithReceivedOrderLineItems (query de LECTURA). Usa clickFirst por SELECTOR aria-label, no clickButton por texto. NUNCA extender a clicar 'Crear Factura' (DescriptionOutlinedIcon) ni ningún submit — CREARÍA una factura real. La receta solo abre el modal; el navegador se cierra sin guardar. Validada headless 2026-07-15, cero escrituras confirmado.",
   "routes": {
-    "reporting-insights-detail": {
-      "type": "query",
-      "module": "Reporting",
-      "steps": [
-        {
-          "goto": "/Reporting/View?id=ALL_INVOICES&type=insight"
-        }
-      ],
-      "captures": [
-        "GetInsightsReportColumnConfigs",
-        "GetInsightsReportDetails"
-      ],
-      "curated": true
-    },
-    "workorders-filter-open": {
-      "type": "query",
-      "module": "WorkOrders",
-      "steps": [
-        {
-          "goto": "/Domains/{domain}/WorkOrders"
-        },
-        {
-          "clickFirst": "div:has(> svg[data-testid=\"ArrowDropDownIcon\"]:not(.MuiSelect-icon))"
-        }
-      ],
-      "captures": [
-        "FilterSearch"
-      ],
-      "curated": true,
-      "_nota": "FilterSearch (usedBy spec-migrator, batch-name-filter) dispara al ABRIR un filtro de columna de la lista de Work Orders — el frontend hace tableFilterSearch con searchQuery vacío para poblar opciones (confirmado por el operador 2026-07-24: clic en el filtro 'Cliente' la dispara SIN teclear). Los filtros son <div> inline-block con texto + svg[data-testid=ArrowDropDownIcon] hijo directo; ':not(.MuiSelect-icon)' excluye los MuiSelect del resto de la UI (headless en INGLÉS → anclaje ESTRUCTURAL, no por texto/idioma). clickFirst clica el primero (='Cliente') → captura en el clic. Va en _interactionOps para que build-catalog NO la reagrupe bajo workorders-list (goto solo, que NO la dispara)."
-    },
-    "uploadedfiles-pn-filter": {
-      "type": "query",
-      "module": "UploadedFiles",
-      "steps": [
-        {
-          "goto": "/Domains/{domain}/UploadedFiles"
-        },
-        {
-          "clickFirst": "button:has(svg[data-testid=\"FilterListIcon\"])",
-          "once": true
-        },
-        {
-          "clickFirst": "[role=\"dialog\"] div[role=\"button\"][aria-haspopup=\"listbox\"]",
-          "once": true
-        },
-        {
-          "clickFirst": "li[role=\"option\"][data-value=\"partNumberId\"]",
-          "once": true
-        },
-        {
-          "typeInto": "[role=\"dialog\"] input.MuiInputBase-inputAdornedStart",
-          "text": "10"
-        }
-      ],
-      "captures": [
-        "SearchPartNumbers"
-      ],
-      "curated": true,
-      "_nota": "SearchPartNumbers (usedBy file-uploader, po-reconciler) dispara al TECLEAR en el modal 'Agregar Filtro' de /UploadedFiles con la categoría 'Número de Parte' (confirmado por el operador 2026-07-24). Flujo: clic botón 'Filtrar Archivos' (svg[data-testid=FilterListIcon] — anclaje ESTRUCTURAL, headless en inglés) → modal → abre el combobox de categoría (div[role=button][aria-haspopup=listbox]) → elige la opción data-value='partNumberId' (VALOR estable, no idioma; la opción vive en un portal MUI a nivel body, por eso su selector NO lleva prefijo [role=dialog]) → teclea en el input adornado con SearchIcon → search-as-you-type dispara SearchPartNumbers. Los 3 clics de setup usan once:true (clic único, sin re-clic — evita cerrar el menú/modal); el typeInto es el paso que captura. LECTURA pura: solo busca, no agrega el filtro (no se clica ningún submit)."
-    },
-    "maintenance-sensordashboards-detail": {
-      "type": "query",
-      "module": "Maintenance",
-      "steps": [
-        {
-          "goto": "/Domains/{domain}/SensorDashboards"
-        },
-        {
-          "clickFirst": "a[href*='ensorDashboard']",
-          "hrefMatches": "ensorDashboards?/\\d+"
-        }
-      ],
-      "captures": [
-        "SensorDashboardQuery"
-      ]
-    },
-    "purchasing-po-detail": {
-      "type": "query",
-      "module": "Purchasing",
-      "steps": [
-        {
-          "goto": "/Domains/{domain}/Purchasing/PurchaseOrders"
-        },
-        {
-          "clickFirst": "a[href*='/Purchasing/']",
-          "hrefMatches": "/Purchasing/PurchaseOrders/\\d+"
-        }
-      ],
-      "captures": [
-        "GetPurchaseOrderDetail"
-      ]
-    },
-    "salesorders-ro-edit": {
-      "type": "query",
-      "module": "SalesOrders",
-      "steps": [
-        {
-          "goto": "/Domains/{domain}/SalesOrders"
-        },
-        {
-          "clickFirst": "a[href*='/SalesOrders/']",
-          "hrefMatches": "/SalesOrders/\\d+"
-        },
-        {
-          "clickButton": "edit sales order|editar orden de venta"
-        }
-      ],
-      "captures": [
-        "CreateEditReceivedOrderDialogQuery"
-      ]
-    },
-    "salesorders-ro-addparts": {
-      "type": "query",
-      "module": "SalesOrders",
-      "steps": [
-        {
-          "goto": "/Domains/{domain}/SalesOrders"
-        },
-        {
-          "clickFirst": "a[href*='/SalesOrders/']",
-          "hrefMatches": "/SalesOrders/\\d+"
-        },
-        {
-          "clickButton": "add parts \\(table\\)|agregar piezas \\(tabla\\)"
-        }
-      ],
-      "captures": [
-        "GetAddPartsReceivedOrder"
-      ]
-    },
     "account-list": {
       "type": "query",
       "module": "Account",
@@ -371,6 +245,46 @@
         "WorkOrderDirectSearch"
       ]
     },
+    "inventory-input-schema": {
+      "type": "query",
+      "module": "InventoryTypes",
+      "steps": [
+        {
+          "goto": "/InventoryTypes/InventoryItemInputSchema"
+        }
+      ],
+      "captures": [
+        "GetInventoryInputSchema"
+      ]
+    },
+    "inventory-item-batch-detail": {
+      "type": "query",
+      "module": "InventoryTypes",
+      "steps": [
+        {
+          "goto": "/InventoryTypes"
+        },
+        {
+          "clickFirst": "a[href*='/InventoryTypes/']",
+          "hrefMatches": "/InventoryTypes/\\d+$"
+        },
+        {
+          "clickFirst": "a[href*='/Items/']",
+          "hrefMatches": "/InventoryTypes/\\d+/Items/\\d+$"
+        },
+        {
+          "clickFirst": "a[href*='/Batches/']",
+          "hrefMatches": "/Items/\\d+/Batches/\\d+"
+        }
+      ],
+      "captures": [
+        "GetInventoryBatch",
+        "GetInventoryItem",
+        "SearchInventoryItemBatches"
+      ],
+      "curated": true,
+      "_nota": "Nivel B 2026-08-05. inventorytypes-detail se quedaba en la ficha del TIPO, dos niveles arriba del lote: estas 3 ops estaban declaradas ahí y nunca se capturaron. La cadena real es tipo → ITEM (/InventoryTypes/<t>/Items/<i>) → LOTE (…/Batches/<b>). El '$' en los hrefMatches importa: sin él el paso 2 puede reclicar un href de Items desde la ficha del tipo. Validada headless 2026-08-05 (tipo 2191 → item 1000625 → lote 1471746): GetInventoryBatch 90642f00→64fc03ed y SearchInventoryItemBatches ae246646→5460456a con responseOk; GetInventoryItem salió vigente."
+    },
     "inventorymanagement-list": {
       "type": "query",
       "module": "InventoryManagement",
@@ -406,9 +320,7 @@
         "CurrentUserActiveSegments",
         "CurrentUserDetails",
         "GetBlanketPoContractsForInventory",
-        "GetInventoryBatch",
         "GetInventoryBatchSpecsForInput",
-        "GetInventoryItem",
         "GetInventoryType",
         "GetPaginatedChatChannels",
         "GetPdfTemplates",
@@ -420,7 +332,6 @@
         "InventoryItemSpecsSummary",
         "MissedManagedAlerts",
         "MyNotificationPreferences",
-        "SearchInventoryItemBatches",
         "SearchInventoryTypeItems",
         "SearchMaterials",
         "SearchTaxCodes",
@@ -463,124 +374,6 @@
         "InvoiceByIdInDomain",
         "RouteInvoices",
         "UIGetIntegrationObject"
-      ]
-    },
-    "inventory-input-schema": {
-      "type": "query",
-      "module": "InventoryTypes",
-      "steps": [
-        {
-          "goto": "/InventoryTypes/InventoryItemInputSchema"
-        }
-      ],
-      "captures": [
-        "GetInventoryInputSchema"
-      ]
-    },
-    "receiving-customerparts-status": {
-      "type": "query",
-      "module": "Receiving",
-      "steps": [
-        {
-          "goto": "/Receiving/CustomerParts"
-        },
-        {
-          "clickFirst": "div.css-1owv9dy:has(svg[data-testid=\"KeyboardArrowDownIcon\"])"
-        }
-      ],
-      "captures": [
-        "AllInventoryBatchStatuses"
-      ]
-    },
-    "receiving-batch-detail": {
-      "type": "query",
-      "module": "Receiving",
-      "steps": [
-        {
-          "goto": "/Receiving/Receivers"
-        },
-        {
-          "clickFirst": "a[href*='/Inventory/Batches/']",
-          "hrefMatches": "/Inventory/Batches/\\d+"
-        }
-      ],
-      "captures": [
-        "GetPartNumberInventoryBatch"
-      ]
-    },
-    "maintenance-event-complete-step": {
-      "type": "query",
-      "module": "Maintenance",
-      "steps": [
-        {
-          "goto": "/Domains/{domain}/Maintenance/Events"
-        },
-        {
-          "clickFirst": "a[href*='/Maintenance/Events/']",
-          "hrefMatches": "/Maintenance/Events/\\d+"
-        },
-        {
-          "clickButton": "complete step"
-        }
-      ],
-      "captures": [
-        "OperatorMaintenanceNodeDialogQuery"
-      ]
-    },
-    "partnumber-units-definenew": {
-      "type": "query",
-      "module": "PartNumbers",
-      "steps": [
-        {
-          "goto": "/PartNumbers"
-        },
-        {
-          "goto": "/PartNumbers/3770957"
-        },
-        {
-          "clickButton": "define new|definir"
-        }
-      ],
-      "captures": [
-        "GetAvailableUnits"
-      ]
-    },
-    "partnumber-add-spec": {
-      "type": "query",
-      "module": "PartNumbers",
-      "steps": [
-        {
-          "goto": "/PartNumbers"
-        },
-        {
-          "goto": "/PartNumbers/3770957"
-        },
-        {
-          "clickButton": "add spec|agregar especificación|agregar spec"
-        },
-        {
-          "selectFirstOption": "[role=\"dialog\"] input[role=\"combobox\"]"
-        }
-      ],
-      "captures": [
-        "SearchSpecsForSelect",
-        "SpecFieldsAndOptions"
-      ],
-      "_nota": "NP Centinela 3770957 (nombre 'Centinela', domain 344/TLC), modal 'Agregar Especificación'. Dispara DOS ops de LECTURA: SearchSpecsForSelect al ABRIR el combobox 'Especificación' (verificado en vivo 2026-07-21: 2 disparos al abrir, pobló 7 opciones, hash f793b566), y SpecFieldsAndOptions al elegir la 1a opción. selectFirstOption NO clica 'Agregar Especificación' → NO agrega la spec al NP (lectura pura). SearchSpecsForSelect se movió aquí desde processes-detail, que dejó de dispararla (needs-attention 2026-07-20)."
-    },
-    "invoices-packingslips-addinvoice": {
-      "type": "query",
-      "module": "Invoices",
-      "steps": [
-        {
-          "goto": "/Domains/{domain}/Invoices?mode=PackingSlips&roOffset=0"
-        },
-        {
-          "clickFirst": "span[aria-label=\"Add Invoice\"] button"
-        }
-      ],
-      "captures": [
-        "GetReceivedOrdersWithReceivedOrderLineItems"
       ]
     },
     "invoices-list": {
@@ -634,6 +427,21 @@
         "UserEmailSettings"
       ]
     },
+    "invoices-packingslips-addinvoice": {
+      "type": "query",
+      "module": "Invoices",
+      "steps": [
+        {
+          "goto": "/Domains/{domain}/Invoices?mode=PackingSlips&roOffset=0"
+        },
+        {
+          "clickFirst": "span[aria-label=\"Add Invoice\"] button"
+        }
+      ],
+      "captures": [
+        "GetReceivedOrdersWithReceivedOrderLineItems"
+      ]
+    },
     "maintenance-detail": {
       "type": "query",
       "module": "Maintenance",
@@ -649,7 +457,6 @@
       "captures": [
         "EquipmentNeedingMaintenance",
         "GetEquipment",
-        "GetMaintenanceEvent",
         "GetMaintenanceNode",
         "GetMaintenancePlan",
         "GetNextMaintenanceNodes",
@@ -658,6 +465,43 @@
         "SearchInventoryItems",
         "SearchSensors"
       ]
+    },
+    "maintenance-event-complete-step": {
+      "type": "query",
+      "module": "Maintenance",
+      "steps": [
+        {
+          "goto": "/Domains/{domain}/Maintenance/Events"
+        },
+        {
+          "clickFirst": "a[href*='/Maintenance/Events/']",
+          "hrefMatches": "/Maintenance/Events/\\d+"
+        },
+        {
+          "clickButton": "complete step"
+        }
+      ],
+      "captures": [
+        "OperatorMaintenanceNodeDialogQuery"
+      ]
+    },
+    "maintenance-events-detail": {
+      "type": "query",
+      "module": "Maintenance",
+      "steps": [
+        {
+          "goto": "/Domains/{domain}/Maintenance/Events"
+        },
+        {
+          "clickFirst": "a[href*='/Maintenance/Events/']",
+          "hrefMatches": "/Maintenance/Events/\\d+"
+        }
+      ],
+      "captures": [
+        "GetMaintenanceEvent"
+      ],
+      "curated": true,
+      "_nota": "Nivel B 2026-08-05. maintenance-detail declaraba esta op pero su hrefMatches '/Maintenance/\\\\d+' NO puede matchear '/Maintenance/Events/\\\\d+' — nunca la capturó (0 de 8 corridas en el log histórico); se destapó al rotar SH masivamente. La lista correcta es /Maintenance/Events (20 anclas medidas) y el detalle /Maintenance/Events/<id>. Validada headless 2026-08-05 sobre el evento 20115: capturó be2a9864→e11794a2 con responseOk. Mismo modo de falla que purchasing-po-detail (id tras la SUB-ENTIDAD, no tras el module)."
     },
     "maintenance-list": {
       "type": "query",
@@ -679,6 +523,63 @@
         "TopLevelMaintenanceNodes"
       ]
     },
+    "maintenance-sensordashboards-detail": {
+      "type": "query",
+      "module": "Maintenance",
+      "steps": [
+        {
+          "goto": "/Domains/{domain}/SensorDashboards"
+        },
+        {
+          "clickFirst": "a[href*='ensorDashboard']",
+          "hrefMatches": "ensorDashboards?/\\d+"
+        }
+      ],
+      "captures": [
+        "SensorDashboardQuery"
+      ]
+    },
+    "partnumber-add-spec": {
+      "type": "query",
+      "module": "PartNumbers",
+      "steps": [
+        {
+          "goto": "/PartNumbers"
+        },
+        {
+          "goto": "/PartNumbers/3770957"
+        },
+        {
+          "clickButton": "add spec|agregar especificación|agregar spec"
+        },
+        {
+          "selectFirstOption": "[role=\"dialog\"] input[role=\"combobox\"]"
+        }
+      ],
+      "captures": [
+        "SearchSpecsForSelect",
+        "SpecFieldsAndOptions"
+      ],
+      "_nota": "NP Centinela 3770957 (nombre 'Centinela', domain 344/TLC), modal 'Agregar Especificación'. Dispara DOS ops de LECTURA: SearchSpecsForSelect al ABRIR el combobox 'Especificación' (verificado en vivo 2026-07-21: 2 disparos al abrir, pobló 7 opciones, hash f793b566), y SpecFieldsAndOptions al elegir la 1a opción. selectFirstOption NO clica 'Agregar Especificación' → NO agrega la spec al NP (lectura pura). SearchSpecsForSelect se movió aquí desde processes-detail, que dejó de dispararla (needs-attention 2026-07-20)."
+    },
+    "partnumber-units-definenew": {
+      "type": "query",
+      "module": "PartNumbers",
+      "steps": [
+        {
+          "goto": "/PartNumbers"
+        },
+        {
+          "goto": "/PartNumbers/3770957"
+        },
+        {
+          "clickButton": "define new|definir"
+        }
+      ],
+      "captures": [
+        "GetAvailableUnits"
+      ]
+    },
     "partnumbers-detail": {
       "type": "query",
       "module": "PartNumbers",
@@ -692,6 +593,7 @@
         }
       ],
       "captures": [
+        "GetPartNumber",
         "GetPartNumberForPartNumberPage"
       ]
     },
@@ -800,6 +702,22 @@
         "PurchaseOrders"
       ]
     },
+    "purchasing-po-detail": {
+      "type": "query",
+      "module": "Purchasing",
+      "steps": [
+        {
+          "goto": "/Domains/{domain}/Purchasing/PurchaseOrders"
+        },
+        {
+          "clickFirst": "a[href*='/Purchasing/']",
+          "hrefMatches": "/Purchasing/PurchaseOrders/\\d+"
+        }
+      ],
+      "captures": [
+        "GetPurchaseOrderDetail"
+      ]
+    },
     "quotes-detail": {
       "type": "query",
       "module": "Quotes",
@@ -881,6 +799,37 @@
         "UsersBilledSegmentsRackTreeDataQuery"
       ]
     },
+    "receiving-batch-detail": {
+      "type": "query",
+      "module": "Receiving",
+      "steps": [
+        {
+          "goto": "/Receiving/Receivers"
+        },
+        {
+          "clickFirst": "a[href*='/Inventory/Batches/']",
+          "hrefMatches": "/Inventory/Batches/\\d+"
+        }
+      ],
+      "captures": [
+        "GetPartNumberInventoryBatch"
+      ]
+    },
+    "receiving-customerparts-status": {
+      "type": "query",
+      "module": "Receiving",
+      "steps": [
+        {
+          "goto": "/Receiving/CustomerParts"
+        },
+        {
+          "clickFirst": "div.css-1owv9dy:has(svg[data-testid=\"KeyboardArrowDownIcon\"])"
+        }
+      ],
+      "captures": [
+        "AllInventoryBatchStatuses"
+      ]
+    },
     "receiving-detail": {
       "type": "query",
       "module": "Receiving",
@@ -946,6 +895,20 @@
       ],
       "captures": [
         "AllReceivers"
+      ],
+      "curated": true
+    },
+    "reporting-insights-detail": {
+      "type": "query",
+      "module": "Reporting",
+      "steps": [
+        {
+          "goto": "/Reporting/View?id=ALL_INVOICES&type=insight"
+        }
+      ],
+      "captures": [
+        "GetInsightsReportColumnConfigs",
+        "GetInsightsReportDetails"
       ],
       "curated": true
     },
@@ -1056,6 +1019,44 @@
         "CurrentUserDetails",
         "DomainCustomerPortalTerms",
         "GetFilterData"
+      ]
+    },
+    "salesorders-ro-addparts": {
+      "type": "query",
+      "module": "SalesOrders",
+      "steps": [
+        {
+          "goto": "/Domains/{domain}/SalesOrders"
+        },
+        {
+          "clickFirst": "a[href*='/SalesOrders/']",
+          "hrefMatches": "/SalesOrders/\\d+"
+        },
+        {
+          "clickButton": "add parts \\(table\\)|agregar piezas \\(tabla\\)"
+        }
+      ],
+      "captures": [
+        "GetAddPartsReceivedOrder"
+      ]
+    },
+    "salesorders-ro-edit": {
+      "type": "query",
+      "module": "SalesOrders",
+      "steps": [
+        {
+          "goto": "/Domains/{domain}/SalesOrders"
+        },
+        {
+          "clickFirst": "a[href*='/SalesOrders/']",
+          "hrefMatches": "/SalesOrders/\\d+"
+        },
+        {
+          "clickButton": "edit sales order|editar orden de venta"
+        }
+      ],
+      "captures": [
+        "CreateEditReceivedOrderDialogQuery"
       ]
     },
     "schedules-detail": {
@@ -1335,6 +1336,36 @@
         "UsersToInvite"
       ]
     },
+    "uploadedfiles-pn-filter": {
+      "type": "query",
+      "module": "UploadedFiles",
+      "steps": [
+        {
+          "goto": "/Domains/{domain}/UploadedFiles"
+        },
+        {
+          "clickFirst": "button:has(svg[data-testid=\"FilterListIcon\"])",
+          "once": true
+        },
+        {
+          "clickFirst": "[role=\"dialog\"] div[role=\"button\"][aria-haspopup=\"listbox\"]",
+          "once": true
+        },
+        {
+          "clickFirst": "li[role=\"option\"][data-value=\"partNumberId\"]",
+          "once": true
+        },
+        {
+          "typeInto": "[role=\"dialog\"] input.MuiInputBase-inputAdornedStart",
+          "text": "10"
+        }
+      ],
+      "captures": [
+        "SearchPartNumbers"
+      ],
+      "curated": true,
+      "_nota": "SearchPartNumbers (usedBy file-uploader, po-reconciler) dispara al TECLEAR en el modal 'Agregar Filtro' de /UploadedFiles con la categoría 'Número de Parte' (confirmado por el operador 2026-07-24). Flujo: clic botón 'Filtrar Archivos' (svg[data-testid=FilterListIcon] — anclaje ESTRUCTURAL, headless en inglés) → modal → abre el combobox de categoría (div[role=button][aria-haspopup=listbox]) → elige la opción data-value='partNumberId' (VALOR estable, no idioma; la opción vive en un portal MUI a nivel body, por eso su selector NO lleva prefijo [role=dialog]) → teclea en el input adornado con SearchIcon → search-as-you-type dispara SearchPartNumbers. Los 3 clics de setup usan once:true (clic único, sin re-clic — evita cerrar el menú/modal); el typeInto es el paso que captura. LECTURA pura: solo busca, no agrega el filtro (no se clica ningún submit)."
+    },
     "users-detail": {
       "type": "query",
       "module": "Users",
@@ -1420,9 +1451,30 @@
         "GetWorkOrderDataWorkboard",
         "GetWorkboardSensors",
         "RouteWorkboards",
-        "WorkboardById",
         "WorkboardsOrdered"
       ]
+    },
+    "workboards-folder-detail": {
+      "type": "query",
+      "module": "Workboards",
+      "steps": [
+        {
+          "goto": "/Domains/{domain}/Workboards"
+        },
+        {
+          "clickFirst": "main span[aria-label]:not(nav span):not(.MuiBreadcrumbs-root span)",
+          "once": true
+        },
+        {
+          "clickFirst": "a[href*='/Workboards/']",
+          "hrefMatches": "/Workboards/\\d+"
+        }
+      ],
+      "captures": [
+        "WorkboardById"
+      ],
+      "curated": true,
+      "_nota": "Nivel B 2026-08-05. La lista de Workboards NO rinde <a> de detalle: los tableros viven dentro de CARPETAS COLAPSADAS (medido: 0 anclas /Workboards/<id> y rows=0 al cargar; al expandir una carpeta aparecen 10). Por eso workboards-detail nunca capturó esta op. El único gancho de la carpeta es <span aria-label='<nombre>'> — puras clases emotion css-* alrededor, prohibidas por CLAUDE.md §4. El :not() NO es decorativo: 'main span[aria-label]' a secas toma el BREADCRUMB y navega al home (medido — el ancla laxa no falla, acierta el elemento equivocado). No se ancla al nombre de la carpeta porque es dato del cliente, no estructura. Validada headless 2026-08-05: expandió la 1a carpeta y capturó 68b7ca4c→646200a9 en /Workboards/10922 con responseOk."
     },
     "workboards-list": {
       "type": "query",
@@ -1436,6 +1488,25 @@
         "AllWorkboardFolders",
         "AllWorkboards"
       ]
+    },
+    "workorder-edit-specs": {
+      "type": "query",
+      "module": "WorkOrders",
+      "steps": [
+        {
+          "goto": "/Domains/{domain}/WorkOrders/11677"
+        },
+        {
+          "clickFirst": "[data-steelhead-component-id=\"WORK_ORDER_PAGE_PARTS_EDIT_SPECS_BUTTON\"] button, button[data-steelhead-component-id=\"WORK_ORDER_PAGE_PARTS_EDIT_SPECS_BUTTON\"]"
+        }
+      ],
+      "captures": [
+        "GetPartNumberWorkOrderSpecsInfo",
+        "GetSpecFieldParamDropdownsAndOptions",
+        "ClassificationsOnSpec"
+      ],
+      "curated": true,
+      "_nota": "GetPartNumberWorkOrderSpecsInfo se dispara al abrir \"Editar Especificaciones\" en la ficha de una OT (breadcrumb button:Editar Especificaciones, scan 2026-07-28 sobre la OT 5769). Ancla ESTRUCTURAL por data-steelhead-component-id=\"WORK_ORDER_PAGE_PARTS_EDIT_SPECS_BUTTON\", verificada en vivo el 2026-07-28: el cid vive en el WRAPPER y el <button> es su hijo, por eso el selector cubre las dos formas. Nada de texto: esa pantalla mezcla idiomas. Se usa la OT Centinela 11677 para no depender de una orden real. Solo LEE — abrir el modal no escribe. usedBy: wo-spec-params."
     },
     "workorders-detail": {
       "type": "query",
@@ -1486,6 +1557,23 @@
         "WorkPartsInfoWrapperQuery"
       ]
     },
+    "workorders-filter-open": {
+      "type": "query",
+      "module": "WorkOrders",
+      "steps": [
+        {
+          "goto": "/Domains/{domain}/WorkOrders"
+        },
+        {
+          "clickFirst": "div:has(> svg[data-testid=\"ArrowDropDownIcon\"]:not(.MuiSelect-icon))"
+        }
+      ],
+      "captures": [
+        "FilterSearch"
+      ],
+      "curated": true,
+      "_nota": "FilterSearch (usedBy spec-migrator, batch-name-filter) dispara al ABRIR un filtro de columna de la lista de Work Orders — el frontend hace tableFilterSearch con searchQuery vacío para poblar opciones (confirmado por el operador 2026-07-24: clic en el filtro 'Cliente' la dispara SIN teclear). Los filtros son <div> inline-block con texto + svg[data-testid=ArrowDropDownIcon] hijo directo; ':not(.MuiSelect-icon)' excluye los MuiSelect del resto de la UI (headless en INGLÉS → anclaje ESTRUCTURAL, no por texto/idioma). clickFirst clica el primero (='Cliente') → captura en el clic. Va en _interactionOps para que build-catalog NO la reagrupe bajo workorders-list (goto solo, que NO la dispara)."
+    },
     "workorders-list": {
       "type": "query",
       "module": "WorkOrders",
@@ -1500,25 +1588,6 @@
         "GetFilterData",
         "WorkOrderInputSchema"
       ]
-    },
-    "workorder-edit-specs": {
-      "type": "query",
-      "module": "WorkOrders",
-      "steps": [
-        {
-          "goto": "/Domains/{domain}/WorkOrders/11677"
-        },
-        {
-          "clickFirst": "[data-steelhead-component-id=\"WORK_ORDER_PAGE_PARTS_EDIT_SPECS_BUTTON\"] button, button[data-steelhead-component-id=\"WORK_ORDER_PAGE_PARTS_EDIT_SPECS_BUTTON\"]"
-        }
-      ],
-      "captures": [
-        "GetPartNumberWorkOrderSpecsInfo",
-        "GetSpecFieldParamDropdownsAndOptions",
-        "ClassificationsOnSpec"
-      ],
-      "curated": true,
-      "_nota": "GetPartNumberWorkOrderSpecsInfo se dispara al abrir \"Editar Especificaciones\" en la ficha de una OT (breadcrumb button:Editar Especificaciones, scan 2026-07-28 sobre la OT 5769). Ancla ESTRUCTURAL por data-steelhead-component-id=\"WORK_ORDER_PAGE_PARTS_EDIT_SPECS_BUTTON\", verificada en vivo el 2026-07-28: el cid vive en el WRAPPER y el <button> es su hijo, por eso el selector cubre las dos formas. Nada de texto: esa pantalla mezcla idiomas. Se usa la OT Centinela 11677 para no depender de una orden real. Solo LEE — abrir el modal no escribe. usedBy: wo-spec-params."
     }
   }
 }
