@@ -1,6 +1,6 @@
 {
-  "version": "1.11.81",
-  "lastUpdated": "2026-08-05T09:50",
+  "version": "1.11.82",
+  "lastUpdated": "2026-08-05T10:45",
   "extensionVersion": "1.7.3",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -2938,7 +2938,7 @@
     "scripts/mui-icon-anchor-core.js": "91292be7c9b053a42f0b01d2453f0f273aec8f172dc0bb3afb9a7f39db153dc2",
     "scripts/ov-operations.js": "58f2fed723ba81a1f73c0bb58da934293aec5cda6cde81494682be4d9910989c",
     "scripts/packing-slip-drawings-core.js": "9c56b025b877947e336f0c8a0a9422f37bad89e813112993d72bac7a4827d0d1",
-    "scripts/packing-slip-drawings.js": "527e7720132e6772bc9aedbb748d273b2f24c2f0ac10992b9d24c28b92e986dc",
+    "scripts/packing-slip-drawings.js": "7b51e52ed496d8a758025ac8509ed0c70e13978b1a5496dd0f436b1fbef0fd01",
     "scripts/packing-slip-modal-core.js": "1dd4d5a056c9575ce7a80410ae4983788ea71982bc22aa9e98cbe37e85116a0d",
     "scripts/packing-slip-print.js": "a9b2250072fe47bb2cf3b9c449ef073d8f980e8d006e4053eab1684b0baa57b5",
     "scripts/paros-linea.js": "ccf14c09e6886c1eb480014de75c86c2a54fb1f10787aeb92409c4f12ed6c126",
