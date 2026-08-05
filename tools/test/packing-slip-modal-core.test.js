@@ -246,3 +246,41 @@ test('findCustomerName: no se cuelga con anidamiento profundo', () => {
   for (let i = 0; i < 12; i++) deep = { wrap: deep };
   assert.equal(Modal.findCustomerName(deep), null);
 });
+
+// ---------- encabezado colado (bug de producción v0.1.4) ----------
+
+test('extractPartNumbers: "Part #" NUNCA se toma como número de parte', () => {
+  // Visto en producción: la fila de encabezado se coló y el panel reportó
+  // «No pude verificar 1 número(s) de parte: Part #». Filtrar sólo por el
+  // INICIO de la fila no basta — basta una celda vacía o un carácter invisible
+  // al frente para que el guard no dispare. Ahora se filtra también la CELDA.
+  const out = Modal.extractPartNumbers([
+    '​\tSO #\tWO #\tPart #\tQTY',   // zero-width space al inicio
+    '\tSO #\tWO #\tPart #\tQTY',          // celda vacía al inicio
+    '#671 - 4124181754\t#11692\tS2U7412A01\t16',
+  ]);
+  assert.deepEqual(out.map((x) => x.pnName), ['S2U7412A01']);
+});
+
+test('extractPartNumbers: descarta encabezados en la celda de PN, en ambos idiomas', () => {
+  const out = Modal.extractPartNumbers([
+    'x\ty\tPart #\tz',
+    'x\ty\tParte #\tz',
+    'x\ty\tQTY\tz',
+    'x\ty\tCantidad\tz',
+    '#1\t#10\tPN-BUENO\t5',
+  ]);
+  assert.deepEqual(out.map((x) => x.pnName), ['PN-BUENO']);
+});
+
+test('extractPartNumbers: el caso REAL de la remisión #1461', () => {
+  // Cuatro líneas de datos con S2N1317A01 repetido, más el encabezado.
+  const out = Modal.extractPartNumbers([
+    'SO #\tWO #\tPart #\tQTY',
+    '#671 - 4124181754\t#11692\tS2U7412A01\t16',
+    '#671 - 4124181754\t#12045\tS49B0531A7\t1',
+    '#671 - 4124181754\t#15030\tS2N1317A01\t30',
+    '#671 - 4124181754\t#15218\tS2N1317A01\t30',
+  ]);
+  assert.deepEqual(out.map((x) => x.pnName), ['S2U7412A01', 'S49B0531A7', 'S2N1317A01']);
+});
