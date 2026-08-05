@@ -1,0 +1,1627 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guía de uso — Plantilla de Carga Masiva v13 · SteelheadAutomator</title>
+<style>
+:root{
+  --ground:#f7f9fb;--paper:#ffffff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;
+  --hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;
+  --ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--bi:#7d4f9c;--bi-wash:#f0e9f6;
+  --warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7;
+  --shadow:0 1px 2px rgba(24,34,49,.05),0 6px 20px -8px rgba(24,34,49,.12);
+  --measure:68ch;
+  --sans:ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono","JetBrains Mono",Menlo,Consolas,"Liberation Mono",monospace;
+  /* tokens de la "hoja de Excel" dibujada */
+  --xl-cell:#ffffff;--xl-drop:#eef6ff;--xl-calc:#f1f3f6;--xl-edit:#f2fbf6;
+  --xl-bar:#e8ebef;--xl-bar-ink:#5c6673;--xl-head:#dfe6ee;--xl-head-ink:#1b2027;
+  --xl-band:#cfdae6;--xl-band-ink:#31445a;--xl-line:#c8d0da;--xl-ink:#1b2027;--xl-mut:#5c6673;--xl-hl:#0f8f61;
+}
+@media (prefers-color-scheme:dark){:root{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--bi:#b58fd6;--bi-wash:#1d1626;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512;--shadow:0 1px 2px rgba(0,0,0,.3),0 8px 24px -10px rgba(0,0,0,.5);--xl-cell:#1a222c;--xl-drop:#16222f;--xl-calc:#1e252e;--xl-edit:#152219;--xl-bar:#232d3a;--xl-bar-ink:#9fb0c0;--xl-head:#2a3542;--xl-head-ink:#e6ecf2;--xl-band:#33404e;--xl-band-ink:#c3d0dd;--xl-line:#3a4553;--xl-ink:#e6ecf2;--xl-mut:#9fb0c0;--xl-hl:#25b884}}
+:root[data-theme="light"]{--ground:#f7f9fb;--paper:#fff;--ink:#182231;--muted:#55677a;--faint:#7b8a99;--hair:#e2e8ee;--hair-2:#cdd7e0;--steel:#2b3f52;--accent:#0f8f61;--accent-ink:#0b6f4b;--accent-wash:#e7f5ee;--ku:#c0632e;--ku-wash:#f8ede6;--ti:#2f6f9f;--ti-wash:#e8f0f7;--warn:#a9640c;--warn-wash:#fbf1e0;--danger:#b5372b;--danger-wash:#fbe9e7;--xl-cell:#ffffff;--xl-drop:#eef6ff;--xl-calc:#f1f3f6;--xl-edit:#f2fbf6;--xl-bar:#e8ebef;--xl-bar-ink:#5c6673;--xl-head:#dfe6ee;--xl-head-ink:#1b2027;--xl-band:#cfdae6;--xl-band-ink:#31445a;--xl-line:#c8d0da;--xl-ink:#1b2027;--xl-mut:#5c6673;--xl-hl:#0f8f61}
+:root[data-theme="dark"]{--ground:#0f141a;--paper:#161d26;--ink:#e6ecf2;--muted:#9fb0c0;--faint:#7d8ea0;--hair:#26303c;--hair-2:#33404e;--steel:#b9c6d3;--accent:#25b884;--accent-ink:#3fd39c;--accent-wash:#12211b;--ku:#e08a55;--ku-wash:#241a13;--ti:#63a3d4;--ti-wash:#121e28;--warn:#d69838;--warn-wash:#241c10;--danger:#e0655a;--danger-wash:#251512;--xl-cell:#1a222c;--xl-drop:#16222f;--xl-calc:#1e252e;--xl-edit:#152219;--xl-bar:#232d3a;--xl-bar-ink:#9fb0c0;--xl-head:#2a3542;--xl-head-ink:#e6ecf2;--xl-band:#33404e;--xl-band-ink:#c3d0dd;--xl-line:#3a4553;--xl-ink:#e6ecf2;--xl-mut:#9fb0c0;--xl-hl:#25b884}
+*{box-sizing:border-box}
+body{margin:0;background:var(--ground);color:var(--ink);font-family:var(--sans);font-size:17px;line-height:1.62;-webkit-font-smoothing:antialiased}
+.wrap{max-width:1100px;margin:0 auto;padding:0 24px 96px}
+.masthead{border-bottom:2px solid var(--ku);padding:40px 0 22px}
+.brandbar{display:flex;align-items:center;gap:10px;margin-bottom:16px;flex-wrap:wrap}
+.brandmark{width:26px;height:26px;border-radius:6px;background:var(--steel);display:grid;place-items:center;flex:0 0 auto}
+.brandmark span{color:#fff;font-weight:800;font-size:.9rem;font-family:var(--mono)}
+.brandname{font-weight:700;letter-spacing:.02em;font-size:.95rem}
+.eyebrow{font-size:.72rem;text-transform:uppercase;letter-spacing:.14em;color:var(--ku);font-weight:800;margin:0 0 10px}
+.masthead h1{font-size:clamp(2rem,4.6vw,2.7rem);line-height:1.06;letter-spacing:-.02em;margin:0 0 10px;font-weight:800;text-wrap:balance}
+.masthead .sub{font-size:1.12rem;color:var(--muted);margin:0;max-width:62ch}
+.audchips{display:flex;gap:8px;margin-top:16px;flex-wrap:wrap}
+.audchip{font-size:.7rem;font-weight:700;padding:3px 10px;border-radius:999px;text-transform:uppercase;letter-spacing:.05em}
+.audchip.ku{background:var(--ku-wash);color:var(--ku)} .audchip.v{background:var(--accent-wash);color:var(--accent-ink)}
+.tldr{background:var(--paper);border:1px solid var(--hair);border-left:4px solid var(--ku);border-radius:12px;padding:20px 22px;margin:26px 0;box-shadow:var(--shadow)}
+.tldr .ct{font-size:.72rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--ku);margin:0 0 8px}
+.tldr p{margin:0;font-size:1.05rem;max-width:none}
+h2.sec{font-size:1.5rem;letter-spacing:-.01em;margin:58px 0 4px;font-weight:800;text-wrap:balance;scroll-margin-top:14px}
+h2.sec .num{font-family:var(--mono);font-size:.85rem;color:var(--ku);font-weight:700;border:1px solid var(--hair-2);border-radius:6px;padding:1px 7px;margin-right:10px;vertical-align:.15em}
+h3.sub{font-size:1.16rem;margin:34px 0 6px;letter-spacing:-.01em;font-weight:700}
+h4.min{font-size:1rem;margin:24px 0 4px;font-weight:700;color:var(--steel)}
+.sec-lead{color:var(--muted);margin:.4rem 0 1.2rem;max-width:var(--measure)}
+p{margin:0 0 1rem;max-width:var(--measure)}
+a{color:var(--accent-ink);text-underline-offset:2px}
+code{font-family:var(--mono);font-size:.85em;background:var(--hair);padding:1px 5px;border-radius:5px;word-break:break-word}
+ul,ol{max-width:var(--measure);padding-left:1.25em} li{margin:.35rem 0}
+strong{font-weight:700}
+.dim{color:var(--faint)}
+/* índice */
+.toc{background:var(--paper);border:1px solid var(--hair);border-radius:12px;padding:16px 20px;margin:26px 0;box-shadow:var(--shadow)}
+.toc .ct{font-size:.7rem;text-transform:uppercase;letter-spacing:.1em;font-weight:800;color:var(--faint);margin:0 0 8px}
+.toc ol{margin:0;padding-left:1.2em;columns:2;column-gap:32px;max-width:none;font-size:.93rem}
+@media (max-width:700px){.toc ol{columns:1}}
+.toc a{text-decoration:none} .toc a:hover{text-decoration:underline}
+/* figuras: hoja dibujada + capturas */
+figure.sheet{margin:22px 0 26px;background:var(--paper);border:1px solid var(--hair);border-radius:14px;padding:16px 14px 10px;box-shadow:var(--shadow);overflow-x:auto}
+figure.sheet svg{display:block;width:100%;height:auto}
+figure.sheet figcaption{font-size:.85rem;color:var(--faint);margin-top:10px;padding:0 6px 4px}
+figure.diagram{margin:26px 0;background:var(--paper);border:1px solid var(--hair);border-radius:14px;padding:20px 18px 8px;box-shadow:var(--shadow);overflow-x:auto}
+figure.diagram svg{display:block;width:100%;height:auto;min-width:560px;max-width:860px;margin:0 auto}
+figure.diagram figcaption{font-size:.85rem;color:var(--faint);text-align:center;margin-top:10px;padding:0 8px 6px}
+.svg-t{font-family:var(--sans);fill:var(--ink)} .svg-mut{fill:var(--muted)}
+figure.shot{margin:24px 0;background:var(--paper);border:1px solid var(--hair);border-radius:14px;padding:16px;box-shadow:var(--shadow)}
+figure.shot img{display:block;width:100%;height:auto;border-radius:8px;border:1px solid var(--hair-2)}
+figure.shot.narrow img{max-width:340px;margin:0 auto}
+figure.shot figcaption{font-size:.85rem;color:var(--faint);margin-top:10px}
+.shotpair{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin:24px 0}
+@media (max-width:760px){.shotpair{grid-template-columns:1fr}}
+.shotpair figure.shot{margin:0}
+/* callouts */
+.callout{border-radius:10px;padding:15px 17px 15px 48px;position:relative;margin:22px 0;font-size:.95rem;border:1px solid var(--hair);background:var(--paper);max-width:none}
+.callout .ct{font-weight:800;margin:0 0 4px;font-size:.72rem;text-transform:uppercase;letter-spacing:.08em}
+.callout p{max-width:none;margin:.3rem 0 0}
+.callout ul{max-width:none;margin:.4rem 0 0}
+.callout::before{position:absolute;left:15px;top:14px;font-size:1.15rem;line-height:1}
+.callout.meta{border-left:4px solid var(--steel);background:color-mix(in srgb,var(--steel) 6%,var(--paper))} .callout.meta .ct{color:var(--steel)} .callout.meta::before{content:"💡"}
+.callout.info{border-left:4px solid var(--ti);background:var(--ti-wash)} .callout.info .ct{color:var(--ti)} .callout.info::before{content:"ℹ";color:var(--ti);font-weight:800}
+.callout.warn{border-left:4px solid var(--warn);background:var(--warn-wash)} .callout.warn .ct{color:var(--warn)} .callout.warn::before{content:"⚠"}
+.callout.danger{border-left:4px solid var(--danger);background:var(--danger-wash)} .callout.danger .ct{color:var(--danger)} .callout.danger::before{content:"⛔"}
+.callout.tip{border-left:4px solid var(--accent);background:var(--accent-wash)} .callout.tip .ct{color:var(--accent-ink)} .callout.tip::before{content:"✓";color:var(--accent-ink);font-weight:800}
+/* pasos */
+.stages{list-style:none;padding:0;margin:24px 0;display:flex;flex-direction:column;gap:2px;max-width:none}
+.stages li{display:grid;grid-template-columns:44px 1fr;gap:16px;padding:16px 0;border-bottom:1px solid var(--hair);align-items:start}
+.stages li:last-child{border-bottom:none}
+.stages .k{width:38px;height:38px;border-radius:9px;background:var(--ku);color:#fff;display:grid;place-items:center;font-weight:800;font-family:var(--mono);font-size:1rem}
+.stages h4{margin:0 0 3px;font-size:1.08rem}
+.stages p{margin:0;font-size:.94rem;color:var(--muted);max-width:none}
+.stages .where{font-size:.72rem;text-transform:uppercase;letter-spacing:.07em;font-weight:800;color:var(--faint);display:block;margin-bottom:2px}
+/* tablas */
+.tablewrap{overflow-x:auto;border:1px solid var(--hair);border-radius:12px;box-shadow:var(--shadow);margin:20px 0}
+table{border-collapse:collapse;width:100%;font-size:.9rem;background:var(--paper);min-width:560px}
+thead th{text-align:left;font-size:.68rem;text-transform:uppercase;letter-spacing:.07em;color:var(--faint);font-weight:700;padding:11px 14px;border-bottom:2px solid var(--hair-2);background:var(--ground)}
+tbody td{padding:11px 14px;border-bottom:1px solid var(--hair);vertical-align:top}
+tbody tr:last-child td{border-bottom:none}
+td code{white-space:nowrap}
+.tablewrap.compact table{font-size:.85rem} .tablewrap.compact tbody td{padding:7px 12px}
+/* leyenda de colores de celda */
+.legend{display:flex;gap:18px;flex-wrap:wrap;margin:14px 0 2px;font-size:.85rem;color:var(--muted)}
+.legend span{display:inline-flex;align-items:center;gap:7px}
+.legend i{width:16px;height:16px;border-radius:4px;border:1px solid var(--xl-line);display:inline-block}
+.foot{margin-top:64px;padding-top:22px;border-top:1px solid var(--hair-2);color:var(--faint);font-size:.85rem;display:flex;flex-wrap:wrap;gap:8px 20px;justify-content:space-between}
+.badge{display:inline-flex;align-items:center;gap:6px;font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;padding:3px 9px;border-radius:999px}
+.badge.vivo{background:var(--accent-wash);color:var(--accent-ink)} .badge.vivo::before{content:"";width:7px;height:7px;border-radius:50%;background:currentColor}
+.doc-credit{margin-top:10px;padding-top:12px;border-top:1px solid var(--hair);display:flex;align-items:center;gap:12px;font-size:.78rem;color:var(--faint)}
+.doc-credit a{color:var(--accent-ink);text-decoration:none} .doc-credit a.name{font-weight:600}
+.doc-credit img{height:30px;width:auto;display:block}
+@media print{:root{--ground:#fff;--paper:#fff;--shadow:none}body{font-size:11pt}.wrap{max-width:none;padding:0}figure.sheet,figure.diagram,figure.shot,.callout,.tablewrap,.stages li,.toc{break-inside:avoid}figure.sheet svg,figure.diagram svg{min-width:0 !important}figure.sheet{overflow:visible}.shotpair{grid-template-columns:1fr 1fr;gap:10px}.shotpair figure.shot img{max-height:120mm;width:auto;margin:0 auto}h2.sec,h3.sub{break-after:avoid}a{color:var(--ink);text-decoration:none}.toc{display:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="masthead">
+  <div class="brandbar">
+    <span class="brandmark"><span>SA</span></span>
+    <span class="brandname">SteelheadAutomator · Paquete de capacitación</span>
+    <a href="00-mapa-empieza-aqui.html" style="margin-left:auto;font-size:.82rem;color:var(--faint);text-decoration:none;white-space:nowrap">← Índice del paquete</a>
+  </div>
+  <p class="eyebrow">Carga masiva · Guía de uso</p>
+  <h1>Plantilla de Carga Masiva v13</h1>
+  <p class="sub">Cómo llenarla, columna por columna, desde que la bajas hasta que Steelhead te devuelve el resumen de la carga. Con las dos novedades de esta versión: cinco tipos de rack por número de parte e Instrucciones de Empaque.</p>
+  <div class="audchips">
+    <span class="audchip ku">Key User</span>
+    <span class="audchip v">Documento vivo</span>
+  </div>
+</header>
+
+<div class="callout info">
+  <p class="ct">Documento vivo</p>
+  <p>Refleja la plantilla <strong>Plantilla_CargaMasiva_v13.xlsm</strong> tal como está publicada hoy — <strong>67 columnas</strong>, de la <code>A</code> a la <code>BO</code>. Los encabezados, los tipos de dato y los valores iniciales que ves aquí <strong>se leyeron del archivo real</strong>, no se transcribieron. Si abres tu plantilla y el último encabezado no es <code>Tiempo de Entrega</code> en la columna <code>BO</code>, no estás en la v13.</p>
+</div>
+
+<div class="tldr">
+  <p class="ct">En corto</p>
+  <p>La v13 agrega <strong>tres pares de rack</strong> (ahora son cinco) y una columna nueva, <strong>Instrucciones de Empaque</strong>. Las dos entran <em>después</em> del bloque de racks, así que <strong>todo lo que venía detrás se recorrió</strong>. Por eso no se puede copiar y pegar un renglón de la v12 a la v13 columna por columna: hay que pegar por bloques o volver a capturar. La v12 sigue funcionando; si la usas, se carga como v12 y nada se rompe.</p>
+</div>
+
+<nav class="toc" aria-label="Contenido">
+  <p class="ct">Contenido</p>
+  <ol>
+    <li><a href="#s1">Qué cambió respecto a la v12</a></li>
+    <li><a href="#s2">El circuito completo</a></li>
+    <li><a href="#s3">Bajar la plantilla</a></li>
+    <li><a href="#s4">Refrescar las listas</a></li>
+    <li><a href="#s5">El encabezado del layout</a></li>
+    <li><a href="#s6">Las tres convenciones</a></li>
+    <li><a href="#s7">Llenar los renglones, bloque por bloque</a></li>
+    <li><a href="#s8">Los cinco racks a fondo</a></li>
+    <li><a href="#s9">Instrucciones de Empaque a fondo</a></li>
+    <li><a href="#s10">Limpiar y exportar el CSV</a></li>
+    <li><a href="#s11">Cargar en Steelhead</a></li>
+    <li><a href="#s12">Cuando algo sale mal</a></li>
+    <li><a href="#s13">Antes de la primera carga grande</a></li>
+    <li><a href="#anexo-a">Anexo A · Las 67 columnas</a></li>
+    <li><a href="#anexo-b">Anexo B · Qué se movió de lugar</a></li>
+  </ol>
+</nav>
+
+<!-- ═════════════════════════════════════════════════════════════════════ -->
+<h2 class="sec" id="s1"><span class="num">01</span>Qué cambió respecto a la v12</h2>
+<p class="sec-lead">Dos cambios, los dos en la mitad de la hoja. Eso es justo lo que los hace notorios: no se agregaron al final.</p>
+
+<div class="tablewrap">
+<table>
+  <thead><tr><th></th><th>v12</th><th>v13</th></tr></thead>
+  <tbody>
+    <tr><td>Columnas de la hoja <code>Upload</code></td><td>60</td><td><strong>67</strong></td></tr>
+    <tr><td>Pares de rack por número de parte</td><td>2</td><td><strong>5</strong></td></tr>
+    <tr><td>Instrucciones de Empaque</td><td><span class="dim">no existe</span></td><td><strong>columna <code>BH</code></strong></td></tr>
+    <tr><td>Tipo de Geometría</td><td><code>AM</code></td><td><code>AS</code></td></tr>
+    <tr><td>Última columna</td><td><code>BH</code></td><td><code>BO</code></td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout tip">
+  <p class="ct">La v12 no se rompe</p>
+  <p>Un archivo exportado con la plantilla anterior se sigue cargando igual: el sistema reconoce con cuál de las dos se hizo y lo interpreta en consecuencia. No hay prisa por migrar los archivos que ya tengas armados. Lo que <strong>no</strong> funciona es mezclar: pegar renglones de una v12 dentro de una v13 corre los datos seis columnas.</p>
+</div>
+
+<h3 class="sub">Por qué cinco racks y no dos</h3>
+<p>Porque las piezas que caben en una carga <strong>dependen de la línea</strong>. Un mismo número de parte puede ir de cuatro en cuatro en una línea y de una en una en otra. Con dos pares solo cabían dos de esas combinaciones; con cinco se puede describir el número de parte completo, sin tener que elegir cuáles dos documentar.</p>
+
+<!-- ═════════════════════════════════════════════════════════════════════ -->
+<h2 class="sec" id="s2"><span class="num">02</span>El circuito completo</h2>
+<p class="sec-lead">Seis pasos. Los tres primeros son de preparación y solo se hacen una vez por archivo; los tres últimos son la carga en sí.</p>
+
+<figure class="diagram">
+<svg viewBox="0 0 820 250" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Diagrama del circuito de carga masiva en seis pasos">
+  <defs>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="var(--hair-2)"/>
+    </marker>
+  </defs>
+  <!-- carriles -->
+  <rect x="0" y="26" width="820" height="86" rx="10" fill="var(--ku-wash)" opacity=".55"/>
+  <rect x="0" y="140" width="820" height="86" rx="10" fill="var(--ti-wash)" opacity=".55"/>
+  <text class="svg-t" x="12" y="20" font-size="11" font-weight="800" letter-spacing=".08em" fill="var(--ku)">EN EXCEL, EN TU COMPUTADORA</text>
+  <text class="svg-t" x="12" y="134" font-size="11" font-weight="800" letter-spacing=".08em" fill="var(--ti)">EN STEELHEAD, DESDE EL NAVEGADOR</text>
+
+  <g font-size="12.5">
+    <!-- fila 1 -->
+    <rect x="14" y="42" width="180" height="54" rx="9" fill="var(--paper)" stroke="var(--hair-2)"/>
+    <text class="svg-t" x="104" y="64" text-anchor="middle" font-weight="700">1 · Bajar la plantilla</text>
+    <text class="svg-mut" x="104" y="82" text-anchor="middle" font-size="11.5">desde el menú de la extensión</text>
+
+    <rect x="216" y="42" width="180" height="54" rx="9" fill="var(--paper)" stroke="var(--hair-2)"/>
+    <text class="svg-t" x="306" y="64" text-anchor="middle" font-weight="700">2 · Refrescar Listas</text>
+    <text class="svg-mut" x="306" y="82" text-anchor="middle" font-size="11.5">catálogos frescos del ERP</text>
+
+    <rect x="418" y="42" width="180" height="54" rx="9" fill="var(--paper)" stroke="var(--hair-2)"/>
+    <text class="svg-t" x="508" y="64" text-anchor="middle" font-weight="700">3 · Llenar la hoja</text>
+    <text class="svg-mut" x="508" y="82" text-anchor="middle" font-size="11.5">encabezado y renglones</text>
+
+    <rect x="620" y="42" width="180" height="54" rx="9" fill="var(--paper)" stroke="var(--hair-2)"/>
+    <text class="svg-t" x="710" y="64" text-anchor="middle" font-weight="700">4 · Exportar CSV</text>
+    <text class="svg-mut" x="710" y="82" text-anchor="middle" font-size="11.5">la macro valida antes</text>
+
+    <!-- fila 2 -->
+    <rect x="216" y="156" width="180" height="54" rx="9" fill="var(--paper)" stroke="var(--hair-2)"/>
+    <text class="svg-t" x="306" y="178" text-anchor="middle" font-weight="700">5 · Cargar CSV</text>
+    <text class="svg-mut" x="306" y="196" text-anchor="middle" font-size="11.5">y revisar la vista previa</text>
+
+    <rect x="418" y="156" width="180" height="54" rx="9" fill="var(--paper)" stroke="var(--hair-2)"/>
+    <text class="svg-t" x="508" y="178" text-anchor="middle" font-weight="700">6 · Ejecutar</text>
+    <text class="svg-mut" x="508" y="196" text-anchor="middle" font-size="11.5">y leer el resumen</text>
+  </g>
+
+  <g stroke="var(--hair-2)" stroke-width="1.6" fill="none" marker-end="url(#ar)">
+    <path d="M194,69 L214,69"/>
+    <path d="M396,69 L416,69"/>
+    <path d="M598,69 L618,69"/>
+    <path d="M710,96 L710,126 L306,126 L306,154"/>
+    <path d="M396,183 L416,183"/>
+  </g>
+</svg>
+<figcaption>Los pasos 1 y 2 se repiten solo cuando cambian los catálogos o sale una plantilla nueva. El 3 y el 4 son el trabajo de captura; el 5 y el 6, la carga.</figcaption>
+</figure>
+
+<!-- ═════════════════════════════════════════════════════════════════════ -->
+<h2 class="sec" id="s3"><span class="num">03</span>Bajar la plantilla</h2>
+<p class="sec-lead">Siempre desde el menú de la extensión, aunque ya tengas una copia guardada. Es la única forma de asegurarte de que trabajas con la versión publicada.</p>
+
+<p>Abre Steelhead, haz clic en el icono de la extensión y entra a <strong>Carga Masiva</strong>. En la categoría <em>Números de Parte</em>.</p>
+
+<div class="shotpair">
+  <figure class="shot">
+    <img src="assets/v13/popup-menu.png" alt="Menú de la extensión SteelheadAutomator mostrando la lista de herramientas agrupadas por categoría, con Carga Masiva bajo Números de Parte">
+    <figcaption>El menú de la extensión. <strong>Carga Masiva</strong> está en la categoría <em>Números de Parte</em>.</figcaption>
+  </figure>
+  <figure class="shot">
+    <img src="assets/v13/popup-carga-masiva.png" alt="Vista de la herramienta Carga Masiva con cinco botones: Cargar CSV, Descargar Plantilla v13, Versión de compatibilidad, Actualizar Catálogos e Historial de Cargas">
+    <figcaption>Los cinco botones de la herramienta. Para bajar la plantilla, los dos de en medio.</figcaption>
+  </figure>
+</div>
+
+<h3 class="sub">Cuál de las dos plantillas</h3>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>Botón</th><th>Cuándo usarlo</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Descargar Plantilla v13 (Excel 2021+)</strong></td><td>Excel 2021, Microsoft 365 o Excel para Mac reciente. Es la que aprovecha las fórmulas de matriz dinámica de los catálogos.</td></tr>
+    <tr><td><strong>Versión de compatibilidad (Excel 2019)</strong></td><td>Excel 2019 o anterior. Misma plantilla y mismas columnas; cambia solo cómo se resuelven internamente las listas.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout warn">
+  <p class="ct">Si no sabes qué versión de Excel tienes</p>
+  <p>Prueba primero con la de <strong>2021+</strong>. Si al abrirla las listas desplegables salen vacías o ves errores <code>#¡NOMBRE?</code> en las celdas, cierra sin guardar y baja la <strong>versión de compatibilidad</strong>.</p>
+</div>
+
+<p>Al dar clic en cualquiera de las dos, la extensión también genera los <strong>catálogos frescos</strong> —clientes, procesos, productos, etiquetas, specs, racks, líneas, usuarios— y te avisa cuando terminó. Ese archivo es el que vas a usar en el paso siguiente.</p>
+
+<!-- ═════════════════════════════════════════════════════════════════════ -->
+<h2 class="sec" id="s4"><span class="num">04</span>Refrescar las listas</h2>
+<p class="sec-lead">Los desplegables de la plantilla no salen de Steelhead en vivo: salen de una hoja interna llamada <code>Listas</code>. Refrescar es copiar los catálogos recién bajados a esa hoja.</p>
+
+<ol class="stages">
+  <li><span class="k">A</span><div>
+    <span class="where">En Steelhead</span>
+    <h4>Actualizar Catálogos</h4>
+    <p>Si no bajaste la plantilla en este momento, usa el botón <strong>Actualizar Catálogos</strong> del menú. Descarga un archivo con los catálogos al día.</p>
+  </div></li>
+  <li><span class="k">B</span><div>
+    <span class="where">En Excel</span>
+    <h4>Ejecuta <code>RefrescarListas</code></h4>
+    <p>Con la plantilla abierta, corre la macro <strong>Refrescar Listas</strong>. Te va a pedir que selecciones el archivo de catálogos que acabas de bajar. Al terminar te dice cuántos registros cargó de cada catálogo.</p>
+  </div></li>
+</ol>
+
+<div class="callout danger">
+  <p class="ct">Sin este paso los desplegables mienten</p>
+  <p>Una plantilla sin refrescar trae los catálogos del día en que se armó. Si desde entonces se dio de alta un cliente, un proceso o un tipo de rack, <strong>no va a aparecer en la lista</strong> — y si lo escribes a mano, el renglón se carga sin ese dato y aparece en el reporte de errores. Refresca al empezar cada archivo, no una vez al mes.</p>
+</div>
+
+<!-- ═════════════════════════════════════════════════════════════════════ -->
+<h2 class="sec" id="s5"><span class="num">05</span>El encabezado del layout</h2>
+<p class="sec-lead">La zona de arriba de la hoja, antes de los encabezados de columna. Define qué tipo de carga vas a hacer y, si es una cotización, cómo se va a llamar.</p>
+
+<div class="tablewrap">
+<table>
+  <thead><tr><th>Campo</th><th>Dónde</th><th>Qué poner</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Modo</strong></td><td>arriba a la derecha del título</td><td><code>COTIZACIÓN+NP</code> o <code>SOLO_PN</code>. Es lo primero que hay que decidir.</td></tr>
+    <tr><td><strong>Empresa Emisora</strong></td><td>junto a la etiqueta</td><td><code>ECOPLATING</code> o <code>PROQUIPA</code>.</td></tr>
+    <tr><td><strong>Válida Hasta (días)</strong></td><td>debajo de la anterior</td><td>Vigencia de la cotización. Viene en <code>30</code>. Solo aplica en modo cotización.</td></tr>
+    <tr><td><strong>Nombre Cotización/Layout</strong></td><td>al centro</td><td><strong>Obligatorio en modo cotización.</strong> Es el nombre con el que vas a encontrar la cotización después.</td></tr>
+    <tr><td><strong>Asignado</strong></td><td>debajo del nombre</td><td>El vendedor. Si lo dejas en blanco, el sistema asigna automáticamente.</td></tr>
+    <tr><td><strong>Notas Externas</strong></td><td>a la derecha</td><td>Texto que <strong>ve el cliente</strong> en la cotización.</td></tr>
+    <tr><td><strong>Notas Internas</strong></td><td>a la derecha</td><td>Texto de uso interno.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 class="sub">Los dos modos</h3>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>Modo</th><th>Qué hace</th><th>Cuándo</th></tr></thead>
+  <tbody>
+    <tr><td><code>COTIZACIÓN+NP</code></td><td>Crea la cotización <em>y</em> los números de parte, con precios y productos.</td><td>Cuando el trabajo empieza por una cotización al cliente.</td></tr>
+    <tr><td><code>SOLO_PN</code></td><td>Crea o modifica números de parte, sin tocar cotizaciones.</td><td>Altas de catálogo, correcciones masivas, enriquecer datos de partes que ya existen.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout tip">
+  <p class="ct">Varios clientes en un mismo archivo: sí se puede</p>
+  <p>En modo <code>COTIZACIÓN+NP</code> puedes mezclar renglones de distintos clientes. Se crea <strong>una cotización por cada uno</strong>, y cada una se nombra <strong>«{Cliente} {Layout}»</strong> — el <em>Nombre Cotización/Layout</em> del encabezado es la parte común. Al exportar, la macro te dice cuántas cotizaciones va a producir y te pide confirmar: es un aviso para que un cliente colado por error no pase inadvertido, no un impedimento.</p>
+</div>
+
+<div class="callout info">
+  <p class="ct">Las etiquetas del encabezado no se tocan</p>
+  <p>La macro busca cada campo <strong>por su etiqueta</strong> (“Empresa Emisora:”, “Asignado:”, “Notas Internas:”…), no por la celda en la que está. Es lo que hace que el encabezado siga funcionando aunque se muevan cosas — pero también significa que <strong>si renombras o borras una etiqueta, ese campo deja de leerse</strong>. Cambia los valores, no los rótulos.</p>
+</div>
+
+<!-- ═════════════════════════════════════════════════════════════════════ -->
+<h2 class="sec" id="s6"><span class="num">06</span>Las tres convenciones</h2>
+<p class="sec-lead">Rigen toda la hoja y explican la mayoría de los sustos. Vale la pena leerlas una vez con calma.</p>
+
+<div class="tablewrap">
+<table>
+  <thead><tr><th>Lo que escribes</th><th>Lo que pasa</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Celda vacía</strong><br><span class="dim">o <code>(seleccione)</code> sin tocar</span></td><td><strong>No se toca nada.</strong> El número de parte conserva el valor que ya tenía en Steelhead.</td></tr>
+    <tr><td><strong>Un guión</strong> <code>-</code></td><td><strong>Se borra el dato.</strong> Se manda vacío a Steelhead.</td></tr>
+    <tr><td><strong><code>V</code> / <code>F</code></strong></td><td>En las columnas de sí/no: <code>V</code> activa, <code>F</code> desactiva.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout warn">
+  <p class="ct">Vacío y guión no son lo mismo</p>
+  <p>Es la distinción más cara de la plantilla. Dejar en blanco <strong>conserva</strong>; poner un guión <strong>borra</strong>. Si dudas, deja en blanco: no tocar nunca hace daño, borrar sí.</p>
+</div>
+
+<p>Y un detalle que ahorra confusiones: <strong>los renglones sin número de parte no se tocan ni se validan</strong>. Puedes dejar filas a medio llenar mientras trabajas; mientras no tengan número de parte, para el sistema no existen.</p>
+
+<div class="legend">
+  <span><i style="background:var(--xl-edit)"></i> lo capturas tú</span>
+  <span><i style="background:var(--xl-drop)"></i> se elige de una lista</span>
+  <span><i style="background:var(--xl-calc)"></i> se calcula solo</span>
+</div>
+
+<!-- ═════════════════════════════════════════════════════════════════════ -->
+<h2 class="sec" id="s7"><span class="num">07</span>Llenar los renglones, bloque por bloque</h2>
+<p class="sec-lead">Los datos empiezan en la <strong>fila 9</strong>. La fila 7 trae los encabezados y la 8 te dice, en cada columna, qué tipo de dato espera. Recorremos la hoja de izquierda a derecha, en los mismos bloques en que está agrupada.</p>
+
+<h3 class="sub">Parámetros e identificación</h3>
+<figure class="sheet">
+<svg viewBox="0 0 1019 245" width="100%" style="min-width:1019px" role="img" aria-label="Parámetros e identificación del número de parte" xmlns="http://www.w3.org/2000/svg" class="xl">
+<style>
+    .xl text{font-family:var(--sans)}
+    .xl .cellbg{fill:var(--xl-cell)} .xl .cellbg.dropdown{fill:var(--xl-drop)}
+    .xl .cellbg.calc{fill:var(--xl-calc)} .xl .cellbg.edit{fill:var(--xl-edit)}
+    .xl .barbg{fill:var(--xl-bar)} .xl .headbg{fill:var(--xl-head)} .xl .bandbg{fill:var(--xl-band)}
+    .xl .gl{stroke:var(--xl-line);stroke-width:1}
+    .xl .colL{font-size:11px;font-weight:600;fill:var(--xl-bar-ink)}
+    .xl .rowL{font-size:10.5px;font-weight:600;fill:var(--xl-bar-ink)}
+    .xl .bn{font-size:10px;font-weight:800;fill:var(--xl-band-ink);letter-spacing:.06em}
+    .xl .hd{font-size:11.5px;font-weight:700;fill:var(--xl-head-ink)}
+    .xl .ty{font-size:10px;fill:var(--xl-mut);font-style:italic}
+    .xl .dt{font-size:11.5px;fill:var(--xl-ink)} .xl .dt.ph{fill:var(--xl-mut);font-style:italic}
+    .xl .hl{fill:none;stroke:var(--xl-hl);stroke-width:2.5}
+    .xl .badge{fill:var(--xl-hl)} .xl .badgeT{font-size:11px;font-weight:700;fill:#fff}
+    .xl .note{font-size:12.5px;fill:var(--xl-mut)} .xl .noteN{font-size:11px;font-weight:700;fill:#fff}
+  </style>
+<rect x="0" y="0" width="1019" height="166" class="cellbg"/>
+<rect x="0" y="0" width="1019" height="22" class="barbg"/>
+<rect x="0" y="0" width="34" height="166" class="barbg"/>
+<text class="colL" x="95.5" y="15" text-anchor="middle">A</text>
+<text class="colL" x="218.5" y="15" text-anchor="middle">B</text>
+<text class="colL" x="341.5" y="15" text-anchor="middle">C</text>
+<text class="colL" x="464.5" y="15" text-anchor="middle">D</text>
+<text class="colL" x="587.5" y="15" text-anchor="middle">E</text>
+<text class="colL" x="710.5" y="15" text-anchor="middle">F</text>
+<text class="colL" x="833.5" y="15" text-anchor="middle">G</text>
+<text class="colL" x="956.5" y="15" text-anchor="middle">H</text>
+<text class="rowL" x="17" y="37" text-anchor="middle">6</text>
+<rect x="34" y="22" width="985" height="22" class="bandbg"/>
+<text class="bn" x="157" y="36.5" text-anchor="middle">PARÁMETROS</text>
+<text class="bn" x="649" y="36.5" text-anchor="middle">IDENTIFICACIÓN</text>
+<line class="gl" x1="280" y1="22" x2="280" y2="44"/>
+<text class="rowL" x="17" y="76" text-anchor="middle">7</text>
+<rect x="34" y="44" width="985" height="56" class="headbg"/>
+<text class="hd" x="95.5" y="76" text-anchor="middle">Estatus</text>
+<text class="hd" x="218.5" y="69.5" text-anchor="middle">Forzar</text>
+<text class="hd" x="218.5" y="82.5" text-anchor="middle">duplicado</text>
+<text class="hd" x="341.5" y="76" text-anchor="middle">Id SH</text>
+<text class="hd" x="464.5" y="76" text-anchor="middle">Cliente</text>
+<text class="hd" x="587.5" y="69.5" text-anchor="middle">Número de</text>
+<text class="hd" x="587.5" y="82.5" text-anchor="middle">parte</text>
+<text class="hd" x="710.5" y="76" text-anchor="middle">Descripción</text>
+<text class="hd" x="833.5" y="76" text-anchor="middle">PN alterno</text>
+<text class="hd" x="956.5" y="76" text-anchor="middle">Grupo</text>
+<text class="rowL" x="17" y="114" text-anchor="middle">8</text>
+<text class="ty" x="95.5" y="113.5" text-anchor="middle">Desp.</text>
+<text class="ty" x="218.5" y="113.5" text-anchor="middle">Desp.</text>
+<text class="ty" x="341.5" y="113.5" text-anchor="middle">Texto</text>
+<text class="ty" x="464.5" y="113.5" text-anchor="middle">Desp.</text>
+<text class="ty" x="587.5" y="113.5" text-anchor="middle">Texto</text>
+<text class="ty" x="710.5" y="113.5" text-anchor="middle">Texto</text>
+<text class="ty" x="833.5" y="113.5" text-anchor="middle">Texto</text>
+<text class="ty" x="956.5" y="113.5" text-anchor="middle">Texto</text>
+<text class="rowL" x="17" y="147" text-anchor="middle">9</text>
+<rect x="34" y="120" width="123" height="46" class="cellbg dropdown"/>
+<text class="dt" x="95.5" y="140" text-anchor="middle">Activo con</text>
+<text class="dt" x="95.5" y="154" text-anchor="middle">validación</text>
+<rect x="157" y="120" width="123" height="46" class="cellbg dropdown"/>
+<text class="dt" x="218.5" y="140" text-anchor="middle">Sin forzar</text>
+<text class="dt" x="218.5" y="154" text-anchor="middle">duplicado</text>
+<rect x="280" y="120" width="123" height="46" class="cellbg edit"/>
+<text class="dt" x="341.5" y="147" text-anchor="middle"></text>
+<rect x="403" y="120" width="123" height="46" class="cellbg dropdown"/>
+<text class="dt" x="464.5" y="147" text-anchor="middle">Industrias Delta</text>
+<rect x="526" y="120" width="123" height="46" class="cellbg edit"/>
+<text class="dt" x="587.5" y="147" text-anchor="middle">CN-4471-A</text>
+<rect x="649" y="120" width="123" height="46" class="cellbg edit"/>
+<text class="dt" x="710.5" y="140" text-anchor="middle">Conector recto 12</text>
+<text class="dt" x="710.5" y="154" text-anchor="middle">mm</text>
+<rect x="772" y="120" width="123" height="46" class="cellbg edit"/>
+<text class="dt" x="833.5" y="147" text-anchor="middle"></text>
+<rect x="895" y="120" width="123" height="46" class="cellbg edit"/>
+<text class="dt" x="956.5" y="147" text-anchor="middle">Conectores</text>
+<line class="gl" x1="0" y1="0" x2="1019" y2="0"/>
+<line class="gl" x1="0" y1="22" x2="1019" y2="22"/>
+<line class="gl" x1="0" y1="44" x2="1019" y2="44"/>
+<line class="gl" x1="0" y1="100" x2="1019" y2="100"/>
+<line class="gl" x1="0" y1="120" x2="1019" y2="120"/>
+<line class="gl" x1="0" y1="166" x2="1019" y2="166"/>
+<line class="gl" x1="34" y1="0" x2="34" y2="166"/>
+<line class="gl" x1="157" y1="0" x2="157" y2="166"/>
+<line class="gl" x1="280" y1="0" x2="280" y2="166"/>
+<line class="gl" x1="403" y1="0" x2="403" y2="166"/>
+<line class="gl" x1="526" y1="0" x2="526" y2="166"/>
+<line class="gl" x1="649" y1="0" x2="649" y2="166"/>
+<line class="gl" x1="772" y1="0" x2="772" y2="166"/>
+<line class="gl" x1="895" y1="0" x2="895" y2="166"/>
+<line class="gl" x1="1018" y1="0" x2="1018" y2="166"/>
+<rect class="hl" x="402" y="43" width="248" height="124" rx="3"/>
+<circle class="badge" cx="402" cy="43" r="9.5" stroke="var(--xl-cell)" stroke-width="2"/>
+<text class="badgeT" x="402" y="46.5" text-anchor="middle">1</text>
+<circle class="badge" cx="14" cy="181" r="9"/>
+<text class="noteN" x="14" y="185" text-anchor="middle">1</text>
+<text class="note" x="32" y="185">Cliente y Número de parte son los dos datos obligatorios de cada renglón. El Cliente va por línea: un mismo archivo puede traer varios y se crea</text>
+<text class="note" x="32" y="202">una cotización por cada uno.</text>
+<text class="note" x="6" y="228">Id SH (columna C) se deja en blanco al dar de alta. Sirve para apuntar a un número de parte concreto cuando ya sabes su identificador en Steelhead.</text>
+</svg>
+<figcaption>Las primeras ocho columnas. <code>Estatus</code> permite dejar el número de parte activo o archivado, con o sin validación de primer recibo.</figcaption>
+</figure>
+
+<h3 class="sub">Precio</h3>
+<figure class="sheet">
+<svg viewBox="0 0 915 219" width="100%" style="min-width:915px" role="img" aria-label="Cantidad, precio, unidad y divisa" xmlns="http://www.w3.org/2000/svg" class="xl">
+<style>
+    .xl text{font-family:var(--sans)}
+    .xl .cellbg{fill:var(--xl-cell)} .xl .cellbg.dropdown{fill:var(--xl-drop)}
+    .xl .cellbg.calc{fill:var(--xl-calc)} .xl .cellbg.edit{fill:var(--xl-edit)}
+    .xl .barbg{fill:var(--xl-bar)} .xl .headbg{fill:var(--xl-head)} .xl .bandbg{fill:var(--xl-band)}
+    .xl .gl{stroke:var(--xl-line);stroke-width:1}
+    .xl .colL{font-size:11px;font-weight:600;fill:var(--xl-bar-ink)}
+    .xl .rowL{font-size:10.5px;font-weight:600;fill:var(--xl-bar-ink)}
+    .xl .bn{font-size:10px;font-weight:800;fill:var(--xl-band-ink);letter-spacing:.06em}
+    .xl .hd{font-size:11.5px;font-weight:700;fill:var(--xl-head-ink)}
+    .xl .ty{font-size:10px;fill:var(--xl-mut);font-style:italic}
+    .xl .dt{font-size:11.5px;fill:var(--xl-ink)} .xl .dt.ph{fill:var(--xl-mut);font-style:italic}
+    .xl .hl{fill:none;stroke:var(--xl-hl);stroke-width:2.5}
+    .xl .badge{fill:var(--xl-hl)} .xl .badgeT{font-size:11px;font-weight:700;fill:#fff}
+    .xl .note{font-size:12.5px;fill:var(--xl-mut)} .xl .noteN{font-size:11px;font-weight:700;fill:#fff}
+  </style>
+<rect x="0" y="0" width="915" height="166" class="cellbg"/>
+<rect x="0" y="0" width="915" height="22" class="barbg"/>
+<rect x="0" y="0" width="34" height="166" class="barbg"/>
+<text class="colL" x="122" y="15" text-anchor="middle">I</text>
+<text class="colL" x="298" y="15" text-anchor="middle">J</text>
+<text class="colL" x="474" y="15" text-anchor="middle">K</text>
+<text class="colL" x="650" y="15" text-anchor="middle">L</text>
+<text class="colL" x="826" y="15" text-anchor="middle">M</text>
+<text class="rowL" x="17" y="37" text-anchor="middle">6</text>
+<rect x="34" y="22" width="881" height="22" class="bandbg"/>
+<text class="bn" x="474" y="36.5" text-anchor="middle">PRECIO</text>
+<text class="rowL" x="17" y="76" text-anchor="middle">7</text>
+<rect x="34" y="44" width="881" height="56" class="headbg"/>
+<text class="hd" x="122" y="76" text-anchor="middle">Cantidad</text>
+<text class="hd" x="298" y="76" text-anchor="middle">Precio</text>
+<text class="hd" x="474" y="69.5" text-anchor="middle">Unidad</text>
+<text class="hd" x="474" y="82.5" text-anchor="middle">precio</text>
+<text class="hd" x="650" y="76" text-anchor="middle">Divisa</text>
+<text class="hd" x="826" y="69.5" text-anchor="middle">Precio</text>
+<text class="hd" x="826" y="82.5" text-anchor="middle">default</text>
+<text class="rowL" x="17" y="114" text-anchor="middle">8</text>
+<text class="ty" x="122" y="113.5" text-anchor="middle">#</text>
+<text class="ty" x="298" y="113.5" text-anchor="middle">$</text>
+<text class="ty" x="474" y="113.5" text-anchor="middle">Desp.</text>
+<text class="ty" x="650" y="113.5" text-anchor="middle">Desp.</text>
+<text class="ty" x="826" y="113.5" text-anchor="middle">V/F</text>
+<text class="rowL" x="17" y="147" text-anchor="middle">9</text>
+<rect x="34" y="120" width="176" height="46" class="cellbg edit"/>
+<text class="dt" x="122" y="147" text-anchor="middle">1200</text>
+<rect x="210" y="120" width="176" height="46" class="cellbg edit"/>
+<text class="dt" x="298" y="147" text-anchor="middle">3.85</text>
+<rect x="386" y="120" width="176" height="46" class="cellbg dropdown"/>
+<text class="dt" x="474" y="147" text-anchor="middle">PZA</text>
+<rect x="562" y="120" width="176" height="46" class="cellbg dropdown"/>
+<text class="dt" x="650" y="147" text-anchor="middle">USD</text>
+<rect x="738" y="120" width="176" height="46" class="cellbg edit"/>
+<text class="dt" x="826" y="147" text-anchor="middle">V</text>
+<line class="gl" x1="0" y1="0" x2="915" y2="0"/>
+<line class="gl" x1="0" y1="22" x2="915" y2="22"/>
+<line class="gl" x1="0" y1="44" x2="915" y2="44"/>
+<line class="gl" x1="0" y1="100" x2="915" y2="100"/>
+<line class="gl" x1="0" y1="120" x2="915" y2="120"/>
+<line class="gl" x1="0" y1="166" x2="915" y2="166"/>
+<line class="gl" x1="34" y1="0" x2="34" y2="166"/>
+<line class="gl" x1="210" y1="0" x2="210" y2="166"/>
+<line class="gl" x1="386" y1="0" x2="386" y2="166"/>
+<line class="gl" x1="562" y1="0" x2="562" y2="166"/>
+<line class="gl" x1="738" y1="0" x2="738" y2="166"/>
+<line class="gl" x1="914" y1="0" x2="914" y2="166"/>
+<text class="note" x="6" y="185">La Divisa va por renglón: en un mismo archivo puede haber líneas en USD y otras en MXN. Precio default en V fija ese precio como el</text>
+<text class="note" x="6" y="202">predeterminado del número de parte.</text>
+</svg>
+<figcaption>La cantidad solo es obligatoria en modo cotización. La unidad de precio determina contra qué se multiplica: piezas, kilos, centímetros cuadrados, metros lineales…</figcaption>
+</figure>
+
+<h3 class="sub">Línea, acabados, proceso y producto</h3>
+<figure class="sheet">
+<svg viewBox="0 0 1025 245" width="100%" style="min-width:1020px" role="img" aria-label="Línea, acabados, proceso y producto" xmlns="http://www.w3.org/2000/svg" class="xl">
+<style>
+    .xl text{font-family:var(--sans)}
+    .xl .cellbg{fill:var(--xl-cell)} .xl .cellbg.dropdown{fill:var(--xl-drop)}
+    .xl .cellbg.calc{fill:var(--xl-calc)} .xl .cellbg.edit{fill:var(--xl-edit)}
+    .xl .barbg{fill:var(--xl-bar)} .xl .headbg{fill:var(--xl-head)} .xl .bandbg{fill:var(--xl-band)}
+    .xl .gl{stroke:var(--xl-line);stroke-width:1}
+    .xl .colL{font-size:11px;font-weight:600;fill:var(--xl-bar-ink)}
+    .xl .rowL{font-size:10.5px;font-weight:600;fill:var(--xl-bar-ink)}
+    .xl .bn{font-size:10px;font-weight:800;fill:var(--xl-band-ink);letter-spacing:.06em}
+    .xl .hd{font-size:11.5px;font-weight:700;fill:var(--xl-head-ink)}
+    .xl .ty{font-size:10px;fill:var(--xl-mut);font-style:italic}
+    .xl .dt{font-size:11.5px;fill:var(--xl-ink)} .xl .dt.ph{fill:var(--xl-mut);font-style:italic}
+    .xl .hl{fill:none;stroke:var(--xl-hl);stroke-width:2.5}
+    .xl .badge{fill:var(--xl-hl)} .xl .badgeT{font-size:11px;font-weight:700;fill:#fff}
+    .xl .note{font-size:12.5px;fill:var(--xl-mut)} .xl .noteN{font-size:11px;font-weight:700;fill:#fff}
+  </style>
+<rect x="0" y="0" width="1025" height="166" class="cellbg"/>
+<rect x="0" y="0" width="1025" height="22" class="barbg"/>
+<rect x="0" y="0" width="34" height="166" class="barbg"/>
+<text class="colL" x="89" y="15" text-anchor="middle">N</text>
+<text class="colL" x="199" y="15" text-anchor="middle">O</text>
+<text class="colL" x="309" y="15" text-anchor="middle">P</text>
+<text class="colL" x="419" y="15" text-anchor="middle">Q</text>
+<text class="colL" x="529" y="15" text-anchor="middle">R</text>
+<text class="colL" x="639" y="15" text-anchor="middle">S</text>
+<text class="colL" x="749" y="15" text-anchor="middle">T</text>
+<text class="colL" x="859" y="15" text-anchor="middle">U</text>
+<text class="colL" x="969" y="15" text-anchor="middle">V</text>
+<text class="rowL" x="17" y="37" text-anchor="middle">6</text>
+<rect x="34" y="22" width="991" height="22" class="bandbg"/>
+<text class="bn" x="419" y="36.5" text-anchor="middle">LÍNEA Y ACABADOS (ETIQUETAS - LABELS)</text>
+<text class="bn" x="859" y="36.5" text-anchor="middle">PROCESO</text>
+<line class="gl" x1="804" y1="22" x2="804" y2="44"/>
+<text class="bn" x="969" y="36.5" text-anchor="middle">PRODUCTOS</text>
+<line class="gl" x1="914" y1="22" x2="914" y2="44"/>
+<text class="rowL" x="17" y="76" text-anchor="middle">7</text>
+<rect x="34" y="44" width="991" height="56" class="headbg"/>
+<text class="hd" x="89" y="76" text-anchor="middle">Línea</text>
+<text class="hd" x="199" y="76" text-anchor="middle">Metal base</text>
+<text class="hd" x="309" y="76" text-anchor="middle">Etiqueta 1</text>
+<text class="hd" x="419" y="76" text-anchor="middle">Etiqueta 2</text>
+<text class="hd" x="529" y="76" text-anchor="middle">Etiqueta 3</text>
+<text class="hd" x="639" y="76" text-anchor="middle">Etiqueta 4</text>
+<text class="hd" x="749" y="69.5" text-anchor="middle">Etiqueta Planta</text>
+<text class="hd" x="749" y="82.5" text-anchor="middle">Schneider</text>
+<text class="hd" x="859" y="76" text-anchor="middle">Proceso</text>
+<text class="hd" x="969" y="76" text-anchor="middle">Productos</text>
+<text class="rowL" x="17" y="114" text-anchor="middle">8</text>
+<text class="ty" x="89" y="113.5" text-anchor="middle">Desp.</text>
+<text class="ty" x="199" y="113.5" text-anchor="middle">Desp.</text>
+<text class="ty" x="309" y="113.5" text-anchor="middle">Desp.</text>
+<text class="ty" x="419" y="113.5" text-anchor="middle">Desp.</text>
+<text class="ty" x="529" y="113.5" text-anchor="middle">Desp.</text>
+<text class="ty" x="639" y="113.5" text-anchor="middle">Desp.</text>
+<text class="ty" x="749" y="113.5" text-anchor="middle">Calc.</text>
+<text class="ty" x="859" y="113.5" text-anchor="middle">Desp.</text>
+<text class="ty" x="969" y="113.5" text-anchor="middle">Desp.</text>
+<text class="rowL" x="17" y="147" text-anchor="middle">9</text>
+<rect x="34" y="120" width="110" height="46" class="cellbg dropdown"/>
+<text class="dt" x="89" y="147" text-anchor="middle">Línea 100</text>
+<rect x="144" y="120" width="110" height="46" class="cellbg dropdown"/>
+<text class="dt" x="199" y="147" text-anchor="middle">CU</text>
+<rect x="254" y="120" width="110" height="46" class="cellbg dropdown"/>
+<text class="dt" x="309" y="147" text-anchor="middle">ESTAÑO</text>
+<rect x="364" y="120" width="110" height="46" class="cellbg dropdown"/>
+<text class="dt" x="419" y="147" text-anchor="middle">MATE</text>
+<rect x="474" y="120" width="110" height="46" class="cellbg dropdown"/>
+<text class="dt" x="529" y="147" text-anchor="middle"></text>
+<rect x="584" y="120" width="110" height="46" class="cellbg dropdown"/>
+<text class="dt" x="639" y="147" text-anchor="middle"></text>
+<rect x="694" y="120" width="110" height="46" class="cellbg calc"/>
+<text class="dt" x="749" y="147" text-anchor="middle"></text>
+<rect x="804" y="120" width="110" height="46" class="cellbg dropdown"/>
+<text class="dt" x="859" y="140" text-anchor="middle">T204 (PLA)-T300</text>
+<text class="dt" x="859" y="154" text-anchor="middle">(LES)</text>
+<rect x="914" y="120" width="110" height="46" class="cellbg dropdown"/>
+<text class="dt" x="969" y="147" text-anchor="middle">Estañado</text>
+<line class="gl" x1="0" y1="0" x2="1025" y2="0"/>
+<line class="gl" x1="0" y1="22" x2="1025" y2="22"/>
+<line class="gl" x1="0" y1="44" x2="1025" y2="44"/>
+<line class="gl" x1="0" y1="100" x2="1025" y2="100"/>
+<line class="gl" x1="0" y1="120" x2="1025" y2="120"/>
+<line class="gl" x1="0" y1="166" x2="1025" y2="166"/>
+<line class="gl" x1="34" y1="0" x2="34" y2="166"/>
+<line class="gl" x1="144" y1="0" x2="144" y2="166"/>
+<line class="gl" x1="254" y1="0" x2="254" y2="166"/>
+<line class="gl" x1="364" y1="0" x2="364" y2="166"/>
+<line class="gl" x1="474" y1="0" x2="474" y2="166"/>
+<line class="gl" x1="584" y1="0" x2="584" y2="166"/>
+<line class="gl" x1="694" y1="0" x2="694" y2="166"/>
+<line class="gl" x1="804" y1="0" x2="804" y2="166"/>
+<line class="gl" x1="914" y1="0" x2="914" y2="166"/>
+<line class="gl" x1="1024" y1="0" x2="1024" y2="166"/>
+<rect class="hl" x="803" y="43" width="112" height="124" rx="3"/>
+<circle class="badge" cx="803" cy="43" r="9.5" stroke="var(--xl-cell)" stroke-width="2"/>
+<text class="badgeT" x="803" y="46.5" text-anchor="middle">1</text>
+<circle class="badge" cx="14" cy="181" r="9"/>
+<text class="noteN" x="14" y="185" text-anchor="middle">1</text>
+<text class="note" x="32" y="185">El Proceso es obligatorio en cada renglón y no tiene valor por omisión. Si falta, ese renglón se reporta como error y no se carga.</text>
+<text class="note" x="6" y="211">Si escribes una etiqueta que no existe en el catálogo de Steelhead, el renglón se carga sin esa etiqueta y aparece en el reporte de errores.</text>
+<text class="note" x="6" y="228">Etiqueta Planta Schneider es calculada: no se teclea.</text>
+</svg>
+</figure>
+
+<h3 class="sub">Especificaciones</h3>
+<figure class="sheet">
+<svg viewBox="0 0 1019 262" width="100%" style="min-width:1019px" role="img" aria-label="Las cuatro especificaciones" xmlns="http://www.w3.org/2000/svg" class="xl">
+<style>
+    .xl text{font-family:var(--sans)}
+    .xl .cellbg{fill:var(--xl-cell)} .xl .cellbg.dropdown{fill:var(--xl-drop)}
+    .xl .cellbg.calc{fill:var(--xl-calc)} .xl .cellbg.edit{fill:var(--xl-edit)}
+    .xl .barbg{fill:var(--xl-bar)} .xl .headbg{fill:var(--xl-head)} .xl .bandbg{fill:var(--xl-band)}
+    .xl .gl{stroke:var(--xl-line);stroke-width:1}
+    .xl .colL{font-size:11px;font-weight:600;fill:var(--xl-bar-ink)}
+    .xl .rowL{font-size:10.5px;font-weight:600;fill:var(--xl-bar-ink)}
+    .xl .bn{font-size:10px;font-weight:800;fill:var(--xl-band-ink);letter-spacing:.06em}
+    .xl .hd{font-size:11.5px;font-weight:700;fill:var(--xl-head-ink)}
+    .xl .ty{font-size:10px;fill:var(--xl-mut);font-style:italic}
+    .xl .dt{font-size:11.5px;fill:var(--xl-ink)} .xl .dt.ph{fill:var(--xl-mut);font-style:italic}
+    .xl .hl{fill:none;stroke:var(--xl-hl);stroke-width:2.5}
+    .xl .badge{fill:var(--xl-hl)} .xl .badgeT{font-size:11px;font-weight:700;fill:#fff}
+    .xl .note{font-size:12.5px;fill:var(--xl-mut)} .xl .noteN{font-size:11px;font-weight:700;fill:#fff}
+  </style>
+<rect x="0" y="0" width="1019" height="166" class="cellbg"/>
+<rect x="0" y="0" width="1019" height="22" class="barbg"/>
+<rect x="0" y="0" width="34" height="166" class="barbg"/>
+<text class="colL" x="95.5" y="15" text-anchor="middle">W</text>
+<text class="colL" x="218.5" y="15" text-anchor="middle">X</text>
+<text class="colL" x="341.5" y="15" text-anchor="middle">Y</text>
+<text class="colL" x="464.5" y="15" text-anchor="middle">Z</text>
+<text class="colL" x="587.5" y="15" text-anchor="middle">AA</text>
+<text class="colL" x="710.5" y="15" text-anchor="middle">AB</text>
+<text class="colL" x="833.5" y="15" text-anchor="middle">AC</text>
+<text class="colL" x="956.5" y="15" text-anchor="middle">AD</text>
+<text class="rowL" x="17" y="37" text-anchor="middle">6</text>
+<rect x="34" y="22" width="985" height="22" class="bandbg"/>
+<text class="bn" x="526" y="36.5" text-anchor="middle">ESPECIFICACIONES</text>
+<text class="rowL" x="17" y="76" text-anchor="middle">7</text>
+<rect x="34" y="44" width="985" height="56" class="headbg"/>
+<text class="hd" x="95.5" y="76" text-anchor="middle">Spec 1</text>
+<text class="hd" x="218.5" y="69.5" text-anchor="middle">Esp. Spec 1</text>
+<text class="hd" x="218.5" y="82.5" text-anchor="middle">(µm)</text>
+<text class="hd" x="341.5" y="76" text-anchor="middle">Spec 2</text>
+<text class="hd" x="464.5" y="69.5" text-anchor="middle">Esp. Spec 2</text>
+<text class="hd" x="464.5" y="82.5" text-anchor="middle">(µm)</text>
+<text class="hd" x="587.5" y="76" text-anchor="middle">Spec 3</text>
+<text class="hd" x="710.5" y="69.5" text-anchor="middle">Esp. Spec 3</text>
+<text class="hd" x="710.5" y="82.5" text-anchor="middle">(µm)</text>
+<text class="hd" x="833.5" y="76" text-anchor="middle">Spec 4</text>
+<text class="hd" x="956.5" y="69.5" text-anchor="middle">Esp. Spec 4</text>
+<text class="hd" x="956.5" y="82.5" text-anchor="middle">(µm)</text>
+<text class="rowL" x="17" y="114" text-anchor="middle">8</text>
+<text class="ty" x="95.5" y="113.5" text-anchor="middle">Desp.</text>
+<text class="ty" x="218.5" y="113.5" text-anchor="middle">Calc/#</text>
+<text class="ty" x="341.5" y="113.5" text-anchor="middle">Desp.</text>
+<text class="ty" x="464.5" y="113.5" text-anchor="middle">Calc/#</text>
+<text class="ty" x="587.5" y="113.5" text-anchor="middle">Desp.</text>
+<text class="ty" x="710.5" y="113.5" text-anchor="middle">Calc/#</text>
+<text class="ty" x="833.5" y="113.5" text-anchor="middle">Desp.</text>
+<text class="ty" x="956.5" y="113.5" text-anchor="middle">Calc/#</text>
+<text class="rowL" x="17" y="147" text-anchor="middle">9</text>
+<rect x="34" y="120" width="123" height="46" class="cellbg dropdown"/>
+<text class="dt" x="95.5" y="140" text-anchor="middle">Estaño Mate | 3-8</text>
+<text class="dt" x="95.5" y="154" text-anchor="middle">µm</text>
+<rect x="157" y="120" width="123" height="46" class="cellbg calc"/>
+<text class="dt" x="218.5" y="147" text-anchor="middle">5.5</text>
+<rect x="280" y="120" width="123" height="46" class="cellbg dropdown"/>
+<text class="dt" x="341.5" y="147" text-anchor="middle"></text>
+<rect x="403" y="120" width="123" height="46" class="cellbg calc"/>
+<text class="dt" x="464.5" y="147" text-anchor="middle"></text>
+<rect x="526" y="120" width="123" height="46" class="cellbg dropdown"/>
+<text class="dt" x="587.5" y="147" text-anchor="middle"></text>
+<rect x="649" y="120" width="123" height="46" class="cellbg calc"/>
+<text class="dt" x="710.5" y="147" text-anchor="middle"></text>
+<rect x="772" y="120" width="123" height="46" class="cellbg dropdown"/>
+<text class="dt" x="833.5" y="147" text-anchor="middle"></text>
+<rect x="895" y="120" width="123" height="46" class="cellbg calc"/>
+<text class="dt" x="956.5" y="147" text-anchor="middle"></text>
+<line class="gl" x1="0" y1="0" x2="1019" y2="0"/>
+<line class="gl" x1="0" y1="22" x2="1019" y2="22"/>
+<line class="gl" x1="0" y1="44" x2="1019" y2="44"/>
+<line class="gl" x1="0" y1="100" x2="1019" y2="100"/>
+<line class="gl" x1="0" y1="120" x2="1019" y2="120"/>
+<line class="gl" x1="0" y1="166" x2="1019" y2="166"/>
+<line class="gl" x1="34" y1="0" x2="34" y2="166"/>
+<line class="gl" x1="157" y1="0" x2="157" y2="166"/>
+<line class="gl" x1="280" y1="0" x2="280" y2="166"/>
+<line class="gl" x1="403" y1="0" x2="403" y2="166"/>
+<line class="gl" x1="526" y1="0" x2="526" y2="166"/>
+<line class="gl" x1="649" y1="0" x2="649" y2="166"/>
+<line class="gl" x1="772" y1="0" x2="772" y2="166"/>
+<line class="gl" x1="895" y1="0" x2="895" y2="166"/>
+<line class="gl" x1="1018" y1="0" x2="1018" y2="166"/>
+<rect class="hl" x="33" y="43" width="248" height="124" rx="3"/>
+<circle class="badge" cx="33" cy="43" r="9.5" stroke="var(--xl-cell)" stroke-width="2"/>
+<text class="badgeT" x="33" y="46.5" text-anchor="middle">1</text>
+<circle class="badge" cx="14" cy="181" r="9"/>
+<text class="noteN" x="14" y="185" text-anchor="middle">1</text>
+<text class="note" x="32" y="185">Cada especificación va en pareja: el nombre se elige de la lista y el espesor se calcula solo, a partir del rango que trae ese nombre. No se</text>
+<text class="note" x="32" y="202">captura.</text>
+<text class="note" x="6" y="228">Un guión en cualquiera de las specs significa REEMPLAZO, no suma: se archivan todas las specs que el número de parte ya tenga y no vengan en el</text>
+<text class="note" x="6" y="245">archivo. El panel te lo advierte en ámbar antes de ejecutar.</text>
+</svg>
+</figure>
+
+<h3 class="sub">Conversión de unidades</h3>
+<figure class="sheet">
+<svg viewBox="0 0 739 219" width="100%" style="min-width:739px" role="img" aria-label="Factores de conversión de unidad" xmlns="http://www.w3.org/2000/svg" class="xl">
+<style>
+    .xl text{font-family:var(--sans)}
+    .xl .cellbg{fill:var(--xl-cell)} .xl .cellbg.dropdown{fill:var(--xl-drop)}
+    .xl .cellbg.calc{fill:var(--xl-calc)} .xl .cellbg.edit{fill:var(--xl-edit)}
+    .xl .barbg{fill:var(--xl-bar)} .xl .headbg{fill:var(--xl-head)} .xl .bandbg{fill:var(--xl-band)}
+    .xl .gl{stroke:var(--xl-line);stroke-width:1}
+    .xl .colL{font-size:11px;font-weight:600;fill:var(--xl-bar-ink)}
+    .xl .rowL{font-size:10.5px;font-weight:600;fill:var(--xl-bar-ink)}
+    .xl .bn{font-size:10px;font-weight:800;fill:var(--xl-band-ink);letter-spacing:.06em}
+    .xl .hd{font-size:11.5px;font-weight:700;fill:var(--xl-head-ink)}
+    .xl .ty{font-size:10px;fill:var(--xl-mut);font-style:italic}
+    .xl .dt{font-size:11.5px;fill:var(--xl-ink)} .xl .dt.ph{fill:var(--xl-mut);font-style:italic}
+    .xl .hl{fill:none;stroke:var(--xl-hl);stroke-width:2.5}
+    .xl .badge{fill:var(--xl-hl)} .xl .badgeT{font-size:11px;font-weight:700;fill:#fff}
+    .xl .note{font-size:12.5px;fill:var(--xl-mut)} .xl .noteN{font-size:11px;font-weight:700;fill:#fff}
+  </style>
+<rect x="0" y="0" width="739" height="166" class="cellbg"/>
+<rect x="0" y="0" width="739" height="22" class="barbg"/>
+<rect x="0" y="0" width="34" height="166" class="barbg"/>
+<text class="colL" x="122" y="15" text-anchor="middle">AE</text>
+<text class="colL" x="298" y="15" text-anchor="middle">AF</text>
+<text class="colL" x="474" y="15" text-anchor="middle">AG</text>
+<text class="colL" x="650" y="15" text-anchor="middle">AH</text>
+<text class="rowL" x="17" y="37" text-anchor="middle">6</text>
+<rect x="34" y="22" width="705" height="22" class="bandbg"/>
+<text class="bn" x="386" y="36.5" text-anchor="middle">CONVERSIÓN DE UNIDADES</text>
+<text class="rowL" x="17" y="76" text-anchor="middle">7</text>
+<rect x="34" y="44" width="705" height="56" class="headbg"/>
+<text class="hd" x="122" y="69.5" text-anchor="middle">KGM</text>
+<text class="hd" x="122" y="82.5" text-anchor="middle">(kg/pza)</text>
+<text class="hd" x="298" y="69.5" text-anchor="middle">CMK</text>
+<text class="hd" x="298" y="82.5" text-anchor="middle">(cm²/pza)</text>
+<text class="hd" x="474" y="69.5" text-anchor="middle">LM</text>
+<text class="hd" x="474" y="82.5" text-anchor="middle">(m/pza)</text>
+<text class="hd" x="650" y="69.5" text-anchor="middle">Mín Pzas</text>
+<text class="hd" x="650" y="82.5" text-anchor="middle">Lote</text>
+<text class="rowL" x="17" y="114" text-anchor="middle">8</text>
+<text class="ty" x="122" y="113.5" text-anchor="middle">#</text>
+<text class="ty" x="298" y="113.5" text-anchor="middle">#</text>
+<text class="ty" x="474" y="113.5" text-anchor="middle">#</text>
+<text class="ty" x="650" y="113.5" text-anchor="middle">#</text>
+<text class="rowL" x="17" y="147" text-anchor="middle">9</text>
+<rect x="34" y="120" width="176" height="46" class="cellbg edit"/>
+<text class="dt" x="122" y="147" text-anchor="middle">0.018</text>
+<rect x="210" y="120" width="176" height="46" class="cellbg edit"/>
+<text class="dt" x="298" y="147" text-anchor="middle">42.5</text>
+<rect x="386" y="120" width="176" height="46" class="cellbg edit"/>
+<text class="dt" x="474" y="147" text-anchor="middle"></text>
+<rect x="562" y="120" width="176" height="46" class="cellbg edit"/>
+<text class="dt" x="650" y="147" text-anchor="middle">250</text>
+<line class="gl" x1="0" y1="0" x2="739" y2="0"/>
+<line class="gl" x1="0" y1="22" x2="739" y2="22"/>
+<line class="gl" x1="0" y1="44" x2="739" y2="44"/>
+<line class="gl" x1="0" y1="100" x2="739" y2="100"/>
+<line class="gl" x1="0" y1="120" x2="739" y2="120"/>
+<line class="gl" x1="0" y1="166" x2="739" y2="166"/>
+<line class="gl" x1="34" y1="0" x2="34" y2="166"/>
+<line class="gl" x1="210" y1="0" x2="210" y2="166"/>
+<line class="gl" x1="386" y1="0" x2="386" y2="166"/>
+<line class="gl" x1="562" y1="0" x2="562" y2="166"/>
+<line class="gl" x1="738" y1="0" x2="738" y2="166"/>
+<text class="note" x="6" y="185">Son los factores que permiten cotizar por kilo, por área o por metro lineal en vez de por pieza. Mín</text>
+<text class="note" x="6" y="202">Pzas Lote aplica un cargo por lote mínimo cuando se captura.</text>
+</svg>
+</figure>
+
+<h3 class="sub">Tipos de rack</h3>
+<p>Es el bloque que más creció en esta versión. Tiene su propia sección, más abajo.</p>
+
+<h3 class="sub">Geometría y dimensiones</h3>
+<figure class="sheet">
+<svg viewBox="0 0 1019 219" width="100%" style="min-width:1019px" role="img" aria-label="Geometría y dimensiones" xmlns="http://www.w3.org/2000/svg" class="xl">
+<style>
+    .xl text{font-family:var(--sans)}
+    .xl .cellbg{fill:var(--xl-cell)} .xl .cellbg.dropdown{fill:var(--xl-drop)}
+    .xl .cellbg.calc{fill:var(--xl-calc)} .xl .cellbg.edit{fill:var(--xl-edit)}
+    .xl .barbg{fill:var(--xl-bar)} .xl .headbg{fill:var(--xl-head)} .xl .bandbg{fill:var(--xl-band)}
+    .xl .gl{stroke:var(--xl-line);stroke-width:1}
+    .xl .colL{font-size:11px;font-weight:600;fill:var(--xl-bar-ink)}
+    .xl .rowL{font-size:10.5px;font-weight:600;fill:var(--xl-bar-ink)}
+    .xl .bn{font-size:10px;font-weight:800;fill:var(--xl-band-ink);letter-spacing:.06em}
+    .xl .hd{font-size:11.5px;font-weight:700;fill:var(--xl-head-ink)}
+    .xl .ty{font-size:10px;fill:var(--xl-mut);font-style:italic}
+    .xl .dt{font-size:11.5px;fill:var(--xl-ink)} .xl .dt.ph{fill:var(--xl-mut);font-style:italic}
+    .xl .hl{fill:none;stroke:var(--xl-hl);stroke-width:2.5}
+    .xl .badge{fill:var(--xl-hl)} .xl .badgeT{font-size:11px;font-weight:700;fill:#fff}
+    .xl .note{font-size:12.5px;fill:var(--xl-mut)} .xl .noteN{font-size:11px;font-weight:700;fill:#fff}
+  </style>
+<rect x="0" y="0" width="1019" height="166" class="cellbg"/>
+<rect x="0" y="0" width="1019" height="22" class="barbg"/>
+<rect x="0" y="0" width="34" height="166" class="barbg"/>
+<text class="colL" x="116" y="15" text-anchor="middle">AS</text>
+<text class="colL" x="280" y="15" text-anchor="middle">AT</text>
+<text class="colL" x="444" y="15" text-anchor="middle">AU</text>
+<text class="colL" x="608" y="15" text-anchor="middle">AV</text>
+<text class="colL" x="772" y="15" text-anchor="middle">AW</text>
+<text class="colL" x="936" y="15" text-anchor="middle">AX</text>
+<text class="rowL" x="17" y="37" text-anchor="middle">6</text>
+<rect x="34" y="22" width="985" height="22" class="bandbg"/>
+<text class="bn" x="526" y="36.5" text-anchor="middle">DIMENSIONES</text>
+<text class="rowL" x="17" y="76" text-anchor="middle">7</text>
+<rect x="34" y="44" width="985" height="56" class="headbg"/>
+<text class="hd" x="116" y="76" text-anchor="middle">Tipo de Geometría</text>
+<text class="hd" x="280" y="69.5" text-anchor="middle">Longitud</text>
+<text class="hd" x="280" y="82.5" text-anchor="middle">(m)</text>
+<text class="hd" x="444" y="69.5" text-anchor="middle">Ancho</text>
+<text class="hd" x="444" y="82.5" text-anchor="middle">(m)</text>
+<text class="hd" x="608" y="69.5" text-anchor="middle">Alto</text>
+<text class="hd" x="608" y="82.5" text-anchor="middle">(m)</text>
+<text class="hd" x="772" y="69.5" text-anchor="middle">Diám.Ext</text>
+<text class="hd" x="772" y="82.5" text-anchor="middle">(m)</text>
+<text class="hd" x="936" y="69.5" text-anchor="middle">Diám.Int</text>
+<text class="hd" x="936" y="82.5" text-anchor="middle">(m)</text>
+<text class="rowL" x="17" y="114" text-anchor="middle">8</text>
+<text class="ty" x="116" y="113.5" text-anchor="middle">Desp.</text>
+<text class="ty" x="280" y="113.5" text-anchor="middle">#</text>
+<text class="ty" x="444" y="113.5" text-anchor="middle">#</text>
+<text class="ty" x="608" y="113.5" text-anchor="middle">#</text>
+<text class="ty" x="772" y="113.5" text-anchor="middle">#</text>
+<text class="ty" x="936" y="113.5" text-anchor="middle">#</text>
+<text class="rowL" x="17" y="147" text-anchor="middle">9</text>
+<rect x="34" y="120" width="164" height="46" class="cellbg dropdown"/>
+<text class="dt" x="116" y="147" text-anchor="middle">Cilindro</text>
+<rect x="198" y="120" width="164" height="46" class="cellbg edit"/>
+<text class="dt" x="280" y="147" text-anchor="middle">0.012</text>
+<rect x="362" y="120" width="164" height="46" class="cellbg edit"/>
+<text class="dt" x="444" y="147" text-anchor="middle">0.008</text>
+<rect x="526" y="120" width="164" height="46" class="cellbg edit"/>
+<text class="dt" x="608" y="147" text-anchor="middle">0.008</text>
+<rect x="690" y="120" width="164" height="46" class="cellbg edit"/>
+<text class="dt" x="772" y="147" text-anchor="middle">0.006</text>
+<rect x="854" y="120" width="164" height="46" class="cellbg edit"/>
+<text class="dt" x="936" y="147" text-anchor="middle">0.004</text>
+<line class="gl" x1="0" y1="0" x2="1019" y2="0"/>
+<line class="gl" x1="0" y1="22" x2="1019" y2="22"/>
+<line class="gl" x1="0" y1="44" x2="1019" y2="44"/>
+<line class="gl" x1="0" y1="100" x2="1019" y2="100"/>
+<line class="gl" x1="0" y1="120" x2="1019" y2="120"/>
+<line class="gl" x1="0" y1="166" x2="1019" y2="166"/>
+<line class="gl" x1="34" y1="0" x2="34" y2="166"/>
+<line class="gl" x1="198" y1="0" x2="198" y2="166"/>
+<line class="gl" x1="362" y1="0" x2="362" y2="166"/>
+<line class="gl" x1="526" y1="0" x2="526" y2="166"/>
+<line class="gl" x1="690" y1="0" x2="690" y2="166"/>
+<line class="gl" x1="854" y1="0" x2="854" y2="166"/>
+<line class="gl" x1="1018" y1="0" x2="1018" y2="166"/>
+<text class="note" x="6" y="185">La geometría se elige de la lista y las medidas van en METROS. De aquí salen los consumos de materia prima, así que un cero de más se propaga a</text>
+<text class="note" x="6" y="202">todo el bloque siguiente.</text>
+</svg>
+</figure>
+
+<h3 class="sub">Consumo predictivo de materias primas</h3>
+<figure class="sheet">
+<svg viewBox="0 0 1025 202" width="100%" style="min-width:1020px" role="img" aria-label="Consumo predictivo de materias primas" xmlns="http://www.w3.org/2000/svg" class="xl">
+<style>
+    .xl text{font-family:var(--sans)}
+    .xl .cellbg{fill:var(--xl-cell)} .xl .cellbg.dropdown{fill:var(--xl-drop)}
+    .xl .cellbg.calc{fill:var(--xl-calc)} .xl .cellbg.edit{fill:var(--xl-edit)}
+    .xl .barbg{fill:var(--xl-bar)} .xl .headbg{fill:var(--xl-head)} .xl .bandbg{fill:var(--xl-band)}
+    .xl .gl{stroke:var(--xl-line);stroke-width:1}
+    .xl .colL{font-size:11px;font-weight:600;fill:var(--xl-bar-ink)}
+    .xl .rowL{font-size:10.5px;font-weight:600;fill:var(--xl-bar-ink)}
+    .xl .bn{font-size:10px;font-weight:800;fill:var(--xl-band-ink);letter-spacing:.06em}
+    .xl .hd{font-size:11.5px;font-weight:700;fill:var(--xl-head-ink)}
+    .xl .ty{font-size:10px;fill:var(--xl-mut);font-style:italic}
+    .xl .dt{font-size:11.5px;fill:var(--xl-ink)} .xl .dt.ph{fill:var(--xl-mut);font-style:italic}
+    .xl .hl{fill:none;stroke:var(--xl-hl);stroke-width:2.5}
+    .xl .badge{fill:var(--xl-hl)} .xl .badgeT{font-size:11px;font-weight:700;fill:#fff}
+    .xl .note{font-size:12.5px;fill:var(--xl-mut)} .xl .noteN{font-size:11px;font-weight:700;fill:#fff}
+  </style>
+<rect x="0" y="0" width="1025" height="166" class="cellbg"/>
+<rect x="0" y="0" width="1025" height="22" class="barbg"/>
+<rect x="0" y="0" width="34" height="166" class="barbg"/>
+<text class="colL" x="89" y="15" text-anchor="middle">AY</text>
+<text class="colL" x="199" y="15" text-anchor="middle">AZ</text>
+<text class="colL" x="309" y="15" text-anchor="middle">BA</text>
+<text class="colL" x="419" y="15" text-anchor="middle">BB</text>
+<text class="colL" x="529" y="15" text-anchor="middle">BC</text>
+<text class="colL" x="639" y="15" text-anchor="middle">BD</text>
+<text class="colL" x="749" y="15" text-anchor="middle">BE</text>
+<text class="colL" x="859" y="15" text-anchor="middle">BF</text>
+<text class="colL" x="969" y="15" text-anchor="middle">BG</text>
+<text class="rowL" x="17" y="37" text-anchor="middle">6</text>
+<rect x="34" y="22" width="991" height="22" class="bandbg"/>
+<text class="bn" x="529" y="36.5" text-anchor="middle">USO PREDICTIVO DE MATERIAS PRIMAS</text>
+<text class="rowL" x="17" y="76" text-anchor="middle">7</text>
+<rect x="34" y="44" width="991" height="56" class="headbg"/>
+<text class="hd" x="89" y="69.5" text-anchor="middle">Plata</text>
+<text class="hd" x="89" y="82.5" text-anchor="middle">(kg/pza)</text>
+<text class="hd" x="199" y="69.5" text-anchor="middle">Estaño</text>
+<text class="hd" x="199" y="82.5" text-anchor="middle">(kg/pza)</text>
+<text class="hd" x="309" y="69.5" text-anchor="middle">Níquel</text>
+<text class="hd" x="309" y="82.5" text-anchor="middle">(kg/pza)</text>
+<text class="hd" x="419" y="69.5" text-anchor="middle">Zinc</text>
+<text class="hd" x="419" y="82.5" text-anchor="middle">(kg/pza)</text>
+<text class="hd" x="529" y="69.5" text-anchor="middle">Cobre</text>
+<text class="hd" x="529" y="82.5" text-anchor="middle">(kg/pza)</text>
+<text class="hd" x="639" y="69.5" text-anchor="middle">Antitarnish</text>
+<text class="hd" x="639" y="82.5" text-anchor="middle">(L/pza)</text>
+<text class="hd" x="749" y="69.5" text-anchor="middle">Epóx. MT</text>
+<text class="hd" x="749" y="82.5" text-anchor="middle">(lb/pza)</text>
+<text class="hd" x="859" y="69.5" text-anchor="middle">Epóx. BT</text>
+<text class="hd" x="859" y="82.5" text-anchor="middle">(lb/pza)</text>
+<text class="hd" x="969" y="69.5" text-anchor="middle">Epóx. MTR</text>
+<text class="hd" x="969" y="82.5" text-anchor="middle">(lb/pza)</text>
+<text class="rowL" x="17" y="114" text-anchor="middle">8</text>
+<text class="ty" x="89" y="113.5" text-anchor="middle">Calc.</text>
+<text class="ty" x="199" y="113.5" text-anchor="middle">Calc.</text>
+<text class="ty" x="309" y="113.5" text-anchor="middle">Calc.</text>
+<text class="ty" x="419" y="113.5" text-anchor="middle">Calc.</text>
+<text class="ty" x="529" y="113.5" text-anchor="middle">Calc.</text>
+<text class="ty" x="639" y="113.5" text-anchor="middle">Calc.</text>
+<text class="ty" x="749" y="113.5" text-anchor="middle">Calc.</text>
+<text class="ty" x="859" y="113.5" text-anchor="middle">Calc.</text>
+<text class="ty" x="969" y="113.5" text-anchor="middle">Calc.</text>
+<text class="rowL" x="17" y="147" text-anchor="middle">9</text>
+<rect x="34" y="120" width="110" height="46" class="cellbg calc"/>
+<text class="dt" x="89" y="147" text-anchor="middle"></text>
+<rect x="144" y="120" width="110" height="46" class="cellbg calc"/>
+<text class="dt" x="199" y="147" text-anchor="middle">0.00041</text>
+<rect x="254" y="120" width="110" height="46" class="cellbg calc"/>
+<text class="dt" x="309" y="147" text-anchor="middle"></text>
+<rect x="364" y="120" width="110" height="46" class="cellbg calc"/>
+<text class="dt" x="419" y="147" text-anchor="middle"></text>
+<rect x="474" y="120" width="110" height="46" class="cellbg calc"/>
+<text class="dt" x="529" y="147" text-anchor="middle"></text>
+<rect x="584" y="120" width="110" height="46" class="cellbg calc"/>
+<text class="dt" x="639" y="147" text-anchor="middle"></text>
+<rect x="694" y="120" width="110" height="46" class="cellbg calc"/>
+<text class="dt" x="749" y="147" text-anchor="middle"></text>
+<rect x="804" y="120" width="110" height="46" class="cellbg calc"/>
+<text class="dt" x="859" y="147" text-anchor="middle"></text>
+<rect x="914" y="120" width="110" height="46" class="cellbg calc"/>
+<text class="dt" x="969" y="147" text-anchor="middle"></text>
+<line class="gl" x1="0" y1="0" x2="1025" y2="0"/>
+<line class="gl" x1="0" y1="22" x2="1025" y2="22"/>
+<line class="gl" x1="0" y1="44" x2="1025" y2="44"/>
+<line class="gl" x1="0" y1="100" x2="1025" y2="100"/>
+<line class="gl" x1="0" y1="120" x2="1025" y2="120"/>
+<line class="gl" x1="0" y1="166" x2="1025" y2="166"/>
+<line class="gl" x1="34" y1="0" x2="34" y2="166"/>
+<line class="gl" x1="144" y1="0" x2="144" y2="166"/>
+<line class="gl" x1="254" y1="0" x2="254" y2="166"/>
+<line class="gl" x1="364" y1="0" x2="364" y2="166"/>
+<line class="gl" x1="474" y1="0" x2="474" y2="166"/>
+<line class="gl" x1="584" y1="0" x2="584" y2="166"/>
+<line class="gl" x1="694" y1="0" x2="694" y2="166"/>
+<line class="gl" x1="804" y1="0" x2="804" y2="166"/>
+<line class="gl" x1="914" y1="0" x2="914" y2="166"/>
+<line class="gl" x1="1024" y1="0" x2="1024" y2="166"/>
+<text class="note" x="6" y="185">Las nueve columnas son calculadas: las llena la hoja Cálculo MP con la geometría, las medidas y el espesor de las specs. No se capturan a mano.</text>
+</svg>
+</figure>
+
+<h3 class="sub">Datos de referencia</h3>
+<figure class="sheet">
+<svg viewBox="0 0 1019 202" width="100%" style="min-width:1019px" role="img" aria-label="Datos de referencia al final de la hoja" xmlns="http://www.w3.org/2000/svg" class="xl">
+<style>
+    .xl text{font-family:var(--sans)}
+    .xl .cellbg{fill:var(--xl-cell)} .xl .cellbg.dropdown{fill:var(--xl-drop)}
+    .xl .cellbg.calc{fill:var(--xl-calc)} .xl .cellbg.edit{fill:var(--xl-edit)}
+    .xl .barbg{fill:var(--xl-bar)} .xl .headbg{fill:var(--xl-head)} .xl .bandbg{fill:var(--xl-band)}
+    .xl .gl{stroke:var(--xl-line);stroke-width:1}
+    .xl .colL{font-size:11px;font-weight:600;fill:var(--xl-bar-ink)}
+    .xl .rowL{font-size:10.5px;font-weight:600;fill:var(--xl-bar-ink)}
+    .xl .bn{font-size:10px;font-weight:800;fill:var(--xl-band-ink);letter-spacing:.06em}
+    .xl .hd{font-size:11.5px;font-weight:700;fill:var(--xl-head-ink)}
+    .xl .ty{font-size:10px;fill:var(--xl-mut);font-style:italic}
+    .xl .dt{font-size:11.5px;fill:var(--xl-ink)} .xl .dt.ph{fill:var(--xl-mut);font-style:italic}
+    .xl .hl{fill:none;stroke:var(--xl-hl);stroke-width:2.5}
+    .xl .badge{fill:var(--xl-hl)} .xl .badgeT{font-size:11px;font-weight:700;fill:#fff}
+    .xl .note{font-size:12.5px;fill:var(--xl-mut)} .xl .noteN{font-size:11px;font-weight:700;fill:#fff}
+  </style>
+<rect x="0" y="0" width="1019" height="166" class="cellbg"/>
+<rect x="0" y="0" width="1019" height="22" class="barbg"/>
+<rect x="0" y="0" width="34" height="166" class="barbg"/>
+<text class="colL" x="116" y="15" text-anchor="middle">BJ</text>
+<text class="colL" x="280" y="15" text-anchor="middle">BK</text>
+<text class="colL" x="444" y="15" text-anchor="middle">BL</text>
+<text class="colL" x="608" y="15" text-anchor="middle">BM</text>
+<text class="colL" x="772" y="15" text-anchor="middle">BN</text>
+<text class="colL" x="936" y="15" text-anchor="middle">BO</text>
+<text class="rowL" x="17" y="37" text-anchor="middle">6</text>
+<rect x="34" y="22" width="985" height="22" class="bandbg"/>
+<text class="bn" x="526" y="36.5" text-anchor="middle">DATOS DE REFERENCIA</text>
+<text class="rowL" x="17" y="76" text-anchor="middle">7</text>
+<rect x="34" y="44" width="985" height="56" class="headbg"/>
+<text class="hd" x="116" y="76" text-anchor="middle">QuoteIBMS</text>
+<text class="hd" x="280" y="76" text-anchor="middle">EstIBMS</text>
+<text class="hd" x="444" y="76" text-anchor="middle">Plano</text>
+<text class="hd" x="608" y="76" text-anchor="middle">Piezas por Carga</text>
+<text class="hd" x="772" y="76" text-anchor="middle">Cargas por Hora</text>
+<text class="hd" x="936" y="76" text-anchor="middle">Tiempo de Entrega</text>
+<text class="rowL" x="17" y="114" text-anchor="middle">8</text>
+<text class="ty" x="116" y="113.5" text-anchor="middle">Texto</text>
+<text class="ty" x="280" y="113.5" text-anchor="middle">Texto</text>
+<text class="ty" x="444" y="113.5" text-anchor="middle">Texto</text>
+<text class="ty" x="608" y="113.5" text-anchor="middle">Texto</text>
+<text class="ty" x="772" y="113.5" text-anchor="middle">Texto</text>
+<text class="ty" x="936" y="113.5" text-anchor="middle">Texto</text>
+<text class="rowL" x="17" y="147" text-anchor="middle">9</text>
+<rect x="34" y="120" width="164" height="46" class="cellbg edit"/>
+<text class="dt" x="116" y="147" text-anchor="middle">Q-8841</text>
+<rect x="198" y="120" width="164" height="46" class="cellbg edit"/>
+<text class="dt" x="280" y="147" text-anchor="middle">E-221</text>
+<rect x="362" y="120" width="164" height="46" class="cellbg edit"/>
+<text class="dt" x="444" y="147" text-anchor="middle">PL-4471-r3</text>
+<rect x="526" y="120" width="164" height="46" class="cellbg edit"/>
+<text class="dt" x="608" y="147" text-anchor="middle"></text>
+<rect x="690" y="120" width="164" height="46" class="cellbg edit"/>
+<text class="dt" x="772" y="147" text-anchor="middle"></text>
+<rect x="854" y="120" width="164" height="46" class="cellbg edit"/>
+<text class="dt" x="936" y="147" text-anchor="middle"></text>
+<line class="gl" x1="0" y1="0" x2="1019" y2="0"/>
+<line class="gl" x1="0" y1="22" x2="1019" y2="22"/>
+<line class="gl" x1="0" y1="44" x2="1019" y2="44"/>
+<line class="gl" x1="0" y1="100" x2="1019" y2="100"/>
+<line class="gl" x1="0" y1="120" x2="1019" y2="120"/>
+<line class="gl" x1="0" y1="166" x2="1019" y2="166"/>
+<line class="gl" x1="34" y1="0" x2="34" y2="166"/>
+<line class="gl" x1="198" y1="0" x2="198" y2="166"/>
+<line class="gl" x1="362" y1="0" x2="362" y2="166"/>
+<line class="gl" x1="526" y1="0" x2="526" y2="166"/>
+<line class="gl" x1="690" y1="0" x2="690" y2="166"/>
+<line class="gl" x1="854" y1="0" x2="854" y2="166"/>
+<line class="gl" x1="1018" y1="0" x2="1018" y2="166"/>
+<text class="note" x="6" y="185">Las tres últimas columnas cierran la hoja en BO. Si tu plantilla termina antes, no es la v13.</text>
+</svg>
+</figure>
+
+<!-- ═════════════════════════════════════════════════════════════════════ -->
+<h2 class="sec" id="s8"><span class="num">08</span>Los cinco racks a fondo</h2>
+<p class="sec-lead">Cinco pares de columnas, uno por combinación de rack y línea. Cada par contesta dos preguntas: <em>en qué se cuelga</em> y <em>cuántas piezas caben</em>.</p>
+
+<figure class="sheet">
+<svg viewBox="0 0 1025 254" width="100%" style="min-width:1020px" role="img" aria-label="Los cinco pares de rack de la versión 13" xmlns="http://www.w3.org/2000/svg" class="xl">
+<style>
+    .xl text{font-family:var(--sans)}
+    .xl .cellbg{fill:var(--xl-cell)} .xl .cellbg.dropdown{fill:var(--xl-drop)}
+    .xl .cellbg.calc{fill:var(--xl-calc)} .xl .cellbg.edit{fill:var(--xl-edit)}
+    .xl .barbg{fill:var(--xl-bar)} .xl .headbg{fill:var(--xl-head)} .xl .bandbg{fill:var(--xl-band)}
+    .xl .gl{stroke:var(--xl-line);stroke-width:1}
+    .xl .colL{font-size:11px;font-weight:600;fill:var(--xl-bar-ink)}
+    .xl .rowL{font-size:10.5px;font-weight:600;fill:var(--xl-bar-ink)}
+    .xl .bn{font-size:10px;font-weight:800;fill:var(--xl-band-ink);letter-spacing:.06em}
+    .xl .hd{font-size:11.5px;font-weight:700;fill:var(--xl-head-ink)}
+    .xl .ty{font-size:10px;fill:var(--xl-mut);font-style:italic}
+    .xl .dt{font-size:11.5px;fill:var(--xl-ink)} .xl .dt.ph{fill:var(--xl-mut);font-style:italic}
+    .xl .hl{fill:none;stroke:var(--xl-hl);stroke-width:2.5}
+    .xl .badge{fill:var(--xl-hl)} .xl .badgeT{font-size:11px;font-weight:700;fill:#fff}
+    .xl .note{font-size:12.5px;fill:var(--xl-mut)} .xl .noteN{font-size:11px;font-weight:700;fill:#fff}
+  </style>
+<rect x="0" y="0" width="1025" height="166" class="cellbg"/>
+<rect x="0" y="0" width="1025" height="22" class="barbg"/>
+<rect x="0" y="0" width="34" height="166" class="barbg"/>
+<text class="colL" x="79" y="15" text-anchor="middle">AI</text>
+<text class="colL" x="169" y="15" text-anchor="middle">AJ</text>
+<text class="colL" x="259" y="15" text-anchor="middle">AK</text>
+<text class="colL" x="349" y="15" text-anchor="middle">AL</text>
+<text class="colL" x="439" y="15" text-anchor="middle">AM</text>
+<text class="colL" x="529" y="15" text-anchor="middle">AN</text>
+<text class="colL" x="619" y="15" text-anchor="middle">AO</text>
+<text class="colL" x="709" y="15" text-anchor="middle">AP</text>
+<text class="colL" x="799" y="15" text-anchor="middle">AQ</text>
+<text class="colL" x="889" y="15" text-anchor="middle">AR</text>
+<text class="colL" x="979" y="15" text-anchor="middle">AS</text>
+<text class="rowL" x="17" y="37" text-anchor="middle">6</text>
+<rect x="34" y="22" width="991" height="22" class="bandbg"/>
+<text class="bn" x="484" y="36.5" text-anchor="middle">TIPOS DE RACK (PIEZAS POR TIPO DE RACK)</text>
+<text class="bn" x="979" y="36.5" text-anchor="middle">DIMENSIONES</text>
+<line class="gl" x1="934" y1="22" x2="934" y2="44"/>
+<text class="rowL" x="17" y="76" text-anchor="middle">7</text>
+<rect x="34" y="44" width="991" height="56" class="headbg"/>
+<text class="hd" x="79" y="69.5" text-anchor="middle">Rack Flybar</text>
+<text class="hd" x="79" y="82.5" text-anchor="middle">o Barril 1</text>
+<text class="hd" x="169" y="69.5" text-anchor="middle">Pzas/Rack</text>
+<text class="hd" x="169" y="82.5" text-anchor="middle">Línea 1</text>
+<text class="hd" x="259" y="69.5" text-anchor="middle">Rack Flybar</text>
+<text class="hd" x="259" y="82.5" text-anchor="middle">o Barril 2</text>
+<text class="hd" x="349" y="69.5" text-anchor="middle">Pzas/Rack</text>
+<text class="hd" x="349" y="82.5" text-anchor="middle">Línea 2</text>
+<text class="hd" x="439" y="69.5" text-anchor="middle">Rack Flybar</text>
+<text class="hd" x="439" y="82.5" text-anchor="middle">o Barril 3</text>
+<text class="hd" x="529" y="69.5" text-anchor="middle">Pzas/Rack</text>
+<text class="hd" x="529" y="82.5" text-anchor="middle">Línea 3</text>
+<text class="hd" x="619" y="69.5" text-anchor="middle">Rack Flybar</text>
+<text class="hd" x="619" y="82.5" text-anchor="middle">o Barril 4</text>
+<text class="hd" x="709" y="69.5" text-anchor="middle">Pzas/Rack</text>
+<text class="hd" x="709" y="82.5" text-anchor="middle">Línea 4</text>
+<text class="hd" x="799" y="69.5" text-anchor="middle">Rack Flybar</text>
+<text class="hd" x="799" y="82.5" text-anchor="middle">o Barril 5</text>
+<text class="hd" x="889" y="69.5" text-anchor="middle">Pzas/Rack</text>
+<text class="hd" x="889" y="82.5" text-anchor="middle">Línea 5</text>
+<text class="hd" x="979" y="69.5" text-anchor="middle">Tipo de</text>
+<text class="hd" x="979" y="82.5" text-anchor="middle">Geometría</text>
+<text class="rowL" x="17" y="114" text-anchor="middle">8</text>
+<text class="ty" x="79" y="113.5" text-anchor="middle">Desp.</text>
+<text class="ty" x="169" y="113.5" text-anchor="middle">#</text>
+<text class="ty" x="259" y="113.5" text-anchor="middle">Desp.</text>
+<text class="ty" x="349" y="113.5" text-anchor="middle">#</text>
+<text class="ty" x="439" y="113.5" text-anchor="middle">Desp.</text>
+<text class="ty" x="529" y="113.5" text-anchor="middle">#</text>
+<text class="ty" x="619" y="113.5" text-anchor="middle">Desp.</text>
+<text class="ty" x="709" y="113.5" text-anchor="middle">#</text>
+<text class="ty" x="799" y="113.5" text-anchor="middle">Desp.</text>
+<text class="ty" x="889" y="113.5" text-anchor="middle">#</text>
+<text class="ty" x="979" y="113.5" text-anchor="middle">Desp.</text>
+<text class="rowL" x="17" y="147" text-anchor="middle">9</text>
+<rect x="34" y="120" width="90" height="46" class="cellbg dropdown"/>
+<text class="dt" x="79" y="147" text-anchor="middle">FL-204-A</text>
+<rect x="124" y="120" width="90" height="46" class="cellbg edit"/>
+<text class="dt" x="169" y="147" text-anchor="middle">4</text>
+<rect x="214" y="120" width="90" height="46" class="cellbg dropdown"/>
+<text class="dt" x="259" y="147" text-anchor="middle">FL-205-B</text>
+<rect x="304" y="120" width="90" height="46" class="cellbg edit"/>
+<text class="dt" x="349" y="147" text-anchor="middle">1</text>
+<rect x="394" y="120" width="90" height="46" class="cellbg dropdown"/>
+<text class="dt" x="439" y="147" text-anchor="middle">BA-300-C</text>
+<rect x="484" y="120" width="90" height="46" class="cellbg edit"/>
+<text class="dt" x="529" y="147" text-anchor="middle">250</text>
+<rect x="574" y="120" width="90" height="46" class="cellbg dropdown"/>
+<text class="dt ph" x="619" y="147" text-anchor="middle">(seleccione)</text>
+<rect x="664" y="120" width="90" height="46" class="cellbg edit"/>
+<text class="dt" x="709" y="147" text-anchor="middle"></text>
+<rect x="754" y="120" width="90" height="46" class="cellbg dropdown"/>
+<text class="dt ph" x="799" y="147" text-anchor="middle">(seleccione)</text>
+<rect x="844" y="120" width="90" height="46" class="cellbg edit"/>
+<text class="dt" x="889" y="147" text-anchor="middle"></text>
+<rect x="934" y="120" width="90" height="46" class="cellbg dropdown"/>
+<text class="dt" x="979" y="147" text-anchor="middle">Cilindro</text>
+<line class="gl" x1="0" y1="0" x2="1025" y2="0"/>
+<line class="gl" x1="0" y1="22" x2="1025" y2="22"/>
+<line class="gl" x1="0" y1="44" x2="1025" y2="44"/>
+<line class="gl" x1="0" y1="100" x2="1025" y2="100"/>
+<line class="gl" x1="0" y1="120" x2="1025" y2="120"/>
+<line class="gl" x1="0" y1="166" x2="1025" y2="166"/>
+<line class="gl" x1="34" y1="0" x2="34" y2="166"/>
+<line class="gl" x1="124" y1="0" x2="124" y2="166"/>
+<line class="gl" x1="214" y1="0" x2="214" y2="166"/>
+<line class="gl" x1="304" y1="0" x2="304" y2="166"/>
+<line class="gl" x1="394" y1="0" x2="394" y2="166"/>
+<line class="gl" x1="484" y1="0" x2="484" y2="166"/>
+<line class="gl" x1="574" y1="0" x2="574" y2="166"/>
+<line class="gl" x1="664" y1="0" x2="664" y2="166"/>
+<line class="gl" x1="754" y1="0" x2="754" y2="166"/>
+<line class="gl" x1="844" y1="0" x2="844" y2="166"/>
+<line class="gl" x1="934" y1="0" x2="934" y2="166"/>
+<line class="gl" x1="1024" y1="0" x2="1024" y2="166"/>
+<rect class="hl" x="33" y="43" width="362" height="124" rx="3"/>
+<circle class="badge" cx="33" cy="43" r="9.5" stroke="var(--xl-cell)" stroke-width="2"/>
+<text class="badgeT" x="33" y="46.5" text-anchor="middle">1</text>
+<rect class="hl" x="393" y="43" width="542" height="124" rx="3"/>
+<circle class="badge" cx="393" cy="43" r="9.5" stroke="var(--xl-cell)" stroke-width="2"/>
+<text class="badgeT" x="393" y="46.5" text-anchor="middle">2</text>
+<rect class="hl" x="933" y="43" width="92" height="124" rx="3"/>
+<circle class="badge" cx="933" cy="43" r="9.5" stroke="var(--xl-cell)" stroke-width="2"/>
+<text class="badgeT" x="933" y="46.5" text-anchor="middle">3</text>
+<circle class="badge" cx="14" cy="181" r="9"/>
+<text class="noteN" x="14" y="185" text-anchor="middle">1</text>
+<text class="note" x="32" y="185">Los dos pares que ya existían en la v12, en las mismas columnas AI–AL. Un archivo hecho con la plantilla anterior sigue cayendo aquí.</text>
+<circle class="badge" cx="14" cy="207" r="9"/>
+<text class="noteN" x="14" y="211" text-anchor="middle">2</text>
+<text class="note" x="32" y="211">Los tres pares nuevos de la v13 (AM–AR). Cada par es &quot;qué rack&quot; más &quot;cuántas piezas caben en él&quot;. Los encabezados van numerados del 1 al 5.</text>
+<circle class="badge" cx="14" cy="233" r="9"/>
+<text class="noteN" x="14" y="237" text-anchor="middle">3</text>
+<text class="note" x="32" y="237">Tipo de Geometría se recorrió de AM (v12) a AS (v13): todo lo que venía después de los racks se movió seis columnas a la derecha.</text>
+</svg>
+</figure>
+
+<h3 class="sub">Cómo se llena</h3>
+<ol>
+  <li>En la columna de rack, <strong>elige de la lista</strong>. Son los tipos de rack activos que trajo el refresco de catálogos.</li>
+  <li>En la columna de al lado, escribe <strong>cuántas piezas caben en ese rack</strong>.</li>
+  <li>Repite en el siguiente par por cada línea distinta en la que corra la pieza. No hace falta llenar los cinco.</li>
+</ol>
+
+<div class="callout tip">
+  <p class="ct">Se llenan de izquierda a derecha</p>
+  <p>Usa el par 1, luego el 2, y así. Dejar huecos en medio funciona, pero hace más difícil revisar el archivo de un vistazo. Los pares vacíos simplemente no se cargan.</p>
+</div>
+
+<div class="callout warn">
+  <p class="ct">Cinco racks multiplican el trabajo del servidor</p>
+  <p>Cada par lleno es una escritura más por número de parte. Pasar de dos a cinco puede <strong>multiplicar por dos y medio</strong> las escrituras de rack de la corrida. En cargas de miles de renglones eso se nota, y esta herramienta ya ha topado con los límites del servidor antes. Llena los que de verdad usas.</p>
+</div>
+
+<div class="callout info">
+  <p class="ct">Un caso conocido</p>
+  <p>Si en el <strong>primer</strong> par pones un guión para borrar y a la vez llenas otro par, el guión no borra: se interpreta como el nombre de un rack y verás el error <code>RackType "-" no encontrado</code>. Para borrar racks, deja el guión solo, sin otros pares llenos.</p>
+</div>
+
+<!-- ═════════════════════════════════════════════════════════════════════ -->
+<h2 class="sec" id="s9"><span class="num">09</span>Instrucciones de Empaque a fondo</h2>
+<p class="sec-lead">La otra novedad. Se ve como una columna más, pero por dentro es distinta a todas las demás de la plantilla.</p>
+
+<figure class="sheet">
+<svg viewBox="0 0 1019 262" width="100%" style="min-width:1019px" role="img" aria-label="La columna Instrucciones de Empaque y sus vecinas" xmlns="http://www.w3.org/2000/svg" class="xl">
+<style>
+    .xl text{font-family:var(--sans)}
+    .xl .cellbg{fill:var(--xl-cell)} .xl .cellbg.dropdown{fill:var(--xl-drop)}
+    .xl .cellbg.calc{fill:var(--xl-calc)} .xl .cellbg.edit{fill:var(--xl-edit)}
+    .xl .barbg{fill:var(--xl-bar)} .xl .headbg{fill:var(--xl-head)} .xl .bandbg{fill:var(--xl-band)}
+    .xl .gl{stroke:var(--xl-line);stroke-width:1}
+    .xl .colL{font-size:11px;font-weight:600;fill:var(--xl-bar-ink)}
+    .xl .rowL{font-size:10.5px;font-weight:600;fill:var(--xl-bar-ink)}
+    .xl .bn{font-size:10px;font-weight:800;fill:var(--xl-band-ink);letter-spacing:.06em}
+    .xl .hd{font-size:11.5px;font-weight:700;fill:var(--xl-head-ink)}
+    .xl .ty{font-size:10px;fill:var(--xl-mut);font-style:italic}
+    .xl .dt{font-size:11.5px;fill:var(--xl-ink)} .xl .dt.ph{fill:var(--xl-mut);font-style:italic}
+    .xl .hl{fill:none;stroke:var(--xl-hl);stroke-width:2.5}
+    .xl .badge{fill:var(--xl-hl)} .xl .badgeT{font-size:11px;font-weight:700;fill:#fff}
+    .xl .note{font-size:12.5px;fill:var(--xl-mut)} .xl .noteN{font-size:11px;font-weight:700;fill:#fff}
+  </style>
+<rect x="0" y="0" width="1019" height="166" class="cellbg"/>
+<rect x="0" y="0" width="1019" height="22" class="barbg"/>
+<rect x="0" y="0" width="34" height="166" class="barbg"/>
+<text class="colL" x="95.5" y="15" text-anchor="middle">BE</text>
+<text class="colL" x="218.5" y="15" text-anchor="middle">BF</text>
+<text class="colL" x="341.5" y="15" text-anchor="middle">BG</text>
+<text class="colL" x="464.5" y="15" text-anchor="middle">BH</text>
+<text class="colL" x="587.5" y="15" text-anchor="middle">BI</text>
+<text class="colL" x="710.5" y="15" text-anchor="middle">BJ</text>
+<text class="colL" x="833.5" y="15" text-anchor="middle">BK</text>
+<text class="colL" x="956.5" y="15" text-anchor="middle">BL</text>
+<text class="rowL" x="17" y="37" text-anchor="middle">6</text>
+<rect x="34" y="22" width="985" height="22" class="bandbg"/>
+<text class="bn" x="218.5" y="36.5" text-anchor="middle">USO PREDICTIVO DE MATERIAS PRIMAS</text>
+<text class="bn" x="710.5" y="36.5" text-anchor="middle">DATOS DE REFERENCIA</text>
+<line class="gl" x1="403" y1="22" x2="403" y2="44"/>
+<text class="rowL" x="17" y="76" text-anchor="middle">7</text>
+<rect x="34" y="44" width="985" height="56" class="headbg"/>
+<text class="hd" x="95.5" y="69.5" text-anchor="middle">Epóx. MT</text>
+<text class="hd" x="95.5" y="82.5" text-anchor="middle">(lb/pza)</text>
+<text class="hd" x="218.5" y="69.5" text-anchor="middle">Epóx. BT</text>
+<text class="hd" x="218.5" y="82.5" text-anchor="middle">(lb/pza)</text>
+<text class="hd" x="341.5" y="69.5" text-anchor="middle">Epóx. MTR</text>
+<text class="hd" x="341.5" y="82.5" text-anchor="middle">(lb/pza)</text>
+<text class="hd" x="464.5" y="69.5" text-anchor="middle">Instrucciones de</text>
+<text class="hd" x="464.5" y="82.5" text-anchor="middle">Empaque</text>
+<text class="hd" x="587.5" y="76" text-anchor="middle">Notas adicionales</text>
+<text class="hd" x="710.5" y="76" text-anchor="middle">QuoteIBMS</text>
+<text class="hd" x="833.5" y="76" text-anchor="middle">EstIBMS</text>
+<text class="hd" x="956.5" y="76" text-anchor="middle">Plano</text>
+<text class="rowL" x="17" y="114" text-anchor="middle">8</text>
+<text class="ty" x="95.5" y="113.5" text-anchor="middle">Calc.</text>
+<text class="ty" x="218.5" y="113.5" text-anchor="middle">Calc.</text>
+<text class="ty" x="341.5" y="113.5" text-anchor="middle">Calc.</text>
+<text class="ty" x="464.5" y="113.5" text-anchor="middle">Texto</text>
+<text class="ty" x="587.5" y="113.5" text-anchor="middle">Texto</text>
+<text class="ty" x="710.5" y="113.5" text-anchor="middle">Texto</text>
+<text class="ty" x="833.5" y="113.5" text-anchor="middle">Texto</text>
+<text class="ty" x="956.5" y="113.5" text-anchor="middle">Texto</text>
+<text class="rowL" x="17" y="147" text-anchor="middle">9</text>
+<rect x="34" y="120" width="123" height="46" class="cellbg calc"/>
+<text class="dt" x="95.5" y="147" text-anchor="middle"></text>
+<rect x="157" y="120" width="123" height="46" class="cellbg calc"/>
+<text class="dt" x="218.5" y="147" text-anchor="middle"></text>
+<rect x="280" y="120" width="123" height="46" class="cellbg calc"/>
+<text class="dt" x="341.5" y="147" text-anchor="middle"></text>
+<rect x="403" y="120" width="123" height="46" class="cellbg edit"/>
+<text class="dt" x="464.5" y="133" text-anchor="middle">Empacar en bolsa</text>
+<text class="dt" x="464.5" y="147" text-anchor="middle">antiestática de 50</text>
+<text class="dt" x="464.5" y="161" text-anchor="middle">pzas.</text>
+<rect x="526" y="120" width="123" height="46" class="cellbg edit"/>
+<text class="dt" x="587.5" y="140" text-anchor="middle">Cliente pide</text>
+<text class="dt" x="587.5" y="154" text-anchor="middle">certificado</text>
+<rect x="649" y="120" width="123" height="46" class="cellbg edit"/>
+<text class="dt" x="710.5" y="147" text-anchor="middle">Q-8841</text>
+<rect x="772" y="120" width="123" height="46" class="cellbg edit"/>
+<text class="dt" x="833.5" y="147" text-anchor="middle">E-221</text>
+<rect x="895" y="120" width="123" height="46" class="cellbg edit"/>
+<text class="dt" x="956.5" y="147" text-anchor="middle">PL-4471-r3</text>
+<line class="gl" x1="0" y1="0" x2="1019" y2="0"/>
+<line class="gl" x1="0" y1="22" x2="1019" y2="22"/>
+<line class="gl" x1="0" y1="44" x2="1019" y2="44"/>
+<line class="gl" x1="0" y1="100" x2="1019" y2="100"/>
+<line class="gl" x1="0" y1="120" x2="1019" y2="120"/>
+<line class="gl" x1="0" y1="166" x2="1019" y2="166"/>
+<line class="gl" x1="34" y1="0" x2="34" y2="166"/>
+<line class="gl" x1="157" y1="0" x2="157" y2="166"/>
+<line class="gl" x1="280" y1="0" x2="280" y2="166"/>
+<line class="gl" x1="403" y1="0" x2="403" y2="166"/>
+<line class="gl" x1="526" y1="0" x2="526" y2="166"/>
+<line class="gl" x1="649" y1="0" x2="649" y2="166"/>
+<line class="gl" x1="772" y1="0" x2="772" y2="166"/>
+<line class="gl" x1="895" y1="0" x2="895" y2="166"/>
+<line class="gl" x1="1018" y1="0" x2="1018" y2="166"/>
+<rect class="hl" x="402" y="43" width="125" height="124" rx="3"/>
+<circle class="badge" cx="402" cy="43" r="9.5" stroke="var(--xl-cell)" stroke-width="2"/>
+<text class="badgeT" x="402" y="46.5" text-anchor="middle">1</text>
+<rect class="hl" x="525" y="43" width="125" height="124" rx="3"/>
+<circle class="badge" cx="525" cy="43" r="9.5" stroke="var(--xl-cell)" stroke-width="2"/>
+<text class="badgeT" x="525" y="46.5" text-anchor="middle">2</text>
+<circle class="badge" cx="14" cy="181" r="9"/>
+<text class="noteN" x="14" y="185" text-anchor="middle">1</text>
+<text class="note" x="32" y="185">Instrucciones de Empaque (BH), la columna nueva. No es un campo del número de parte: es la instrucción de ese número de parte en el paso</text>
+<text class="note" x="32" y="202">&quot;Preparando Embarque en Almacén&quot;.</text>
+<circle class="badge" cx="14" cy="224" r="9"/>
+<text class="noteN" x="14" y="228" text-anchor="middle">2</text>
+<text class="note" x="32" y="228">Notas adicionales (BI) es su vecina y no es lo mismo: esa sí vive en el número de parte. Son columnas contiguas, así que vale la pena comprobar en</text>
+<text class="note" x="32" y="245">cuál estás escribiendo.</text>
+</svg>
+</figure>
+
+<h3 class="sub">No es un campo del número de parte</h3>
+<p>Todas las demás columnas escriben <em>en</em> el número de parte. Esta escribe en el cruce de <strong>número de parte × paso del proceso</strong>: es lo que en la ficha aparece como <em>«Instrucciones del Número de Parte en “Preparando Embarque en Almacén”»</em>. Dicho de otro modo: no es una propiedad de la pieza, es una indicación para quien la empaca.</p>
+
+<div class="callout danger">
+  <p class="ct">Hay otra descripción parecida, y esa es de toda la planta</p>
+  <p>Ese mismo paso del proceso tiene una segunda descripción, la <strong>global del paso</strong>, que hoy trae el aviso <em>«No olvidar empacar conforme a requerimientos del cliente…»</em> y que <strong>comparten todos los números de parte</strong>. La carga masiva <strong>no la toca</strong>: escribe únicamente la del número de parte. Si alguna vez ves que tu texto le apareció a piezas que no cargaste, no es esta columna.</p>
+</div>
+
+<h3 class="sub">Qué escribe cada celda</h3>
+<div class="tablewrap">
+<table>
+  <thead><tr><th>Celda</th><th>Efecto</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Vacía</strong></td><td>No toca nada. El número de parte conserva las instrucciones que ya tenga.</td></tr>
+    <tr><td><strong><code>-</code></strong></td><td>Borra las instrucciones.</td></tr>
+    <tr><td><strong>Con texto</strong></td><td>Sustituye lo que hubiera por ese texto.</td></tr>
+  </tbody>
+</table>
+</div>
+<p>Solo un guión <em>solo</em> borra. <code>--</code>, <code>—</code> o <code>- ver anexo</code> son texto normal.</p>
+
+<h3 class="sub">El texto admite formato</h3>
+<p>El campo guarda el texto tal cual lo escribes, y Steelhead lo muestra con formato. Rodear una palabra con dos asteriscos la pone en negritas:</p>
+<div class="tablewrap compact">
+<table>
+  <thead><tr><th>Escribes en Excel</th><th>Se ve en Steelhead</th></tr></thead>
+  <tbody>
+    <tr><td><code>Empacar en bolsa **antiestática**</code></td><td>Empacar en bolsa <strong>antiestática</strong></td></tr>
+    <tr><td><code>**No apilar** más de 4 cajas</code></td><td><strong>No apilar</strong> más de 4 cajas</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 class="sub">A qué paso se escribe</h3>
+<p>Al paso <strong>«Preparando Embarque en Almacén»</strong>, que es donde se empaca. El paso se busca <strong>por nombre, no por número interno</strong>, porque los números internos cambian entre plantas: uno fijo funcionaría en Toluca y escribiría en el lugar equivocado —o en ninguno— en Monterrey.</p>
+<p>El nombre tiene que coincidir exacto y encontrar <strong>un solo</strong> paso. No es un capricho: en la receta real conviven <strong>siete</strong> pasos que llevan la palabra «Embarque». Si no encuentra el paso, o encuentra varios, <strong>no adivina</strong>: reporta ese número de parte y sigue con los demás.</p>
+
+<div class="callout warn">
+  <p class="ct">Una llamada por número de parte</p>
+  <p>A diferencia de casi todo lo demás, las instrucciones <strong>no se pueden agrupar</strong>: van de una en una. En una carga de varios miles de renglones con esta columna llena, es tráfico considerable. Si no cambian, deja la columna vacía.</p>
+</div>
+
+<!-- ═════════════════════════════════════════════════════════════════════ -->
+<h2 class="sec" id="s10"><span class="num">10</span>Limpiar y exportar el CSV</h2>
+
+<h3 class="sub">Antes de empezar un archivo nuevo: Limpiar Datos</h3>
+<p>La macro <strong>Limpiar Datos</strong> borra los renglones y devuelve los valores iniciales, conservando las fórmulas. Te pregunta hasta qué fila va a limpiar antes de hacerlo.</p>
+
+<div class="callout danger">
+  <p class="ct">Reusar una plantilla sin limpiar es el error más silencioso</p>
+  <p>Si vuelves a usar un archivo de una carga anterior y no lo limpias, <strong>los datos viejos que queden en columnas que ya no estás mirando se vuelven a subir</strong>. No hay ninguna señal: la hoja se ve bien. Limpia siempre antes de capturar algo nuevo, o mejor, baja la plantilla otra vez.</p>
+</div>
+
+<h3 class="sub">Exportar</h3>
+<p>La macro <strong>Exportar CSV</strong> revisa el archivo antes de escribir nada. Si algo no cuadra, no genera el archivo y te dice qué corregir:</p>
+
+<div class="tablewrap">
+<table>
+  <thead><tr><th>Te detiene si…</th><th>Qué hacer</th></tr></thead>
+  <tbody>
+    <tr><td>El modo no es <code>COTIZACIÓN+NP</code> ni <code>SOLO_PN</code></td><td>Elige uno de los dos en el desplegable del encabezado.</td></tr>
+    <tr><td>Modo cotización sin <strong>Nombre Cotización/Layout</strong></td><td>Escríbelo. En modo cotización es obligatorio.</td></tr>
+    <tr><td>Hay <strong>números de parte sin cliente</strong></td><td>Te lista las primeras diez filas. Llena el cliente en cada una.</td></tr>
+    <tr><td>Más de <strong>2,000 renglones</strong> en <code>SOLO_PN</code></td><td>Es una advertencia, no un bloqueo: te pregunta si quieres continuar en un solo archivo.</td></tr>
+    <tr><td>Hay <strong>varios clientes</strong> en modo cotización</td><td>También es aviso, no bloqueo: te dice cuántas cotizaciones va a crear y confirmas.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<p>Si todo está bien, te pide dónde guardar el <code>.csv</code> y al terminar te confirma el modo, cuántas columnas y cuántos renglones exportó, ordenados por cliente y número de parte.</p>
+
+<div class="callout info">
+  <p class="ct">El mensaje de confirmación dice “CSV v12 exportado”</p>
+  <p>Es una errata del texto del aviso, no un problema del archivo: la plantilla v13 exporta sus 67 columnas correctamente y así se cargan. <strong>Fíjate en el número de columnas que reporta el mensaje</strong>, no en el “v12”. Ya está reportado para corregirse.</p>
+</div>
+
+<!-- ═════════════════════════════════════════════════════════════════════ -->
+<h2 class="sec" id="s11"><span class="num">11</span>Cargar en Steelhead</h2>
+<p class="sec-lead">Vuelve al menú de la extensión, entra a Carga Masiva y usa <strong>Cargar CSV</strong>. Nada se escribe todavía: primero se abre la vista previa.</p>
+
+<figure class="shot">
+  <img src="assets/v13/panel-preview.png" alt="Panel de vista previa de la carga masiva, en tema oscuro, con el resumen del layout, filtros y la tabla de números de parte clasificados como nuevos, existentes o forzar duplicado">
+  <figcaption>La vista previa, con datos de ejemplo. Nada se ha escrito en Steelhead: hasta aquí puedes cancelar sin consecuencias.</figcaption>
+</figure>
+
+<div class="callout info">
+  <p class="ct">El título del panel dice “v10”</p>
+  <p>Es el nombre interno de la herramienta, no la versión de tu plantilla: <strong>no significa que se haya leído como v10</strong>. La forma de confirmar qué se leyó es la columna <em>Datos</em> de cada renglón — si dice “5 racks” o “empaque”, la v13 se interpretó bien. También está reportado para corregirse.</p>
+</div>
+
+<h3 class="sub">Qué revisar antes de ejecutar</h3>
+<ul>
+  <li><strong>La cuenta de arriba</strong> — cuántos renglones son nuevos, cuántos ya existen y cuántos van a forzar duplicado. Si esperabas altas y todo sale como “existente”, algo no cuadra.</li>
+  <li><strong>El encabezado</strong> — nombre del layout, número de clientes, empresa emisora. Es la última oportunidad de cachar un archivo equivocado.</li>
+  <li><strong>Los avisos en ámbar</strong> — si alguna spec trae guión, aquí te advierte que va a <em>reemplazar</em>, no a sumar.</li>
+  <li><strong>La columna “Datos”</strong> — resume qué se va a escribir en cada renglón. Si pusiste instrucciones de empaque, aparecen ahí.</li>
+  <li><strong>La selección</strong> — puedes desmarcar renglones sueltos y cargar solo una parte.</li>
+</ul>
+
+<p>Cuando estés conforme, <strong>EJECUTAR</strong>. Al terminar aparece el resumen:</p>
+
+<figure class="shot">
+  <img src="assets/v13/panel-resumen.png" alt="Modal de resumen final de la carga con contadores por tipo de dato escrito, incluido Instr.Empaque">
+  <figcaption>El resumen final. El contador <strong>Instr.Empaque</strong> es el de la columna nueva.</figcaption>
+</figure>
+
+<div class="callout tip">
+  <p class="ct">Lee los dos contadores de números de parte juntos</p>
+  <p>Si <strong>PNs modificados</strong> sale menor que <strong>PNs existentes</strong>, el resumen lo marca en rojo: significa que algunos renglones no llegaron a escribirse. Ahí conviene abrir el detalle de errores antes de dar la carga por buena.</p>
+</div>
+
+<p>El botón <strong>Copiar log</strong> deja el registro completo en el portapapeles — es lo más útil que puedes mandar si algo salió mal. Y <strong>Historial de Cargas</strong>, en el menú, guarda las corridas anteriores y permite bajar un CSV de corrección con los renglones que fallaron.</p>
+
+<!-- ═════════════════════════════════════════════════════════════════════ -->
+<h2 class="sec" id="s12"><span class="num">12</span>Cuando algo sale mal</h2>
+
+<div class="tablewrap">
+<table>
+  <thead><tr><th>Lo que ves</th><th>Qué significa</th><th>Qué hacer</th></tr></thead>
+  <tbody>
+    <tr><td>Los desplegables salen vacíos</td><td>Las listas no se han refrescado, o la plantilla es la de 2021+ en un Excel viejo</td><td>Corre <strong>Refrescar Listas</strong>. Si sigue igual, baja la versión de compatibilidad.</td></tr>
+    <tr><td><em>No se puede exportar: N líneas con PN sin Cliente</em></td><td>Faltan clientes en los renglones que te lista</td><td>Llénalos. El cliente es obligatorio en cada renglón con número de parte.</td></tr>
+    <tr><td><code>RackType "-" no encontrado</code></td><td>Guión en el primer par de rack junto con otros pares llenos</td><td>Deja el guión solo si lo que quieres es borrar los racks.</td></tr>
+    <tr><td>Una etiqueta no se aplicó</td><td>Ese nombre de etiqueta no existe en el catálogo</td><td>Elígela del desplegable en vez de escribirla, o pide que se dé de alta.</td></tr>
+    <tr><td>Un número de parte no recibió instrucciones de empaque</td><td>Su receta no tiene el paso de embarque, o tiene más de uno con ese nombre</td><td>Revisa la receta de ese número de parte. El sistema prefiere no escribir a escribir en el paso equivocado.</td></tr>
+    <tr><td>La carga se detiene o va muy lenta</td><td>Demasiadas escrituras seguidas contra el servidor</td><td>Parte el archivo en tandas más chicas. Con muchos racks e instrucciones, tandas de unos cientos.</td></tr>
+    <tr><td>Datos que no capturaste aparecen en Steelhead</td><td>Se reusó una plantilla sin limpiar</td><td><strong>Limpiar Datos</strong> antes de cada archivo nuevo.</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout warn">
+  <p class="ct">La hoja <em>Ayuda</em> de la plantilla está desactualizada</p>
+  <p>La pestaña <strong>Ayuda</strong> que viene dentro del archivo describe todavía el layout de la <strong>v10</strong>: menciona columnas y posiciones que ya no corresponden (racks en <code>AP–AS</code>, “Etiqueta 5”, 69 columnas). <strong>No la sigas para ubicar columnas.</strong> Este documento es el que refleja la v13. Ya está reportado.</p>
+</div>
+
+<!-- ═════════════════════════════════════════════════════════════════════ -->
+<h2 class="sec" id="s13"><span class="num">13</span>Antes de la primera carga grande</h2>
+
+<ol class="stages">
+  <li><span class="k">1</span><div><h4>Baja la plantilla desde el menú</h4><p>No uses la copia que ya tienes en Descargas. Así compruebas el circuito completo, botón incluido.</p></div></li>
+  <li><span class="k">2</span><div><h4>Refresca las listas</h4><p>Y confirma que los desplegables traen lo que esperas: clientes, procesos y tipos de rack.</p></div></li>
+  <li><span class="k">3</span><div><h4>Estrena con un lote chico</h4><p>Cinco o diez renglones, con los cinco racks y la columna de empaque llenos. Es la forma de ver las dos novedades funcionando antes de comprometer un archivo grande.</p></div></li>
+  <li><span class="k">4</span><div><h4>Verifica en Steelhead</h4><p>Abre uno de los números de parte cargados y revisa que los racks estén completos y que las instrucciones aparezcan en el paso de embarque.</p></div></li>
+  <li><span class="k">5</span><div><h4>Ahora sí, la carga grande</h4><p>Y si son miles de renglones, en tandas.</p></div></li>
+</ol>
+
+<div class="callout tip">
+  <p class="ct">Comprueba los desplegables de los racks nuevos</p>
+  <p>Haz clic en una celda de los racks 3, 4 y 5 y confirma que aparece la lista. Es lo único que las revisiones automáticas de la plantilla no cubren — comprueban que las columnas estén en su lugar, no que traigan su desplegable.</p>
+</div>
+
+<!-- ═════════════════════════════════════════════════════════════════════ -->
+<h2 class="sec" id="anexo-a"><span class="num">A</span>Anexo · Las 67 columnas</h2>
+<p class="sec-lead">Leídas directamente del archivo publicado. La columna <em>Valor inicial</em> es lo que trae la plantilla recién limpiada.</p>
+
+<div class="tablewrap"><table><thead><tr><th>Col.</th><th>Encabezado</th><th>Bloque</th><th>Cómo se llena</th><th>Valor inicial</th></tr></thead><tbody>
+<tr><td><code>A</code></td><td>Estatus</td><td><strong>PARÁMETROS</strong></td><td>Lista desplegable</td><td><code>Activo con validación</code></td></tr>
+<tr><td><code>B</code></td><td>Forzar duplicado</td><td><span class="dim">PARÁMETROS</span></td><td>Lista desplegable</td><td><code>Sin forzar duplicado</code></td></tr>
+<tr><td><code>C</code></td><td>Id SH</td><td><strong>IDENTIFICACIÓN</strong></td><td>Texto libre</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>D</code></td><td>Cliente</td><td><span class="dim">IDENTIFICACIÓN</span></td><td>Lista desplegable</td><td><code>(seleccione)</code></td></tr>
+<tr><td><code>E</code></td><td>Número de parte</td><td><span class="dim">IDENTIFICACIÓN</span></td><td>Texto libre</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>F</code></td><td>Descripción</td><td><span class="dim">IDENTIFICACIÓN</span></td><td>Texto libre</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>G</code></td><td>PN alterno</td><td><span class="dim">IDENTIFICACIÓN</span></td><td>Texto libre</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>H</code></td><td>Grupo</td><td><span class="dim">IDENTIFICACIÓN</span></td><td>Texto libre</td><td><code>(seleccione o escriba)</code></td></tr>
+<tr><td><code>I</code></td><td>Cantidad</td><td><strong>PRECIO</strong></td><td>Numérica</td><td><code>1</code></td></tr>
+<tr><td><code>J</code></td><td>Precio</td><td><span class="dim">PRECIO</span></td><td>Importe</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>K</code></td><td>Unidad precio</td><td><span class="dim">PRECIO</span></td><td>Lista desplegable</td><td><code>(seleccione)</code></td></tr>
+<tr><td><code>L</code></td><td>Divisa</td><td><span class="dim">PRECIO</span></td><td>Lista desplegable</td><td><code>USD</code></td></tr>
+<tr><td><code>M</code></td><td>Precio default</td><td><span class="dim">PRECIO</span></td><td>V o F</td><td><code>V</code></td></tr>
+<tr><td><code>N</code></td><td>Línea</td><td><strong>LÍNEA Y ACABADOS (Etiquetas - Labels)</strong></td><td>Lista desplegable</td><td><code>(seleccione)</code></td></tr>
+<tr><td><code>O</code></td><td>Metal base</td><td><span class="dim">LÍNEA Y ACABADOS (Etiquetas - Labels)</span></td><td>Lista desplegable</td><td><code>(seleccione o escriba)</code></td></tr>
+<tr><td><code>P</code></td><td>Etiqueta 1</td><td><span class="dim">LÍNEA Y ACABADOS (Etiquetas - Labels)</span></td><td>Lista desplegable</td><td><code>(seleccione)</code></td></tr>
+<tr><td><code>Q</code></td><td>Etiqueta 2</td><td><span class="dim">LÍNEA Y ACABADOS (Etiquetas - Labels)</span></td><td>Lista desplegable</td><td><code>(seleccione)</code></td></tr>
+<tr><td><code>R</code></td><td>Etiqueta 3</td><td><span class="dim">LÍNEA Y ACABADOS (Etiquetas - Labels)</span></td><td>Lista desplegable</td><td><code>(seleccione)</code></td></tr>
+<tr><td><code>S</code></td><td>Etiqueta 4</td><td><span class="dim">LÍNEA Y ACABADOS (Etiquetas - Labels)</span></td><td>Lista desplegable</td><td><code>(seleccione)</code></td></tr>
+<tr><td><code>T</code></td><td>Etiqueta Planta Schneider</td><td><span class="dim">LÍNEA Y ACABADOS (Etiquetas - Labels)</span></td><td>Calculada</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>U</code></td><td>Proceso</td><td><strong>PROCESO</strong></td><td>Lista desplegable</td><td><code>Combinación no existente</code></td></tr>
+<tr><td><code>V</code></td><td>Productos</td><td><strong>PRODUCTOS</strong></td><td>Lista desplegable</td><td><code>(seleccione)</code></td></tr>
+<tr><td><code>W</code></td><td>Spec 1</td><td><strong>ESPECIFICACIONES</strong></td><td>Lista desplegable</td><td><code>(seleccione)</code></td></tr>
+<tr><td><code>X</code></td><td>Esp. Spec 1 (µm)</td><td><span class="dim">ESPECIFICACIONES</span></td><td>Calculada o numérica</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>Y</code></td><td>Spec 2</td><td><span class="dim">ESPECIFICACIONES</span></td><td>Lista desplegable</td><td><code>(seleccione)</code></td></tr>
+<tr><td><code>Z</code></td><td>Esp. Spec 2 (µm)</td><td><span class="dim">ESPECIFICACIONES</span></td><td>Calculada o numérica</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>AA</code></td><td>Spec 3</td><td><span class="dim">ESPECIFICACIONES</span></td><td>Lista desplegable</td><td><code>(seleccione)</code></td></tr>
+<tr><td><code>AB</code></td><td>Esp. Spec 3 (µm)</td><td><span class="dim">ESPECIFICACIONES</span></td><td>Calculada o numérica</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>AC</code></td><td>Spec 4</td><td><span class="dim">ESPECIFICACIONES</span></td><td>Lista desplegable</td><td><code>(seleccione)</code></td></tr>
+<tr><td><code>AD</code></td><td>Esp. Spec 4 (µm)</td><td><span class="dim">ESPECIFICACIONES</span></td><td>Calculada o numérica</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>AE</code></td><td>KGM (kg/pza)</td><td><strong>CONVERSIÓN DE UNIDADES</strong></td><td>Numérica</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>AF</code></td><td>CMK (cm²/pza)</td><td><span class="dim">CONVERSIÓN DE UNIDADES</span></td><td>Numérica</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>AG</code></td><td>LM (m/pza)</td><td><span class="dim">CONVERSIÓN DE UNIDADES</span></td><td>Numérica</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>AH</code></td><td>Mín Pzas Lote</td><td><span class="dim">CONVERSIÓN DE UNIDADES</span></td><td>Numérica</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>AI</code></td><td>Rack Flybar o Barril 1</td><td><strong>TIPOS DE RACK (Piezas por Tipo de Rack)</strong></td><td>Lista desplegable</td><td><code>(seleccione)</code></td></tr>
+<tr><td><code>AJ</code></td><td>Pzas/Rack Línea 1</td><td><span class="dim">TIPOS DE RACK (Piezas por Tipo de Rack)</span></td><td>Numérica</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>AK</code></td><td>Rack Flybar o Barril 2</td><td><span class="dim">TIPOS DE RACK (Piezas por Tipo de Rack)</span></td><td>Lista desplegable</td><td><code>(seleccione)</code></td></tr>
+<tr><td><code>AL</code></td><td>Pzas/Rack Línea 2</td><td><span class="dim">TIPOS DE RACK (Piezas por Tipo de Rack)</span></td><td>Numérica</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>AM</code></td><td>Rack Flybar o Barril 3</td><td><span class="dim">TIPOS DE RACK (Piezas por Tipo de Rack)</span></td><td>Lista desplegable</td><td><code>(seleccione)</code></td></tr>
+<tr><td><code>AN</code></td><td>Pzas/Rack Línea 3</td><td><span class="dim">TIPOS DE RACK (Piezas por Tipo de Rack)</span></td><td>Numérica</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>AO</code></td><td>Rack Flybar o Barril 4</td><td><span class="dim">TIPOS DE RACK (Piezas por Tipo de Rack)</span></td><td>Lista desplegable</td><td><code>(seleccione)</code></td></tr>
+<tr><td><code>AP</code></td><td>Pzas/Rack Línea 4</td><td><span class="dim">TIPOS DE RACK (Piezas por Tipo de Rack)</span></td><td>Numérica</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>AQ</code></td><td>Rack Flybar o Barril 5</td><td><span class="dim">TIPOS DE RACK (Piezas por Tipo de Rack)</span></td><td>Lista desplegable</td><td><code>(seleccione)</code></td></tr>
+<tr><td><code>AR</code></td><td>Pzas/Rack Línea 5</td><td><span class="dim">TIPOS DE RACK (Piezas por Tipo de Rack)</span></td><td>Numérica</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>AS</code></td><td>Tipo de Geometría</td><td><strong>DIMENSIONES</strong></td><td>Lista desplegable</td><td><code>(seleccione o escriba)</code></td></tr>
+<tr><td><code>AT</code></td><td>Longitud (m)</td><td><span class="dim">DIMENSIONES</span></td><td>Numérica</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>AU</code></td><td>Ancho (m)</td><td><span class="dim">DIMENSIONES</span></td><td>Numérica</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>AV</code></td><td>Alto (m)</td><td><span class="dim">DIMENSIONES</span></td><td>Numérica</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>AW</code></td><td>Diám.Ext (m)</td><td><span class="dim">DIMENSIONES</span></td><td>Numérica</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>AX</code></td><td>Diám.Int (m)</td><td><span class="dim">DIMENSIONES</span></td><td>Numérica</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>AY</code></td><td>Plata (kg/pza)</td><td><strong>USO PREDICTIVO DE MATERIAS PRIMAS</strong></td><td>Calculada</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>AZ</code></td><td>Estaño (kg/pza)</td><td><span class="dim">USO PREDICTIVO DE MATERIAS PRIMAS</span></td><td>Calculada</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>BA</code></td><td>Níquel (kg/pza)</td><td><span class="dim">USO PREDICTIVO DE MATERIAS PRIMAS</span></td><td>Calculada</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>BB</code></td><td>Zinc (kg/pza)</td><td><span class="dim">USO PREDICTIVO DE MATERIAS PRIMAS</span></td><td>Calculada</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>BC</code></td><td>Cobre (kg/pza)</td><td><span class="dim">USO PREDICTIVO DE MATERIAS PRIMAS</span></td><td>Calculada</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>BD</code></td><td>Antitarnish (L/pza)</td><td><span class="dim">USO PREDICTIVO DE MATERIAS PRIMAS</span></td><td>Calculada</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>BE</code></td><td>Epóx. MT (lb/pza)</td><td><span class="dim">USO PREDICTIVO DE MATERIAS PRIMAS</span></td><td>Calculada</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>BF</code></td><td>Epóx. BT (lb/pza)</td><td><span class="dim">USO PREDICTIVO DE MATERIAS PRIMAS</span></td><td>Calculada</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>BG</code></td><td>Epóx. MTR (lb/pza)</td><td><span class="dim">USO PREDICTIVO DE MATERIAS PRIMAS</span></td><td>Calculada</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>BH</code></td><td>Instrucciones de Empaque</td><td><strong>DATOS DE REFERENCIA</strong></td><td>Texto libre</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>BI</code></td><td>Notas adicionales</td><td><span class="dim">DATOS DE REFERENCIA</span></td><td>Texto libre</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>BJ</code></td><td>QuoteIBMS</td><td><span class="dim">DATOS DE REFERENCIA</span></td><td>Texto libre</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>BK</code></td><td>EstIBMS</td><td><span class="dim">DATOS DE REFERENCIA</span></td><td>Texto libre</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>BL</code></td><td>Plano</td><td><span class="dim">DATOS DE REFERENCIA</span></td><td>Texto libre</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>BM</code></td><td>Piezas por Carga</td><td><span class="dim">DATOS DE REFERENCIA</span></td><td>Texto libre</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>BN</code></td><td>Cargas por Hora</td><td><span class="dim">DATOS DE REFERENCIA</span></td><td>Texto libre</td><td><span class="dim">—</span></td></tr>
+<tr><td><code>BO</code></td><td>Tiempo de Entrega</td><td><span class="dim">DATOS DE REFERENCIA</span></td><td>Texto libre</td><td><span class="dim">—</span></td></tr>
+</tbody></table></div>
+
+<!-- ═════════════════════════════════════════════════════════════════════ -->
+<h2 class="sec" id="anexo-b"><span class="num">B</span>Anexo · Qué se movió de lugar</h2>
+<p class="sec-lead">Para quien tenga que comparar un archivo viejo con uno nuevo, o esté acostumbrado a ubicar columnas por su letra.</p>
+
+<div class="tablewrap">
+<table>
+  <thead><tr><th>Contenido</th><th>En la v12</th><th>En la v13</th></tr></thead>
+  <tbody>
+    <tr><td>Rack 1 y 2, con sus piezas</td><td><code>AI</code> – <code>AL</code></td><td><code>AI</code> – <code>AL</code> <span class="dim">(igual)</span></td></tr>
+    <tr><td><strong>Rack 3, 4 y 5, con sus piezas</strong></td><td><span class="dim">no existían</span></td><td><strong><code>AM</code> – <code>AR</code></strong></td></tr>
+    <tr><td>Tipo de Geometría</td><td><code>AM</code></td><td><code>AS</code></td></tr>
+    <tr><td>Longitud … Diámetro interior</td><td><code>AN</code> – <code>AR</code></td><td><code>AT</code> – <code>AX</code></td></tr>
+    <tr><td>Consumo predictivo (Plata … Epóx. MTR)</td><td><code>AS</code> – <code>BA</code></td><td><code>AY</code> – <code>BG</code></td></tr>
+    <tr><td><strong>Instrucciones de Empaque</strong></td><td><span class="dim">no existía</span></td><td><strong><code>BH</code></strong></td></tr>
+    <tr><td>Notas adicionales · QuoteIBMS · EstIBMS · Plano</td><td><code>BB</code> – <code>BE</code></td><td><code>BI</code> – <code>BL</code></td></tr>
+    <tr><td>Piezas por Carga · Cargas por Hora · Tiempo de Entrega</td><td><code>BF</code> – <code>BH</code></td><td><code>BM</code> – <code>BO</code></td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="callout meta">
+  <p class="ct">La regla para recordarlo</p>
+  <p>Hasta los racks, todo está igual. A partir de ahí, <strong>seis columnas a la derecha</strong> — y luego una más, después de los consumos predictivos, por la columna de empaque. Si copias un renglón viejo y todo se ve corrido justo desde <em>Tipo de Geometría</em>, es esto.</p>
+</div>
+
+<footer class="foot">
+  <div><span class="badge vivo">Vivo</span> &nbsp; Guía de uso · Plantilla de Carga Masiva v13</div>
+  <div>Datos leídos de <code>Plantilla_CargaMasiva_v13.xlsm</code> · corte 05 de agosto de 2026</div>
+  <div class="doc-credit">
+    <a href="https://capazconsultoria.com" target="_blank" rel="noopener" aria-label="Capaz Consultoría" style="flex:0 0 auto;display:inline-flex"><img src="assets/capaz-c.png" alt="Capaz Consultoría"></a>
+    <span>Documento elaborado por <a class="name" href="mailto:oviazcan@capazconsultoria.com">Omar Viazcán</a> · <a href="https://capazconsultoria.com" target="_blank" rel="noopener">Capaz Consultoría</a></span>
+  </div>
+</footer>
+
+</div>
+</body>
+</html>

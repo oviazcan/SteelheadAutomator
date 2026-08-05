@@ -105,7 +105,13 @@ Sub ExportarCSV()
         MsgBox m1, vbExclamation, "Cliente faltante": Exit Sub
     End If
 
-    ' Cliente único en COTIZACIÓN+NP
+    ' Varios clientes en COTIZACIÓN+NP: SOPORTADO — el applet crea UNA cotización por
+    ' cliente, nombrada "{Cliente} {Layout}". Hasta el 2026-08-05 esto se BLOQUEABA aquí
+    ' ("requiere UN SOLO cliente; usa SOLO_PN para varios"), lo que dejaba inalcanzable
+    ' desde el flujo normal una capacidad que existe desde hace varias versiones: la
+    ' plantilla vetaba lo que el applet sí sabe hacer.
+    ' Queda un AVISO, no un bloqueo, para que un archivo con clientes mezclados por error
+    ' no pase en silencio; el preview del panel lo vuelve a mostrar antes de escribir nada.
     If esCotizacion Then
         Dim cu As New Collection, ct As String
         For r = DATA_START To lastR
@@ -115,8 +121,9 @@ Sub ExportarCSV()
             End If
         Next r
         If cu.Count > 1 Then
-            MsgBox "Modo COTIZACI" & ChrW(211) & "N+NP requiere UN SOLO cliente; encontr" & ChrW(233) & " " & _
-                   cu.Count & ". Usa SOLO_PN para varios.", vbCritical, "Cliente mixto": Exit Sub
+            If MsgBox(cu.Count & " clientes distintos en modo COTIZACI" & ChrW(211) & "N+NP." & vbCrLf & _
+                      "Se crear" & ChrW(225) & " UNA cotizaci" & ChrW(243) & "n por cliente (" & cu.Count & " en total)." & vbCrLf & vbCrLf & _
+                      ChrW(191) & "Continuar?", vbYesNo + vbQuestion, "Varios clientes") <> vbYes Then Exit Sub
         End If
     End If
 

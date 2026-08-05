@@ -3,7 +3,10 @@
 **Fecha:** 2026-08-03 · **Estado:** ✅ **VIVO en producción — config 1.11.63, tag `v1.11.63`**
 (parser, escritura y ambas plantillas publicadas y verificadas) · 🔴 **sin corrida real contra el ERP**
 **Relacionado:** [`bulk-upload.md`](bulk-upload.md) (bitácora principal) · [`bulk-upload-v12.md`](bulk-upload-v12.md) (contrato v12)
-**Guía para el usuario:** [`../plantilla-carga-masiva-v13.html`](../plantilla-carga-masiva-v13.html)
+**Guía para el usuario:** [`../training/guia-plantilla-v13.html`](../training/guia-plantilla-v13.html)
+(la que se difunde al equipo; se **genera** con `tools/build-guia-v13.js` leyendo el `.xlsm` real —
+al cambiar la plantilla se re-corre, no se edita el HTML) ·
+nota técnica: [`../plantilla-carga-masiva-v13.html`](../plantilla-carga-masiva-v13.html)
 
 ## Qué trae v13
 
@@ -276,6 +279,53 @@ operador descarga es exactamente lo validado.
    `bulk-upload-packing.js`. La salida: dejar el commit local y que `deploy.sh` empuje ambos
    juntos, con la punta ya espejando main.
 3. El hook exime del bump sólo a los push que **no tocan** `config.json` ni `scripts/`.
+
+## Desfases de TEXTO VISIBLE detectados al documentar (2026-08-05)
+
+Ninguno rompe la carga, pero los tres **le mienten al operador sobre qué versión está usando**, que
+es justo lo que uno consulta cuando algo sale raro. Están explicados en la guía del equipo para que
+no desorienten mientras se corrigen.
+
+| Dónde | Dice | Debería decir |
+|---|---|---|
+| `Module1.ExportarCSV`, MsgBox final | `"CSV v12 exportado:"` | `v13` |
+| `bulk-upload.js:2693`, título del panel | `Steelhead Automator v10 — …` | la versión viva |
+| Hoja **`Ayuda`** de AMBOS `.xlsm` | el layout **v10** completo (69 columnas `A–BQ`, racks ×2 en `AP–AS`, "Etiqueta 5") | el layout v13 |
+
+La hoja `Ayuda` es la más dañina de las tres: **no es un rótulo, es un mapa de columnas equivocado**
+dentro del archivo que el operador tiene abierto. Quien la siga captura corrido.
+
+## Multi-cliente en `COTIZACIÓN+NP`: la plantilla vetaba lo que el applet sí sabe hacer
+
+**RESUELTO 2026-08-05 — decisión del usuario: multi-cliente se queda.**
+
+`ExportarCSV` **bloqueaba** la exportación con más de un cliente (*"requiere UN SOLO cliente;
+encontré N. Usa SOLO_PN para varios"*), mientras el applet **sí** crea una cotización por cliente
+—nombrada `{Cliente} {Layout}`— desde hace varias versiones, el preview lo muestra
+(`Clientes: N (1 cot c/u)`) y la hoja `Ayuda` lo anuncia como característica. Ganaba la plantilla:
+**una capacidad viva, inalcanzable desde el flujo normal.**
+
+Se cambió el `Exit Sub` por una **confirmación** `vbYesNo` que dice cuántas cotizaciones se van a
+crear — mismo patrón que el aviso de `SOLO_PN > 2000` que ya vivía dos bloques más abajo. Un archivo
+con un cliente colado por error sigue sin pasar en silencio, pero el caso legítimo ya no se veta.
+Editado en **`vbas/Module1.bas` y `vbas/Module1_compat.bas`**; verificado antes de tocar que el
+`ExportarCSV` de ambos `.bas` fuera **idéntico al que vive en el `.xlsm`** (210 líneas de código,
+sin contar comentarios — `olevba` no decodifica los `──` de los comentarios, así que la comparación
+se hace ignorándolos). **Falta pegarlo en las dos plantillas y republicarlas.**
+
+**Lección de método (me pasó DOS veces el mismo día, en el mismo archivo):** un regex que exige la
+etiqueta de cierre **se traga los elementos self-closing y le cuelga al anterior el contenido del
+siguiente**. Primero con las celdas (`<c r="C3" s="109"/>` corrió las columnas de la fila 3 y me hizo
+leer el encabezado del layout completo mal); después, ya "corregido", con las **validaciones**
+(`<dataValidation … sqref="E8"/>` vacía ⇒ reporté que la columna `B` *no tenía desplegable* cuando
+`B9:B508` **sí lo declara**, tres líneas más abajo). **Corregir el patrón en un sitio no lo corrige
+en los demás: hay que buscar el patrón, no el síntoma.** Ambas rutas ya están arregladas en
+[`tools/lib/xlsx-read.js`](../../tools/lib/xlsx-read.js), que es hoy el único lector del `.xlsm`.
+
+**Rareza menor confirmada** (con el lector ya corregido): `N9:N508` tiene **dos** validaciones
+`extLst`, la segunda con las columnas cruzadas
+(`OFFSET(Listas!$I$2,0,0,COUNTA(Listas!$J:$J)-1,1)` — lista de `I`, conteo de `J`). Sin impacto
+conocido: gana la primera.
 
 ## Pendientes
 
