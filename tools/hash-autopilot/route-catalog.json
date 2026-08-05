@@ -539,6 +539,23 @@
         "SensorDashboardQuery"
       ]
     },
+    "packingslips-view-modal": {
+      "type": "query",
+      "module": "Shipping",
+      "_nota": "Abre el modal de VER albarán desde el listado. Clic por aria-label 'Abrir Albarán' (icono OpenInNewIcon; el HTML lo aportó el operador el 2026-08-05). Es LECTURA pura: el modal sólo muestra el albarán y su PDF; no hay submit ni escritura. Captura GetPackingSlip, que packing-slip-drawings usa para leer de una sola vez el check DatosLogisticos.IncluirPlanos del cliente, los NP de la remisión con su id, y el filename del PDF.",
+      "steps": [
+        {
+          "goto": "/Domains/{domain}/Shipping/PackingSlips"
+        },
+        {
+          "clickFirst": "button[aria-label='Abrir Albarán'], button[aria-label='Open Packing Slip']"
+        }
+      ],
+      "captures": [
+        "GetPackingSlip",
+        "ViewPackingSlipModalCertQuery"
+      ]
+    },
     "partnumber-add-spec": {
       "type": "query",
       "module": "PartNumbers",

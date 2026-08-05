@@ -210,7 +210,8 @@
         "SearchBills": "e50ba3ee7d2e694476d5180abdd978fa21f5147251c02d4cef051973b408bd8a",
         "FindPartGroupQuery": "85121b64ebe7c614a0c3de7a730c45488b0ca45ea6731ff8c88efafb0667774c",
         "GetPartNumberWorkOrderSpecsInfo": "0d77c6496b506be62b92c1d821b2e0ec115838cb404ef3ab1cffe2270ddeb827",
-        "RelatedSchedulingTreatments": "b4ea3a2c6a41bf508d7b837f153a902c5e7c5ff0bb62c41366e5df95a31e3889"
+        "RelatedSchedulingTreatments": "b4ea3a2c6a41bf508d7b837f153a902c5e7c5ff0bb62c41366e5df95a31e3889",
+        "GetPackingSlip": "407230952236567708a9e2190721a65c4fc8dd4bbe94337b9660e49283d7801e"
       }
     },
     "domain": {
@@ -2874,6 +2875,10 @@
       "type": "query",
       "description": "Dado {treatmentIds:[...]} devuelve allTreatments.nodes[].{id,name,treatmentGroupByTreatmentGroupId.id}. Sirve para saber QUÉ tratamientos son de PLANIFICACIÓN (grupo 2344) — los únicos programables, porque su estación tiene calendario ('Listo para procesar', satélites). El árbol de la receta NO trae el grupo, por eso hace falta esta consulta. Confirmado con datos: 2344 = T110/T202/T206 (nivel línea); las tinas normales caen en otros grupos.",
       "usedBy": "wo-schedule-button"
+    },
+    "GetPackingSlip": {
+      "category": "shipping",
+      "description": "Detalle de una remisión por {idInDomain, revisionNumber}. Devuelve packingSlipByIdInDomainAndRevisionNumber con: packingSlipPdfsByPackingSlipId.nodes[].filename (EL PDF de la remisión), customerByCustomerId.customInputs (incluye DatosLogisticos.IncluirPlanos) y partNumbersIncluded.nodes[].{id,name} (los NP REALES de la remisión, con su id — evita resolverlos por nombre y caer en homónimos). Usada por packing-slip-drawings."
     }
   },
   "scripts": [

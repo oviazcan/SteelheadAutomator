@@ -42,6 +42,9 @@ const PackingSlipDrawings = (() => {
   // cuando el modal NO se abre desde la lista de albaranes (p. ej. el módulo de
   // Envío), donde no hay una tabla `#NNNN | Cliente` de dónde leerlo.
   let lastCustomerName = null;
+  // Nombre del archivo PDF de la remisión abierta (de GetPackingSlip). Se usa
+  // para imprimir; se limpia junto con el resto al cerrar el modal.
+  let currentPsPdf = null;
 
   // ── Reconocimiento del modal ────────────────────────────────────────────────
 
@@ -127,6 +130,39 @@ const PackingSlipDrawings = (() => {
 
   // ── Resolución NP → archivos ────────────────────────────────────────────────
 
+  // ── Vía PRECISA: GetPackingSlip ─────────────────────────────────────────────
+  //
+  // Una sola query por `{idInDomain, revisionNumber}` devuelve LAS TRES cosas que
+  // el applet necesita, y las devuelve BIEN:
+  //   · customerByCustomerId.customInputs → el check, sin adivinar el cliente
+  //     leyendo la tabla que queda detrás del modal;
+  //   · partNumbersIncluded.nodes[].{id,name} → los NP REALES de esta remisión,
+  //     con su id — lo que elimina de raíz el problema de los homónimos, porque
+  //     ya no hay que resolver un nombre a un id;
+  //   · packingSlipPdfsByPackingSlipId.nodes[].filename → el PDF de la remisión.
+  //
+  // Todo lo demás queda como RESPALDO. Un anclaje no se cambia, se AMPLÍA: si
+  // esta query falla (o la remisión tiene una revisión distinta de la que
+  // pedimos), se cae a la cadena vieja en vez de quedarse mudo.
+  async function fetchPackingSlip(idInDomain, revisionNumber) {
+    const data = await api().query('GetPackingSlip',
+      { idInDomain: parseInt(idInDomain, 10), revisionNumber: revisionNumber || 1 }, 'GetPackingSlip');
+    const ps = data && data.packingSlipByIdInDomainAndRevisionNumber;
+    if (!ps) return null;
+    const nodes = (ps.partNumbersIncluded && ps.partNumbersIncluded.nodes) || [];
+    const pdfs = (ps.packingSlipPdfsByPackingSlipId && ps.packingSlipPdfsByPackingSlipId.nodes) || [];
+    // De haber varios PDFs se prefiere el FINALIZADO: es el documento que de
+    // verdad acompaña al embarque.
+    const finalizado = pdfs.find((x) => x && x.isFinalized) || pdfs[pdfs.length - 1] || null;
+    const cust = ps.customerByCustomerId || null;
+    return {
+      incluirPlanos: cust ? Core().readIncluirPlanos(cust.customInputs) : null,
+      customerName: (cust && cust.name) || null,
+      pns: nodes.filter((n) => n && n.id != null).map((n) => ({ id: n.id, name: n.name || '' })),
+      pdfFilename: finalizado ? finalizado.filename : null,
+    };
+  }
+
   // Cuántos registros homónimos se consultan como máximo por nombre de parte.
   // Cada uno cuesta una query extra; el tope evita que un nombre muy duplicado
   // dispare una ráfaga contra el /graphql.
@@ -173,10 +209,27 @@ const PackingSlipDrawings = (() => {
   // SERIAL a propósito: el /graphql de SH se cuelga bajo ráfaga (~40 requests) y
   // el límite es POR SESIÓN — tumbaría también la pantalla nativa. Una remisión
   // puede traer 88 NP (medido); no se paraleliza.
-  async function loadFilesFor(parts, container, incluirPlanos) {
+  async function loadFilesFor(parts, container, incluirPlanos, exactos) {
     const pns = [];
     const filesByPn = {};
     const noResueltos = [];
+
+    // Camino corto: GetPackingSlip ya dio los NP de ESTA remisión con su id.
+    // Una query por NP en vez de dos, y sin riesgo de homónimos.
+    if (exactos && exactos.length) {
+      for (const pn of exactos) {
+        try {
+          pns.push(pn);
+          filesByPn[pn.id] = await fetchPnFiles(pn.id);
+        } catch (e) {
+          noResueltos.push(pn.name);
+          console.warn(LOG, 'no pude traer archivos de', pn.name, e && e.message);
+        }
+      }
+      finishPlan(pns, filesByPn, noResueltos, container, incluirPlanos);
+      return;
+    }
+
     for (const p of parts) {
       try {
         const matches = await resolvePnIds(p.pnName);
@@ -201,6 +254,10 @@ const PackingSlipDrawings = (() => {
         console.warn(LOG, 'no pude resolver', p.pnName, e && e.message);
       }
     }
+    finishPlan(pns, filesByPn, noResueltos, container, incluirPlanos);
+  }
+
+  function finishPlan(pns, filesByPn, noResueltos, container, incluirPlanos) {
     currentPlan = Core().buildAttachmentPlan({ pns, filesByPn });
     currentPlan.noResueltos = noResueltos;
     currentPlan.incluirPlanos = incluirPlanos;
@@ -225,6 +282,11 @@ const PackingSlipDrawings = (() => {
   // Certificado» con checkbox y link. Nuestro panel es su hermano, y verse igual
   // es mejor UX que gritar «soy de la extensión». El marcador de autoría es el
   // 📐 del label y el atributo data-sa-ps-drawings.
+  // Formatos que el navegador pinta como <img>. Es a propósito MÁS ESTRECHO que
+  // la lista de «foto» del núcleo: tif/heic clasifican como foto pero Chrome no
+  // los muestra, y una miniatura rota informa peor que ninguna.
+  const ES_IMAGEN = /\.(jpe?g|png|gif|bmp|webp)$/i;
+
   const AMBER = '#b26a00';
   const DIM = '#6b7280';
 
@@ -302,8 +364,23 @@ const PackingSlipDrawings = (() => {
 
     const parts = readParts(dlg);
     const psNumber = Modal().extractPackingSlipNumber(dlg.innerText || '');
-    const customerName = readCustomerNameFromList(psNumber) || lastCustomerName;
-    const incluirPlanos = await resolveIncluirPlanos(customerName);
+
+    // Vía PRECISA primero; la cadena vieja queda de respaldo.
+    let ps = null;
+    if (psNumber) {
+      try { ps = await fetchPackingSlip(psNumber); }
+      catch (e) { console.warn(LOG, 'GetPackingSlip falló, uso el respaldo:', e && e.message); }
+    }
+    currentPsPdf = ps && ps.pdfFilename ? ps.pdfFilename : null;
+
+    let customerName, incluirPlanos;
+    if (ps && ps.incluirPlanos !== null) {
+      customerName = ps.customerName;
+      incluirPlanos = ps.incluirPlanos;
+    } else {
+      customerName = (ps && ps.customerName) || readCustomerNameFromList(psNumber) || lastCustomerName;
+      incluirPlanos = await resolveIncluirPlanos(customerName);
+    }
 
     // `false` = el cliente NO quiere planos ⇒ el applet queda INERTE, cero UI.
     // Es lo correcto para 74 de los 81 clientes activos.
@@ -347,11 +424,14 @@ const PackingSlipDrawings = (() => {
       return true;
     }
 
+    // Si GetPackingSlip dio los NP con su id, se usan ESOS: son los de esta
+    // remisión, no un nombre resuelto a ciegas.
+    const exactos = ps && ps.pns && ps.pns.length ? ps.pns : null;
     if (incluirPlanos === true) {
       tdBody.textContent = 'Buscando planos…';
-      loadFilesFor(parts, tdBody, incluirPlanos);    // async: pinta cuando llega
+      loadFilesFor(parts, tdBody, incluirPlanos, exactos);
     } else {
-      renderUnverified(tdBody, parts, customerName);
+      renderUnverified(tdBody, parts, customerName, exactos);
     }
     return true;
   }
@@ -359,17 +439,17 @@ const PackingSlipDrawings = (() => {
   // Estado `null`: una sola línea discreta, sin cargar nada. El panel completo
   // en TODOS los correos sería ruido para 80 de 81 clientes — y un aviso que
   // casi siempre sobra es un aviso que el operador aprende a ignorar.
-  function renderUnverified(container, parts, customerName) {
+  function renderUnverified(container, parts, customerName, exactos) {
     const quien = customerName ? `«${escHtml(customerName)}»` : 'este cliente';
     container.innerHTML =
       `<span style="color:${AMBER}">No pude verificar si ${quien} pide planos.</span> ` +
       `<button type="button" data-sa-buscar="1" style="margin-left:6px;padding:4px 10px;cursor:pointer">` +
-      `Buscar planos de ${parts.length} NP</button>`;
+      `Buscar planos de ${(exactos && exactos.length) || parts.length} NP</button>`;
     const btn = container.querySelector('button[data-sa-buscar]');
     if (btn) {
       btn.addEventListener('click', () => {
         container.textContent = 'Buscando planos…';
-        loadFilesFor(parts, container, null);
+        loadFilesFor(parts, container, null, exactos);
       });
     }
   }
@@ -410,13 +490,25 @@ const PackingSlipDrawings = (() => {
         // tenía que marcar a ciegas, sin poder confirmar que el plano es el bueno.
         // `rel="noopener"` es obligatorio con target=_blank (la pestaña abierta
         // podría manipular la nuestra vía window.opener).
+        // Miniatura para lo que el navegador sabe pintar. Sin esto había que
+        // abrir cada archivo en una pestaña sólo para saber cuál era cuál —
+        // y con varias fotos por NP eso es el trabajo que el applet debía ahorrar.
+        // `loading="lazy"` para no bajar decenas de imágenes de golpe.
+        const url = FILE_URL(f.filename);
+        const thumb = ES_IMAGEN.test(f.displayName)
+          ? `<div style="margin:2px 0 6px 34px">` +
+            `<a href="${escHtml(url)}" target="_blank" rel="noopener noreferrer">` +
+            `<img src="${escHtml(url)}" loading="lazy" alt="${escHtml(f.displayName)}" ` +
+            `style="max-height:88px;max-width:150px;border:1px solid #d0d5dd;border-radius:4px;` +
+            `object-fit:contain;background:#fff"></a></div>`
+          : '';
         out.push(
           '<div style="margin-left:14px">' +
           `<input type="checkbox" data-sa-file="${escHtml(f.filename)}"${marcado}> ` +
-          `<a href="${escHtml(FILE_URL(f.filename))}" target="_blank" rel="noopener noreferrer" ` +
+          `<a href="${escHtml(url)}" target="_blank" rel="noopener noreferrer" ` +
           `title="Abrir en pestaña nueva">${escHtml(f.displayName)}</a> ` +
           `<span style="color:${DIM}">(${escHtml(f.kind)})</span>` +
-          '</div>'
+          '</div>' + thumb
         );
       }
     }
@@ -508,8 +600,12 @@ const PackingSlipDrawings = (() => {
     if (btn) { btn.disabled = true; btn.textContent = '🖨️ Preparando…'; }
     const dlg = container.closest('.MuiDialog-paper, [role="dialog"]');
     try {
+      // El PDF real de la remisión viene de GetPackingSlip
+      // (packingSlipPdfsByPackingSlipId.filename). El enlace del modal NO sirve:
+      // apunta al portal del cliente, que es HTML con token, no un PDF.
+      const psUrl = currentPsPdf ? FILE_URL(currentPsPdf) : findPackingSlipPdfUrl(dlg);
       const res = await window.PackingSlipPrint.printCombined({
-        packingSlipPdfUrl: findPackingSlipPdfUrl(dlg),
+        packingSlipPdfUrl: psUrl,
         files: getSelectedFiles(),
       });
       if (!res.ok) {
@@ -602,7 +698,7 @@ const PackingSlipDrawings = (() => {
       // Si sobreviviera, el próximo modal decidiría con el dueño anterior — el
       // clásico nodo stale, sólo que en una variable: la mentira se refresca
       // sola y encima parece coherente.
-      if (!dlg) { currentPlan = null; selected.clear(); lastCustomerName = null; return; }
+      if (!dlg) { currentPlan = null; selected.clear(); lastCustomerName = null; currentPsPdf = null; return; }
       // El guard rechaza '1' Y 'pending': `mountPanel` es async, así que entre el
       // disparo del observer y su `.then()` caben varias mutaciones más. Mirar
       // sólo '1' dejaba montar el panel DOS veces (visto en producción, v0.1.0).
