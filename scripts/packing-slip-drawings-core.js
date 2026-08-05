@@ -105,14 +105,23 @@
     for (const pn of pns) {
       if (!pn || pn.id == null) continue;
       const raw = filesByPn[pn.id] || [];
-      const files = raw.map((f) => {
-        const displayName = (f && f.originalName) || (f && f.name) || '';
+      // Dedup POR NP: el ERP admite vincular el MISMO archivo dos veces al mismo
+      // número de parte (medido: S2N1317A01 tenía dos vínculos al mismo
+      // `user_file_name`). Sin esto se pintarían dos casillas idénticas que
+      // comparten clave: marcar una y desmarcar la otra deja el estado mintiendo.
+      const vistos = new Set();
+      const files = [];
+      for (const f of raw) {
+        const filename = (f && f.name) || '';
+        if (!filename || vistos.has(filename)) continue;
+        vistos.add(filename);
+        const displayName = (f && f.originalName) || filename;
         const kind = classifyFile(displayName);
         const preselected = kind === 'plano';
         archivos++;
         if (preselected) preseleccionados++;
-        return { filename: (f && f.name) || '', displayName, kind, preselected };
-      });
+        files.push({ filename, displayName, kind, preselected });
+      }
       groups.push({ pnId: pn.id, pnName: pn.name || '', files });
       if (!files.length) pnsSinArchivo++;
       if (!files.some((f) => f.kind === 'plano')) {
