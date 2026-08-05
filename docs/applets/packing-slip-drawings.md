@@ -1,6 +1,7 @@
 # `packing-slip-drawings` — Planos en Remisión
 
-**Versión:** 0.1.0 · **Estado:** implementado, **pendiente canario en producción**
+**Versión:** 0.1.2 · **Estado:** **DESPLEGADO Y VIVO** (config 1.11.69) · pendiente canario con
+FISHER y verificación de adjunto/impresión
 **Spec:** [`2026-08-04-packing-slip-drawings-design.md`](../superpowers/specs/2026-08-04-packing-slip-drawings-design.md)
 **Plan:** [`2026-08-04-packing-slip-drawings.md`](../superpowers/plans/2026-08-04-packing-slip-drawings.md)
 
@@ -149,7 +150,34 @@ MuiSwitch y un icono de correo** ⇒ **también pasaría**. Los separa el headin
   pondría a inyectar adjuntos en el correo de una **factura**;
 - sin heading legible, red estructural con **umbral de 4 switches** (factura 3, remisión 5).
 
-### 5 · El panel va en estilo NATIVO, no dark mode
+### 5 · Dos bugs que sólo aparecieron en producción (v0.1.0 → 0.1.2)
+
+Ambos salieron en la **primera corrida real**, ninguno lo habría atrapado un test unitario.
+
+**a) El panel se montaba DOS veces.** El latch ponía `'pending'` antes del `await`, pero el guard
+sólo rechazaba `'1'` — así que entre el disparo del observer y su `.then()` cabían más mutaciones y
+todas pasaban. Ahora rechaza ambos estados **y** `mountPanel` pregunta por el NODO
+(`tr[data-sa-ps-drawings]`) como defensa en profundidad: *el latch dice «ya lo intenté», el nodo dice
+«ya está ahí»*.
+
+**b) Se decidía antes de que llegara el dato.** El observer dispara en cuanto **aparece** el
+diálogo, pero el preview del correo —de donde salen el número de remisión y la tabla de partes— se
+carga **después**, asíncrono. Resultado: `psNumber = null` ⇒ ámbar «no pude verificar» sobre un
+cliente que sí tenía `IncluirPlanos: false` y debía dejar el applet **inerte**.
+
+> **La lección, que es más general que el bug:** una degradación honesta pero **prematura** es su
+> propio modo de falla. Si el aviso ámbar sale casi siempre, el operador aprende a ignorarlo — y
+> entonces deja de servir justo el día que el dato falte de verdad. **Fail-safe no es sinónimo de
+> avisar pronto: es avisar cuando de verdad no sabes.** Ahora se espera al contenido (20×250 ms) y
+> sólo entonces se decide.
+
+**Falso bug descartado en el camino:** en medio de esto, la cadena de resolución del cliente pareció
+fallar. Medida en frío responde en **182 ms** y devuelve `false` correctamente. Lo que se vio era el
+`/graphql` saturado **por las pruebas de la propia sesión** (3 envíos de correo + decenas de
+queries) — el límite es **por SESIÓN**, como advierte el `CLAUDE.md`. Diagnosticar en un ERP que uno
+mismo acaba de saturar produce falsos positivos: **medir en frío antes de culpar al código**.
+
+### 6 · El panel va en estilo NATIVO, no dark mode
 
 Excepción deliberada a la regla del repo, con **precedente exacto encontrado en vivo**: SH ya tiene
 en este mismo modal una fila **«Incluir Certificado»** con checkbox y link. Nuestro panel es su
@@ -198,14 +226,31 @@ degradado justo las cotas finas de los planos, que es lo que el cliente exige im
 | Módulo de Envío (`/Shipping`) | El `urlPatterns` lo cubre, pero **el panel no se probó ahí**. Si la lista no tiene el formato `#\d+ / Cliente`, degrada a ámbar «no pude verificar» (seguro, pero menos útil) |
 | Ruta de descarga `/api/files/<name>` | **Sin verificar.** Sólo afecta a la impresión; si falla, se reporta en el resumen de «no entró» |
 
+## Lo que YA se verificó en producción (2026-08-05)
+
+| Verificación | Resultado |
+|---|---|
+| Los 5 módulos cargan (`applet`, `core`, `modalCore`, `print`, `PDFLib`) | ✅ los 5 como `object` |
+| El panel se monta bajo la fila Attachments | ✅ con label 📐, ámbar y botón de imprimir |
+| Se monta **una sola vez** (tras el fix) | ✅ `filasNuestras: 1` |
+| El heading detectado | ✅ `Send Shipping Email` |
+| Los 5 scripts se sirven desde GitHub Pages | ✅ HTTP 200 (un 503 transitorio que se resolvió al reintentar) |
+| Firma ECDSA del config en vivo | ✅ verifica en 1.11.67/68/69 |
+| Suite completa | ✅ 105 archivos, 0 rojos |
+
 ## Pendiente antes de darlo por bueno
 
-**Canario en producción, con el operador presente.** Llegar **navegando** (no recargando — el gate
-por URL depende del sondeo de `location.pathname`) a `/Domains/344/Shipping/PackingSlips`, abrir el
-correo de una remisión de **FISHER CONTROLES DE MEXICO** y verificar:
+**Canario con el operador presente.** Llegar **navegando** (no recargando — el gate por URL depende
+del sondeo de `location.pathname`) a `/Domains/344/Shipping/PackingSlips`, abrir el correo de una
+remisión de **FISHER CONTROLES DE MEXICO** —el único cliente con el check— y verificar:
 
-1. el panel aparece bajo la fila Attachments;
-2. **no** aparece en el modal de factura (R3);
-3. el ámbar del hueco sale en una remisión sin archivos (será lo común);
-4. el adjunto llega de verdad al correo (R4 — `userFile.name` citable sin re-subir);
-5. la impresión arma **un** PDF con la remisión primero (R7).
+1. **El fix de timing (v0.1.2)**: sobre un cliente con `IncluirPlanos: false` el applet debe quedar
+   **INERTE** (cero UI). Si sigue saliendo el ámbar, el `waitForModalContent` no alcanzó.
+2. Con FISHER: el panel lista los NP y **premarca los PDF**.
+3. El ámbar del hueco en una remisión sin archivos (será lo común — 77%).
+4. **No** aparece en el modal de factura (R3), con `cfdi-attacher` activo.
+5. **R4**: el adjunto llega de verdad al correo (`userFile.name` citable sin re-subir).
+6. **R7**: la impresión arma **un** PDF con la remisión primero y el plano legible.
+
+> ⚠️ Al probar, **no encadenar decenas de queries antes**: el `/graphql` se cuelga por SESIÓN y eso
+> produce falsos ámbar. Si algo se ve raro, recargar en frío y volver a medir.
