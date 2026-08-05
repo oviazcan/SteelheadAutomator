@@ -87,6 +87,22 @@ Cuando inspecciones la SPA con las herramientas de navegador en vez de pedir el 
   screenshots que expiran y `Runtime.evaluate` reventando a los 45s. Se ve idéntico a "el ERP está
   caído" — perdí varios intentos creyendo eso.
 - **Abrir ventana nueva en vez de pestaña NO basta** (medido): nace detrás y se congela igual.
+  Y **`tabs_context_mcp{createIfEmpty:true}` tampoco garantiza ventana nueva** — su descripción
+  dice que crea una, pero medido el 2026-08-04 **reusó la ventana existente y sólo agregó una
+  pestaña**. No hay herramienta MCP que fuerce ventana nueva; lo que sí funciona es que el
+  usuario deje la ventana **asomada a un costado**, y entonces basta esa franja.
+- **CHEQUEO OBLIGATORIO antes de cualquier lote largo:** leer `document.visibilityState`. Si dice
+  `hidden`, **no arranques** — pídele al usuario que destape la ventana. Un lote de 246 peticiones
+  lanzado en `hidden` no falla: se queda quieto.
+- **La firma del congelamiento en un LOTE es «0 hechas y 0 errores»**, y es la que más engaña.
+  Un fetch que no resuelve, en singular, se nota; pero un pool que reporta `0/246 · err:0` parece
+  saturación del servidor —incluso encaja con el modo de falla real del `/graphql` bajo ráfaga—
+  y lleva a concluir «hay que esperar a que el ERP se destrabe». **La diferencia se mide en un
+  segundo**: un `fetch` suelto con `AbortController`. Si responde en ~200 ms, el ERP está
+  perfecto y el problema es la pestaña. Pasó el 2026-08-04: se declaró saturado el endpoint, se
+  abortó la corrida y se recargó la pestaña «para no castigarlo»; con la ventana destapada el
+  mismo fetch tardó **222 ms**. **Ese diagnóstico lo aportó el operador, no la medición** — el
+  costo de no haber leído esta sección antes.
 - **No necesita el foco.** Medido con la ventana apenas destapada (1710 → 1576 px, o sea 134 px
   asomando): `visibilityState:"visible"`, `hasFocus():false`, `setTimeout(300)` → 302 ms, rAF 1 ms,
   fetch 120 ms. Basta con que asome una franja; el teclado se queda en el editor.
