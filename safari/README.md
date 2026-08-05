@@ -8,6 +8,10 @@ Pasos de build/firma/instalación en **`docs/deploy-safari.html`**.
 - **POC del candado de surtido VALIDADO en vivo (Safari iPad, 2026-06-30):** `world:"MAIN"` intercepta
   `fetch`, el login OAuth funciona y el bloqueo de una pieza no programada quedó confirmado (no se necesitó
   el plan B).
+- **Bundle v0.6.31 — 33 applets (2026-08-05):** entra **`packing-slip-drawings`** (Planos en Remisión)
+  en versión **LIGERA**, y con él un mecanismo nuevo: **`excludeScripts`** en `bundle.json`. Peso real
+  **1.85 MB** (+63 KB, +3.5%). Ver la lección de abajo sobre la TERCERA VÍA de curación.
+
 - **Bundle v0.5.9 — 29 applets (2026-07-23):** los "directo" del inventario + `vale-almacen` (FAB) + 8
   "con-popup" (`archiver`, `sensor-status-autofill`, `load-calculator`, `auto-router`, `wo-completer`,
   `wo-deadline`, `price-confirm-guard` kill-switch, `pn-lifecycle`) lanzables desde el popup. **Agregados en
@@ -15,6 +19,26 @@ Pasos de build/firma/instalación en **`docs/deploy-safari.html`**.
   inline en el Schedule Board) — ambos `autoInject:true`, sin lanzador. Para agregar/quitar, edita
   `bundle.json` (inventario y criterio de curación en `docs/architecture/ipad-applets-inventory.html`). Peso
   ~1.24 MB — perfilar en iPads A12 o anteriores.
+
+> ### 💡 CRITERIO (2026-08-05) — la TERCERA VÍA: integrar SIN sus librerías
+> Hasta ahora la curación era binaria: el applet entra o no entra. `packing-slip-drawings` obligó a una
+> tercera opción, y conviene tenerla presente para los que vengan.
+>
+> Ese applet declara `pdf.js` y `pdf-lib` (902 KB juntas, +50% del bundle), pero además arrastraba un
+> **bloqueador de política**: el worker de `pdf.js` **se descarga en runtime desde gh-pages**, y eso es
+> **código remoto** — exactamente lo que prohíbe la **Guideline 2.5.2** y la razón de que este bundle
+> sea estático. Empaquetarlo tal cual habría metido una violación de política en la app del piso.
+>
+> **Pero su flujo core no dependía de esas librerías.** Sólo la impresión combinada y las miniaturas de
+> PDF. Así que entró con **`excludeScripts`** (nuevo en `build-safari.sh`): el build salta esos scripts
+> aunque el applet los declare. Coste: **+63 KB en vez de +962 KB**.
+>
+> **Requisito para usar esta vía:** el applet debe **degradar solo** cuando la librería falta — aquí
+> `hayPdfLib()` oculta el botón 🖨️ y `hayPdfJs()` no emite canvas vacíos. *Ofrecer un botón que falla
+> es peor que no ofrecerlo.* El build **no valida** esto; es responsabilidad de quien integra.
+>
+> Y una trampa de medición que ya está documentada pero conviene repetir: `build-safari.sh` imprime
+> **caracteres**, no bytes. El crecimiento real se mide en el artefacto (`ls -la`).
 
 > ### ⚠️ LECCIÓN OPERATIVA (2026-07-23) — el Modo de Aislamiento («modo hermético») debe quedar APAGADO
 > **Verificado en piso por el operador:** con el **Modo de Aislamiento** de iPadOS (*Lockdown Mode*; el usuario

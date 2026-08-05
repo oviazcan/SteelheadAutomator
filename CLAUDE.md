@@ -458,6 +458,14 @@ Al integrar applets al bundle usa la skill **`safari-bundle-sync`**. Reglas dura
 - **Criterio NO-APLICA**: un applet se excluye solo cuando su **flujo core** es la descarga de
   archivos (auditor, carga-masiva, file-uploader). Si la descarga es una función lateral y opt-in
   (p. ej. el PDF de `wo-listing-columns`), el applet **sí** va al bundle.
+- **TERCERA VÍA — integrar SIN sus librerías** (`excludeScripts` en `bundle.json`, 2026-08-05). Cuando
+  lo pesado o lo prohibido está en una **librería** y no en el flujo core, el applet entra y la
+  librería no. Nació con `packing-slip-drawings`: `pdf.js`+`pdf-lib` pesan 902 KB **y** el worker de
+  `pdf.js` **se descarga en runtime** ⇒ **código remoto, prohibido por la Guideline 2.5.2** (la razón
+  misma de que el bundle sea estático). Excluidas: **+63 KB en vez de +962 KB**, perdiendo sólo
+  impresión y miniaturas de PDF. **Requisito: el applet debe DEGRADAR SOLO sin la librería**
+  (`hayPdfLib()`/`hayPdfJs()` ocultan el botón y evitan canvas vacíos) — el build **no lo valida**.
+  Ofrecer un botón que falla es peor que no ofrecerlo.
 - La rotación de hashes **no** requiere rebundle (el bridge refresca `config.json` en runtime); un
   cambio que solo toca `extension/` de Chrome tampoco (Safari tiene su propio popup).
 - **Modo de Aislamiento (Lockdown Mode) de iPadOS debe quedar APAGADO** — verificado en piso: con él
