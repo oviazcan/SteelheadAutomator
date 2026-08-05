@@ -240,34 +240,43 @@ async function editSalesOrderPoAndSave(page, value) {
 // 2026-07-17. El andamiaje id:0 del modal era deuda redundante (nunca se ejecutaba:
 // mutEntityType lo saltaba por id falsy). Ver sentinels-config.json entidad quotePrice.
 
-// Navegación CLIENT-SIDE a la lista de Quotes. HALLAZGO 2026-07-17: el dashboard de quotes
-// NO hidrata por deep-link CON searchQuery (sale vacío, tanto headless como en navegador
-// real); SÍ hidrata navegando dentro del SPA ya cargado (home → clic al link /Quotes → la
-// lista rinde filas). El quote centinela #288 (nombre 'Centinela', reciente) aparece en la 1ª
-// página de la lista ACTIVA. Devuelve true si el <a> del quote {id} (con rev) aparece.
+// Abre la FICHA del quote centinela por DEEP-LINK y verifica su identidad in situ.
+// Devuelve true si la ficha hidrató Y dice "Centinela" Y ya rindió 'Edit this Part'.
 //
-// HARDENING 2026-07-25 (Nivel B, tras el fallo transitorio del 2026-07-24 21:32 "objeto
-// cargado NO es centinela (identidad)"): el centinela #288 estaba ACTIVO y visible —
-// verificado en vivo, la ruta capturó ✓ vigente en 2/2 reintentos, incluso corriendo justo
-// después del ciclo fallido de CreateInvoicePdf (se descartó contaminación de estado). Lo
-// que sí se observó frágil: el clic a `a[href$="/Quotes"]` FALLA a veces (la SPA redirige a
-// `/` y el link del sidebar no está clicable) y ANTES se comía 12 s de timeout antes de caer
-// al goto, dejando poco margen al waitFor. Dos cambios: (1) timeout del clic 12→6 s, y
-// (2) REINTENTO del ciclo completo (home → lista) — un blip de hidratación ya no tumba el
-// ciclo entero ni escala en falso. El goto directo a /Quotes SIN searchQuery sí hidrata
-// (verificado 2026-07-25: 41 links, #288 presente), así que el fallback es sólido.
-async function openQuotesListAndFind(page, id, domain, intentos = 2) {
-  const sel = `a[href*="/Quotes/${id}/"]`;
+// POR QUÉ DEEP-LINK AL DETALLE (rediseño 2026-08-05): la versión anterior buscaba el <a>
+// del quote EN LA LISTA (home → clic al link /Quotes → esperar `a[href*="/Quotes/288/"]`).
+// Esa ruta murió por DOS razones independientes, ambas medidas en vivo:
+//   1. LA LISTA ESTÁ PAGINADA y el centinela SE CAYÓ DE LA PÁGINA 1. Sale ordenada por
+//      "Created At Descending", 20 por página; el 2026-08-05 arrancaba en #321 con 167
+//      quotes activos, así que #288 quedó fuera. El comentario viejo ("#288, reciente,
+//      aparece en la 1ª página") era cierto en julio y CADUCÓ solo, sin que nadie tocara
+//      nada: bastó que el negocio cotizara 33 veces más. El síntoma fue un falso
+//      "CENTINELA ROTO/ARCHIVADO" en el correo, pidiendo desarchivar un quote que estaba
+//      perfectamente ACTIVO — un diagnóstico que manda al operador a la reparación
+//      equivocada.
+//   2. El clic a `a[href$="/Quotes"]` YA NO ES POSIBLE: el link del sidebar sale
+//      `visibility:hidden` en x=-169 (menú colapsado) y `/Domains/{d}` REDIRIGE a `/`.
+// Medido 2026-08-05: `/Domains/344/Quotes/288` hidrata a los ~14 s (a los ~4 s si el SPA
+// ya está caliente) y rinde 'Edit this Part' + 'Save Parts'. El deep-link al DETALLE no
+// depende de paginación, orden, tamaño de página ni del sidebar — las cuatro cosas que
+// pueden cambiar sin avisar. (Lo que NO hidrata sigue siendo la LISTA con searchQuery,
+// hallazgo 2026-07-17 que se mantiene.)
+//
+// REGLA GENERAL: un ancla que depende de "está en la primera página" no es un ancla, es
+// una carrera contra el uso normal del sistema. Ancla por ID, no por posición.
+async function openQuoteSentinelDetail(page, id, domain, intentos = 2) {
   for (let i = 0; i < intentos; i++) {
-    await page.goto(`${BASE}/Domains/${domain}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
-    await page.waitForTimeout(3000);
-    await page.locator('a[href$="/Quotes"]').first().click({ timeout: 6000 }).catch(async () => {
-      await page.goto(`${BASE}/Domains/${domain}/Quotes`, { waitUntil: 'domcontentloaded' }).catch(() => {});
-    });
-    const found = await page.locator(sel).first()
-      .waitFor({ state: 'visible', timeout: 25000 }).then(() => true).catch(() => false);
-    if (found) return true;
-    if (process.env.SA_DBG) console.log(`       [dbg] quote #${id} no apareció (intento ${i + 1}/${intentos})`);
+    await page.goto(`${BASE}/Domains/${domain}/Quotes/${id}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    const deadline = Date.now() + 40000;
+    while (Date.now() < deadline) {
+      const ok = await page.evaluate(
+        () => /Centinela/i.test(document.body ? document.body.innerText : '')
+          && !!document.querySelector('[aria-label="Edit this Part"]')
+      ).catch(() => false);
+      if (ok) return true;
+      await page.waitForTimeout(1000);
+    }
+    if (process.env.SA_DBG) console.log(`       [dbg] quote #${id}: la ficha no hidrató/no dice Centinela (intento ${i + 1}/${intentos})`);
   }
   return false;
 }
@@ -284,9 +293,10 @@ async function openQuotesListAndFind(page, id, domain, intentos = 2) {
 async function savePartsQuoteAborted(page, sink, { id, domain }) {
   const dbg = process.env.SA_DBG;
   if (sink && sink.abortOps) sink.abortOps.add('SaveManyPartNumberPrices');
-  const found = await openQuotesListAndFind(page, id, domain);
-  if (!found) throw new Error('quotePrice: el link del quote centinela no apareció en la lista (¿archivado? ¿no hidrató?)');
-  await page.locator(`a[href*="/Quotes/${id}/"]`).first().click({ timeout: 10000 }).catch(() => {});
+  // Deep-link al DETALLE: al volver, la ficha ya rindió 'Edit this Part' (lo verifica el
+  // propio helper), así que no hace falta clicar en ninguna lista ni esperar de nuevo.
+  const found = await openQuoteSentinelDetail(page, id, domain);
+  if (!found) throw new Error('quotePrice: la ficha del quote centinela no hidrató o no dice "Centinela" (¿archivado? ¿id cambiado?)');
   await page.locator('[aria-label="Edit this Part"]').first().waitFor({ state: 'visible', timeout: 25000 });
   if (dbg) console.log('       [dbg] quote abierto → Edit this Part (sin editar nada)');
   // Click REAL de Playwright (force: el div puede quedar "cubierto" para el hit-test, pero el
@@ -775,13 +785,14 @@ const HANDLERS = {
     },
   },
   quotePrice: {
-    // load: verifica que el quote centinela existe (fail-closed). NO abre el quote — de eso
-    // se encarga el mutate (savePartsQuoteAborted). id COMPARTIDO con 'quote' (288): entityFor
-    // devuelve 'quote' para el load, pero el ciclo usa entityType='quotePrice' para mutate/restore.
+    // load: abre la FICHA del quote centinela por deep-link y verifica su identidad ahí
+    // mismo (fail-closed). id COMPARTIDO con 'quote' (288): entityFor devuelve 'quote' para
+    // el load, pero el ciclo usa entityType='quotePrice' para mutate/restore.
     async load(page, { id, domain }) {
-      // client-side (deep-link no hidrata). El link con rev sólo aparece si el quote está
-      // ACTIVO (desarchivado) — fail-closed: si no aparece, name='' → el ciclo NO muta.
-      const found = await openQuotesListAndFind(page, id, domain);
+      // La ficha sólo rinde 'Edit this Part' si el quote está ACTIVO (archivado = read-only)
+      // — fail-closed: si no hidrata o no dice "Centinela", name='' → el ciclo NO muta.
+      // Verifica el NOMBRE del objeto, no su presencia en una lista paginada (2026-08-05).
+      const found = await openQuoteSentinelDetail(page, id, domain);
       return { name: found ? 'Centinela' : '' };
     },
     async mutate(page, ctx) { await savePartsQuoteAborted(page, ctx.sink, ctx); },

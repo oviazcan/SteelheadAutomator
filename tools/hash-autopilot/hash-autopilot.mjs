@@ -95,6 +95,21 @@ const ONLY = onlyArg ? onlyArg.split('=')[1] : null;
 // CADA tick, ANTES del gate por release, para que las enmascaradas se refresquen
 // siempre (no esperar a que truenen). El escaneo completo sigue tras el gate.
 const MASKED_ONLY = args.includes('--masked-only');
+// --mass-brake=N: sube (o baja) el umbral del FRENO DE MASA solo para ESTA corrida.
+// Es un flag MANUAL, para después de la revisión humana que el propio freno pide: el
+// freno no dice "no deployes", dice "que un humano mire antes". Cuando la revisión
+// concluye que la rotación masiva es REAL (release grande de Steelhead), este flag deja
+// ejecutar esa conclusión sin editar el umbral por default ni saltarse la validación
+// por-op (solo se deploya lo que sigue siendo `rotadoValidado`).
+// EL CRON NUNCA LO PASA — su umbral de 6 es la defensa contra captura corrupta.
+// Caso que lo estrenó (2026-08-05): release BB7C5204 rotó 10 queries de un jalón; los
+// hashes viejos daban STALE 4/4 estable en el probe directo → los applets ya estaban
+// rotos en producción y el freno mantenía el config muerto.
+const massBrakeArg = args.find((a) => a.startsWith('--mass-brake='));
+const MASS_BRAKE = massBrakeArg ? Number(massBrakeArg.split('=')[1]) : null;
+if (massBrakeArg && !Number.isFinite(MASS_BRAKE)) {
+  throw new Error(`--mass-brake espera un número, recibió "${massBrakeArg.split('=')[1]}"`);
+}
 // Fecha inyectable (para tests/reproducibilidad); default hoy.
 const dateArg = args.find((a) => a.startsWith('--date='));
 const RUN_DATE = dateArg ? dateArg.split('=')[1] : dateStrLocal(new Date());
@@ -311,7 +326,7 @@ async function main() {
     const verdict = classifyOp({ cfgHash, liveHash, http: ok ? 200 : null, shapeOk: ok });
     return { op, cfgHash, liveHash, responseOk: ok, verdict };
   });
-  const plan = planDeploy(results, {});
+  const plan = planDeploy(results, MASS_BRAKE == null ? {} : { massBrakeThreshold: MASS_BRAKE });
 
   // Reporte
   console.log(`\n=== hash-autopilot ${RUN_DATE}${DRY ? ' (dry-run)' : ''} ===`);

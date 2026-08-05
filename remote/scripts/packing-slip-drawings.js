@@ -214,16 +214,33 @@ const PackingSlipDrawings = (() => {
   //
   // Se espera al contenido con un tope corto. Si nunca llega, se degrada igual
   // —el ámbar sigue siendo la respuesta correcta cuando el dato REALMENTE falta.
-  // Espera a poder IDENTIFICAR AL CLIENTE, que es lo que gobierna todo lo demás.
-  // Vale cualquiera de las dos vías: el número de remisión (que permite leer la
-  // fila correcta de la lista) o el nombre visto en las respuestas del modal.
-  function waitForModalContent(dlg, tries = 20, delayMs = 250) {
+  // Lee las partes del preview del correo, que es una tabla dentro del diálogo.
+  function readParts(dlg) {
+    return Modal().extractPartNumbers(
+      [].map.call(dlg.querySelectorAll('tr'), (tr) => tr.innerText || '')
+    );
+  }
+
+  // Espera a que el modal tenga LAS DOS COSAS que el panel necesita:
+  //   · el cliente identificable — decide si el applet actúa;
+  //   · la tabla de partes — decide qué se lista.
+  //
+  // Esperar sólo por el cliente fue un error real (v0.1.3): el nombre llega en
+  // las respuestas del modal, ANTES de que se renderice el preview, así que el
+  // panel se pintaba vacío sobre una remisión que sí tenía partes. Cada consumidor
+  // tiene su propia condición de «listo»; esperar por la más rápida no sirve.
+  //
+  // Si se agota el tope, se sigue con lo que haya y se dice — un hueco real se
+  // reporta, no se disfraza de panel vacío.
+  function waitForModalContent(dlg, tries = 24, delayMs = 250) {
     return new Promise((resolve) => {
       let n = 0;
       const tick = () => {
         if (!dlg.isConnected) return resolve(false);
         const ps = Modal().extractPackingSlipNumber(dlg.innerText || '');
-        if ((ps && readCustomerNameFromList(ps)) || lastCustomerName) return resolve(true);
+        const hayCliente = !!((ps && readCustomerNameFromList(ps)) || lastCustomerName);
+        const hayPartes = readParts(dlg).length > 0;
+        if (hayCliente && hayPartes) return resolve(true);
         if (++n >= tries) return resolve(false);
         setTimeout(tick, delayMs);
       };
@@ -241,10 +258,7 @@ const PackingSlipDrawings = (() => {
     await waitForModalContent(dlg);
     if (!dlg.isConnected) return false;   // el operador cerró el modal mientras tanto
 
-    const parts = Modal().extractPartNumbers(
-      [].map.call(dlg.querySelectorAll('tr'), (tr) => tr.innerText || '')
-    );
-
+    const parts = readParts(dlg);
     const psNumber = Modal().extractPackingSlipNumber(dlg.innerText || '');
     const customerName = readCustomerNameFromList(psNumber) || lastCustomerName;
     const incluirPlanos = await resolveIncluirPlanos(customerName);
@@ -280,6 +294,17 @@ const PackingSlipDrawings = (() => {
     // Así que sólo se carga automáticamente con un `true` CONFIRMADO. Con `null`
     // («no pude verificar») se ofrece un botón y decide el operador: se conserva
     // la salida de emergencia sin pagar el costo por defecto.
+    // Sin partes no hay nada que resolver, y un panel mudo sería peor que un
+    // aviso: el operador vería el recuadro vacío y asumiría «este cliente pide
+    // planos y no hay ninguno», cuando lo cierto es «no pude leer la lista».
+    if (!parts.length) {
+      tdBody.innerHTML =
+        `<span style="color:${AMBER}">No pude leer los números de parte de esta remisión, ` +
+        'así que no busqué planos. Adjúntalos con “+ ADD” si hacen falta.</span>';
+      console.warn(LOG, 'sin partes legibles en el modal; panel en modo aviso');
+      return true;
+    }
+
     if (incluirPlanos === true) {
       tdBody.textContent = 'Buscando planos…';
       loadFilesFor(parts, tdBody, incluirPlanos);    // async: pinta cuando llega

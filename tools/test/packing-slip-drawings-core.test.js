@@ -211,3 +211,67 @@ test('toAttachments: sin displayName cae al filename', () => {
   assert.deepEqual(Core.toAttachments([{ filename: 'gen-aaa.pdf' }]),
     [{ filename: 'gen-aaa.pdf', displayName: 'gen-aaa.pdf' }]);
 });
+
+// ---------- dedup por NP (caso REAL medido) ----------
+
+test('buildAttachmentPlan: DEDUPLICA el mismo archivo vinculado dos veces al MISMO NP', () => {
+  // Caso real (remisión #1461, FISHER): el NP S2N1317A01 tenía DOS filas en
+  // part_number_user_file apuntando al mismo user_file_name. Sin dedup se
+  // pintarían dos casillas idénticas que comparten clave en el Map de
+  // selección: marcar una y desmarcar la otra deja el estado mintiendo.
+  const p = Core.buildAttachmentPlan({
+    pns: [{ id: 1, name: 'S2N1317A01' }],
+    filesByPn: {
+      1: [
+        { name: '1782499814763-84386551.pdf', originalName: 'S2N1317A01.pdf' },
+        { name: '1782499814763-84386551.pdf', originalName: 'S2N1317A01.pdf' },
+      ],
+    },
+  });
+  assert.equal(p.groups[0].files.length, 1, 'una sola casilla');
+  assert.equal(p.totals.archivos, 1, 'y cuenta uno, no dos');
+  assert.equal(p.totals.preseleccionados, 1);
+});
+
+test('buildAttachmentPlan: el dedup es POR NP — el mismo archivo en dos NP se conserva', () => {
+  // Aquí sí son dos entradas legítimas (una por NP). El colapso a un solo
+  // adjunto ocurre después, en toAttachments.
+  const p = Core.buildAttachmentPlan({
+    pns: [{ id: 1, name: 'A' }, { id: 2, name: 'B' }],
+    filesByPn: { 1: [{ name: 'g.pdf', originalName: 'x.pdf' }], 2: [{ name: 'g.pdf', originalName: 'x.pdf' }] },
+  });
+  assert.equal(p.groups[0].files.length, 1);
+  assert.equal(p.groups[1].files.length, 1);
+  assert.equal(Core.toAttachments([...p.groups[0].files, ...p.groups[1].files]).length, 1);
+});
+
+test('buildAttachmentPlan: descarta archivos sin nombre generado', () => {
+  const p = Core.buildAttachmentPlan({
+    pns: [{ id: 1, name: 'A' }],
+    filesByPn: { 1: [{ name: '', originalName: 'huerfano.pdf' }, { originalName: 'otro.pdf' }] },
+  });
+  assert.equal(p.groups[0].files.length, 0);
+  assert.deepEqual(p.pnsSinPlano.map((x) => x.pnName), ['A']);
+});
+
+test('buildAttachmentPlan: el caso REAL completo de la remisión #1461', () => {
+  // Medido en la DuckDB: S2U7412A01 sin archivos · S49B0531A7 con pdf+jpg ·
+  // S2N1317A01 con el mismo pdf duplicado.
+  const p = Core.buildAttachmentPlan({
+    pns: [
+      { id: 1, name: 'S2U7412A01' },
+      { id: 2, name: 'S49B0531A7' },
+      { id: 3, name: 'S2N1317A01' },
+    ],
+    filesByPn: {
+      1: [],
+      2: [{ name: 'g1.pdf', originalName: '49B0531.pdf' }, { name: 'g2.jpg', originalName: '49B0531.jpg' }],
+      3: [{ name: 'g3.pdf', originalName: 'S2N1317A01.pdf' },
+          { name: 'g3.pdf', originalName: 'S2N1317A01.pdf' }],
+    },
+  });
+  assert.equal(p.totals.archivos, 3, '2 de S49B0531A7 + 1 de S2N1317A01 tras dedup');
+  assert.equal(p.totals.preseleccionados, 2, 'los dos PDF; el jpg va desmarcado');
+  assert.deepEqual(p.pnsSinPlano.map((x) => x.pnName), ['S2U7412A01']);
+  assert.equal(p.totals.pnsSinArchivo, 1);
+});
