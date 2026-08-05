@@ -111,8 +111,37 @@ activos** de 17 408 y apunta a un nodo `type='process'`.
 
 ## Para pedirle la tabla a Steelhead
 
-Con `process_node_spec_fields` (dos columnas) y las relaciones del árbol en el payload de
-reportes, el análisis queda en SQL puro y siempre fresco, sin extractor. Referencia
-reproducible: el nodo **172502** del dominio 344 devuelve 5 filas en
-`processNodeSpecFieldsByProcessNodeId` por GraphQL y la relación no existe en la base de
+Con `process_node_spec_field` en el payload de reportes, el análisis queda en SQL puro y siempre
+fresco, sin extractor. Referencia reproducible: el nodo **172502** del dominio 344 devuelve 5
+filas en `processNodeSpecFieldsByProcessNodeId` por GraphQL y la relación no existe en la base de
 reportes.
+
+**Medido el 2026-08-04 — el hueco es MÁS CHICO de lo que decía este documento.** Aquí se pedía la
+tabla «y las relaciones del árbol»; el árbol **ya viaja**:
+
+| Pieza | Estado en el payload |
+|---|---|
+| `process_node` | ✅ 8 222 filas |
+| `process_node_relationship` | ✅ 9 774 (`from_id`, `to_id`, `child_ind`) |
+| `spec_field`, `spec_field_spec` | ✅ |
+| **`process_node_spec_field`** | ❌ **no existe** — es lo que obliga al extractor |
+| `process_node_relationship.spec_id` | ⚠️ la columna está, pero viene **NULL** en las 9 774 |
+
+Reconstruyendo el árbol por BFS desde las raíces se recupera el **92.1%** de lo que devuelve
+GraphQL (10 382 de 11 274 pares raíz-nodo). Así que el pedido son **dos cosas concretas**, no el
+árbol completo — y pedir de más hace el ticket más fácil de rechazar.
+
+Borrador en inglés, listo para enviar:
+`Reportes SH/docs/steelhead-request-process-node-spec-field.md`.
+
+## El extractor, mientras tanto
+
+[`tools/extract-process-tree.mjs`](../../tools/extract-process-tree.mjs) — un solo
+`GetProcessNode` por proceso **raíz** trae el árbol completo en
+`data.treeRoot.descendantRelationships` con los specFields embebidos por nodo: ~260 peticiones,
+no ~6 000. `treeRoot` cuelga de `data`, **no** de `data.processNodeById`; y en cada relación
+`processNodeByFromId` es el **hijo** mientras `toId` es el **padre**.
+
+Ritmo: 900 ms **en serie**. Medido: ~170 peticiones con pausa de 300 ms colgaron el `/graphql` a
+media corrida —sin 429, sin recuperarse al recargar y tumbando la UI nativa, porque el límite es
+**por sesión, no por pestaña**.
