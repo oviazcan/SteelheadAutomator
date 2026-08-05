@@ -1,7 +1,7 @@
 # Spec: Planos en Remisión (`packing-slip-drawings`)
 
 **Fecha:** 2026-08-04
-**Estado:** Diseño aprobado — pendiente Fase 0 (reconocimiento en vivo)
+**Estado:** Diseño aprobado · Fase 0 **hecha en vivo** salvo el nombre de la operación de envío
 **Applet propuesto:** `remote/scripts/packing-slip-drawings.js` + núcleo puro
 `remote/scripts/packing-slip-drawings-core.js`
 
@@ -10,12 +10,15 @@
 Cuando el cliente de una remisión (packing slip) tiene prendido el custom input
 **`DatosLogisticos.IncluirPlanos`**, el applet adjunta al correo de esa remisión los archivos
 vinculados a los números de parte que van en ella, con un panel de revisión previo. Cuando **no hay
-plano que adjuntar**, lo dice en voz alta en vez de callarse.
+plano que adjuntar**, lo dice en voz alta en vez de callarse. Y desde ese mismo panel, un botón
+**imprime la remisión junto con lo seleccionado en un solo PDF**, porque el cliente exige además
+copias impresas.
 
-El applet tiene **dos trabajos, no uno**:
+El applet tiene **tres trabajos**:
 
-1. **Adjuntar** los planos cuando existen.
+1. **Adjuntar** los planos al correo cuando existen.
 2. **Delatar el hueco** cuando el cliente los pide y el NP no los tiene.
+3. **Imprimir** la remisión + lo seleccionado en un PDF combinado, de un clic.
 
 El segundo no es un extra: es el caso mayoritario medido (ver §Evidencia).
 
@@ -107,6 +110,117 @@ clic. La heurística elige el default; **el operador decide**.
 | Qué se adjunta | Los archivos de los NPs de la remisión, **con panel de revisión** |
 | Default del panel | **PDF premarcados; fotos visibles y desmarcadas** |
 | Si falta el plano | **Nota ámbar, no bloquea** el envío |
+| **Superficies de entrada** | **DOS**: la lista de albaranes (`/Shipping/PackingSlips`) **y** el módulo de Envío donde se crean (`/Shipping`) |
+| **Impresión** | Botón que arma **un PDF combinado** (remisión + lo seleccionado), calidad vectorial intacta |
+| **Cuándo imprime** | **Siempre que el panel esté montado**, mande correo o no |
+
+## Reconocimiento en vivo (2026-08-04, dominio 344 = Ecoplating TLC)
+
+Hecho por automatización de Chrome sobre el ERP productivo. **Todo lo de esta sección está medido,
+no supuesto.**
+
+### El modal existe y se llama «Send Shipping Email»
+
+Se abre desde la columna **Acciones** de la lista de albaranes. Título en **inglés** aunque la app
+esté en español — UI mixta confirmada, tal como advierte el `CLAUDE.md`.
+
+Estructura (`div.MuiDialog-paper`, ~33 KB de HTML):
+
+| Fila (`<tr>`) | Contenido |
+|---|---|
+| `To` | Chips de destinatarios + `ADD CUSTOMER CONTACT` + toggle BCC/CC |
+| `Subject` | *«Remisión desde Ecoplating TLC - Actualización de Estatus…»* |
+| **`Attachments`** | **botón `+ ADD`** ← punto de inyección |
+| `Logo` | MuiSwitch |
+| `Parts List` | MuiSwitch |
+| `Visible to Others` | MuiSwitch |
+| `Enlace de Albarán de Entrega` | MuiSwitch |
+
+Pie: `SAVE DRAFT` · `CANCEL` · `SEND`. Total **5 MuiSwitch** (el `structMatch` de `cfdi-attacher`
+—≥2 switches + icono Send/Email— también reconocería este modal; hay que **distinguirlos** para que
+los dos applets no se pisen).
+
+### Punto de inyección medido
+
+```html
+<tr class="MuiTableRow-root">
+  <td class="MuiTableCell-root MuiTableCell-body MuiTableCell-sizeMedium">
+    <p class="MuiTypography-root MuiTypography-body1">Attachments</p>
+  </td>
+  <td class="MuiTableCell-root MuiTableCell-body MuiTableCell-sizeMedium">
+    <div><button class="MuiButtonBase-root MuiButton-root MuiButton-contained …">…ADD</button></div>
+  </td>
+</tr>
+```
+
+**Ancla:** la `<tr>` cuya primera celda tiene el texto `Attachments` (ES pendiente, ver deuda),
+insertando nuestra fila **después**, y **heredando las clases MUI del vecino vivo**. Sin `css-<hash>`
+(el paper trae `css-1d28aor` — **prohibido usarlo**).
+
+### El modal YA trae los números de parte  ← mata el riesgo R2
+
+El preview del correo incluye la tabla `SO # | WO # | Part # | QTY`, p. ej.
+`#1770 - 4300016123 | #13667 | 10-4307003-001 | 2567`, más el cuerpo con `Remisión: #1746` y
+`Partes: 10-4307003-001`.
+
+**Consecuencia:** los NPs de la remisión se pueden leer **del propio DOM del modal**, sin descubrir
+ninguna query nueva de GraphQL. Se prefiere la API cuando esté disponible y el DOM queda como
+respaldo — pero el respaldo ya existe y está verificado.
+
+### El botón de correo solo se ancla por FORMA
+
+En la columna Acciones hay **7 botones**. Medidos en vivo:
+
+| # | `aria-label` | Forma (`path d`) | Qué es |
+|---|---|---|---|
+| 0 | — | `M9.68 13.69 12 11.93l2.31 1.76…` | Certificación / medalla |
+| 1 | `Marcar Como Completado` | `M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z` | Check |
+| **2** | **— (ninguno)** | **`M22 6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2zm-2 0-8 5-8-5zm0 12H4V8l8 5 8-5z`** | **Correo ← el nuestro** |
+| 3 | — | `m20.54 5.23-1.39-1.68…` | Archivar |
+| 4 | — | `M14 2H6c-1.1 0-2 .9-2 2v16…` | Documento |
+| 5 | `Ver Estado de Facturación de Piezas` | `M3 13h2v-2H3zm0 4h2v-2H3z…` | Estado facturación |
+| 6 | `Ir a Facturas Relacionadas` | `M19 19H5V5h7V3H5c-1.11 0…` | Ir a facturas |
+
+**Confirmado en vivo:** `data-testid` viene **`null` en los 7** (SH lo eliminó, como documenta la
+bitácora del 2026-08-03), y el botón de correo **no tiene `aria-label` ni `title`**. El tooltip
+**«Enviar Albarán»** lo inyecta MUI **solo al hacer hover**, así que **no sirve como ancla estática**.
+
+⇒ **La forma del `path` es la ÚNICA ancla viable** para el botón de correo. Entra al catálogo de
+`mui-icon-anchor-core.js` como forma medida (no copiada del canónico de MUI).
+
+### Deuda bilingüe declarada
+
+Solo se obtuvo el locale que estaba activo:
+
+| String | ES | EN |
+|---|---|---|
+| Título del modal | *(no visto — el modal salió en EN con la app en ES)* | `Send Shipping Email` |
+| Fila de adjuntos | *(pendiente)* | `Attachments` |
+| Tooltip del botón | `Enviar Albarán` | *(pendiente)* |
+
+Se anclan los conocidos y **se marca la deuda** (regla: no se adivina la traducción).
+
+### Lo que NO se pudo capturar
+
+**El nombre de la operación que manda el correo.** Dos intentos de clic en `SEND` **congelaron la
+pestaña** (>25 s sin responder, irrecuperable salvo recarga). El envío se probó con la lista de
+destinatarios reducida a **un solo correo del consultor** y una allowlist que abortaba cualquier
+destinatario ajeno; el capturador registró **cero requests** antes del congelamiento y la columna
+«Enviado En» de la remisión #1746 **no cambió**.
+
+**Hipótesis principal del congelamiento — y es en sí un requisito de diseño:** el payload del envío
+lleva el **HTML completo del correo** (cuerpo + tabla de partes + preview), y el interceptor de
+pruebas hacía `JSON.parse` + regex global sobre ese string **de forma síncrona**. Con un body así de
+grande eso basta para bloquear el hilo principal.
+
+> **Regla que sale de aquí, y que el applet DEBE respetar:** el interceptor de `SendEmailChecked`
+> **no puede hacer trabajo síncrono pesado sobre el body**. Nada de regex globales ni de
+> re-serializar el HTML completo. Se hace `JSON.parse` una vez, se toca **solo** `variables.attachments`
+> y se re-serializa — que es exactamente lo que hace `cfdi-attacher` hoy, y por eso no congela.
+
+Queda como **R1 abierto**: confirmar el nombre de la operación (muy probablemente `SendEmailChecked`,
+la misma que ya intercepta `cfdi-attacher`) con el **hash-scanner** durante un envío real. Es una
+verificación de 30 segundos con el operador presente.
 
 ## Arquitectura
 
@@ -156,7 +270,52 @@ barato que su primo.
    acento `#13a36f`), inyectado en el modal de correo de la remisión. Agrupado por NP, con checkbox
    por archivo, contador de adjuntos y peso total, y el bloque ámbar de NPs sin plano.
 
-4. **Golden test** `tools/test/packing-slip-drawings-core.test.js`.
+4. **Módulo de impresión** `packing-slip-print.js` (ver §Impresión).
+
+5. **Golden test** `tools/test/packing-slip-drawings-core.test.js`.
+
+## Impresión — «el cliente exige copias impresas»
+
+Botón **🖨️ Imprimir** dentro del panel, que arma **un solo PDF** con la remisión seguida de los
+archivos seleccionados y abre **un único diálogo de impresión**.
+
+### Por qué PDF combinado y no N impresiones
+
+Con 88 NPs en una remisión real de Fisher, la impresión archivo-por-archivo son decenas de diálogos.
+Y rasterizar (renderizar cada página a canvas con el `pdf.js` que ya está en el repo) degrada justo
+lo que el cliente exige: un plano de ingeniería con cotas finas. Se paga **una librería nueva** para
+conservar la calidad vectorial.
+
+### Librería
+
+`pdf-lib` en `remote/scripts/lib/pdf-lib.min.js`. **No es una excepción arquitectónica**: el
+directorio ya sirve `pdf.min.js` (377 KB, usado por `po-reconciler`) y `xlsx.full.min.js` (881 KB,
+usado por `portal-importer`), cada uno declarado en el array `scripts` del applet que lo necesita.
+Se carga **solo** en este applet.
+
+`pdf.js` **lee**; `pdf-lib` **escribe y cose**. Son complementarias, no redundantes.
+
+### Flujo
+
+1. **PDF de la remisión** — se obtiene del endpoint de documentos de SH (`/api/pdf/share/…`, el mismo
+   patrón que ya usan `wo-listing-columns` y `wo-schedule-button` para las etiquetas de OT). La ruta
+   exacta para un packing slip se confirma en la verificación pendiente (§R7).
+2. **Archivos seleccionados** — se descargan por su `userFile.name`.
+3. **Costura** — `pdf-lib` copia páginas: primero la remisión, luego los archivos **agrupados por NP**
+   y en el orden del panel. Las imágenes (JPG/PNG) se embeben **una por página, escaladas a carta**
+   respetando su relación de aspecto.
+4. **Impresión** — el PDF resultante va a un `Blob`, se abre en iframe oculto y se llama `print()`
+   **una vez**. Es el patrón de iframe ya probado en `wo-listing-columns`, con su fallback a pestaña.
+
+### Reglas
+
+- **La selección manda.** Se imprime exactamente lo que está marcado en el panel — la misma
+  selección que iría al correo, sin trabajo doble.
+- **Independiente del correo.** El botón funciona con el panel montado, se mande o no el correo.
+- **Degradación explícita.** Si no se consigue el PDF de la remisión, se imprimen **solo los
+  archivos** y se avisa en ámbar que la remisión no entró. Nunca se imprime en silencio algo
+  distinto de lo que el operador marcó.
+- **Sin selección** → el botón imprime solo la remisión (equivale al comportamiento nativo).
 
 ### Anclaje del modal (jerarquía del repo)
 
@@ -182,7 +341,9 @@ escribir selectores (regla del repo: una inspección resuelve lo que diez deploy
   "scripts": [
     "scripts/steelhead-api.js",
     "scripts/mui-icon-anchor-core.js",
+    "scripts/lib/pdf-lib.min.js",
     "scripts/packing-slip-drawings-core.js",
+    "scripts/packing-slip-print.js",
     "scripts/packing-slip-drawings.js"
   ],
   "requiredPermissions": [],
@@ -199,9 +360,15 @@ escribir selectores (regla del repo: una inspección resuelve lo que diez deploy
 ```
 
 `urlPatterns` **con evidencia**: la falla de este applet es **visible** (el panel no aparece), no
-silenciosa, así que gatearlo es seguro — a diferencia de `price-confirm-guard`. El patrón cubre
-tanto `/Shipping` como `/Shipping/PackingSlips`. El `urlPatterns` definitivo se confirma en Fase 0
-con la URL real donde vive el modal.
+silenciosa, así que gatearlo es seguro — a diferencia de `price-confirm-guard`.
+
+**Cubre las DOS superficies de entrada** que pidió el operador: `^/Domains/\d+/Shipping(?:/|$)`
+matchea tanto el **módulo de Envío donde se crean** las remisiones (`/Shipping`) como la **lista de
+albaranes** (`/Shipping/PackingSlips`). Nótese que es **deliberadamente más ancho** que el de
+`batch-name-filter` (`^/Domains/\d+/Shipping/?(?:[?#]|$)`), que excluye a propósito las sub-rutas.
+El modal se verificó en vivo en `/Shipping/PackingSlips`; **queda por verificar que el módulo de
+Envío monte el mismo modal** — si montara otro distinto, el anclaje por forma del icono debería
+cubrir ambos.
 
 **Todo hash nuevo necesita su ruta de regeneración** en `tools/hash-autopilot/route-catalog.json`
 (regla dura del repo; el trinquete `hash-regen-coverage.test.js` lo verifica). Si Fase 0 descubre
@@ -246,28 +413,23 @@ bloqueo cuesta un embarque detenido, y un falso «sin planos» cuesta un correo 
 
 ## Riesgos y qué los cierra
 
-| # | Riesgo | Cómo se cierra |
-|---|---|---|
-| **R1** | **El correo de la remisión podría no pasar por `SendEmailChecked`.** Todo el diseño cuelga de esto. | **Fase 0**: reconocimiento en vivo. Bloqueante. |
-| **R2** | No se sabe qué query del front resuelve **remisión → NPs**, ni qué trae `linkInfo` para un packing slip. En la DB el puente es `packing_slip_item → parts_transfer_account → part_number`; el equivalente GraphQL está por confirmar. | Fase 0 |
-| **R3** | `cfdi-attacher` y este applet parchean `fetch` en la misma pantalla (`/Shipping/PackingSlips` está en el `urlPatterns` de `invoice-autofill` y el CFDI vive en el modal de factura). Encadenado de patches. | Fase 0 + prueba con ambos activos |
-| **R4** | El adjunto por `{filename}` sin re-subir asume que el `userFile.name` es directamente citable como adjunto. | Fase 0: verificar con **un** archivo real antes de construir el panel |
-| **R5** | Un plano escaneado en JPG no viene premarcado | Mitigado: está **visible** y a un clic. No se oculta nada. |
-| **R6** | El snapshot DuckDB es de TLC; MTY no fue medido | El diseño no depende del volumen; el gate es por cliente. Verificar que MTY tenga el mismo grupo `DatosLogisticos` antes de habilitar ahí |
+| # | Riesgo | Estado | Cómo se cierra |
+|---|---|---|---|
+| **R1** | **El correo de la remisión podría no pasar por `SendEmailChecked`.** Todo el interceptor cuelga de esto. | **ABIERTO** | Un envío real con el `hash-scanner` corriendo (30 s con el operador presente). Ver §Lo que NO se pudo capturar |
+| **R2** | Qué resuelve **remisión → NPs** | **CERRADO** | El modal **ya trae la tabla de partes en su DOM**. La API queda como preferida, el DOM como respaldo verificado |
+| **R3** | `cfdi-attacher` y este applet parchean `fetch` y **ambos reconocen un modal de ≥2 MuiSwitch + icono de correo**. El de remisión tiene 5 switches ⇒ el `structMatch` del CFDI también matchearía. | **ABIERTO — subió de prioridad** | Distinguir por el heading (`Send Shipping Email` vs `Send Invoice Email`) **y** por la ruta. Probar con ambos activos |
+| **R4** | El adjunto por `{filename}` sin re-subir asume que `userFile.name` es citable directo | ABIERTO | Verificar con **un** archivo real antes de construir el panel |
+| **R5** | Un plano escaneado en JPG no viene premarcado | MITIGADO | Está **visible** y a un clic. No se oculta nada |
+| **R6** | El snapshot DuckDB es de TLC; MTY no medido | ABIERTO | Verificar que MTY tenga el mismo grupo `DatosLogisticos` antes de habilitar ahí |
+| **R7** | La ruta del **PDF de la remisión** para imprimir no está confirmada | ABIERTO | Inspeccionar el botón de descarga de la fila; degrada a «solo archivos» + ámbar |
+| **R8** | **El payload del envío es enorme** (lleva el HTML del correo). Trabajo síncrono sobre él **congela la pestaña** — medido dos veces. | **MEDIDO** | Regla dura: `JSON.parse` una vez, tocar solo `variables.attachments`, re-serializar. Sin regex globales sobre el body |
 
-### Fase 0 — reconocimiento en vivo (bloqueante, antes de escribir el applet)
+### Lo que falta de Fase 0
 
-Sobre una remisión real de FISHER CONTROLES DE MEXICO, con el `hash-scanner` corriendo:
-
-1. Abrir el modal de correo de la remisión y **capturar el wrapper HTML completo** (se le pide al
-   operador).
-2. Mandar el correo y registrar: **nombre de la operación** (¿`SendEmailChecked`?), el shape de
-   `variables` (`linkInfo`, `attachments`), y las queries que carga la pantalla.
-3. Identificar la query que devuelve los NPs del packing slip.
-4. Verificar R4 adjuntando **un** archivo existente de un NP.
-
-Fase 0 entrega: nombre de op, shape de `variables`, query de NPs, y el HTML del modal. **Sin eso no
-se escribe el applet.**
+Solo queda **R1** (y de paso R4/R7, que se resuelven en la misma sesión): un envío real de una
+remisión con el `hash-scanner` corriendo, para registrar el nombre de la operación y el shape de sus
+`variables` (`linkInfo`, `attachments`). Todo lo demás —modal, punto de inyección, NPs, anclaje del
+botón— **ya está capturado en vivo** (ver §Reconocimiento en vivo).
 
 ## Plan de pruebas
 
@@ -276,10 +438,15 @@ se escribe el applet.**
   premarcado; `pnsSinPlano`; plan vacío.
 - **Cableado**: `popup-actions-wired.test.js` (el toggle necesita su `case` en el background) y
   `mui-icon-core-wiring.test.js` (el núcleo de iconos declarado en `config.apps[].scripts`).
+- **Forma del icono**: el `path` del sobre entra al catálogo de `mui-icon-anchor-core` con su test,
+  y se verifica que `by: 'shape'` (no `'testid'`, que ya no existe).
 - **En vivo, contra el ERP** (una búsqueda a la vez — el `/graphql` se cuelga bajo ráfaga):
-  remisión de Fisher con PDF · remisión de Fisher sin ningún archivo (la mayoría) · remisión de la
-  remisión 1387 (88 NPs) para el peso del panel · un cliente con `IncluirPlanos: false` para
-  confirmar que el applet queda inerte · con `cfdi-attacher` activo simultáneamente.
+  remisión de Fisher con PDF · remisión de Fisher sin ningún archivo (la mayoría) · la remisión
+  **1387 (88 NPs)** para el peso del panel y del PDF combinado · un cliente con `IncluirPlanos: false`
+  para confirmar que el applet queda inerte · **con `cfdi-attacher` activo simultáneamente** (R3) ·
+  **desde las dos superficies**: `/Shipping` y `/Shipping/PackingSlips`.
+- **Anti-congelamiento (R8)**: medir que el interceptor no añade trabajo síncrono perceptible sobre
+  el payload de envío. Es la prueba que nació de congelar la pestaña dos veces en el reconocimiento.
 
 ## Fuera de alcance
 
@@ -288,6 +455,8 @@ se escribe el applet.**
 - Adjuntar archivos que no cuelgan del NP (los de cliente, nodo de proceso o lote).
 - Cerrar el hueco del 77% de NPs sin archivo — el applet lo **mide y lo delata**; llenarlo es
   trabajo de operación.
+- Elegir impresora, número de copias o dúplex: eso lo decide el diálogo nativo del navegador.
+- Reescribir el cuerpo del correo o su plantilla.
 
 ## Apéndice — consultas de la evidencia
 
