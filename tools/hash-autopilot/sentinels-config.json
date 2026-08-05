@@ -230,7 +230,7 @@
       "id": 3770957,
       "screenPath": "/PartNumbers/{id}",
       "marker": "Centinela",
-      "_para": [
+      "_paraPendiente": [
         "AddParamsToPartNumber",
         "SaveMultipleSpecFieldParams",
         "UpdatePartNumberSpecParam"
