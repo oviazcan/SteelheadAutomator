@@ -62,7 +62,8 @@ Lecciones (todas costaron corridas):
 
 - Dry-run (clasifica, NO deploya ni notifica): `npm run dry-run`
 - Real (auto-deploya + notifica): `npm start`  (o `node hash-autopilot.mjs`)
-- Flags: `--dry-run`, `--domain=344`, `--domain-nano=1NFxmF`, `--only=<Op>`, `--date=YYYY-MM-DD`
+- Flags: `--dry-run`, `--domain=344`, `--domain-nano=1NFxmF`, `--only=<Op>`, `--date=YYYY-MM-DD`,
+  `--mass-brake=N` (**manual**, ver §Freno de masa)
 - Resultado de la corrida: `tools/.hash-autopilot/<fecha>.json`
 
 ## Auth (clave)
@@ -387,3 +388,71 @@ autopilot: `d2e1c52` SearchPartNumbers, `1bda4f9` FilterSearch).
   `checkout gh-pages` dejó el índice de main a medias, pero **se recuperó solo** (el stash se restauró).
   Producción nunca corrió peligro. Lección viva: al deployar desde workbench o con el launchd activo,
   el stash compartido + el checkout de gh-pages pueden chocar con WIP; el diseño self-healing aguantó.
+
+## El centinela que "se archivó solo" — anclar por ID, no por posición (2026-08-05)
+
+Durante días el ciclo de `SaveManyPartNumberPrices` abortó con **"objeto cargado NO es centinela
+(identidad)"**, y el correo pedía **DESARCHIVAR** el quote #288 — que estaba perfectamente **ACTIVO**.
+El diagnóstico mandaba a la reparación equivocada.
+
+**Causa real:** la ruta buscaba el `<a>` del quote **en la LISTA**, y la lista sale paginada por
+`Created At Descending`, 20 por página. El #288 **se cayó de la página 1**: hoy arranca en #321 con 167
+quotes activos. El comentario del código (*"#288, reciente, aparece en la 1ª página"*) era cierto en
+julio y **caducó solo** — bastó con que el negocio cotizara 33 veces más. Nadie tocó nada.
+
+Encima, el paso previo tampoco era ya posible: el link `a[href$="/Quotes"]` del sidebar sale
+`visibility:hidden` en `x=-169` (menú colapsado) y `/Domains/{d}` **redirige a `/`**.
+
+**Fix:** `openQuoteSentinelDetail` — deep-link a `/Domains/{d}/Quotes/{id}` + espera activa a
+"Centinela" **y** `[aria-label="Edit this Part"]` (hidrata en ~14 s; ~4 s con el SPA caliente). No
+depende de paginación, orden, tamaño de página ni del sidebar. De paso el `load` verifica el **NOMBRE
+del objeto** en vez de la mera presencia de un link: es una verificación de identidad más fuerte.
+
+> **Lección:** un ancla que depende de *"está en la primera página"* no es un ancla, es una **carrera
+> contra el uso normal del sistema**. Anclar por **ID**, no por posición. Y ojo con el modo de falla:
+> no se rompió por un cambio de Steelhead ni por un deploy nuestro — **se rompió sola con el tiempo**,
+> que es la clase de deuda que ningún test de regresión atrapa porque el código nunca cambió.
+
+**Corolario para el mensaje de alerta:** el correo afirmaba una CAUSA ("quedó archivado") a partir de
+un SÍNTOMA ("no pasó la verificación de identidad"). Como `isSentinel` es fail-closed, ese síntoma
+cubre *todo* lo que impide llegar al objeto — archivado, renombrado, no hidratado, **o fuera de la
+página**. Una alerta que nombra una sola causa manda al operador a revisar lo que no es.
+
+## Freno de masa: qué protege de verdad y qué NO (revisión 2026-08-05)
+
+El release `BB7C5204` de Steelhead (2026-08-05, 5:19 AM) rotó **14 queries de un jalón**. El freno
+(umbral 6) se disparó 3 corridas seguidas (06:28, 07:28, 08:28) y **NO deployó nada**. Los hashes
+viejos daban **STALE 4/4 estable** en el probe directo ⇒ los applets llevaban **~5 horas rotos en
+producción** (specs, recepción, inventario, workboards, facturas) mientras el freno repetía el mismo
+correo cada hora sin escalar el tono.
+
+**Medición del histórico** (log 2026-07-06 → 2026-08-05, 92 corridas completas, 20 auto-deploys):
+el máximo de rotados en una corrida que **sí** deployó fue **3** (14 corridas con 1, 5 con 2, 1 con 3).
+El umbral de 6 **nunca estorbó en operación normal**; la única vez que actuó, bloqueó un deploy urgente.
+
+**Su comentario dice que defiende contra "captura corrupta / cookie de otro dominio". Eso NO se
+sostiene:** un hash de persisted query identifica el **texto** de la query, no los datos — es **global
+al build**, no al tenant. Una sesión apuntando al dominio equivocado capturaría **exactamente los
+mismos hashes**. Ese modo de falla no existe.
+
+**Lo que SÍ protege (y por eso no sobra):** un **bug del propio motor**. Si el interceptor asociara el
+hash de una op al nombre de otra, el síntoma sería justo *"rotaron 14 de golpe"* — un bug nuestro pega
+parejo, mientras que Steelhead rota por partes. Es un **circuit breaker contra nosotros**, no un
+detector de anomalías del ERP.
+
+**Su defecto de diseño:** solo pondera el costo de ACTUAR, nunca el de NO actuar — y el motor **ya
+tiene** la señal que falta (`probeVerdicts`: si el `cfgHash` está muerto). El criterio correcto no es
+*cuántos rotaron* sino **¿el hash viejo sigue vivo?**:
+
+| Estado del `cfgHash` | Qué significa | Acción correcta |
+|---|---|---|
+| **MUERTO** (probe STALE estable) | los applets YA están rotos | **corregir siempre**, sin límite de cuántos |
+| **VIVO**, live distinto | rotación *de futuro* (SH puede hacer rollback) | retener y avisar — no urge |
+| **VIVO** y muchos rotados | la señal genuina de bug en el motor | frenar: ESTE es el caso del freno |
+
+Con `cfgHash` muerto, **no deployar no es la opción segura: es la que garantiza el daño**. El peor caso
+de deployar es que SH revierta el release y el autopilot re-deploye los viejos en la siguiente corrida
+(≤1 h de rotura) — contra las 5 h que costó frenar. **Propuesta pendiente:** condicionar el freno al
+probe en vez de al conteo. Mientras tanto existe `--mass-brake=N` (**flag MANUAL**; el cron nunca lo
+pasa, su umbral de 6 sigue intacto) para ejecutar la conclusión de la revisión humana que el freno pide,
+sin editar el default ni saltarse la validación por-op (solo se deploya lo que sigue `rotadoValidado`).
