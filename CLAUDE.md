@@ -406,6 +406,7 @@ renglón. **Antes de tocar un applet, lee su bitácora.**
 | `po-listing-filters` | 0.4.0 | Buscador global de OC/proveedor/factura + toggle "Sólo Proquipa" | [`po-listing-filters.md`](docs/applets/po-listing-filters.md) |
 | `invoice-autofill` | 0.5.67 | Autollena cliente/divisa/TC/CXC y la cuenta de ingreso por línea al crear factura | [`invoice-autofill.md`](docs/applets/invoice-autofill.md) |
 | `invoice-auto-regen` | 0.5.37 | Regeneración automática de facturas | [`invoice-auto-regen.md`](docs/applets/invoice-auto-regen.md) |
+| `cfdi-attacher` | 0.1.0 | Adjunta el XML del CFDI al correo de la factura (y delata en ámbar las facturas sin XML) | [`cfdi-attacher.md`](docs/applets/cfdi-attacher.md) |
 | `report-regen` | 0.3.5 | Botón de regeneración de reporte con countdown, anclado al icono de correo | [`report-regen.md`](docs/applets/report-regen.md) |
 | `price-confirm-guard` | 0.1.5 | Candado: exige reconfirmar el precio de un NP (tipo password) antes de guardar | [`price-confirm-guard.md`](docs/applets/price-confirm-guard.md) |
 | `receiver-date-override` | 0.5.81 | Campo de fecha en el modal de recepción | [`receiver-date-override.md`](docs/applets/receiver-date-override.md) |
