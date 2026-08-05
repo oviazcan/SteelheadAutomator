@@ -286,6 +286,13 @@ const PackingSlipDrawings = (() => {
   // la lista de «foto» del núcleo: tif/heic clasifican como foto pero Chrome no
   // los muestra, y una miniatura rota informa peor que ninguna.
   const ES_IMAGEN = /\.(jpe?g|png|gif|bmp|webp)$/i;
+  const ES_PDF = /\.pdf$/i;
+  const THUMB_CSS = 'max-height:88px;max-width:150px;border:1px solid #d0d5dd;'
+    + 'border-radius:4px;object-fit:contain;background:#fff';
+  // Tope de miniaturas de PDF por panel: cada una descarga y rasteriza la
+  // primera página. Con una remisión de 88 NP eso sería una tormenta; el resto
+  // conserva su enlace, que es lo que había antes de las miniaturas.
+  const MAX_PDF_THUMBS = 12;
 
   const AMBER = '#b26a00';
   const DIM = '#6b7280';
@@ -495,19 +502,25 @@ const PackingSlipDrawings = (() => {
         // y con varias fotos por NP eso es el trabajo que el applet debía ahorrar.
         // `loading="lazy"` para no bajar decenas de imágenes de golpe.
         const url = FILE_URL(f.filename);
-        const thumb = ES_IMAGEN.test(f.displayName)
-          ? `<div style="margin:2px 0 6px 34px">` +
+        let thumb = '';
+        if (ES_IMAGEN.test(f.displayName)) {
+          thumb = `<div style="margin:2px 0 6px 34px">` +
             `<a href="${escHtml(url)}" target="_blank" rel="noopener noreferrer">` +
             `<img src="${escHtml(url)}" loading="lazy" alt="${escHtml(f.displayName)}" ` +
-            `style="max-height:88px;max-width:150px;border:1px solid #d0d5dd;border-radius:4px;` +
-            `object-fit:contain;background:#fff"></a></div>`
-          : '';
+            `style="${THUMB_CSS}"></a></div>`;
+        } else if (ES_PDF.test(f.displayName)) {
+          // El PDF se pinta con pdf.js sobre un <canvas>: es EL formato de los
+          // planos, así que dejarlo sin vista previa habría dejado fuera
+          // justamente lo que el operador necesita mirar.
+          thumb = `<div style="margin:2px 0 6px 34px">` +
+            `<a href="${escHtml(url)}" target="_blank" rel="noopener noreferrer">` +
+            `<canvas data-sa-pdf="${escHtml(f.filename)}" style="${THUMB_CSS}"></canvas></a></div>`;
+        }
         out.push(
           '<div style="margin-left:14px">' +
           `<input type="checkbox" data-sa-file="${escHtml(f.filename)}"${marcado}> ` +
           `<a href="${escHtml(url)}" target="_blank" rel="noopener noreferrer" ` +
-          `title="Abrir en pestaña nueva">${escHtml(f.displayName)}</a> ` +
-          `<span style="color:${DIM}">(${escHtml(f.kind)})</span>` +
+          `title="Abrir en pestaña nueva">${escHtml(f.displayName)}</a>` +
           '</div>' + thumb
         );
       }
@@ -546,6 +559,56 @@ const PackingSlipDrawings = (() => {
     const printBtn = container.querySelector('button[data-sa-print]');
     if (printBtn) printBtn.addEventListener('click', () => onPrint(container));
     updateCount(container);
+    renderPdfThumbs(container);   // async: las miniaturas aparecen cuando estén
+  }
+
+  // ── Miniaturas de PDF (pdf.js) ──────────────────────────────────────────────
+
+  const REMOTE_BASE_URL = 'https://oviazcan.github.io/SteelheadAutomator';
+
+  // El worker se carga como Blob para esquivar la CSP en workers cross-origin.
+  // Mismo patrón que po-reconciler, que ya usa pdf.js en este repo.
+  async function ensurePdfWorker() {
+    if (!window.pdfjsLib) throw new Error('pdfjsLib no está cargado');
+    if (window.pdfjsLib.GlobalWorkerOptions.workerSrc) return;
+    const code = await fetch(`${REMOTE_BASE_URL}/scripts/lib/pdf.worker.min.js`,
+      { cache: 'force-cache' }).then((r) => {
+        if (!r.ok) throw new Error(`HTTP ${r.status} cargando pdf.worker`);
+        return r.text();
+      });
+    window.pdfjsLib.GlobalWorkerOptions.workerSrc =
+      URL.createObjectURL(new Blob([code], { type: 'application/javascript' }));
+  }
+
+  // Rasteriza la PRIMERA página de cada PDF sobre su canvas.
+  // SERIAL y con tope: cada miniatura baja el archivo y lo rasteriza, así que
+  // hacerlo en paralelo sobre una remisión grande congelaría la pestaña — el
+  // mismo error que ya costó caro con el payload del correo.
+  async function renderPdfThumbs(container) {
+    const canvases = [].slice.call(container.querySelectorAll('canvas[data-sa-pdf]'), 0, MAX_PDF_THUMBS);
+    if (!canvases.length) return;
+    try { await ensurePdfWorker(); }
+    catch (e) { console.warn(LOG, 'sin miniaturas de PDF:', e && e.message); return; }
+
+    for (const cv of canvases) {
+      if (!cv.isConnected) continue;   // el operador cerró el modal
+      try {
+        const bytes = await fetch(FILE_URL(cv.getAttribute('data-sa-pdf')))
+          .then((r) => r.arrayBuffer());
+        const pdf = await window.pdfjsLib.getDocument({ data: new Uint8Array(bytes) }).promise;
+        const page = await pdf.getPage(1);
+        const base = page.getViewport({ scale: 1 });
+        const viewport = page.getViewport({ scale: Math.min(150 / base.width, 88 / base.height) });
+        cv.width = Math.max(1, Math.floor(viewport.width));
+        cv.height = Math.max(1, Math.floor(viewport.height));
+        await page.render({ canvasContext: cv.getContext('2d'), viewport }).promise;
+        // Liberar el documento: sin esto, N PDFs quedan retenidos en memoria.
+        try { pdf.destroy(); } catch (_) {}
+      } catch (e) {
+        console.warn(LOG, 'no pude pintar la miniatura de un PDF:', e && e.message);
+        cv.remove();   // sin miniatura es mejor que un recuadro vacío que miente
+      }
+    }
   }
 
   function findFileInPlan(filename) {
