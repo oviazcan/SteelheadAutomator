@@ -34,14 +34,25 @@ config = json.load(open(os.path.join(root, 'remote', 'config.json')))
 apps   = { a['id']: a for a in config.get('apps', []) }
 
 # 1-3. Expandir applets → scripts, dedup preservando orden de 1ª aparición.
+#
+# `excludeScripts` (opcional en bundle.json) deja fuera scripts concretos aunque
+# un applet los declare. Existe para librerías pesadas que en el iPad no se
+# pueden (o no conviene) empaquetar — p. ej. pdf.js, cuyo worker se descarga en
+# runtime y eso es CÓDIGO REMOTO, prohibido por la Guideline 2.5.2 de Apple.
+# El applet debe degradar solo cuando su librería no está; el build no lo valida.
+excluded = set(bundle.get('excludeScripts', []))
 ordered, seen = [], set()
 for app_id in bundle['applets']:
     app = apps.get(app_id)
     if not app:
         sys.exit(f"ERROR: applet '{app_id}' no existe en config.apps[]")
     for rel in app.get('scripts', []):
+        if rel in excluded:
+            continue
         if rel not in seen:
             seen.add(rel); ordered.append(rel)
+if excluded:
+    print("  excluidos a propósito: " + ", ".join(sorted(excluded)))
 
 # 4. Concatenar con cada script envuelto en IIFE.
 parts = [

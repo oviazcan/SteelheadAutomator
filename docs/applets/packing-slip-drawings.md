@@ -331,6 +331,29 @@ degradado justo las cotas finas de los planos, que es lo que el cliente exige im
 | Firma ECDSA del config en vivo | ✅ verifica en 1.11.67/68/69 |
 | Suite completa | ✅ 105 archivos, 0 rojos |
 
+## Safari / iPad (bundle v0.6.31)
+
+**SÍ va al bundle**, en versión **LIGERA** — confirmado con el operador que las remisiones también se
+mandan desde el iPad.
+
+**Se excluyen `pdf.js` y `pdf-lib`** (`excludeScripts` en `safari/bundle.json`), por dos razones:
+
+1. El worker de `pdf.js` **se descarga en runtime** desde gh-pages, y eso es **código remoto**:
+   justo lo que la **Guideline 2.5.2 de Apple** prohíbe y la razón de que este bundle sea estático.
+2. Juntas pesan **902 KB**, +50% sobre el bundle.
+
+Sin ellas el applet pierde **sólo** la impresión combinada y las miniaturas de PDF. Su flujo core
+—detectar el cliente, listar los planos del NP, premarcarlos y adjuntarlos al correo del albarán, más
+el ámbar del hueco y las miniaturas de imagen— funciona igual.
+
+**El applet degrada solo:** `hayPdfLib()` oculta el botón 🖨️ y `hayPdfJs()` evita emitir canvas
+vacíos. *Ofrecer un botón que falla es peor que no ofrecerlo.*
+
+Coste real medido **en el artefacto** (no en el log, que cuenta caracteres): 1,783,642 → **1,846,929
+bytes, +63 KB (+3.5%)**.
+
+⚠️ Falta **recompilar en Xcode**: el bundle es estático y `Resources/` sincronizado ≠ compilado.
+
 ## Estado de los riesgos (todos cerrados)
 
 | # | Riesgo | Cómo se cerró |

@@ -294,6 +294,12 @@ const PackingSlipDrawings = (() => {
   // conserva su enlace, que es lo que había antes de las miniaturas.
   const MAX_PDF_THUMBS = 12;
 
+  // Capacidades OPCIONALES. El applet funciona sin ellas: en el bundle
+  // Safari/iPad no se empaquetan (peso + Guideline 2.5.2), y su ausencia sólo
+  // quita la impresión y las miniaturas de PDF, no el flujo principal.
+  const hayPdfLib = () => typeof window !== 'undefined' && !!window.PDFLib;
+  const hayPdfJs = () => typeof window !== 'undefined' && !!window.pdfjsLib;
+
   const AMBER = '#b26a00';
   const DIM = '#6b7280';
 
@@ -508,7 +514,7 @@ const PackingSlipDrawings = (() => {
             `<a href="${escHtml(url)}" target="_blank" rel="noopener noreferrer">` +
             `<img src="${escHtml(url)}" loading="lazy" alt="${escHtml(f.displayName)}" ` +
             `style="${THUMB_CSS}"></a></div>`;
-        } else if (ES_PDF.test(f.displayName)) {
+        } else if (ES_PDF.test(f.displayName) && hayPdfJs()) {
           // El PDF se pinta con pdf.js sobre un <canvas>: es EL formato de los
           // planos, así que dejarlo sin vista previa habría dejado fuera
           // justamente lo que el operador necesita mirar.
@@ -542,11 +548,17 @@ const PackingSlipDrawings = (() => {
       );
     }
 
+    // El botón sólo existe si pdf-lib está cargado. En el bundle Safari/iPad NO va
+    // (Apple 2.5.2 prohíbe el código remoto que necesita el worker, y la librería
+    // pesa medio mega), así que ahí el applet vive sin impresión — y es mejor no
+    // ofrecer un botón que falla que ofrecerlo y decepcionar.
+    const btnPrint = hayPdfLib()
+      ? '<button type="button" data-sa-print="1" style="padding:6px 12px;cursor:pointer">' +
+        '🖨️ Imprimir remisión + selección</button> '
+      : '';
     out.push(
-      '<div style="margin-top:10px">' +
-      '<button type="button" data-sa-print="1" style="padding:6px 12px;cursor:pointer">' +
-      '🖨️ Imprimir remisión + selección</button>' +
-      `<span data-sa-count style="margin-left:10px;color:${DIM}"></span></div>`
+      '<div style="margin-top:10px">' + btnPrint +
+      `<span data-sa-count style="color:${DIM}"></span></div>`
     );
 
     container.innerHTML = out.join('');
@@ -585,6 +597,7 @@ const PackingSlipDrawings = (() => {
   // hacerlo en paralelo sobre una remisión grande congelaría la pestaña — el
   // mismo error que ya costó caro con el payload del correo.
   async function renderPdfThumbs(container) {
+    if (!hayPdfJs()) return;
     const canvases = [].slice.call(container.querySelectorAll('canvas[data-sa-pdf]'), 0, MAX_PDF_THUMBS);
     if (!canvases.length) return;
     try { await ensurePdfWorker(); }
