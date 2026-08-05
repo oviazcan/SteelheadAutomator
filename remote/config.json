@@ -2085,6 +2085,38 @@
         "scripts/po-listing-filters.js"
       ],
       "requiredPermissions": []
+    },
+    {
+      "id": "packing-slip-drawings",
+      "name": "Planos en Remisión",
+      "subtitle": "Adjunta los planos del NP al correo del albarán",
+      "icon": "📐",
+      "category": "Herramientas",
+      "autoInject": true,
+      "urlPatterns": [
+        "^/Domains/\\d+/Shipping(?:/|$)"
+      ],
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/mui-icon-anchor-core.js",
+        "scripts/lib/pdf-lib.min.js",
+        "scripts/packing-slip-drawings-core.js",
+        "scripts/packing-slip-modal-core.js",
+        "scripts/packing-slip-print.js",
+        "scripts/packing-slip-drawings.js"
+      ],
+      "requiredPermissions": [],
+      "actions": [
+        {
+          "id": "toggle-packing-slip-drawings",
+          "label": "Planos en Remisión",
+          "sublabel": "Adjunta los planos del NP al enviar el albarán",
+          "icon": "📐",
+          "type": "toggle",
+          "handler": "message",
+          "message": "toggle-packing-slip-drawings"
+        }
+      ]
     }
   ],
   "knownOperations": {

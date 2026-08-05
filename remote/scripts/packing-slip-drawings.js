@@ -71,13 +71,20 @@ const PackingSlipDrawings = (() => {
   // Nombre del cliente: se lee de la fila de la lista que quedó DETRÁS del modal.
   // El modal no lo expone hasta el envío (`variables.customerId`), y para entonces
   // ya es tarde para pintar el panel.
-  function readCustomerNameFromList() {
+  //
+  // ⚠️ Se busca la fila POR SU NÚMERO DE REMISIÓN, no la primera de la tabla.
+  // Tomar la primera daría el cliente de la remisión de arriba cuando el operador
+  // abre el correo de una fila de más abajo — invisible mientras todas las filas
+  // visibles sean del mismo cliente, y silenciosamente falso en cuanto no lo sean.
+  // Sin número no se adivina: se devuelve null y el panel degrada a ámbar.
+  function readCustomerNameFromList(psNumber) {
+    if (!psNumber) return null;
     const rows = document.querySelectorAll('table tr');
     for (const tr of rows) {
       const cells = tr.querySelectorAll('td');
       if (cells.length < 2) continue;
       const id = (cells[0].textContent || '').trim();
-      if (/^#\d+$/.test(id)) {
+      if (id === `#${psNumber}`) {
         const name = (cells[1].textContent || '').trim();
         if (name) return name;
       }
@@ -202,7 +209,8 @@ const PackingSlipDrawings = (() => {
       [].map.call(dlg.querySelectorAll('tr'), (tr) => tr.innerText || '')
     );
 
-    const customerName = readCustomerNameFromList();
+    const psNumber = Modal().extractPackingSlipNumber(dlg.innerText || '');
+    const customerName = readCustomerNameFromList(psNumber);
     const incluirPlanos = await resolveIncluirPlanos(customerName);
 
     // `false` = el cliente NO quiere planos ⇒ el applet queda inerte, cero UI.

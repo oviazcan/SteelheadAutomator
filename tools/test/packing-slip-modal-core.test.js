@@ -155,3 +155,40 @@ test('extractPartNumbers: entrada vacía da lista vacía — y eso NO es conocim
   assert.deepEqual(Modal.extractPartNumbers(null), []);
   assert.deepEqual(Modal.extractPartNumbers(), []);
 });
+
+// ---------- extractPackingSlipNumber ----------
+// Sirve para localizar LA FILA correcta en la lista de atrás. Tomar la primera
+// daría el cliente de otra remisión: invisible mientras todas las filas visibles
+// sean del mismo cliente, y silenciosamente falso en cuanto no lo sean.
+
+test('extractPackingSlipNumber: lee el número del cuerpo REAL del correo', () => {
+  // Texto capturado en vivo del preview (remisión #1746).
+  const txt = 'Estimado Cliente,\n\nRemisión: #1746\nOrden de Compra: 4300016123 (#1770)\nPartes: 10-4307003-001';
+  assert.equal(Modal.extractPackingSlipNumber(txt), '1746');
+});
+
+test('extractPackingSlipNumber: lee el del link en inglés', () => {
+  assert.equal(Modal.extractPackingSlipNumber('Click to View Packing Slip #1746'), '1746');
+});
+
+test('extractPackingSlipNumber: acepta "Albarán de Entrega" y sin acento', () => {
+  assert.equal(Modal.extractPackingSlipNumber('Enlace de Albarán de Entrega #992'), '992');
+  assert.equal(Modal.extractPackingSlipNumber('Remision: #55'), '55');
+});
+
+test('extractPackingSlipNumber: tolera espacios alrededor del #', () => {
+  assert.equal(Modal.extractPackingSlipNumber('Remisión  :   #  1746'), '1746');
+});
+
+test('extractPackingSlipNumber: sin número devuelve null — no se adivina', () => {
+  assert.equal(Modal.extractPackingSlipNumber('Respond to this email with any questions.'), null);
+  assert.equal(Modal.extractPackingSlipNumber(''), null);
+  assert.equal(Modal.extractPackingSlipNumber(null), null);
+  assert.equal(Modal.extractPackingSlipNumber(), null);
+});
+
+test('extractPackingSlipNumber: un "#1770" suelto (la OC) NO se confunde con la remisión', () => {
+  // La orden de compra también trae "#1770"; sólo cuenta el que sigue a la
+  // palabra que nombra al documento.
+  assert.equal(Modal.extractPackingSlipNumber('Orden de Compra: 4300016123 (#1770)'), null);
+});

@@ -1580,6 +1580,19 @@ async function handleMessage(message, sender) {
       return { enabled: cfdiAttacherEnabled !== false };
     }
 
+    // ── Planos en Remisión ──
+    case 'toggle-packing-slip-drawings': {
+      const { packingSlipDrawingsEnabled } = await chrome.storage.local.get('packingSlipDrawingsEnabled');
+      const newState = packingSlipDrawingsEnabled === false; // toggle (default is true)
+      await chrome.storage.local.set({ packingSlipDrawingsEnabled: newState });
+      return { enabled: newState, message: newState ? 'Planos en Remisión habilitado' : 'Planos en Remisión deshabilitado' };
+    }
+
+    case 'get-packing-slip-drawings-status': {
+      const { packingSlipDrawingsEnabled } = await chrome.storage.local.get('packingSlipDrawingsEnabled');
+      return { enabled: packingSlipDrawingsEnabled !== false };
+    }
+
     // ── Bill Autofill ──
     case 'toggle-bill-autofill': {
       const { billAutofillEnabled } = await chrome.storage.local.get('billAutofillEnabled');

@@ -31,6 +31,12 @@
     document.documentElement.dataset.saWarehouseLocationPrefillEnabled = enabled;
   });
 
+  // Communicate Planos en Remisión enabled state to MAIN world
+  chrome.storage.local.get('packingSlipDrawingsEnabled', (data) => {
+    const enabled = data.packingSlipDrawingsEnabled !== false;
+    document.documentElement.dataset.saPsDrawingsEnabled = enabled;
+  });
+
   // Listen for storage changes to update in real-time (e.g., when toggled from popup)
   chrome.storage.onChanged.addListener((changes) => {
     if (changes.cfdiAttacherEnabled) {
@@ -44,6 +50,10 @@
     if (changes.receiverDateOverrideEnabled) {
       const enabled = changes.receiverDateOverrideEnabled.newValue !== false;
       document.documentElement.dataset.saReceiverDateOverrideEnabled = enabled;
+    }
+    if (changes.packingSlipDrawingsEnabled) {
+      const enabled = changes.packingSlipDrawingsEnabled.newValue !== false;
+      document.documentElement.dataset.saPsDrawingsEnabled = enabled;
     }
     if (changes.warehouseLocationPrefillEnabled) {
       const enabled = changes.warehouseLocationPrefillEnabled.newValue !== false;

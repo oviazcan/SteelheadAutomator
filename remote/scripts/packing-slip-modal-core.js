@@ -83,7 +83,20 @@
     return out;
   }
 
-  const api = { isShippingEmailModal, extractPartNumbers };
+  // Número de la remisión que se está enviando, sacado del texto del modal:
+  // aparece en el cuerpo ("Remisión: #1746") y en el link ("Packing Slip #1746").
+  //
+  // Sirve para localizar LA FILA correcta en la lista de atrás y leer de ahí el
+  // cliente. Tomar la primera fila daría el cliente de otra remisión — invisible
+  // mientras todas las filas visibles sean del mismo cliente, y silenciosamente
+  // falso en cuanto no lo sean. Sin número no se adivina: null.
+  function extractPackingSlipNumber(text) {
+    const s = String(text == null ? '' : text);
+    const m = s.match(/(?:remisi[oó]n|packing\s+slip|albar[aá]n(?:\s+de\s+entrega)?)\s*:?\s*#\s*(\d+)/i);
+    return m ? m[1] : null;
+  }
+
+  const api = { isShippingEmailModal, extractPartNumbers, extractPackingSlipNumber };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.PackingSlipModalCore = api;
 })(typeof window !== 'undefined' ? window : globalThis);
