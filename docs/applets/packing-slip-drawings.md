@@ -1,7 +1,7 @@
 # `packing-slip-drawings` — Planos en Remisión
 
-**Versión:** 0.2.0 · **Estado:** **DESPLEGADO Y VIVO** (config 1.11.81) · validado en piso con
-FISHER · pendiente: PDF de la remisión en la impresión y verificar el adjunto en el correo
+**Versión:** 0.3.0 · **Estado:** **VIVO Y VALIDADO EN PISO** (config 1.11.83, 2026-08-05).
+El operador confirmó que **los adjuntos llegan al correo** — R4 cerrado con evidencia de uso real.
 **Spec:** [`2026-08-04-packing-slip-drawings-design.md`](../superpowers/specs/2026-08-04-packing-slip-drawings-design.md)
 **Plan:** [`2026-08-04-packing-slip-drawings.md`](../superpowers/plans/2026-08-04-packing-slip-drawings.md)
 
@@ -229,7 +229,47 @@ a `a[href^="/PartNumbers/"]`. Una ruta inventada por simetría falla igual que u
 En cambio `/api/files/<userFile.name>` **sí se midió** antes de usarla: HTTP 200, `application/pdf`.
 Cierra R4 y sostiene tanto los enlaces como la descarga para imprimir.
 
-### 9 · El panel va en estilo NATIVO, no dark mode
+### 9 · Una query bien elegida borra tres rodeos (v0.3.0)
+
+El scan que aportó el operador destapó que **`GetPackingSlip({idInDomain, revisionNumber})`** devuelve
+de una sola vez lo que el applet conseguía por tres caminos distintos:
+
+| Campo | Qué sustituyó |
+|---|---|
+| `customerByCustomerId.customInputs` | leer la tabla de atrás → `CustomerSearchByName` → `Customer` |
+| `partNumbersIncluded.nodes[].{id,name}` | `SearchPartNumbers` **y con él todo el problema de homónimos** |
+| `packingSlipPdfsByPackingSlipId[].filename` | el PDF de la remisión, que no aparecía por ningún lado |
+
+Lo notable del segundo: el bug de los homónimos **no se arregló, se volvió imposible**. Ya no hay que
+resolver un nombre a un id, así que no hay a quién equivocarse. Arreglar la causa venció a blindar el
+síntoma — y el blindaje (unir homónimos) se quedó igual, como respaldo.
+
+**Todo lo anterior se conservó como RESPALDO.** Si `GetPackingSlip` falla o la revisión no es la
+pedida, cae a la cadena vieja en vez de quedarse mudo. Un anclaje no se cambia, se amplía.
+
+### 10 · El enlace del modal jamás iba a servir para imprimir
+
+El botón «Click to View Packing Slip #NNNN» apunta al **portal del cliente**
+(`/…/cu/…/PackingSlips/<id>?token=…`): HTML con token de acceso, no un PDF. Por eso la impresión
+fallaba. Se detecta la firma `%PDF` antes de dárselo a `pdf-lib`, y el aviso dice **qué hacer**, no
+qué excepción se lanzó.
+
+⚠️ Ese token da acceso al portal del cliente: **no se registra en código, logs ni bitácora.**
+
+### 11 · No etiquetar lo que sólo se está adivinando
+
+El panel mostraba «(plano)» / «(foto)» junto a cada archivo. El operador lo objetó con razón: es una
+**heurística por extensión vestida de hecho**, y hay fotos en PDF y planos en JPG.
+
+> La heurística se quedó donde es honesta —decidir qué viene **premarcado**, que es una sugerencia
+> reversible de un clic— y desapareció de donde afirmaba. Una etiqueta impresa junto al archivo tiene
+> autoridad que la heurística no se ganó.
+
+En su lugar, **miniaturas**: imágenes como `<img>` y **PDF rasterizados con `pdf.js` sobre `<canvas>`**
+(serial, tope de 12 por panel — cada una descarga y rasteriza, y en paralelo congelaría la pestaña).
+Que el operador vea el archivo es mejor respuesta que cualquier etiqueta.
+
+### 12 · El panel va en estilo NATIVO, no dark mode
 
 Excepción deliberada a la regla del repo, con **precedente exacto encontrado en vivo**: SH ya tiene
 en este mismo modal una fila **«Incluir Certificado»** con checkbox y link. Nuestro panel es su
@@ -256,6 +296,7 @@ Y dentro del panel:
 | `packing-slip-drawings-core.js` | Decisión pura: `readIncluirPlanos` · `classifyFile` · `buildAttachmentPlan` · `toAttachments` |
 | `packing-slip-modal-core.js` | Reconocimiento puro: `isShippingEmailModal` · `extractPartNumbers` · `extractPackingSlipNumber` · `findCustomerName` |
 | `packing-slip-print.js` | `printCombined` — cose con `pdf-lib` e imprime por iframe |
+| `lib/pdf.min.js` | `pdf.js` para rasterizar la miniatura de los PDF (ya lo usaba `po-reconciler`) |
 | `packing-slip-drawings.js` | Glue: interceptor, observer, panel |
 | `lib/pdf-lib.min.js` | Librería (artefacto, 525 KB) |
 
@@ -276,7 +317,7 @@ degradado justo las cotas finas de los planos, que es lo que el cliente exige im
 | Tooltip del botón en **EN** | No medido (en ES es «Enviar Albarán») |
 | `SendIcon` / `CloseIcon` en el catálogo de formas | Siguen sin medir. **El modal de remisión tiene ambos** y ya se abrió con permiso: es una llamada de un renglón la próxima vez |
 | Módulo de Envío (`/Shipping`) | El `urlPatterns` lo cubre, pero **el panel no se probó ahí**. Si la lista no tiene el formato `#\d+ / Cliente`, degrada a ámbar «no pude verificar» (seguro, pero menos útil) |
-| Ruta de descarga `/api/files/<name>` | **Sin verificar.** Sólo afecta a la impresión; si falla, se reporta en el resumen de «no entró» |
+| Ruta de descarga `/api/files/<name>` | ✅ **VERIFICADA en vivo**: HTTP 200, `content-type: application/pdf` |
 
 ## Lo que YA se verificó en producción (2026-08-05)
 
@@ -290,19 +331,23 @@ degradado justo las cotas finas de los planos, que es lo que el cliente exige im
 | Firma ECDSA del config en vivo | ✅ verifica en 1.11.67/68/69 |
 | Suite completa | ✅ 105 archivos, 0 rojos |
 
-## Pendiente antes de darlo por bueno
+## Estado de los riesgos (todos cerrados)
 
-**Canario con el operador presente.** Llegar **navegando** (no recargando — el gate por URL depende
-del sondeo de `location.pathname`) a `/Domains/344/Shipping/PackingSlips`, abrir el correo de una
-remisión de **FISHER CONTROLES DE MEXICO** —el único cliente con el check— y verificar:
+| # | Riesgo | Cómo se cerró |
+|---|---|---|
+| **R1** | Nombre de la mutation de envío | `SendEmailChecked`, capturada en vivo; su hash **coincide byte a byte** con el de `config.json` |
+| **R2** | Cómo resolver remisión → NP | `GetPackingSlip.partNumbersIncluded` da los NP **con su id** |
+| **R3** | `cfdi-attacher` y este applet en el mismo modal | Separados por heading + umbral de switches; probado con ambos activos |
+| **R4** | ¿El adjunto llega al correo? | ✅ **Validado por el operador con un envío real** (2026-08-05) |
+| **R7** | PDF de la remisión para imprimir | `packingSlipPdfsByPackingSlipId[].filename` (se prefiere `isFinalized`) |
+| **R8** | El payload congela la pestaña | Guardas baratas antes del `JSON.parse`; sin regex globales |
 
-1. **El fix de timing (v0.1.2)**: sobre un cliente con `IncluirPlanos: false` el applet debe quedar
-   **INERTE** (cero UI). Si sigue saliendo el ámbar, el `waitForModalContent` no alcanzó.
-2. Con FISHER: el panel lista los NP y **premarca los PDF**.
-3. El ámbar del hueco en una remisión sin archivos (será lo común — 77%).
-4. **No** aparece en el modal de factura (R3), con `cfdi-attacher` activo.
-5. **R4**: el adjunto llega de verdad al correo (`userFile.name` citable sin re-subir).
-6. **R7**: la impresión arma **un** PDF con la remisión primero y el plano legible.
+## Lo que queda abierto (menor)
 
-> ⚠️ Al probar, **no encadenar decenas de queries antes**: el `/graphql` se cuelga por SESIÓN y eso
-> produce falsos ámbar. Si algo se ve raro, recargar en frío y volver a medir.
+- **Deuda bilingüe**: heading del modal en ES y fila «Attachments» en ES **no medidos** (el modal sale
+  en inglés con la app en español). Los patrones ES del núcleo son *candidatos*, no traducciones
+  verificadas. La red estructural (≥4 switches) los sostiene mientras tanto.
+- **`revisionNumber`**: se pide siempre `1`. Una remisión con revisión >1 caería al respaldo (la
+  cadena vieja), que sigue funcionando. No se ha visto un caso real.
+- **`SendIcon` / `CloseIcon`** siguen sin medir en el catálogo de formas, aunque el modal de remisión
+  tiene ambos.

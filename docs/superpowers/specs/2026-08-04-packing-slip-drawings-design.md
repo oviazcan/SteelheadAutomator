@@ -1,7 +1,9 @@
 # Spec: Planos en Remisión (`packing-slip-drawings`)
 
 **Fecha:** 2026-08-04
-**Estado:** Diseño aprobado · Fase 0 **hecha en vivo** salvo el nombre de la operación de envío
+**Estado:** ✅ **IMPLEMENTADO, DESPLEGADO Y VALIDADO EN PISO** (2026-08-05, config 1.11.83).
+Todos los riesgos cerrados, incluido R4 (el operador confirmó que los adjuntos llegan al correo).
+Estado vivo y lecciones: [`docs/applets/packing-slip-drawings.md`](../../applets/packing-slip-drawings.md)
 **Applet propuesto:** `remote/scripts/packing-slip-drawings.js` + núcleo puro
 `remote/scripts/packing-slip-drawings-core.js`
 
