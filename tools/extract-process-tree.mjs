@@ -69,11 +69,24 @@ function arg(name, def = null) {
 }
 
 const COOKIE = arg('cookie') || process.env.STEELHEAD_COOKIE_STRING;
+const IDP_TOKEN = arg('idp-token') || process.env.STEELHEAD_IDP_TOKEN || idpTokenFromProject();
 const OUT_DIR = arg('out', path.join(REPORTES, 'eje1_specfields'));
 const PAUSA = Number(arg('pausa', 900));
 const ROOTS_FILE = arg('roots');
 const RESUME = !!arg('resume');
 const CKPT = path.join(OUT_DIR, '.extract-checkpoint.json');
+
+// El access_token de OAuth lo administra `Reportes SH` (rota el refresh token y cachea).
+// Reusarlo evita duplicar aquí el flujo de Authentik; si ese proyecto no está, seguimos sin
+// token y el aviso de sesión hace el resto.
+function idpTokenFromProject() {
+  try {
+    return execFileSync('/usr/bin/python3', ['-c',
+      'import sys; sys.path.insert(0, "scripts"); import steelhead_auth; ' +
+      'print(steelhead_auth.get_access_token())'],
+      { cwd: REPORTES, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim() || null;
+  } catch { return null; }
+}
 
 if (!COOKIE) {
   console.error('ERROR: falta la cookie de sesión.\n' +
@@ -93,9 +106,36 @@ if (!HASH) {
 
 // ── GraphQL ─────────────────────────────────────────────────────────────────
 async function gql(operationName, variables, hash) {
+  // Estos headers NO son decorativos — son el contrato que ya usa en producción
+  // `Reportes SH/scripts/steelhead_client.py`, y quitarlos rompe de dos maneras distintas:
+  //
+  //   sin `x-steelhead-idp-token` → HTTP 200, sin `errors`, y TODOS los campos en null.
+  //                                 Un fallo de sesión disfrazado de «no hay datos».
+  //   sin los `sec-fetch-*`       → HTTP 401 aunque la cookie sea válida (validación CSRF).
+  //
+  // Se replica el set completo en vez de adivinar el mínimo: el que ya funciona es ése.
+  const headers = {
+    'content-type': 'application/json',
+    'accept': 'application/graphql-response+json,application/json;q=0.9',
+    'origin': BASE,
+    'referer': `${BASE}/Reporting/Databases`,
+    'apollographql-client-name': 'steelhead-web',
+    'apollographql-client-version': '1.0.0',
+    'user-agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +
+                  '(KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36 Edg/148.0.0.0',
+    'sec-ch-ua': '"Chromium";v="148", "Microsoft Edge";v="148", "Not/A)Brand";v="99"',
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': '"macOS"',
+    'sec-fetch-dest': 'empty',
+    'sec-fetch-mode': 'cors',
+    'sec-fetch-site': 'same-origin',
+    'accept-language': 'es-419,es;q=0.9,es-ES;q=0.8,en;q=0.7',
+    cookie: COOKIE
+  };
+  if (IDP_TOKEN) headers['x-steelhead-idp-token'] = IDP_TOKEN;
   const res = await fetch(BASE + '/graphql', {
     method: 'POST',
-    headers: { 'content-type': 'application/json', cookie: COOKIE },
+    headers,
     body: JSON.stringify({
       operationName, variables,
       extensions: {
@@ -220,6 +260,24 @@ for (const id of roots) {
   await new Promise(r => setTimeout(r, PAUSA));
 }
 
+// NO escribir una extracción incompleta encima de la buena. Sin este guard, una corrida que
+// falla entera (sesión caducada, hash rotado) deja los 3 CSV con solo el encabezado y BORRA el
+// corte anterior — y como los SQL leen esos archivos, la auditoría siguiente sale en ceros y se
+// lee como «ya no hay huecos». Pasó el 2026-08-04. Un fallo total tiene que dejar el disco como
+// estaba, no peor.
+if (!done.size || !TREE.length) {
+  console.error(`\n✗ No se cosechó nada (${done.size}/${roots.length} raíces). ` +
+                `NO se escriben los CSV — se conserva el corte anterior.`);
+  if (errores.length) console.error(`  Primer error: ${errores[0].error}`);
+  process.exit(1);
+}
+// Cobertura parcial: se escribe, pero se avisa. Un 60% silencioso mentiría igual que un 0%.
+if (done.size < roots.length) {
+  console.warn(`\n⚠ Cobertura PARCIAL: ${done.size}/${roots.length} raíces ` +
+               `(${(done.size / roots.length * 100).toFixed(1)}%). ` +
+               `Los CSV que siguen NO cubren el dominio completo.`);
+}
+
 fs.mkdirSync(OUT_DIR, { recursive: true });
 
 // `en_proceso` = el nodo cuelga de al menos un proceso raíz. El paso 0 de la auditoría filtra
@@ -241,9 +299,23 @@ console.log(`✓ process_node.csv             ${n3.toLocaleString()} filas`);
 console.log(`  raíces cubiertas: ${done.size}/${roots.length}`);
 
 if (errores.length) {
-  console.log(`\n⚠ ${errores.length} raíces fallaron:`);
-  for (const e of errores.slice(0, 10)) console.log(`   ${e.id} — ${e.error}`);
-  console.log(`  Vuelve a correr con --resume para reintentarlas.`);
+  // Si fallaron TODAS por «sin treeRoot», no son 246 fallos independientes: es la sesión.
+  // /graphql devuelve 200 sin `errors` y con los campos en null cuando falta el idp-token,
+  // así que el síntoma no se parece a un problema de auth y se diagnostica mal.
+  const todasSinTree = errores.length === roots.length &&
+    errores.every(e => /sin treeRoot/.test(e.error));
+  if (todasSinTree) {
+    console.log(`\n⚠ Fallaron las ${errores.length} raíces con «respuesta sin treeRoot».`);
+    console.log(`  Eso NO es un problema de datos: es la sesión. /graphql responde 200 y sin`);
+    console.log(`  errores, pero con todo en null, cuando falta el header x-steelhead-idp-token`);
+    console.log(`  o la cookie caducó.`);
+    console.log(`  idp-token en esta corrida: ${IDP_TOKEN ? 'presente' : 'AUSENTE'}`);
+    console.log(`  Revisa el .env de «Reportes SH» (skill steelhead-auth) y reintenta.`);
+  } else {
+    console.log(`\n⚠ ${errores.length} raíces fallaron:`);
+    for (const e of errores.slice(0, 10)) console.log(`   ${e.id} — ${e.error}`);
+    console.log(`  Vuelve a correr con --resume para reintentarlas.`);
+  }
   process.exitCode = 1;
 } else if (fs.existsSync(CKPT)) {
   fs.unlinkSync(CKPT);
