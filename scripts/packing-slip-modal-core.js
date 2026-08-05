@@ -96,7 +96,38 @@
     return m ? m[1] : null;
   }
 
-  const api = { isShippingEmailModal, extractPartNumbers, extractPackingSlipNumber };
+  // Busca un Customer dentro de una respuesta de Apollo SIN conocer su shape:
+  // Apollo estampa `__typename` en cada nodo, así que basta recorrer hasta dar
+  // con uno de tipo Customer que traiga `name`.
+  //
+  // Existe porque leer el cliente de la tabla que queda DETRÁS del modal sólo
+  // funciona en la lista de albaranes; desde el módulo de Envío no hay tal tabla
+  // y el applet se quedaba sin saber de quién es la remisión — y entonces
+  // «no pude verificar» salía sobre clientes que sí tenían el dato.
+  //
+  // Tope de profundidad para no recorrer respuestas gigantes (el payload del
+  // correo ronda los 12 KB).
+  function findCustomerName(node, depth) {
+    const d = depth || 0;
+    if (!node || typeof node !== 'object' || d > 6) return null;
+    if (Array.isArray(node)) {
+      for (const it of node) {
+        const r = findCustomerName(it, d + 1);
+        if (r) return r;
+      }
+      return null;
+    }
+    if (node.__typename === 'Customer' && typeof node.name === 'string' && node.name.trim()) {
+      return node.name.trim();
+    }
+    for (const k of Object.keys(node)) {
+      const r = findCustomerName(node[k], d + 1);
+      if (r) return r;
+    }
+    return null;
+  }
+
+  const api = { isShippingEmailModal, extractPartNumbers, extractPackingSlipNumber, findCustomerName };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.PackingSlipModalCore = api;
 })(typeof window !== 'undefined' ? window : globalThis);
