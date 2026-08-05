@@ -183,14 +183,19 @@ const PackingSlipDrawings = (() => {
         if (!matches.length) { noResueltos.push(p.pnName); continue; }
         // Un solo grupo por NOMBRE (que es lo que el operador ve en la remisión),
         // alimentado con los archivos de TODOS sus registros homónimos.
-        const primero = matches[0];
         const unidos = [];
+        let idConArchivos = null;
         for (const m of matches) {
           const archivos = await fetchPnFiles(m.id);
+          if (archivos.length && idConArchivos == null) idConArchivos = m.id;
           for (const a of archivos) unidos.push(a);
         }
-        pns.push({ id: primero.id, name: p.pnName });
-        filesByPn[primero.id] = unidos;
+        // El id del grupo gobierna el LINK a la ficha, así que se prefiere el
+        // registro que sí tiene archivos: mandar al operador a la ficha vacía de
+        // un homónimo sería justo el paseo inútil que este applet debe evitar.
+        const idGrupo = idConArchivos != null ? idConArchivos : matches[0].id;
+        pns.push({ id: idGrupo, name: p.pnName });
+        filesByPn[idGrupo] = unidos;
       } catch (e) {
         noResueltos.push(p.pnName);
         console.warn(LOG, 'no pude resolver', p.pnName, e && e.message);
@@ -222,6 +227,16 @@ const PackingSlipDrawings = (() => {
   // 📐 del label y el atributo data-sa-ps-drawings.
   const AMBER = '#b26a00';
   const DIM = '#6b7280';
+
+  // Ficha del número de parte: /Domains/<d>/PartNumbers/<id>. El dominio sale de
+  // la URL actual (el applet sólo vive bajo /Domains/<d>/Shipping). Sin dominio
+  // o sin id se devuelve null y el nombre queda como texto plano — un link roto
+  // sería peor que ninguno.
+  function pnHref(pnId) {
+    if (pnId == null) return null;
+    const m = location.pathname.match(/^\/Domains\/(\d+)\//);
+    return m ? `/Domains/${m[1]}/PartNumbers/${pnId}` : null;
+  }
 
   // Los nombres de PN y de archivo vienen de GraphQL ⇒ vector cross-user.
   function escHtml(s) {
@@ -378,18 +393,31 @@ const PackingSlipDrawings = (() => {
     }
 
     for (const g of plan.groups) {
-      out.push(`<div style="margin:6px 0;font-weight:600">${escHtml(g.pnName)}</div>`);
+      // El NP es link a su ficha, para ir a cargar el plano que falta sin tener
+      // que buscarlo a mano. La ruta se arma con el dominio de la URL actual —
+      // el applet vive en /Domains/<d>/Shipping, así que siempre está ahí.
+      const href = pnHref(g.pnId);
+      const nombre = href
+        ? `<a href="${escHtml(href)}" target="_blank" rel="noopener noreferrer">${escHtml(g.pnName)}</a>`
+        : escHtml(g.pnName);
+      out.push(`<div style="margin:6px 0;font-weight:600">${nombre}</div>`);
       if (!g.files.length) {
         out.push(`<div style="margin-left:14px;color:${AMBER}">⚠ sin archivos cargados</div>`);
         continue;
       }
       for (const f of g.files) {
         const marcado = f.preselected && plan.incluirPlanos === true ? ' checked' : '';
+        // El nombre del archivo es un LINK a pestaña nueva: sin esto el operador
+        // tenía que marcar a ciegas, sin poder confirmar que el plano es el bueno.
+        // `rel="noopener"` es obligatorio con target=_blank (la pestaña abierta
+        // podría manipular la nuestra vía window.opener).
         out.push(
-          '<label style="display:block;margin-left:14px;cursor:pointer">' +
+          '<div style="margin-left:14px">' +
           `<input type="checkbox" data-sa-file="${escHtml(f.filename)}"${marcado}> ` +
-          `${escHtml(f.displayName)} <span style="color:${DIM}">(${escHtml(f.kind)})</span>` +
-          '</label>'
+          `<a href="${escHtml(FILE_URL(f.filename))}" target="_blank" rel="noopener noreferrer" ` +
+          `title="Abrir en pestaña nueva">${escHtml(f.displayName)}</a> ` +
+          `<span style="color:${DIM}">(${escHtml(f.kind)})</span>` +
+          '</div>'
         );
       }
     }
@@ -451,14 +479,28 @@ const PackingSlipDrawings = (() => {
 
   // ── Impresión ───────────────────────────────────────────────────────────────
 
-  // El link al albarán ya vive en el modal ("Click to View Packing Slip #1746"),
-  // así que se toma de ahí en vez de adivinar una ruta.
+  // Localiza el documento de la remisión dentro del modal.
+  //
+  // Primero por RUTA conocida (`/api/pdf/share/`, la que usan las etiquetas de
+  // OT). Si no aparece —y en producción no apareció— se amplía por TEXTO: el
+  // modal trae un enlace «Click to View Packing Slip #1461» / «Ver Albarán».
+  // Un anclaje no se cambia, se AMPLÍA.
+  const PS_LINK_RE = /(packing\s*slip|albar[aá]n|remisi[oó]n)/i;
+
   function findPackingSlipPdfUrl(dlg) {
-    const el = dlg && dlg.querySelector(
+    if (!dlg) return null;
+    const porRuta = dlg.querySelector(
       'a[href*="/api/pdf/share/"], object[data*="/api/pdf/share/"], iframe[src*="/api/pdf/share/"]'
     );
-    if (!el) return null;
-    return el.getAttribute('href') || el.getAttribute('data') || el.getAttribute('src');
+    if (porRuta) {
+      return porRuta.getAttribute('href') || porRuta.getAttribute('data') || porRuta.getAttribute('src');
+    }
+    for (const a of dlg.querySelectorAll('a[href]')) {
+      const href = a.getAttribute('href') || '';
+      if (!href || href.charAt(0) === '#') continue;
+      if (PS_LINK_RE.test(a.innerText || '')) return href;
+    }
+    return null;
   }
 
   async function onPrint(container) {

@@ -72,10 +72,20 @@ const PackingSlipPrint = (() => {
     const out = await PDFDocument.create();
     const missing = [];
 
-    // 1) La remisión va PRIMERO. Si falla, se sigue con los archivos y se avisa.
+    // 1) La remisión va PRIMERO. Si falla, se sigue con los archivos y se avisa
+    //    con algo ACCIONABLE: el operador necesita saber qué hacer, no qué
+    //    excepción lanzó pdf-lib.
+    const CONSEJO = 'imprímela aparte con el botón de la remisión';
     if (packingSlipPdfUrl) {
       try {
-        const src = await PDFDocument.load(await fetchBytes(packingSlipPdfUrl));
+        const bytes = await fetchBytes(packingSlipPdfUrl);
+        // El enlace del modal puede apuntar al PORTAL (una página HTML), no al
+        // PDF. Cargar eso en pdf-lib truena con un error críptico, así que se
+        // detecta antes y se dice en claro.
+        const esPdf = bytes.length > 4 && bytes[0] === 0x25 && bytes[1] === 0x50
+          && bytes[2] === 0x44 && bytes[3] === 0x46; // "%PDF"
+        if (!esPdf) throw new Error(`el enlace no es un PDF; ${CONSEJO}`);
+        const src = await PDFDocument.load(bytes);
         const pages = await out.copyPages(src, src.getPageIndices());
         pages.forEach((p) => out.addPage(p));
       } catch (e) {
@@ -83,7 +93,7 @@ const PackingSlipPrint = (() => {
         console.warn(LOG, 'no pude incorporar la remisión:', e && e.message);
       }
     } else {
-      missing.push({ name: 'la remisión', reason: 'no encontré su PDF en el modal' });
+      missing.push({ name: 'la remisión', reason: `no hay enlace a su PDF en este modal; ${CONSEJO}` });
     }
 
     // 2) Los archivos, en el orden del panel (agrupados por NP).
