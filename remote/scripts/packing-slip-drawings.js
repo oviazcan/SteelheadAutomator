@@ -202,6 +202,9 @@ const PackingSlipDrawings = (() => {
   // si se marcara antes y el montaje fallara por un render a medias, el panel
   // se congelaría "desaparecido" para siempre.
   async function mountPanel(dlg) {
+    // Defensa en profundidad sobre el latch: se pregunta por el NODO, no sólo
+    // por el atributo. Si ya hay una fila nuestra, no se monta otra.
+    if (dlg.querySelector('tr[data-sa-ps-drawings]')) return true;
     const row = findAttachmentsRow(dlg);
     if (!row) return false;
 
@@ -411,7 +414,11 @@ const PackingSlipDrawings = (() => {
     const obs = new MutationObserver(() => {
       const dlg = document.querySelector('.MuiDialog-paper, [role="dialog"]');
       if (!dlg) { currentPlan = null; selected.clear(); return; }
-      if (dlg.getAttribute('data-sa-ps-mounted') === '1') return;
+      // El guard rechaza '1' Y 'pending': `mountPanel` es async, así que entre el
+      // disparo del observer y su `.then()` caben varias mutaciones más. Mirar
+      // sólo '1' dejaba montar el panel DOS veces (visto en producción, v0.1.0).
+      const st = dlg.getAttribute('data-sa-ps-mounted');
+      if (st === '1' || st === 'pending') return;
       if (!enabled) return;
       if (!Modal().isShippingEmailModal(readModalInfo(dlg))) return;
       dlg.setAttribute('data-sa-ps-mounted', 'pending');
