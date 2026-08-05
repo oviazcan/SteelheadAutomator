@@ -1,6 +1,6 @@
 # `packing-slip-drawings` — Planos en Remisión
 
-**Versión:** 0.1.2 · **Estado:** **DESPLEGADO Y VIVO** (config 1.11.69) · pendiente canario con
+**Versión:** 0.1.3 · **Estado:** **DESPLEGADO Y VIVO** (config 1.11.72) · pendiente canario con
 FISHER y verificación de adjunto/impresión
 **Spec:** [`2026-08-04-packing-slip-drawings-design.md`](../superpowers/specs/2026-08-04-packing-slip-drawings-design.md)
 **Plan:** [`2026-08-04-packing-slip-drawings.md`](../superpowers/plans/2026-08-04-packing-slip-drawings.md)
@@ -177,7 +177,35 @@ fallar. Medida en frío responde en **182 ms** y devuelve `false` correctamente.
 queries) — el límite es **por SESIÓN**, como advierte el `CLAUDE.md`. Diagnosticar en un ERP que uno
 mismo acaba de saturar produce falsos positivos: **medir en frío antes de culpar al código**.
 
-### 6 · El panel va en estilo NATIVO, no dark mode
+### 6 · Buscar la causa de un síntoma menor destapó el bug caro (v0.1.3)
+
+**Síntoma reportado:** el panel salía con «no pude verificar» sobre SCHNEIDER, que tiene
+`IncluirPlanos: false` y debía dejar el applet **inerte**.
+
+**Lo que apareció buscando la causa, y era mucho peor:** resolver los archivos cuesta **dos queries
+por número de parte**, y se disparaban **automáticamente al abrir el modal**, antes de confirmar que
+el cliente quisiera planos. Una remisión real de Fisher trae **88 NP ⇒ 176 peticiones en ráfaga**. El
+`/graphql` se cuelga a las ~40 y el límite es **por SESIÓN**: habría tumbado también la pantalla
+nativa del operador. Y eso en **cada** correo de remisión, cuando **80 de 81 clientes** ni siquiera
+quieren planos.
+
+> **La regla que queda:** el trabajo caro va **después** de la confirmación, no antes. Un applet de
+> nicho que hace su trabajo pesado «por si acaso» no es entusiasta, es un ataque de denegación de
+> servicio contra su propio ERP.
+
+Ahora la carga automática exige un `true` **confirmado**. Con `null` se pinta **una sola línea** con
+un botón *«Buscar planos de N NP»*: se conserva la salida de emergencia sin pagar el costo por
+defecto. De paso arregla el ruido — el panel completo en todos los correos era un aviso que casi
+siempre sobra, y esos se aprenden a ignorar.
+
+**La causa del síntoma** era que identificar al cliente dependía de leer la tabla que queda **detrás**
+del modal, y esa tabla sólo existe en la lista de albaranes. Se **amplió** (no se cambió) con
+`findCustomerName`, que localiza al `Customer` dentro de las respuestas que el modal ya pide,
+apoyándose en el `__typename` que Apollo estampa en cada nodo — sin necesidad de conocer el shape.
+Se limpia al cerrar el modal: si sobreviviera, el siguiente decidiría con el dueño anterior — el
+nodo stale del `CLAUDE.md`, sólo que en una variable.
+
+### 7 · El panel va en estilo NATIVO, no dark mode
 
 Excepción deliberada a la regla del repo, con **precedente exacto encontrado en vivo**: SH ya tiene
 en este mismo modal una fila **«Incluir Certificado»** con checkbox y link. Nuestro panel es su
@@ -202,7 +230,7 @@ Y dentro del panel:
 | Archivo | Responsabilidad |
 |---|---|
 | `packing-slip-drawings-core.js` | Decisión pura: `readIncluirPlanos` · `classifyFile` · `buildAttachmentPlan` · `toAttachments` |
-| `packing-slip-modal-core.js` | Reconocimiento puro: `isShippingEmailModal` · `extractPartNumbers` · `extractPackingSlipNumber` |
+| `packing-slip-modal-core.js` | Reconocimiento puro: `isShippingEmailModal` · `extractPartNumbers` · `extractPackingSlipNumber` · `findCustomerName` |
 | `packing-slip-print.js` | `printCombined` — cose con `pdf-lib` e imprime por iframe |
 | `packing-slip-drawings.js` | Glue: interceptor, observer, panel |
 | `lib/pdf-lib.min.js` | Librería (artefacto, 525 KB) |
@@ -213,7 +241,7 @@ un plano. Así el golden test del DOM no arrastra la lógica de clasificación.
 `pdf.js` **lee**, `pdf-lib` **escribe y cose**: son complementarias. Rasterizar con `pdf.js` habría
 degradado justo las cotas finas de los planos, que es lo que el cliente exige impreso.
 
-**Tests:** 26 (`packing-slip-drawings-core`) + 22 (`packing-slip-modal-core`) = **48**.
+**Tests:** 26 (`packing-slip-drawings-core`) + 29 (`packing-slip-modal-core`) = **55**.
 
 ## Deuda declarada
 
