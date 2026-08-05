@@ -58,6 +58,12 @@
   // Encabezados de la tabla de partes, en los dos idiomas conocidos.
   const HEADER_RE = /^(so\s*#|wo\s*#|part\s*#|qty|ov\s*#|ot\s*#|parte\s*#|cant)/;
 
+  // El MISMO catálogo, aplicado a la celda que se va a tomar como nombre de PN.
+  // Filtrar sólo por el inicio de la fila no basta: basta un carácter invisible
+  // o una celda vacía al frente para que la fila de encabezado se cuele y
+  // «Part #» acabe tratado como número de parte (visto en producción, v0.1.4).
+  const CELL_HEADER_RE = /^(part\s*#|parte\s*#|so\s*#|wo\s*#|ov\s*#|ot\s*#|qty|cant\.?|cantidad)$/i;
+
   // Entrada: el innerText de cada <tr> del diálogo (celdas separadas por tab).
   // Formato REAL medido:
   //   "#1770 - 4300016123\t#13667\t10-4307003-001\t2567"
@@ -76,7 +82,7 @@
       const cells = line.split('\t').map((c) => c.trim()).filter((c) => c !== '');
       if (cells.length < 4) continue;
       const pnName = cells[2];
-      if (!pnName || seen.has(pnName)) continue;
+      if (!pnName || CELL_HEADER_RE.test(pnName) || seen.has(pnName)) continue;
       seen.add(pnName);
       out.push({ pnName, soNumber: cells[0], woNumber: cells[1], qty: cells[3] });
     }

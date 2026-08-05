@@ -127,15 +127,35 @@ const PackingSlipDrawings = (() => {
 
   // ── Resolución NP → archivos ────────────────────────────────────────────────
 
+  // Cuántos registros homónimos se consultan como máximo por nombre de parte.
+  // Cada uno cuesta una query extra; el tope evita que un nombre muy duplicado
+  // dispare una ráfaga contra el /graphql.
+  const MAX_HOMONIMOS = 3;
+
   // El modal da el NOMBRE del PN, no su id. SearchPartNumbers no devuelve
   // archivados, que es justo lo que queremos: un NP archivado no debería ir en
   // una remisión.
-  async function resolvePnId(pnName) {
+  //
+  // ⚠️ DEVUELVE TODOS LOS HOMÓNIMOS, no uno.
+  // El ERP tiene números de parte DUPLICADOS: medido, `S49B0531A7` existe dos
+  // veces para FISHER, activos ambos, y los archivos cuelgan sólo del registro
+  // VIEJO (id 3027607) mientras el nuevo (3657419) está vacío. Con `ID_DESC` se
+  // tomaba justo el vacío y el panel decía «sin archivos cargados» sobre un NP
+  // que sí tiene plano — el peor error posible aquí, porque es el que hace que
+  // el cliente NO reciba lo que pidió sin que nadie se entere.
+  //
+  // Elegir «el que tenga archivos» sería adivinar de nuevo; se unen TODOS y el
+  // dedup por `filename` se encarga de los repetidos.
+  async function resolvePnIds(pnName) {
     const data = await api().query('SearchPartNumbers',
       { searchQuery: pnName, first: 20, offset: 0, orderBy: ['ID_DESC'] }, 'SearchPartNumbers');
     const nodes = (data && data.searchPartNumbers && data.searchPartNumbers.nodes) || [];
-    const exact = nodes.find((n) => n && String(n.name).trim() === String(pnName).trim());
-    return exact ? { id: exact.id, name: exact.name } : null;
+    const target = String(pnName).trim();
+    const exactos = nodes.filter((n) => n && String(n.name).trim() === target);
+    if (exactos.length > MAX_HOMONIMOS) {
+      console.warn(LOG, `"${target}" tiene ${exactos.length} registros; sólo consulto ${MAX_HOMONIMOS}`);
+    }
+    return exactos.slice(0, MAX_HOMONIMOS).map((n) => ({ id: n.id, name: n.name }));
   }
 
   async function fetchPnFiles(pnId) {
@@ -159,10 +179,18 @@ const PackingSlipDrawings = (() => {
     const noResueltos = [];
     for (const p of parts) {
       try {
-        const pn = await resolvePnId(p.pnName);
-        if (!pn) { noResueltos.push(p.pnName); continue; }
-        pns.push(pn);
-        filesByPn[pn.id] = await fetchPnFiles(pn.id);
+        const matches = await resolvePnIds(p.pnName);
+        if (!matches.length) { noResueltos.push(p.pnName); continue; }
+        // Un solo grupo por NOMBRE (que es lo que el operador ve en la remisión),
+        // alimentado con los archivos de TODOS sus registros homónimos.
+        const primero = matches[0];
+        const unidos = [];
+        for (const m of matches) {
+          const archivos = await fetchPnFiles(m.id);
+          for (const a of archivos) unidos.push(a);
+        }
+        pns.push({ id: primero.id, name: p.pnName });
+        filesByPn[primero.id] = unidos;
       } catch (e) {
         noResueltos.push(p.pnName);
         console.warn(LOG, 'no pude resolver', p.pnName, e && e.message);
