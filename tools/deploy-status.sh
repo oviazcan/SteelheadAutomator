@@ -21,6 +21,13 @@ cfgver() { grep -E '"version"' | head -1 | sed -E 's/.*"version"[[:space:]]*:[[:
 CUR_BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 MAIN_VER="$(git show main:remote/config.json 2>/dev/null | cfgver)"
 GHP_VER="$(git show gh-pages:config.json 2>/dev/null | cfgver)"
+# gh-pages REMOTA. Sin esto, un push RECHAZADO (non-fast-forward) deja la rama LOCAL
+# adelantada y el sitio atras, y el reporte salia "Desalineado ... vivo=X" — que se lee
+# IGUAL que un lag del CDN. Esa ambiguedad hizo que tres deploys atorados pasaran por
+# "propagando" el 2026-08-05 (hashes corregidos en el repo, ROTOS en vivo). Son dos causas
+# de gravedad opuesta y ahora se distinguen: si local != remota, el push NO llego.
+git fetch --quiet origin gh-pages 2>/dev/null || true
+GHP_REMOTE_VER="$(git show origin/gh-pages:config.json 2>/dev/null | cfgver)"
 LIVE_BODY="$(curl -fsSL -H 'Cache-Control: no-cache' "$GH_PAGES_BASE/config.json?_=$(date +%s)" 2>/dev/null || true)"
 LIVE_VER="$(echo "$LIVE_BODY" | cfgver)"
 
@@ -31,8 +38,21 @@ elif git cat-file -e "HEAD:config.json" 2>/dev/null; then
   echo "  rama actual ($CUR_BRANCH): config $(git show HEAD:config.json | cfgver)  [rama de deploy]"
 fi
 echo "  main (git)   : config ${MAIN_VER:-?}"
-echo "  gh-pages(git): config ${GHP_VER:-?}"
+echo "  gh-pages(git): config ${GHP_VER:-?}   (local)"
+echo "  gh-pages(remoto): config ${GHP_REMOTE_VER:-?}   (origin/gh-pages)"
 echo "  EN VIVO      : config ${LIVE_VER:-(no responde)}"
+# Diagnostico EXPLICITO de la causa: push atorado vs lag de Pages. Nombrar la causa es el
+# punto — el mensaje generico es lo que se malinterpreto.
+if [ -n "${GHP_VER:-}" ] && [ -n "${GHP_REMOTE_VER:-}" ] && [ "$GHP_VER" != "$GHP_REMOTE_VER" ]; then
+  echo
+  echo "🚨 EL PUSH NO LLEGO: gh-pages LOCAL ($GHP_VER) != REMOTA ($GHP_REMOTE_VER)."
+  echo "   Tu deploy quedo commiteado pero NO publicado: los applets siguen ROTOS en vivo."
+  echo "   Arreglo: git fetch origin gh-pages && git rebase origin/gh-pages gh-pages && git push origin gh-pages"
+elif [ -n "${GHP_REMOTE_VER:-}" ] && [ -n "${LIVE_VER:-}" ] && [ "$GHP_REMOTE_VER" != "$LIVE_VER" ]; then
+  echo
+  echo "⏳ Lag de GitHub Pages: la remota ya trae $GHP_REMOTE_VER y el sitio aun sirve $LIVE_VER (~30-60s + CDN)."
+  echo "   Esto SI es propagacion (el push llego). No confundir con el caso de arriba."
+fi
 echo
 
 echo "=== Invariante gh-pages == main:remote/ (byte-a-byte) ==="
