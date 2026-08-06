@@ -434,3 +434,47 @@ test('el PDF administrativo que matchea «licencia» NO es una licencia de chofe
   assert.equal(C.isImageFile(ruido.name), false);
   assert.deepEqual(C.selectLicenseFiles([ruido], 'Licencias'), []);
 });
+
+// ── Archivar: el patch necesita la PRIMARY KEY ─────────────────────────────
+//
+// `UpdateMultipleUserFilesByName(mnUserFilePatch: [UserFilePatch!]!)`. Contrato medido en
+// TLC el 2026-08-06 con dos sondeos que NO escribieron:
+//   · {zzNoExiste:1}          → «Field "zzNoExiste" is not defined by type "UserFilePatch"»
+//   · {archivedAt:'NO-ES-FECHA'} → «You must provide the primary key(s) … on 'user_files'»
+//
+// El segundo es el que informa: `archivedAt` SÍ existe (pasó la validación de esquema y
+// llegó al resolver), y la PK es obligatoria en el patch. La PK de `user_files` es el
+// `name`, consistente con el nodeId ["user_files","1782575806694-421676134.jpg"].
+//
+// ⚠️ Sin `name` el ERP rechaza; con `name` ESCRIBE. Por eso el patch se arma en el core,
+// con la PK siempre presente, y nunca a mano en el glue.
+
+test('buildArchivePatch lleva SIEMPRE la primary key', () => {
+  const p = C.buildArchivePatch('1785961684774-295104609.png', '2026-08-06T12:00:00.000Z');
+  assert.equal(p.name, '1785961684774-295104609.png');
+  assert.equal(p.archivedAt, '2026-08-06T12:00:00.000Z');
+});
+
+test('desarchivar es archivedAt = null, no cadena vacía ni ausencia', () => {
+  const p = C.buildArchivePatch('x.png', null);
+  assert.equal(p.name, 'x.png');
+  assert.equal(p.archivedAt, null);
+  assert.ok('archivedAt' in p, 'el campo debe ir presente para poder limpiarlo');
+});
+
+test('sin nombre de archivo no se arma patch — escribiría sobre quién sabe qué', () => {
+  assert.equal(C.buildArchivePatch('', '2026-08-06T12:00:00.000Z'), null);
+  assert.equal(C.buildArchivePatch(null, '2026-08-06T12:00:00.000Z'), null);
+});
+
+// Archivar el ARCHIVO no lo saca del catálogo publicado: son dos cosas. Si se archiva sin
+// republicar, el hook sigue apuntando a esa liga y la remisión la seguiría pidiendo.
+test('archiveWarning avisa cuando la licencia está PUBLICADA', () => {
+  const w = C.archiveWarning('hector', { hector: 'a.png', jesus: 'b.png' });
+  assert.ok(w && /public/i.test(w), 'debe advertir que sigue en el catálogo publicado');
+});
+
+test('archiveWarning calla si no está publicada — no hay nada que republicar', () => {
+  assert.equal(C.archiveWarning('nadie', { hector: 'a.png' }), '');
+  assert.equal(C.archiveWarning('hector', null), '');
+});

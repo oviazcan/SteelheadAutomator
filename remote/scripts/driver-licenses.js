@@ -165,6 +165,14 @@
     return { code: found.code, compiled: found.compiled };
   }
 
+  // Archiva la identificación en Steelhead. El patch SIEMPRE lleva la PK (`name`): sin ella
+  // el ERP rechaza, y con ella escribe — por eso lo arma el core, no esta función.
+  async function archiveFile(fileName) {
+    const patch = CORE.buildArchivePatch(fileName, new Date().toISOString());
+    if (!patch) throw new Error('No se pudo identificar el archivo a archivar.');
+    return await api().query('UpdateMultipleUserFilesByName', { mnUserFilePatch: [patch] });
+  }
+
   async function uploadBinary(file) {
     const fd = new FormData();
     fd.append('myfile', file, file.name);
@@ -239,6 +247,67 @@
       padding:7px 14px;border-radius:6px;cursor:pointer;font-weight:${kind === 'primary' ? 600 : 400}">${esc(label)}</button>`;
   }
 
+  // ── Archivar (con confirmación) ───────────────────────────────────────────
+  //
+  // Archivar el ARCHIVO y quitarlo del CATÁLOGO son dos cosas distintas: si la licencia está
+  // publicada, el hook la sigue pidiendo hasta que se publique de nuevo. El modal lo dice.
+  function showArchiveConfirm(key, fileName) {
+    const aviso = CORE.archiveWarning(key, state.published);
+    setBody(`
+      <div style="font-weight:600;margin-bottom:10px">Archivar «${esc(key)}»</div>
+      <div style="display:flex;gap:14px;align-items:flex-start;margin-bottom:14px">
+        ${thumbCell(fileName)}
+        <div style="color:${C_MUTED};font-size:12px;line-height:1.6">
+          Se archivará el archivo <b style="color:${C_FG}">${esc(fileName)}</b> en Steelhead.<br>
+          Deja de aparecer en Uploaded Files; <b>no se borra</b> y se puede desarchivar desde el ERP.
+        </div>
+      </div>
+      ${aviso ? `<div style="border:1px solid ${C_AMBER};border-radius:8px;padding:12px 14px;color:${C_AMBER}">
+          <b>Ojo.</b> ${esc(aviso)}
+        </div>` : ''}
+      <div id="dl-arch-msg" style="margin-top:12px;font-size:12px"></div>`);
+    setFoot(`${btn('dl-arch-cancel', 'Cancelar', '')}${btn('dl-arch-go', 'Sí, archivar', 'primary')}`);
+    document.getElementById('dl-arch-cancel').onclick = render;
+    document.getElementById('dl-arch-go').onclick = () => doArchive(key, fileName);
+  }
+
+  async function doArchive(key, fileName) {
+    if (state.busy) return;
+    state.busy = true;
+    setFoot(`<span style="color:${C_MUTED}">Archivando…</span>`);
+    try {
+      await archiveFile(fileName);
+      // La mutation no devuelve el registro: se RELEE. Si el archivo sigue apareciendo entre
+      // los NO archivados, no se archivó — y decirlo importa más que aparentar que sí.
+      const listed = await fetchLicenseFiles(state.published);
+      const sigue = (listed.files || []).some((f) => f && f.name === fileName);
+      state.files = listed.files;
+      state.exhausted = listed.exhausted;
+      log((sigue ? 'archivar NO se reflejó: ' : 'archivada: ') + fileName);
+      setBody(`
+        <div style="border:1px solid ${sigue ? C_AMBER : C_ACCENT};border-radius:8px;padding:14px;
+                    color:${sigue ? C_AMBER : C_ACCENT}">
+          ${sigue
+            ? `<b>Se mandó, pero sigue apareciendo.</b> No pude confirmar que «${esc(key)}» quedara archivada.`
+            : `<b>«${esc(key)}» quedó archivada</b> y verificada releyendo del servidor.`}
+        </div>
+        ${CORE.archiveWarning(key, state.published)
+          ? `<div style="margin-top:12px;border:1px solid ${C_AMBER};border-radius:8px;padding:12px 14px;color:${C_AMBER}">
+               Falta <b>publicar</b> para que deje de salir en la lista de embarque.
+             </div>` : ''}`);
+      setFoot(btn('dl-arch-back', 'Volver al listado', 'primary'));
+      document.getElementById('dl-arch-back').onclick = render;
+    } catch (e) {
+      setBody(`<div style="border:1px solid ${C_RED};border-radius:8px;padding:14px;color:${C_RED}">
+        <b>No se archivó.</b><br>${esc(e.message || e)}</div>`);
+      setFoot(btn('dl-arch-back', 'Volver', ''));
+      document.getElementById('dl-arch-back').onclick = render;
+      log('ERROR archivar: ' + (e.message || e));
+    } finally {
+      state.busy = false;
+    }
+  }
+
   // ── Vista principal ───────────────────────────────────────────────────────
 
   // Progreso REAL, no un spinner decorativo: el denominador es el presupuesto de peticiones,
@@ -307,6 +376,12 @@
         <td style="padding:7px 4px;font-weight:600">${esc(r.key)}</td>
         <td style="padding:7px 4px;color:${C_MUTED};font-size:11px">${esc(r.file)}</td>
         <td style="padding:7px 4px;color:${color};text-align:right;white-space:nowrap">${label}</td>
+        <td style="padding:7px 4px;text-align:right;white-space:nowrap">
+          <button data-dl-archive="${esc(r.key)}" data-dl-file="${esc(r.file)}"
+            title="Archivar esta identificación en Steelhead"
+            style="background:transparent;border:1px solid ${C_LINE};color:${C_MUTED};
+                   padding:5px 10px;border-radius:6px;cursor:pointer;font-size:12px">Archivar</button>
+        </td>
       </tr>`;
     }).join('');
 
@@ -365,8 +440,9 @@
           <th style="padding:0 4px 6px">Se nombra así en el embarque</th>
           <th style="padding:0 4px 6px">Archivo</th>
           <th style="padding:0 4px 6px;text-align:right">Estado</th>
+          <th style="padding:0 4px 6px"></th>
         </tr>
-        ${rows || `<tr><td colspan="4" style="padding:12px 4px;color:${C_MUTED}">Todavía no hay licencias cargadas.</td></tr>`}
+        ${rows || `<tr><td colspan="5" style="padding:12px 4px;color:${C_MUTED}">Todavía no hay licencias cargadas.</td></tr>`}
       </table>
       ${budgetBlock}${orphanBlock}${warnBlock}
       </div>`);
@@ -384,6 +460,10 @@
       ${btn('dl-publish', 'Revisar y publicar…', (diff.isEmpty || suspect) ? '' : 'primary')}`);
 
     wireThumbs(document.getElementById('dl-body'));
+    document.querySelectorAll('#dl-body button[data-dl-archive]').forEach(function (b) {
+      b.onclick = () => showArchiveConfirm(b.getAttribute('data-dl-archive'),
+                                           b.getAttribute('data-dl-file'));
+    });
     document.getElementById('dl-upload').onclick = onUpload;
     const pub = document.getElementById('dl-publish');
     pub.onclick = () => showPublishConfirm(next, diff);

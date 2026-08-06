@@ -32,6 +32,7 @@
         "SendEmailChecked": "63afd0cb799d8c9d17106fb1827fa210641d6608e9c1c2483480eb0be17635bc",
         "CreateReceivedOrder": "363cab20f9bd7fc89619e575de8d5a018cd2d59784081bef48fb77f9a41b07e5",
         "CreateUserFile": "9028f6b729fe0cd253b1d47d5f27d84cc15293bbc12381225a7c00a402849ec9",
+        "UpdateMultipleUserFilesByName": "e2850593ea3a398d4db0ff29110c6877517d3f6701546f7866ee1a9c9c7dea30",
         "CreatePdfLowCode": "d62963890dc2ea10df8e5be2dc2b8f85443074969a3ecdb337d7e9459afbd9d4",
         "CreateReceivedOrderUserFile": "5896851dd3ee71e025bd59be3a0a3795d2ccf177636ee1bb45b10084f1541f57",
         "SetPartNumberPricesAsDefaultPrice": "9f89b40ef7d5754e8e94a94b028ce4c54c3cbf53a102098fd4d3cbec28c9e293",
@@ -2649,6 +2650,11 @@
       "type": "mutation",
       "description": "Crear nueva orden de venta con custom inputs",
       "usedBy": "po-comparator"
+    },
+    "UpdateMultipleUserFilesByName": {
+      "type": "mutation",
+      "description": "Actualizar archivos por nombre — archivar con archivedAt (la PK `name` es OBLIGATORIA en el patch)",
+      "usedBy": "driver-licenses"
     },
     "CreateUserFile": {
       "type": "mutation",

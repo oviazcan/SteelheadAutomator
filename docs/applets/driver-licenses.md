@@ -1,6 +1,6 @@
 # `driver-licenses` — Licencias de Choferes
 
-**Versión:** 0.1.2 · **Estado:** **EN PRODUCCIÓN** desde el 2026-08-05 (`config v1.11.88`).
+**Versión:** 0.1.3 · **Estado:** **EN PRODUCCIÓN** desde el 2026-08-05 (`config v1.11.88`).
 El 2026-08-06 se corrigieron DOS bugs que impedían usarlo: el HTTP 400 de `PdfLowCode` y el
 barrido del catálogo completo que **tumbaba la sesión del ERP**.
 **Rutas de hash:** las tres operaciones quedaron con ruta y el trinquete `hash-regen-coverage`
@@ -14,7 +14,7 @@ de embarque cuando el nombre del chofer aparece en las notas o en el nombre del 
 |---|---|
 | Núcleo puro | `remote/scripts/driver-licenses-core.js` |
 | UI + red | `remote/scripts/driver-licenses.js` |
-| Tests | `tools/test/driver-licenses-core.test.js` — **46 verdes** |
+| Tests | `tools/test/driver-licenses-core.test.js` — **51 verdes** |
 | Contrato | `SteelheadPowerTools/docs/specs/2026-08-05-applet-licencias-choferes.md` |
 | Hook que consume | `SteelheadPowerTools/hooks/pdf/SHIPMENT_TEMPLATE.ts` (TLC `11471` · MTY `11472`) |
 
@@ -287,6 +287,39 @@ Publicar eso **borra el catálogo** y deja a los choferes sin foto, sin un solo 
 `looksLikeFailedSearch()` **bloquea el botón de publicar** cuando no se leyó ningún archivo y sí
 hay catálogo publicado. Sin catálogo el vacío es legítimo — es el primer alta.
 
+## Archivar una identificación (2026-08-06)
+
+Botón **Archivar** por renglón, con modal de confirmación. La mutation es
+`UpdateMultipleUserFilesByName`, y su contrato se **midió** con dos sondeos que no
+escribieron:
+
+| Sondeo | Respuesta | Qué enseña |
+|---|---|---|
+| `{zzNoExiste:1}` | `Field "zzNoExiste" is not defined by type "UserFilePatch"` | el patch valida campos |
+| `{archivedAt:'NO-ES-FECHA'}` | `You must provide the primary key(s) … on 'user_files'` | **`archivedAt` existe** y la **PK es obligatoria** |
+
+El segundo es el importante y por poco engaña: **no falló por campo inexistente sino en el
+resolver**, o sea que `archivedAt` es válido. También significa que ese sondeo **llegó más
+lejos de lo previsto** — con la PK incluida habría escrito. La PK es el `name`, consistente
+con el `nodeId` que decodifica a `["user_files","1782575806694-421676134.jpg"]`.
+
+Por eso el patch lo arma **el core** (`buildArchivePatch`), con la PK siempre presente, y
+nunca a mano en el glue: *sin `name` el ERP rechaza; **con** `name` escribe.*
+
+**Archivar el ARCHIVO no lo saca del CATÁLOGO.** Son dos operaciones: si la licencia está
+publicada, el hook la sigue pidiendo hasta que se vuelva a publicar. `archiveWarning()` lo
+dice en el modal **y** en el resultado — si no, el operador cree que ya terminó y el chofer
+sigue saliendo en la remisión. Y como la mutation no devuelve el registro, se **verifica
+releyendo**: si el archivo sigue entre los no-archivados, se dice en ámbar en vez de afirmar
+un éxito que no se midió.
+
+**Ruta de regeneración:** entidad `userFileArchive` en `sentinels-config.json`, estrategia
+**capture-abort** sobre la OC 1789 — la op se dispara al «Guardar» de una Orden de Compra y de
+un Bill (medido por el scanner el 2026-07-24), así que dejar pasar el request guardaría una OC
+productiva. Declarada, **no validada en vivo**. Hipótesis anotada y **no medida**: archivar
+desde la pantalla nativa *UploadedFiles* probablemente dispara la misma op por una ruta más
+corta y sin tocar una OC; si alguien lo confirma, la entrada debería mudarse ahí.
+
 ## Verificar releyendo (2026-08-06)
 
 `CreatePdfLowCode` responde `{clientMutationId:null}` — ni el id ni el valor — así que el
@@ -300,6 +333,11 @@ hacía esta relectura tras el push; el applet no.
 
 ## Historial
 
+- **0.1.3** (2026-08-06) — **Archivar** con modal de confirmación (`UpdateMultipleUserFilesByName`,
+  contrato medido, alta del hash + ruta `userFileArchive`), y el pulido tras verlo en uso: se
+  quitó el texto basura bajo cada foto (HTML dentro de un atributo `onerror`), miniatura 44×44 →
+  **132×84** porque las identificaciones son apaisadas, panel 640 → 820px, **barra de progreso**
+  y «Subir una licencia» movido arriba. +5 tests (46 → **51**).
 - **0.1.2** (2026-08-06) — **Fix de producción #2 + miniaturas.** `fetchLicenseFiles` paginaba
   los 23,147 archivos del ERP (~460 peticiones) y **tumbaba la sesión** (límite ~40-45, por
   SESIÓN). Ahora filtra el SERVIDOR vía `searchQuery`, en dos etapas, con presupuesto duro de
