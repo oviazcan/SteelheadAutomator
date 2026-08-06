@@ -142,10 +142,32 @@ Descartado con evidencia — **no volver a probarlo**:
 - No es el gate de URL (`matches=true` en el log de init), ni el latch de habilitación, ni permisos
   (`autoInject` no los consulta), ni una excepción no capturada (consola limpia).
 
-**Sospecha sin confirmar:** `setupObserver()` pone `observerActive = true` **antes** de
-`obs.observe(document.body, …)` ⇒ un fallo de montaje queda congelado para siempre. Es el
-anti-patrón que este mismo CLAUDE.md nombra (*«un latch marca el ÉXITO, no el INTENTO»*).
-**No se arregló a ciegas.**
+**~~Sospecha: el observer no se monta~~ — REFUTADA POR MEDICIÓN (2026-08-05, misma noche).**
+Se sospechaba que `setupObserver()` pone `observerActive = true` **antes** de
+`obs.observe(document.body, …)` y que un fallo de montaje quedaba congelado. **Es falso.** Se
+parcheó `MutationObserver.prototype.observe` **antes** de que el applet se inyectara —abriendo
+primero `/Domains/<id>/WorkOrders`, donde el gate NO lo carga (confirmado: no está en
+`__saLoadedApps.ids`), y llegando a la lista de OVs **navegando por la SPA**, que es el camino
+real del operador— y el registro quedó capturado:
+
+```
+target: document.body   opts: {"childList":true,"subtree":true}
+stack:  at setupObserver (<anonymous>:297:14) | at Object.init (<anonymous>:51:11)
+```
+
+**El observer SÍ se monta.** La causa de que no se vieran logs de `modal detectado` es otra y
+**sigue sin identificar** — no vale la pena volver a probar el montaje.
+
+⚠️ **La segunda tanda de medición también se contaminó**: el `/graphql` volvió a colgarse (el
+combo de Cliente abría con **cero opciones** y al final **el modal ya ni abría**). El límite es
+**por sesión** y no se recupera recargando. **Cualquier intento futuro empieza con sesión de
+navegador limpia, y el diagnóstico se hace con el mínimo de peticiones posible.**
+
+**Siguiente hipótesis a probar (no probada aún):** que la extensión del operador esté sirviendo
+**código/config cacheado** — `applet-gate.js` cachea el código verificado por versión y
+`loadConfig()` tiene TTL. Si su máquina no bajó `1.11.91`, ninguno de los tres fixes le llegó y el
+síntoma se ve idéntico a un bug del applet. Se verifica con el snippet que imprime
+`tools/check-deploy.sh` (compara `cfg.version` remoto contra el que corre la extensión).
 
 ⚠️ **Al retomar, sesión LIMPIA.** El diagnóstico acumuló ~50 peticiones al `/graphql` y
 probablemente lo dejó degradado (el límite es **por sesión** y no se recupera recargando), además
