@@ -86,6 +86,31 @@ Eso **baja la prioridad** (no cierra) de tres filas de abajo: `unit-autoconvert 
 Sigue siendo deuda porque depender de que un vendor NO traduzca es frágil — pero ya no son
 sospechosas de estar fallando en piso, y el orden de ataque cambia.
 
+### ✅ 2026-08-05 — la tabla de parámetros de spec: MEDIDA, no supuesta
+
+El operador aportó el DOM de la ficha de NP **con la UI en español**, y ahí se ve la mezcla
+en una **misma fila** de la tabla de parámetros:
+
+| `aria-label` | Idioma en una sesión ES | Lo usa |
+|---|---|---|
+| `Show Spec` | **inglés** | `hash-autopilot` (ciclo `partNumberSpecParams`) |
+| `Archive Parameter` | **inglés** | ídem |
+| `Edit Spec Field Parameter` | **inglés** | ídem |
+| `Cambiar Nodo de Proceso` | **español** | — |
+| `Cambiar Ubicación` | **español** | — |
+| `Cambiar Campo de Especificación de Tipo de Geometría` | **español** | — |
+| `Copiar arriba` / `Copiar abajo` | **español** | — |
+
+**Cierra la duda para los tres primeros: SH NO los traduce.** No es una apuesta ni una
+suposición — es el string real, leído en productivo, en una sesión cuya UI *sí* está
+traducida (el resto de la misma fila lo prueba). El anclaje mono-idioma de esos tres es
+**correcto y medido**, y sale de la lista de sospechosos.
+
+Sigue valiendo la regla de abajo: los cuatro strings españoles quedan **registrados** por si
+algún anclaje futuro los necesita, y **no se inventa** la traducción de los que no se vieron.
+Que SH traduzca unos y otros no dentro de la misma tabla es justamente por qué adivinar no
+funciona: no hay patrón, hay que mirar.
+
 ## 🟡 Alta 2026-07-30 — `surtido-guard` 0.3.0 (filtro por línea destino)
 
 | Ancla | archivo | ES (verificado en vivo) | EN (HIPÓTESIS, sin verificar) | Riesgo si falla |

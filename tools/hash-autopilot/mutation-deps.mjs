@@ -328,7 +328,8 @@ async function savePartsQuoteAborted(page, sink, { id, domain }) {
 //     UpdatePartNumberSpecParam: dispara el MISMO SaveMultipleSpecFieldParams que el modal
 //     multiple. Steelhead unifico ambos caminos.
 //   - "Add Spec" NO dispara AddParamsToPartNumber sino ApplySpecsToPartNumber (otra op).
-//     Por eso AddParamsToPartNumber sigue SIN ruta (ver _paraPendiente en sentinels-config).
+//     AddParamsToPartNumber sale del "+" (AddIcon) de la fila del SPEC FIELD -> modal
+//     "Create Spec Field Param From Default" -> ADD PARAMETER -> CONFIRM (2026-08-05).
 // UpdatePartNumberSpecParam sale de ARCHIVAR un parametro (aria-label="Archive Parameter"
 // + confirmacion), que es exactamente para lo que la usa spec-migrator (archivedAt ISO).
 //
@@ -360,6 +361,7 @@ async function specParamsAborted(page, sink, ctx) {
   if (sink && sink.abortOps) {
     sink.abortOps.add('SaveMultipleSpecFieldParams');
     sink.abortOps.add('UpdatePartNumberSpecParam');
+    sink.abortOps.add('AddParamsToPartNumber');
   }
   if (!(await openPartNumberSentinel(page, id))) {
     throw new Error('specParams: la ficha del PN centinela no hidrató (¿id cambiado?)');
@@ -421,7 +423,54 @@ async function specParamsAborted(page, sink, ctx) {
     if (b) b.click();
   });
   await page.waitForTimeout(3500);
-  if (dbg) console.log(`       [dbg] capturados: ${Object.keys((sink && sink.hashes) || {}).filter((o) => /SpecFieldParams|SpecParam/.test(o)).join(', ') || '(ninguno aún)'}`);
+  // ── 3) AddParamsToPartNumber: "+" del SpecField → "Create Spec Field Param From
+  // Default" → ADD PARAMETER → llenar la parametrizacion REQUERIDA → CONFIRM.
+  // El "+" NO tiene aria-label: se ancla por la FORMA del AddIcon de MUI, acotada a las
+  // filas de SpecField (las que traen "Name:"). Sin ese filtro, el mismo path matchea los
+  // "+" de Expected Station Cost, Rack Types, Locations… (medido: 17 botones "+" en la ficha).
+  // CONFIRM nace DESHABILITADO: exige elegir "Selected Parameterization"; por eso se llenan
+  // los comboboxes hasta que se habilite (y no se asume que el primero baste).
+  const ADDICON = 'M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z';
+  const abrio = await page.evaluate((d) => {
+    const bs = [...document.querySelectorAll('button')].filter(
+      (b) => [...b.querySelectorAll('svg path')].some((p) => (p.getAttribute('d') || '').trim() === d)
+        && b.offsetParent !== null && !b.disabled,
+    );
+    const enSpecField = bs.filter((b) => /Name:/i.test(b.closest('tr')?.innerText || ''));
+    const el = enSpecField[0];
+    if (el) { el.click(); return true; }
+    return false;
+  }, ADDICON);
+  await page.waitForTimeout(3500);
+  const esModalParam = await page.evaluate(() => {
+    const d = [...document.querySelectorAll('[role="dialog"]')].pop();
+    return !!d && /Create Spec Field Param/i.test(d.innerText || '');
+  }).catch(() => false);
+  if (dbg) console.log(`       [dbg] modal Create Spec Field Param: ${abrio && esModalParam}`);
+  if (esModalParam) {
+    await page.locator('[role="dialog"] button').filter({ hasText: /^Add Parameter$/i }).first().click({ timeout: 6000 }).catch(() => {});
+    await page.waitForTimeout(2500);
+    const n = await page.locator('[role="dialog"] input').count().catch(() => 0);
+    for (let k = 0; k < n; k++) {
+      const off = await page.evaluate(() => {
+        const d = [...document.querySelectorAll('[role="dialog"]')].pop();
+        return [...d.querySelectorAll('button')].find((b) => /^Confirm$/i.test((b.textContent || '').trim()))?.disabled;
+      }).catch(() => true);
+      if (off === false) break;
+      await page.locator('[role="dialog"] input').nth(k).click({ timeout: 3000 }).catch(() => {});
+      await page.waitForTimeout(700);
+      await page.keyboard.press('ArrowDown').catch(() => {});
+      await page.keyboard.press('Enter').catch(() => {});
+      await page.waitForTimeout(500);
+    }
+    await page.evaluate(() => {
+      const d = [...document.querySelectorAll('[role="dialog"]')].pop();
+      const c = [...d.querySelectorAll('button')].find((b) => /^Confirm$/i.test((b.textContent || '').trim()));
+      if (c && !c.disabled) c.click();
+    });
+    await page.waitForTimeout(4500);
+  }
+  if (dbg) console.log(`       [dbg] capturados: ${Object.keys((sink && sink.hashes) || {}).filter((o) => /SpecFieldParams|SpecParam|ParamsToPartNumber/.test(o)).join(', ') || '(ninguno aún)'}`);
 }
 
 // workOrderPartCount: AddPartsToWorkOrders vía CAPTURA-Y-ABORTA. La mutation se dispara al
@@ -932,6 +981,7 @@ const HANDLERS = {
       if (sink && sink.abortOps) {
         sink.abortOps.delete('SaveMultipleSpecFieldParams');
         sink.abortOps.delete('UpdatePartNumberSpecParam');
+        sink.abortOps.delete('AddParamsToPartNumber');
       }
     },
   },
