@@ -1,6 +1,6 @@
 {
-  "version": "1.11.98",
-  "lastUpdated": "2026-08-06T14:36",
+  "version": "1.11.99",
+  "lastUpdated": "2026-08-06T14:52",
   "extensionVersion": "1.7.3",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -32,6 +32,7 @@
         "SendEmailChecked": "63afd0cb799d8c9d17106fb1827fa210641d6608e9c1c2483480eb0be17635bc",
         "CreateReceivedOrder": "363cab20f9bd7fc89619e575de8d5a018cd2d59784081bef48fb77f9a41b07e5",
         "CreateUserFile": "9028f6b729fe0cd253b1d47d5f27d84cc15293bbc12381225a7c00a402849ec9",
+        "UpdateMultipleUserFilesByName": "e2850593ea3a398d4db0ff29110c6877517d3f6701546f7866ee1a9c9c7dea30",
         "CreatePdfLowCode": "d62963890dc2ea10df8e5be2dc2b8f85443074969a3ecdb337d7e9459afbd9d4",
         "CreateReceivedOrderUserFile": "5896851dd3ee71e025bd59be3a0a3795d2ccf177636ee1bb45b10084f1541f57",
         "SetPartNumberPricesAsDefaultPrice": "9f89b40ef7d5754e8e94a94b028ce4c54c3cbf53a102098fd4d3cbec28c9e293",
@@ -2650,6 +2651,11 @@
       "description": "Crear nueva orden de venta con custom inputs",
       "usedBy": "po-comparator"
     },
+    "UpdateMultipleUserFilesByName": {
+      "type": "mutation",
+      "description": "Actualizar archivos por nombre — archivar con archivedAt (la PK `name` es OBLIGATORIA en el patch)",
+      "usedBy": "driver-licenses"
+    },
     "CreateUserFile": {
       "type": "mutation",
       "description": "Registrar archivo subido en el sistema de archivos",
@@ -2947,8 +2953,8 @@
     "scripts/claude-api.js": "15e112fd05c69ffa54b0f43752cb636b7c057e08e7953b7d5134534a9728cf7c",
     "scripts/create-order-autofill-core.js": "e4a6c7babf232fb619c7ba9155bbae39184c23aa0f46d94db470a1996f74fb37",
     "scripts/create-order-autofill.js": "b447657cb00644416172d2a7edb31ff88db19f8535ea167b2fd78ae688d95a7d",
-    "scripts/driver-licenses-core.js": "b4298b6d5cf9adbf2cb78a3b48b92b8cc5722ce7b069d21ea7e6181084acba56",
-    "scripts/driver-licenses.js": "1a0d7e374acb71cd59943af17dcc8f404da73f6c9b7b7be1613b3c8149646ea4",
+    "scripts/driver-licenses-core.js": "debe7f843bf7c78dc3f1b69cd5aef4529297943e5deaf9c66ff92663f148ab09",
+    "scripts/driver-licenses.js": "61b49b91f06691d46d067012011376853c67b412ae48fc57e9a116297ee0731f",
     "scripts/duplicate-tiers.js": "93f93691b833cd00254c26a752e1266587d1e7f31e3dafc5c31bb325b8136077",
     "scripts/file-uploader-core.js": "c59cc259fffacbef361ce3331fd384a0d6acd0a0f7c5e771ec04b215476c6fd5",
     "scripts/file-uploader.js": "fb3565a9dd4a49afc71cd569b0472a919312108cb85e47b05e3e79927d0966de",

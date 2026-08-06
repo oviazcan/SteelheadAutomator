@@ -364,6 +364,29 @@
     return found === 0 && published > 0;
   }
 
+  // ── Archivar una identificación ────────────────────────────────────────────
+  //
+  // `UpdateMultipleUserFilesByName(mnUserFilePatch: [UserFilePatch!]!)`. Contrato MEDIDO en
+  // TLC el 2026-08-06: `archivedAt` existe, y el resolver EXIGE la primary key en el patch
+  // («You must provide the primary key(s) … on 'user_files'»). La PK es el `name`.
+  //
+  // ⚠️ Sin `name` el ERP rechaza; CON `name` escribe. Por eso el patch se arma aquí, con la
+  // PK siempre presente, y nunca a mano en el glue.
+  function buildArchivePatch(fileName, archivedAt) {
+    if (!fileName || typeof fileName !== 'string') return null;
+    return { name: fileName, archivedAt: archivedAt == null ? null : String(archivedAt) };
+  }
+
+  // Archivar el ARCHIVO no lo saca del catálogo publicado: son dos operaciones distintas.
+  // Si se archiva sin republicar, el hook sigue apuntando a esa liga y la remisión la sigue
+  // pidiendo. La UI tiene que decirlo — si no, el operador cree que ya terminó.
+  function archiveWarning(key, publishedCatalog) {
+    const pub = publishedCatalog || {};
+    if (!key || !Object.prototype.hasOwnProperty.call(pub, key)) return '';
+    return 'Esta licencia está PUBLICADA: archivar el archivo no la quita del catálogo. '
+         + 'Hay que publicar de nuevo para que deje de aparecer en la lista de embarque.';
+  }
+
   // ── Lectura del hook: PdfLowCode es un LISTADO, no un fetch por tipo ────────
   //
   // `$first` y `$offset` son `Int!` OBLIGATORIOS: sin ellos el ERP responde HTTP 400 y el
@@ -422,6 +445,8 @@
     buildSearchTerms: buildSearchTerms,
     missingPublishedFiles: missingPublishedFiles,
     looksLikeFailedSearch: looksLikeFailedSearch,
+    buildArchivePatch: buildArchivePatch,
+    archiveWarning: archiveWarning,
     hookQueryVariables: hookQueryVariables,
     pickActiveHook: pickActiveHook,
     MARK_END: MARK_END,
