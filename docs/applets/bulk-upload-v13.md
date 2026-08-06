@@ -342,6 +342,20 @@ patrón —líneas equivalentes con `s=2`, `s=3` y `s=4` mezclados—, así que 
 
 ### Cerrado en producción (2026-08-05)
 
+**Estado final: las dos plantillas publicadas llevan las tres correcciones, y las dos ediciones se
+hicieron EN EXCEL** —el módulo pegado y el contenido de la hoja `Ayuda` pegado en la columna A—
+después de que la vía por XML produjera archivos que Excel abría como dañados. Verificado sobre los
+archivos **bajados del sitio**: zip íntegro, 4 macros, `3× For c = 1 To 67`, `"Varios clientes"` en
+el código, `TplVer(ws)` en el aviso final, hoja `Ayuda` de 136 filas que coincide **exactamente**
+con el texto generado del layout real, cero rastro del v10 y `verify-template-layout` en 10/10.
+
+**Un detalle del pegado que hay que prever la próxima vez: el contenido nuevo era MÁS CORTO que el
+viejo** (160 líneas contra 176), así que en la plantilla normal sobrevivieron las filas 161–176 del
+texto anterior —incluido un segundo bloque `SOPORTE` con el correo viejo y la mención a
+"Etiqueta 5", justo el rastro que se estaba quitando—. Pegar encima **no borra la cola**: hay que
+limpiar el rango completo antes. Se detectó comparando el número de filas con texto contra las 136
+esperadas; sin ese conteo habría pasado, porque el principio de la hoja se veía perfecto.
+
 Las dos plantillas publicadas llevan **las tres correcciones juntas** — `Module1 v15.5` (pegado a
 mano en Excel: `vbaProject.bin` es OLE binario y no se puede escribir desde el repo) + la hoja
 `Ayuda` regenerada. Verificado **bajando los archivos del sitio**: `md5` idéntico al local,
