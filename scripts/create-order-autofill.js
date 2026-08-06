@@ -15,6 +15,14 @@
 //
 // Depende de: SteelheadAPI, CreateOrderAutofillCore (create-order-autofill-core.js)
 //
+// FIX 2026-08-05 (v0.1.4): SH cambió el control de "Cliente:" — al confirmar la selección
+// YA NO monta un <div …singleValue>NOMBRE (#N)</div>; escribe el label del valor en el
+// `value` del <input role="combobox">. Como el applet solo leía singleValues, el cliente
+// quedó invisible y el fallback por label se robaba el singleValue del CONTACTO
+// ("Miguel Castillo") → sin (#N) → "sin idInDomain" → cero autofill. Ahora se leen las DOS
+// formas (collectComboboxValues + Core.pickCustomerFromCandidates) y el fallback por label
+// se acotó al bloque del propio campo. Medido en vivo, no adivinado.
+//
 // FIX 2026-07-03: la extracción del cliente ya NO depende del label-walk frágil
 // (findSingleValueByLabel hacía `return null` al toparse el input[role=combobox]
 // del react-select ANTES de hallar el singleValue → "(sin cliente)" → "sin idInDomain"
@@ -206,23 +214,45 @@ const CreateOrderAutofill = (() => {
     return out;
   }
 
+  // Los `value` de los react-select del modal. SH pinta el valor elegido de DOS formas:
+  // como <div …singleValue> (histórica) o escribiéndolo en el <input role="combobox">
+  // (forma nueva del campo Cliente, medida 2026-08-05). Leer solo la primera dejaba al
+  // cliente invisible.
+  function collectComboboxValues(root) {
+    const out = [];
+    for (const inp of root.querySelectorAll('input[role="combobox"]')) {
+      const v = (inp.value || '').trim();
+      if (v) out.push(v);
+    }
+    return out;
+  }
+
   // Devuelve el nombre del cliente tal como aparece en el modal (con "(#N)" si lo trae).
-  // Primario: el singleValue con badge "(#N)" (único del Cliente, label-independiente).
-  // Fallback: label-anchored por si algún modal no mostrara el badge.
+  // Primario: el valor con badge "(#N)" entre TODOS los react-select del modal —
+  // singleValues + values de los combobox (label-independiente).
+  // Fallback: label-anchored, acotado al bloque del propio campo.
   function extractCustomerNameFromModal() {
     const root = getModalRoot();
     if (!root) return null;
     const c = core();
     if (c) {
-      const picked = c.pickCustomerFromSingleValues(collectSingleValueTexts(root));
+      const picked = c.pickCustomerFromCandidates
+        ? c.pickCustomerFromCandidates(collectSingleValueTexts(root), collectComboboxValues(root))
+        : c.pickCustomerFromSingleValues(collectSingleValueTexts(root));
       if (picked) return picked.raw;
     }
-    const sv = findSingleValueByLabel(root, /^\s*(?:cliente|customer):?\s*$/i);
-    if (!sv) return null;
-    const clone = sv.cloneNode(true);
-    clone.querySelectorAll('[class*="avatar"], [class*="Avatar"], svg, img').forEach(a => a.remove());
-    const raw = (clone.textContent || '').trim();
-    return c ? c.cleanCustomerName(raw) : raw;
+    // maxHops=1: SOLO el bloque inmediato del label. Con el recorrido largo, al no haber
+    // ya singleValue de Cliente el walk seguía a los campos vecinos y devolvía el
+    // singleValue del CONTACTO ("Miguel Castillo") como si fuera el cliente — una mentira
+    // coherente que el panel mostraba como dato bueno.
+    const hit = findFieldTextByLabel(root, /^\s*(?:cliente|customer):?\s*$/i, 1);
+    if (!hit) return null;
+    // Un input sin "(#N)" es texto EN TRÁNSITO (el operador está tecleando la búsqueda),
+    // no un cliente: aceptarlo dispararía un CustomerSearchByName por tecla contra un
+    // /graphql que se cuelga bajo ráfaga. El singleValue sí puede ir sin badge — para eso
+    // existe el fallback de resolver el idInDomain por nombre.
+    if (hit.from === 'input' && !(c && c.extractCustomerIdInDomain(hit.text))) return null;
+    return c ? c.cleanCustomerName(hit.text) : hit.text;
   }
 
   function extractShipToFromModal() {
@@ -231,17 +261,18 @@ const CreateOrderAutofill = (() => {
     // Bilingüe: "Enviar a:" (ES) y "Ship To:" (EN, label real de SH observado en las pantallas
     // de facturación); si SH se muestra en inglés, el ancla mono-ES no encontraba el ship-to
     // → Consolidar no se marcaba. El OR no rompe el caso ES.
-    const sv = findSingleValueByLabel(root, /^\s*(?:enviar\s+a|ship\s+to):?\s*$/i);
-    if (!sv) return null;
-    return (sv.textContent || '').trim();
+    const hit = findFieldTextByLabel(root, /^\s*(?:enviar\s+a|ship\s+to):?\s*$/i, 8);
+    return hit ? hit.text : null;
   }
 
-  // Localiza un singleValue de react-select por su label de <p>label:</p>.
-  // Se prefiere la ÚLTIMA etiqueta que matchea (la del modal, no la del wizard padre)
-  // y se buscan singleValues en los siguientes hermanos. NO se hace bail al toparse el
-  // input[role=combobox] (ese bail rompía la extracción: el react-select SIEMPRE tiene
-  // el combobox junto al singleValue).
-  function findSingleValueByLabel(root, labelRe) {
+  // Localiza el VALOR de un react-select por su label de <p>label:</p>. Devuelve
+  // { text, from: 'singleValue'|'input' } o null — el llamador necesita saber la fuente
+  // (un input puede traer texto a medio teclear; un singleValue ya es un valor elegido).
+  // Se prefiere la ÚLTIMA etiqueta que matchea (la del modal, no la del wizard padre).
+  // `maxHops` acota cuántos hermanos se recorren: 1 = solo el bloque del propio campo.
+  // NO se hace bail al toparse el input[role=combobox] (ese bail rompía la extracción:
+  // el react-select SIEMPRE monta el combobox junto al valor).
+  function findFieldTextByLabel(root, labelRe, maxHops = 8) {
     const candidates = [];
     for (const el of root.querySelectorAll('p, label, span')) {
       const raw = (el.textContent || '').trim();
@@ -262,9 +293,17 @@ const CreateOrderAutofill = (() => {
       }
       let cursor = labelRoot.nextElementSibling;
       let hops = 0;
-      while (cursor && hops < 8) {
+      while (cursor && hops < maxHops) {
         const sv = cursor.querySelector('[class*="singleValue"], [class*="SingleValue"]');
-        if (sv) return sv;
+        if (sv) {
+          const clone = sv.cloneNode(true);
+          clone.querySelectorAll('[class*="avatar"], [class*="Avatar"], svg, img').forEach(a => a.remove());
+          const t = (clone.textContent || '').trim();
+          if (t) return { text: t, from: 'singleValue' };
+        }
+        const inp = cursor.querySelector('input[role="combobox"]');
+        const v = inp ? (inp.value || '').trim() : '';
+        if (v) return { text: v, from: 'input' };
         cursor = cursor.nextElementSibling;
         hops++;
       }
