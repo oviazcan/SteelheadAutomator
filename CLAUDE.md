@@ -121,9 +121,14 @@ cuando Steelhead lo rote. **Un hash sin ruta de regeneración es deuda.**
 
 **La regla se VERIFICA:** `tools/test/hash-regen-coverage.test.js` mide la cobertura real y funciona
 como **TRINQUETE** — falla si el número de huérfanas **sube**, y si baja obliga a actualizar la línea
-base en el mismo commit. Línea base al 2026-08-04: **59 huérfanas** (queries 110/119, mutations
-18/69 — el hueco son las mutations, cada una necesita su centinela). El caso que destapó la falta de
-verificación: `CreateUpdateDeleteRoutes`, LA mutation del auto-ruteador, vivió sin ruta desde su fase 1.
+base en el mismo commit. Línea base al **2026-08-05**: **53 huérfanas** (queries **115/122**, mutations
+**29/75** — el hueco siguen siendo las mutations, cada una necesita su centinela). Bajó de 58 ese día por
+DOS vías distintas, y la diferencia entre ellas importa: la familia de parámetros de spec ganó **ruta
+real** (entidad `partNumberSpecParams`, 3 ops en un ciclo), y aparte se **retiraron del catálogo** 2
+hashes MUERTOS que no consumía nadie. Reducir deuda documentándola y reducirla borrando lo que sobra son
+cosas distintas; el trinquete cuenta igual las dos, así que el commit debe decir cuál fue.
+El caso que destapó la falta de verificación: `CreateUpdateDeleteRoutes`, LA mutation del auto-ruteador,
+vivió sin ruta desde su fase 1. **Cobertura de doc: 45/45 apps con bitácora e índice (2026-08-05).**
 
 El validador y el autopilot cubren las **3 fuentes** con hashes propios (extensión, Reportes SH,
 PowerTools); cuando un hash externo rota, el autopilot lo captura, valida, **escribe, commitea y
@@ -566,7 +571,12 @@ errores) · `.gitignore` cubre `scan_results_*.json` y `~$*.xlsm/xlsx` · histor
 5. **`console.log` en producción (BAJO) — HECHO** (gate central por flag `sa_debug`; `warn` intacto).
 6. **Anclajes bilingües (audit) — MAPA COMPLETO; hardening bloqueado por evidencia.** 25 anclajes
    mono-idioma en 12 applets. **No se hardeniza sin el string real del otro locale** (regla dura: no
-   adivinar). Ver [`docs/architecture/bilingual-anchoring-debt.md`](docs/architecture/bilingual-anchoring-debt.md).
+   adivinar). **2026-08-05: 3 salieron de la lista con evidencia MEDIDA** — `Show Spec`,
+   `Archive Parameter` y `Edit Spec Field Parameter` aparecen **en inglés** en un DOM productivo con la
+   UI **en español** (la misma fila trae `Cambiar Nodo de Proceso` y `Copiar arriba`): SH **no** los
+   traduce, así que su anclaje mono-idioma es correcto. Que traduzca unos sí y otros no **dentro de la
+   misma tabla** es la prueba de que no hay patrón que adivinar — hay que mirar.
+   Ver [`docs/architecture/bilingual-anchoring-debt.md`](docs/architecture/bilingual-anchoring-debt.md).
 7. **Memory-hardening audit por applet — HECHO.** 9 ADOPTADO, 5 PARCIAL, 2 NO-ADOPTADO
    (`portal-importer`, `po-comparator`).
 

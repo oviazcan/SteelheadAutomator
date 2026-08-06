@@ -220,6 +220,14 @@ Mac** (en GitHub) por diseño: si viviera en el mismo launchd, moriría con lo q
 - Mutations con ciclo centinela funcionando: `UpdatePartNumber`, `UpdateQuote`,
   `CreateReceivedOrder`, `CreateMaintenanceEvent`, `CreateMaintenanceEventComment`,
   `UpdateMaintenanceEvent`, `UpdateReceivedOrder` (7/7 — validadas headless).
+- **Familia de PARÁMETROS DE SPEC — 3/3 validadas end-to-end (2026-08-05):**
+  `SaveMultipleSpecFieldParams`, `UpdatePartNumberSpecParam` y `AddParamsToPartNumber`, las tres
+  por captura-y-aborta en **un solo ciclo** (entidad `partNumberSpecParams`, PN Centinela #3770957,
+  handler `specParamsAborted`). Ruta `/PartNumbers/{id}` **sin** `/Domains/{d}`. Incluye **fallback**:
+  si el PN aparece archivado, desarchiva → captura → **re-archiva** en el `restore`.
+  El sink corrigió dos suposiciones: el lápiz individual dispara el **mismo**
+  `SaveMultipleSpecFieldParams` (SH unificó los caminos), y `Add Spec` dispara
+  `ApplySpecsToPartNumber`, no `AddParamsToPartNumber` (esa sale del `+` del **spec field**).
 - **Mutations de REPORTES por CAPTURA-Y-ABORTA — VALIDADAS 4/4 headless (2026-07-20):**
   `GenerateDuckDb` (botón "Regenerate Database" en `/Reporting/Databases`), `DeleteFolderById`,
   `CreateUpdateReportWithPermissions`, `ArchiveReport` (los 3 en `/Reporting/Edit`). Entidades
@@ -232,8 +240,9 @@ Mac** (en GitHub) por diseño: si viviera en el mismo launchd, moriría con lo q
   cero efecto. Rotaron 2026-07-20; corregidas por scan (config 1.7.149) + GenerateDuckDb 1.7.151.
 - **Mutation por CAPTURA-Y-ABORTA validada headless END-TO-END: `AddPartsToWorkOrders`**
   (centinela `workOrderPartCount` = OV #1603 "Centinela" → OT #13678; handler
-  `saveWoPartCountAborted` en `mutation-deps.mjs`). A diferencia de las de precios
-  (`partNumberPrice`/`quotePrice`, andamiadas/bloqueadas por hidratación del quote), la OV
+  `saveWoPartCountAborted` en `mutation-deps.mjs`). (Esta nota comparaba con las de precios
+  «bloqueadas por hidratación del quote»: **ya no aplica** — `quotePrice` se destrabó el
+  2026-08-05 con deep-link al DETALLE, ver §«El centinela que se archivó solo».) La OV
   **SÍ hidrata headless** → el ciclo captura de punta a punta. **AUTO-DEPLOYABLE** (2026-07-17):
   como el request se aborta no hay `responseOk`, pero el motor **prueba el liveHash capturado
   con variables vacías** (validación de tipos, **sin ejecutar la escritura**) — si el server lo
