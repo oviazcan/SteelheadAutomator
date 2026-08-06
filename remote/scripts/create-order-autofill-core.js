@@ -47,6 +47,19 @@
     return null;
   }
 
+  // Igual que pickCustomerFromSingleValues pero sobre las DOS formas en que SH pinta el
+  // valor elegido de un react-select:
+  //   a) <div class="…singleValue">NOMBRE (#N)</div>   — forma histórica
+  //   b) <input role="combobox" value="NOMBRE (#N)">   — forma nueva (medida 2026-08-05)
+  // El bug: SH migró el control de "Cliente:" a la forma (b) y el applet solo leía (a),
+  // así que el cliente quedaba invisible. Los singleValue van PRIMERO para que la vía
+  // histórica siga mandando si SH la repone; el badge "(#N)" sigue siendo el criterio.
+  function pickCustomerFromCandidates(singleValueTexts, comboboxValues) {
+    const sv = Array.isArray(singleValueTexts) ? singleValueTexts : [];
+    const cb = Array.isArray(comboboxValues) ? comboboxValues : [];
+    return pickCustomerFromSingleValues(sv.concat(cb));
+  }
+
   // Matching de <option> por texto: exacto=100, substring=60, tokens (>2 chars)=+8 c/u.
   // Umbral de aceptación: score >= 60. optionTexts: array de strings (opt.text).
   // Devuelve { index, score, pass, text }. index es relativo a optionTexts.
@@ -116,6 +129,7 @@
     cleanCustomerName,
     extractCustomerIdInDomain,
     pickCustomerFromSingleValues,
+    pickCustomerFromCandidates,
     scoreOptionMatch,
     isCreateOrderModalHeading,
     matchesCreateOrderUrl,
