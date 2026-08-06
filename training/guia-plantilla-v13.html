@@ -1433,9 +1433,9 @@ td code{white-space:nowrap}
 
 <p>Si todo está bien, te pide dónde guardar el <code>.csv</code> y al terminar te confirma el modo, cuántas columnas y cuántos renglones exportó, ordenados por cliente y número de parte.</p>
 
-<div class="callout info">
-  <p class="ct">El mensaje de confirmación dice “CSV v12 exportado”</p>
-  <p>Es una errata del texto del aviso, no un problema del archivo: la plantilla v13 exporta sus 67 columnas correctamente y así se cargan. <strong>Fíjate en el número de columnas que reporta el mensaje</strong>, no en el “v12”. Ya está reportado para corregirse.</p>
+<div class="callout tip">
+  <p class="ct">El aviso te dice qué exportó</p>
+  <p>Al terminar confirma la versión de la plantilla, el modo, y cuántas columnas y renglones salieron. Deben ser <strong>67 columnas</strong>; si ves menos, no estás en la v13.</p>
 </div>
 
 <!-- ═════════════════════════════════════════════════════════════════════ -->
@@ -1447,9 +1447,9 @@ td code{white-space:nowrap}
   <figcaption>La vista previa, con datos de ejemplo. Nada se ha escrito en Steelhead: hasta aquí puedes cancelar sin consecuencias.</figcaption>
 </figure>
 
-<div class="callout info">
-  <p class="ct">El título del panel dice “v10”</p>
-  <p>Es el nombre interno de la herramienta, no la versión de tu plantilla: <strong>no significa que se haya leído como v10</strong>. La forma de confirmar qué se leyó es la columna <em>Datos</em> de cada renglón — si dice “5 racks” o “empaque”, la v13 se interpretó bien. También está reportado para corregirse.</p>
+<div class="callout tip">
+  <p class="ct">El título te dice cómo se leyó tu archivo</p>
+  <p>«Carga Masiva · plantilla <strong>v13</strong>» significa que se interpretó con el layout de la v13. Si ahí dijera <code>v12</code> teniendo una plantilla v13, tu archivo se estaría leyendo con las columnas corridas y hay que parar. Es la comprobación más rápida antes de ejecutar.</p>
 </div>
 
 <h3 class="sub">Qué revisar antes de ejecutar</h3>
@@ -1493,9 +1493,9 @@ td code{white-space:nowrap}
 </table>
 </div>
 
-<div class="callout warn">
-  <p class="ct">La hoja <em>Ayuda</em> de la plantilla está desactualizada</p>
-  <p>La pestaña <strong>Ayuda</strong> que viene dentro del archivo describe todavía el layout de la <strong>v10</strong>: menciona columnas y posiciones que ya no corresponden (racks en <code>AP–AS</code>, “Etiqueta 5”, 69 columnas). <strong>No la sigas para ubicar columnas.</strong> Este documento es el que refleja la v13. Ya está reportado.</p>
+<div class="callout tip">
+  <p class="ct">La hoja <em>Ayuda</em> del archivo es la referencia rápida</p>
+  <p>La pestaña <strong>Ayuda</strong> que viene dentro de la plantilla trae el resumen: convenciones, el encabezado, las macros y las 67 columnas con su tipo. Se genera del propio archivo, así que coincide siempre con el layout que tienes enfrente. Este documento es la versión larga, con imágenes.</p>
 </div>
 
 <!-- ═════════════════════════════════════════════════════════════════════ -->
