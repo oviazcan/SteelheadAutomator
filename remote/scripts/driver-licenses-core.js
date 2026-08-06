@@ -303,6 +303,67 @@
     return { rows: rows, orphans: orphans, warnings: built.warnings };
   }
 
+  // ── Búsqueda de archivos: el filtro lo hace el SERVIDOR ────────────────────
+  //
+  // INCIDENTE 2026-08-06: se paginaba el catálogo COMPLETO (23,147 archivos ⇒ ~460
+  // peticiones) para quedarse con 8 licencias. El `/graphql` de SH se cuelga a las ~40-45
+  // y **el límite es por SESIÓN**: abrir el panel dejaba al operador sin ERP, incluidas las
+  // pantallas nativas. Ahora se le pide al servidor que filtre, y hay freno duro.
+  // El tope que importa es el de PETICIONES, no el de términos: con 2 pasadas por término,
+  // 24 términos serían 48 peticiones y volveríamos a pasarnos del límite (~40-45 por
+  // sesión). El presupuesto se cuenta en peticiones y el glue se detiene al agotarlo.
+  const MAX_PAGES = 3;          // por término y pasada: 300 archivos
+  const MAX_REQUESTS = 24;      // presupuesto duro de la corrida — la mitad del límite
+  const MAX_SEARCH_TERMS = 10;  // techo de términos aunque el catálogo crezca
+
+  // La convención nueva es el prefijo, pero las 8 que ya vivían en la carpeta se subieron
+  // SIN él: buscar sólo el prefijo las perdería. Se agregan por su nombre exacto, que el
+  // catálogo publicado ya conoce. Sin catálogo se busca el prefijo igual — «no sé» no
+  // puede volverse «no hay».
+  function buildSearchTerms(publishedCatalog) {
+    const terms = [LICENSE_PREFIX.replace(/-+$/, '')];
+    const pub = publishedCatalog || {};
+    const keys = Object.keys(pub).sort();
+    for (let i = 0; i < keys.length; i++) {
+      const file = pub[keys[i]];
+      if (!file || typeof file !== 'string') continue;
+      if (terms.indexOf(file) !== -1) continue;
+      if (terms.length >= MAX_SEARCH_TERMS) break;
+      terms.push(file);
+    }
+    return terms;
+  }
+
+  // Tras la búsqueda por prefijo, sólo hay que ir por lo publicado que NO apareció (las
+  // que se subieron sin prefijo). Así el número de búsquedas dirigidas no crece con el
+  // catálogo: las altas nuevas siempre llevan prefijo y caen en la primera búsqueda.
+  function missingPublishedFiles(foundNames, publishedCatalog) {
+    const found = {};
+    (foundNames || []).forEach(function (n) { if (n) found[n] = true; });
+    const pub = publishedCatalog || {};
+    const out = [];
+    const keys = Object.keys(pub).sort();
+    for (let i = 0; i < keys.length; i++) {
+      const file = pub[keys[i]];
+      if (!file || typeof file !== 'string') continue;
+      if (found[file]) continue;
+      if (out.indexOf(file) !== -1) continue;
+      if (out.length >= MAX_SEARCH_TERMS) break;
+      out.push(file);
+    }
+    return out;
+  }
+
+  // Cero archivos encontrados MIENTRAS hay catálogo publicado no significa «las dieron de
+  // baja»: significa que la búsqueda no trajo lo que debía. Publicar sobre esa lectura
+  // BORRARÍA el catálogo y dejaría a los choferes sin foto en la remisión, sin un error a
+  // la vista. Sin catálogo publicado, en cambio, el vacío es legítimo: es el primer alta.
+  function looksLikeFailedSearch(foundFiles, publishedCatalog) {
+    const found = (foundFiles || []).length;
+    const published = Object.keys(publishedCatalog || {}).length;
+    return found === 0 && published > 0;
+  }
+
   // ── Lectura del hook: PdfLowCode es un LISTADO, no un fetch por tipo ────────
   //
   // `$first` y `$offset` son `Int!` OBLIGATORIOS: sin ellos el ERP responde HTTP 400 y el
@@ -355,6 +416,12 @@
   const api = {
     MARK_START: MARK_START,
     HOOK_PAGE: HOOK_PAGE,
+    MAX_PAGES: MAX_PAGES,
+    MAX_REQUESTS: MAX_REQUESTS,
+    MAX_SEARCH_TERMS: MAX_SEARCH_TERMS,
+    buildSearchTerms: buildSearchTerms,
+    missingPublishedFiles: missingPublishedFiles,
+    looksLikeFailedSearch: looksLikeFailedSearch,
     hookQueryVariables: hookQueryVariables,
     pickActiveHook: pickActiveHook,
     MARK_END: MARK_END,

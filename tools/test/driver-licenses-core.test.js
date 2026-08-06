@@ -346,3 +346,91 @@ test('hookQueryVariables incluye $first y $offset — el 400 que rompió producc
   assert.equal(typeof v.offset, 'number');
   assert.equal(v.pdfType, 'SHIPMENT_TEMPLATE');
 });
+
+// ── buildSearchTerms: NO paginar el catálogo completo ───────────────────────
+//
+// INCIDENTE 2026-08-06: el panel se quedaba en «Leyendo licencias…» y acababa en
+//   HTTP 502 (nginx) en SearchUserFilesQuery, con offset 11900.
+//
+// `listFiles` paginaba TODOS los archivos del ERP de 100 en 100 con searchQuery vacío
+// —23,147 archivos medidos ese día ⇒ ~232 requests por pasada, ×2 pasadas ≈ 460— para
+// quedarse con 8 licencias. El `/graphql` de SH **se cuelga a las ~40-45 peticiones y el
+// límite es POR SESIÓN**: no se arregla recargando, y tumba también las pantallas nativas
+// (CLAUDE.md §API de Steelhead). O sea: abrir el panel dejaba al operador sin ERP.
+//
+// El arreglo es pedirle al SERVIDOR que filtre. La convención nueva es el prefijo
+// `licencia-`, pero las 8 que ya vivían en la carpeta se subieron SIN prefijo, así que
+// buscar sólo el prefijo las perdería: se buscan además por su nombre exacto, que el
+// catálogo publicado ya conoce. AUSENTE ≠ VACÍO: sin catálogo publicado se busca el
+// prefijo igual, no se devuelve una lista vacía.
+
+test('buildSearchTerms siempre busca el prefijo de la convención', () => {
+  const t = C.buildSearchTerms(null);
+  assert.ok(t.includes('licencia'), 'debe buscar el prefijo aunque no haya catálogo');
+  assert.equal(t.length, 1);
+});
+
+test('buildSearchTerms agrega los archivos ya publicados — las 8 viejas no llevan prefijo', () => {
+  const t = C.buildSearchTerms({
+    hector: '1785961684774-295104609.png',
+    jesus: '1785961688293-59235230.png'
+  });
+  assert.ok(t.includes('licencia'));
+  assert.ok(t.includes('1785961684774-295104609.png'));
+  assert.ok(t.includes('1785961688293-59235230.png'));
+  assert.equal(t.length, 3);
+});
+
+test('buildSearchTerms no repite términos', () => {
+  const t = C.buildSearchTerms({ a: 'x.png', b: 'x.png' });
+  assert.equal(t.filter(x => x === 'x.png').length, 1);
+});
+
+test('buildSearchTerms acota el número de búsquedas — el rate limit es por SESIÓN', () => {
+  const many = {};
+  for (let i = 0; i < 200; i++) many['k' + i] = 'file-' + i + '.png';
+  const t = C.buildSearchTerms(many);
+  assert.ok(t.length <= C.MAX_SEARCH_TERMS,
+    `${t.length} términos supera el tope de ${C.MAX_SEARCH_TERMS}`);
+});
+
+test('el tope de páginas existe y es chico — 232 páginas fue lo que tumbó la sesión', () => {
+  assert.ok(typeof C.MAX_PAGES === 'number');
+  assert.ok(C.MAX_PAGES <= 5, 'un tope grande no es un freno');
+});
+
+// ── looksLikeFailedSearch: vacío ≠ «las borraron todas» ─────────────────────
+//
+// Si la búsqueda del servidor fallara (o `searchQuery` no filtrara como creemos), la lista
+// llegaría VACÍA y el diff diría «dar de baja las 8 licencias». Publicar eso BORRA el
+// catálogo y deja a los choferes sin foto en la remisión, sin un solo error en pantalla.
+// Una lista vacía frente a un catálogo publicado no es conocimiento: es sospecha.
+
+test('lista vacía + catálogo publicado = búsqueda sospechosa, no bajas', () => {
+  assert.equal(C.looksLikeFailedSearch([], { hector: 'a.png', jesus: 'b.png' }), true);
+});
+
+test('lista vacía SIN catálogo publicado es legítima — es el alta del primer chofer', () => {
+  assert.equal(C.looksLikeFailedSearch([], {}), false);
+  assert.equal(C.looksLikeFailedSearch([], null), false);
+});
+
+test('si encontró aunque sea una, la búsqueda funcionó — las bajas son reales', () => {
+  assert.equal(C.looksLikeFailedSearch([{ name: 'a.png' }], { hector: 'a.png', x: 'b.png' }), false);
+});
+
+// Ruido REAL medido el 2026-08-06 al sondear `searchQuery:'licencia'` en TLC: el ERP
+// devuelve este PDF administrativo porque la búsqueda es por substring y case-insensitive
+// ("LAPTOP.LICENCIA _PROQUIPA…" contiene "LICENCIA"). NO es la identificación de un chofer:
+// no lleva el prefijo de la convención ni vive en la carpeta. Si el core lo aceptara, se
+// publicaría una liga a un PDF interno dentro de la remisión que se manda al cliente.
+test('el PDF administrativo que matchea «licencia» NO es una licencia de chofer', () => {
+  const ruido = {
+    originalName: 'LAPTOP.LICENCIA _PROQUIPA_05 NMAYO.pdf',
+    name: '1778528038084-937274291.pdf',
+    fileFolderByFolderId: null
+  };
+  assert.equal(C.isLicenseFile(ruido, 'Licencias'), false);
+  assert.equal(C.isImageFile(ruido.name), false);
+  assert.deepEqual(C.selectLicenseFiles([ruido], 'Licencias'), []);
+});

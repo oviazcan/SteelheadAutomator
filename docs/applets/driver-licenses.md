@@ -1,7 +1,8 @@
 # `driver-licenses` — Licencias de Choferes
 
-**Versión:** 0.1.1 · **Estado:** **EN PRODUCCIÓN** desde el 2026-08-05 (`config v1.11.88`).
-El 2026-08-06 se corrigió el HTTP 400 que impedía abrir el panel (§El bug que rompió el panel).
+**Versión:** 0.1.2 · **Estado:** **EN PRODUCCIÓN** desde el 2026-08-05 (`config v1.11.88`).
+El 2026-08-06 se corrigieron DOS bugs que impedían usarlo: el HTTP 400 de `PdfLowCode` y el
+barrido del catálogo completo que **tumbaba la sesión del ERP**.
 **Rutas de hash:** las tres operaciones quedaron con ruta y el trinquete `hash-regen-coverage`
 pasa (5/5). La del centinela está **declarada pero no validada en vivo** — ver §Rutas.
 
@@ -13,7 +14,7 @@ de embarque cuando el nombre del chofer aparece en las notas o en el nombre del 
 |---|---|
 | Núcleo puro | `remote/scripts/driver-licenses-core.js` |
 | UI + red | `remote/scripts/driver-licenses.js` |
-| Tests | `tools/test/driver-licenses-core.test.js` — **37 verdes** |
+| Tests | `tools/test/driver-licenses-core.test.js` — **46 verdes** |
 | Contrato | `SteelheadPowerTools/docs/specs/2026-08-05-applet-licencias-choferes.md` |
 | Hook que consume | `SteelheadPowerTools/hooks/pdf/SHIPMENT_TEMPLATE.ts` (TLC `11471` · MTY `11472`) |
 
@@ -236,6 +237,56 @@ texto. La verificación cross-repo del alta comparó **el bloque generado** —q
 byte-idéntico— pero **nunca la llamada GraphQL de lectura**. Un contrato entre dos repos tiene
 dos mitades: el formato del dato y **cómo se pide**. Se verificó una.
 
+## El segundo bug: leer la carpeta TUMBABA la sesión del ERP
+
+**2026-08-06.** Con el HTTP 400 ya corregido, el panel se quedaba en *«Leyendo licencias…»* y
+terminaba en **HTTP 502 de nginx**, con `SearchUserFilesQuery` en `offset: 11900`.
+
+`fetchLicenseFiles()` paginaba **el catálogo COMPLETO de archivos del ERP** —`searchQuery: ''`,
+`for(;;)` sin tope— de 100 en 100, en **dos pasadas** (`fetchFolderless` es excluyente), para
+quedarse con 8 licencias. Al corte había **23,147 archivos**: ≈ **460 peticiones**.
+
+El `/graphql` de SH **se cuelga a las ~40-45 peticiones y el límite es por SESIÓN**
+(CLAUDE.md §API de Steelhead): no se recupera recargando la pestaña y **tumba también las
+pantallas nativas**. Es decir: abrir este panel dejaba al operador sin ERP.
+
+### El arreglo: que filtre el servidor
+
+`SearchUserFilesQuery` **acepta `searchQuery`** y el applet lo mandaba vacío. Medido en TLC el
+2026-08-06, con una petición por sondeo:
+
+| Sondeo | Resultado |
+|---|---|
+| `searchQuery:'licencia'` | `totalCount` **23,147 → 1**. Filtra, es **case-insensitive** y por **substring** |
+| `searchQuery:'1785961684774-295104609.png'` | encuentra `Hector.png`, carpeta `Licencias` |
+
+El segundo es el que importa: **`searchQuery` matchea también el `name` generado**, no sólo el
+`originalName`. Sin eso, las 8 viejas —que se llaman `Renan.png`, `Hector.png`… y **no
+contienen la palabra «licencia»**— serían inalcanzables por búsqueda.
+
+De ahí las dos etapas:
+
+1. **Prefijo `licencia`** → todas las que siguen la convención. Toda alta nueva cae aquí.
+2. **Nombre exacto**, sólo de lo publicado que NO apareció en (1) → las 8 viejas. Este número
+   **no crece con el catálogo**, y en cuanto el archivo aparece se corta la segunda pasada.
+
+**≈460 → ~10 peticiones**, con `MAX_REQUESTS = 24` como presupuesto duro. Si se agota, la UI lo
+dice en ámbar y advierte no publicar: una lista incompleta que se sabe incompleta es aceptable;
+dejar sin ERP al operador, no.
+
+⚠️ **La búsqueda trae ruido y el core debe seguir filtrando.** `searchQuery:'licencia'` devuelve
+`LAPTOP.LICENCIA _PROQUIPA_05 NMAYO.pdf` —un PDF administrativo— porque el match es por
+substring. No lleva prefijo ni vive en la carpeta, así que `isLicenseFile` lo descarta; el caso
+real está fijado en los tests. Si el core lo aceptara, se publicaría la liga a un documento
+interno **dentro de la remisión que se manda al cliente**.
+
+### Candado: una lista vacía no autoriza bajas
+
+Si la lectura fallara, la lista llegaría vacía y el diff diría «dar de baja las 8 licencias».
+Publicar eso **borra el catálogo** y deja a los choferes sin foto, sin un solo error en pantalla.
+`looksLikeFailedSearch()` **bloquea el botón de publicar** cuando no se leyó ningún archivo y sí
+hay catálogo publicado. Sin catálogo el vacío es legítimo — es el primer alta.
+
 ## Verificar releyendo (2026-08-06)
 
 `CreatePdfLowCode` responde `{clientMutationId:null}` — ni el id ni el valor — así que el
@@ -249,6 +300,12 @@ hacía esta relectura tras el push; el applet no.
 
 ## Historial
 
+- **0.1.2** (2026-08-06) — **Fix de producción #2 + miniaturas.** `fetchLicenseFiles` paginaba
+  los 23,147 archivos del ERP (~460 peticiones) y **tumbaba la sesión** (límite ~40-45, por
+  SESIÓN). Ahora filtra el SERVIDOR vía `searchQuery`, en dos etapas, con presupuesto duro de
+  24 peticiones: **≈460 → ~10**. Nuevo candado `looksLikeFailedSearch` — una lectura vacía ya
+  no puede publicarse como «bajas» y borrar el catálogo. Miniatura de la foto en el listado
+  (lazy, con degradación explícita). +9 tests (37 → **46**).
 - **0.1.1** (2026-08-06) — **Fix de producción.** `PdfLowCode` se llamaba sin `$first`/`$offset`
   (HTTP 400: el panel no abría) y, por debajo, leía la key equivocada y no ordenaba por
   `createdAt`. Nuevos en el core: `hookQueryVariables` y `pickActiveHook` (+7 tests, **37**).
