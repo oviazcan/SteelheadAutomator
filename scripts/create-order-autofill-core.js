@@ -100,6 +100,25 @@
       .test(String(text || '').trim());
   }
 
+  // El domainId sale de la ruta cuando estamos bajo /Domains/<id>/… (lista de OVs). En el
+  // flujo de Recibo la URL es /Receiving/CustomerParts y NO lo trae: ahí lo pone el glue
+  // desde `SteelheadAPI.getDomain().id`. Mismo patrón que po-listing-filters-core.
+  function domainIdFromPath(pathname) {
+    const m = /^\/Domains\/(\d+)(?:\/|$)/.exec(String(pathname == null ? '' : pathname));
+    return m ? m[1] : null;
+  }
+
+  // Ficha del cliente en Steelhead: /Domains/<domainId>/Customers/<idInDomain>
+  // (formato confirmado por el operador: .../Domains/344/Customers/6 para BRAININ (#6)).
+  // Devuelve null si falta cualquiera de los dos → el panel muestra el aviso SIN liga en
+  // vez de fabricar una URL que llevaría al cliente equivocado. No inventar el dominio es
+  // el punto: un 344 hardcodeado mandaría a MTY a la ficha de TLC.
+  function customerUrl(domainId, idInDomain) {
+    if (domainId == null || domainId === '' || idInDomain == null || idInDomain === '') return null;
+    if (!/^\d+$/.test(String(domainId)) || !/^\d+$/.test(String(idInDomain))) return null;
+    return '/Domains/' + domainId + '/Customers/' + idInDomain;
+  }
+
   // ¿El heading es el del WIZARD de recepción que ENVUELVE al modal de OV?
   // En /Receiving/CustomerParts el modal "Crear Orden de Venta" nace con su campo
   // "Cliente:" VACÍO: el cliente real vive en el wizard padre, FUERA del [role=dialog]
@@ -143,6 +162,8 @@
     scoreOptionMatch,
     isCreateOrderModalHeading,
     isReceiveWizardHeading,
+    domainIdFromPath,
+    customerUrl,
     matchesCreateOrderUrl,
     isDialogRootClass
   };
