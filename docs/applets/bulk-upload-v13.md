@@ -280,20 +280,42 @@ operador descarga es exactamente lo validado.
    juntos, con la punta ya espejando main.
 3. El hook exime del bump sólo a los push que **no tocan** `config.json` ni `scripts/`.
 
-## Desfases de TEXTO VISIBLE detectados al documentar (2026-08-05)
+## Desfases de TEXTO VISIBLE — detectados y CORREGIDOS (2026-08-05)
 
-Ninguno rompe la carga, pero los tres **le mienten al operador sobre qué versión está usando**, que
-es justo lo que uno consulta cuando algo sale raro. Están explicados en la guía del equipo para que
-no desorienten mientras se corrigen.
+Ninguno rompía la carga, pero los tres **le mentían al operador sobre qué versión estaba usando**,
+que es justo lo que uno consulta cuando algo sale raro. Los tres se arreglaron **quitando el número
+escrito a mano**, que es la causa común: un literal se desfasa en el siguiente cambio de layout.
 
-| Dónde | Dice | Debería decir |
+| Dónde | Decía | Ahora |
 |---|---|---|
-| `Module1.ExportarCSV`, MsgBox final | `"CSV v12 exportado:"` | `v13` |
-| `bulk-upload.js:2693`, título del panel | `Steelhead Automator v10 — …` | la versión viva |
-| Hoja **`Ayuda`** de AMBOS `.xlsm` | el layout **v10** completo (69 columnas `A–BQ`, racks ×2 en `AP–AS`, "Etiqueta 5") | el layout v13 |
+| `Module1.ExportarCSV`, MsgBox final | `"CSV v12 exportado:"` | `TplVer(ws)` lo **lee del título de la hoja** (`A2`), la misma cadena que el operador ve. Sin versión en el título, la omite |
+| `bulk-upload.js`, título del panel | `Steelhead Automator v10 — …` | `Carga Masiva · plantilla ${tplLabel}` con la versión que el parser **DETECTÓ** (`schemaVersion`). Sin dato muestra `?`, y con mezcla, `v12/v13 ⚠️` |
+| Hoja **`Ayuda`** de AMBOS `.xlsm` | el layout **v10** completo (69 columnas `A–BQ`, racks ×2 en `AP–AS`, "Etiqueta 5") | regenerada **leyendo la hoja Upload del propio archivo** con [`tools/rebuild-ayuda-sheet.js`](../../tools/rebuild-ayuda-sheet.js) |
 
-La hoja `Ayuda` es la más dañina de las tres: **no es un rótulo, es un mapa de columnas equivocado**
-dentro del archivo que el operador tiene abierto. Quien la siga captura corrido.
+La hoja `Ayuda` era la más dañina de las tres: **no era un rótulo, era un mapa de columnas
+equivocado** dentro del archivo que el operador tiene abierto. Quien la siguiera capturaba corrido.
+
+**El del panel dejó de ser un rótulo y pasó a ser información:** el título ahora contesta *«¿con qué
+layout se leyó mi archivo?»*, que es la pregunta que uno se hace al ver datos corridos — antes
+contestaba siempre lo mismo. La guía lo usa como la comprobación rápida antes de ejecutar.
+
+### Cómo se corrigió la hoja `Ayuda` sin regenerar el `.xlsm`
+
+El repo tiene la regla de que **el `.xlsm` no se genera por XML** (habría que reescribir 7 504
+fórmulas, `calcChain.xml`, validaciones y referencias cruzadas). Esto NO es eso: se reescribe **una
+sola entrada del zip** —`xl/worksheets/sheet4.xml`, una hoja de una columna sin fórmulas— con
+`zip <archivo> <entrada>`, que actualiza esa entrada y deja el resto tal cual.
+
+Verificado en ambas plantillas: **exactamente 1 entrada modificada** de 33, `vbaProject.bin`
+**idéntico byte a byte** (md5 antes = después), `3× For c = 1 To 67` del `Module5_v19` intacto, las
+4 macros presentes, el XML válido, y `tools/verify-template-layout.js` en **10/10**. Los textos van
+como `inlineStr` con `xml:space="preserve"` — así no hay que reindexar `sharedStrings.xml` y la
+sangría, que ES el formato de esa hoja, no se pierde. Los estilos se reusan de `styles.xml`
+(`s=1` título, `s=3` sección, `s=4` contenido, `s=5` nota); el formato anterior estaba aplicado sin
+patrón —líneas equivalentes con `s=2`, `s=3` y `s=4` mezclados—, así que era ruido, no semántica.
+
+> **Falta la única prueba que no se puede hacer desde el repo: abrir las dos plantillas en Excel.**
+> El respaldo es `git checkout` de los `.xlsm`.
 
 ## Multi-cliente en `COTIZACIÓN+NP`: la plantilla vetaba lo que el applet sí sabe hacer
 

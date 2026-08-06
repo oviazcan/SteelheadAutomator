@@ -1,5 +1,10 @@
 Attribute VB_Name = "Module1"
-' === MACRO 1: ExportarCSV (v15.4 — layout v12) ===
+' === MACRO 1: ExportarCSV (v15.5 — layouts v12 y v13) ===
+' V15.5 (2026-08-05): (a) varios clientes en COTIZACIÓN+NP dejan de BLOQUEAR el export —
+'   el applet crea una cotización por cliente desde hace versiones y la plantilla lo vetaba;
+'   ahora es confirmación, no veto. (b) la versión del aviso final se lee del título de la
+'   hoja (TplVer) en vez de estar escrita a mano: decía "CSV v12 exportado" en la v13.
+'   §3 es header-driven, así que el módulo sirve a v12 y v13 sin cambios de posiciones.
 ' V15.4 (2026-07-03): FIX carga por Id SH — CSV salía SIN DATOS cuando las filas se
 '   identifican por "Id SH" (col C) con "Número de parte" (col E) VACÍO (caso de uso legítimo:
 '   actualizar PNs EXISTENTES por su ID de Steelhead, no dar de alta por nombre). Bug: el
@@ -45,6 +50,25 @@ Private Const COL_CLIENTE As Long = 4
 Private Const COL_PN As Long = 5
 Private Const HEADER_ROW As Long = 7
 Private Const DATA_START As Long = 9
+
+' La versión que se anuncia al terminar se LEE del título de la hoja (A2 =
+' "Carga Masiva Steelhead v13"), no se escribe a mano. Hasta el 2026-08-05 el aviso decía
+' "CSV v12 exportado" dentro de la plantilla v13: un número a mano se desfasa en el
+' siguiente cambio de layout y miente justo cuando el operador revisa qué exportó.
+' Leyéndolo del título queda atado a lo que él MISMO ve en la hoja.
+' Devuelve "v13 " (con el espacio) o "" si el título no trae versión — sin dato no se
+' inventa una: el mensaje simplemente la omite.
+Private Function TplVer(ws As Worksheet) As String
+    Dim t As String, p As Long
+    On Error Resume Next
+    t = Trim(CStr(ws.Range("A2").Value))
+    On Error GoTo 0
+    p = InStrRev(LCase(t), " v")
+    If p > 0 Then
+        t = Trim(Mid(t, p + 1))
+        If Len(t) > 1 And IsNumeric(Mid(t, 2, 1)) Then TplVer = t & " "
+    End If
+End Function
 
 Sub ExportarCSV()
     Dim ws As Worksheet
@@ -295,7 +319,7 @@ NextK:
 
     Application.DisplayAlerts = prevDA: Application.ScreenUpdating = prevSU
 
-    MsgBox "CSV v12 exportado:" & vbCrLf & savePath & vbCrLf & vbCrLf & _
+    MsgBox "CSV " & TplVer(ws) & "exportado:" & vbCrLf & savePath & vbCrLf & vbCrLf & _
            "Modo: " & IIf(esCotizacion, "COTIZACI" & ChrW(211) & "N+NP", "SOLO_PN") & vbCrLf & _
            nc & " columnas " & ChrW(183) & " " & nOut & " filas " & ChrW(183) & " ordenado por (Cliente, PN).", _
            vbInformation, "Listo"

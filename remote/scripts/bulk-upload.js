@@ -2628,6 +2628,17 @@ const BulkUpload = (() => {
       const modeBg = isSoloPN ? '#0f2e2c' : '#1e293b';
       const modeLabel = isSoloPN ? 'SOLO NÚMEROS DE PARTE' : 'COTIZACIÓN + NP';
 
+      // La versión del título es la que el parser DETECTÓ en el archivo, no un número
+      // escrito a mano. Hasta el 2026-08-05 decía "Steelhead Automator v10" fijo, y lo
+      // seguía diciendo con plantillas v13 — justo lo que uno mira cuando sospecha que su
+      // archivo se leyó con el layout equivocado, contestando siempre lo mismo. Ahora
+      // responde esa pregunta. Sin dato NO se inventa un default: se muestra "?" (el
+      // schema indeterminado ya emite su propio warn en parseRows).
+      const tplVers = [...new Set(parts.map(p => p && p.schemaVersion).filter(Boolean))];
+      const tplLabel = tplVers.length === 1 ? tplVers[0]
+        : tplVers.length > 1 ? `${tplVers.join('/')} ⚠️`
+        : '?';
+
       const statsHtml = isSoloPN
         ? `<div class="dl9-stats">
             <div class="dl9-stat"><b>Clientes:</b> ${info.customerCount || '?'}</div>
@@ -2690,7 +2701,7 @@ const BulkUpload = (() => {
 
       modal.style.background = modeBg;
       modal.innerHTML = `
-        <h2 style="color:${modeColor}">Steelhead Automator v10 — ${modeLabel}</h2>
+        <h2 style="color:${modeColor}">Carga Masiva · plantilla ${escHtml(tplLabel)} — ${modeLabel}</h2>
         <p class="dl9-sub" id="dl9-counts-line">${rows.length} filas — ${nc} nuevos, ${ec} ${isSoloPN ? 'a modificar' : 'existentes'}, ${dc} forzar dup${intentBadge}${pendingCount > 0 ? ` · <span class="dl9-pending-chip"><b>${pendingCount}</b> decisiones pendientes</span> <button id="dl9-toggle-pending" class="dl9-btn-mini">Solo pendientes</button>` : ''}</p>
         ${specReplaceWarn}
         ${statsHtml}

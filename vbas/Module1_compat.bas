@@ -1,5 +1,8 @@
 Attribute VB_Name = "Module1"
-' === MACRO 1: ExportarCSV (v15 compat Excel 2019 - fix Id SH 2026-07-03) ===
+' === MACRO 1: ExportarCSV (v15.5 compat Excel 2019 — layouts v12 y v13) ===
+' V15.5 (2026-08-05): mismos dos cambios que la plantilla normal — varios clientes en
+'   COTIZACIÓN+NP ya no bloquean el export (confirmación en vez de veto) y la versión del
+'   aviso final se lee del título de la hoja (TplVer) en vez de estar escrita a mano.
 ' FIX Id SH (2026-07-03): mismo bug que la plantilla normal (v15.4) — el CSV salia SIN DATOS
 '   cuando las filas se identifican por "Id SH" (col C) con "Numero de parte" (col E) VACIO
 '   (carga de PNs EXISTENTES por su ID de Steelhead). El guard de rango contaba Id SH
@@ -30,6 +33,25 @@ Private Const COL_CLIENTE As Long = 4
 Private Const COL_PN As Long = 5
 Private Const HEADER_ROW As Long = 7
 Private Const DATA_START As Long = 9
+
+' La versión que se anuncia al terminar se LEE del título de la hoja (A2 =
+' "Carga Masiva Steelhead v13"), no se escribe a mano. Hasta el 2026-08-05 el aviso decía
+' "CSV v12 exportado" dentro de la plantilla v13: un número a mano se desfasa en el
+' siguiente cambio de layout y miente justo cuando el operador revisa qué exportó.
+' Leyéndolo del título queda atado a lo que él MISMO ve en la hoja.
+' Devuelve "v13 " (con el espacio) o "" si el título no trae versión — sin dato no se
+' inventa una: el mensaje simplemente la omite.
+Private Function TplVer(ws As Worksheet) As String
+    Dim t As String, p As Long
+    On Error Resume Next
+    t = Trim(CStr(ws.Range("A2").Value))
+    On Error GoTo 0
+    p = InStrRev(LCase(t), " v")
+    If p > 0 Then
+        t = Trim(Mid(t, p + 1))
+        If Len(t) > 1 And IsNumeric(Mid(t, 2, 1)) Then TplVer = t & " "
+    End If
+End Function
 
 Sub ExportarCSV()
     Dim ws As Worksheet
@@ -240,7 +262,7 @@ NextK:
     If LCase(Right(savePath, 4)) <> ".csv" Then savePath = savePath & ".csv"
     WriteUtf8NoBom CStr(savePath), sb
 
-    MsgBox "CSV v12 exportado:" & vbCrLf & savePath & vbCrLf & vbCrLf & _
+    MsgBox "CSV " & TplVer(ws) & "exportado:" & vbCrLf & savePath & vbCrLf & vbCrLf & _
            "Modo: " & IIf(esCotizacion, "COTIZACI" & ChrW(211) & "N+NP", "SOLO_PN") & vbCrLf & _
            outHdr.Count & " columnas " & ChrW(183) & " " & nOut & " filas " & ChrW(183) & " ordenado por (Cliente, PN).", _
            vbInformation, "Listo"
