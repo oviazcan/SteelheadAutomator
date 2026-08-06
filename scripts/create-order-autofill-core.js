@@ -100,6 +100,16 @@
       .test(String(text || '').trim());
   }
 
+  // ¿El heading es el del WIZARD de recepción que ENVUELVE al modal de OV?
+  // En /Receiving/CustomerParts el modal "Crear Orden de Venta" nace con su campo
+  // "Cliente:" VACÍO: el cliente real vive en el wizard padre, FUERA del [role=dialog]
+  // del modal. Regex bilingüe reusada de weight-quick-entry, que ya ancla ese mismo
+  // wizard en producción en esta pantalla.
+  function isReceiveWizardHeading(text) {
+    return /receive\s+parts\s+from\s+customer|recibir\s+piezas\s+del\s+cliente/i
+      .test(String(text || '').trim());
+  }
+
   // ¿La ruta (location.pathname, sin query) es una pantalla donde vive el modal de OV?
   //   - /Receiving/CustomerParts   — flujo original (recibir piezas del cliente)
   //   - /Domains/<id>/SalesOrders  — lista de Órdenes de Venta → botón "New Sales Order"
@@ -132,6 +142,7 @@
     pickCustomerFromCandidates,
     scoreOptionMatch,
     isCreateOrderModalHeading,
+    isReceiveWizardHeading,
     matchesCreateOrderUrl,
     isDialogRootClass
   };
