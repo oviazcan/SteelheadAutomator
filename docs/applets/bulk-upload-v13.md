@@ -299,16 +299,42 @@ equivocado** dentro del archivo que el operador tiene abierto. Quien la siguiera
 layout se leyó mi archivo?»*, que es la pregunta que uno se hace al ver datos corridos — antes
 contestaba siempre lo mismo. La guía lo usa como la comprobación rápida antes de ejecutar.
 
-### Cómo se corrigió la hoja `Ayuda` sin regenerar el `.xlsm`
+### ⛔ Reescribir la hoja por XML NO funciona: Excel rechaza el archivo
+
+**Excel abre los `.xlsm` así producidos con *"Encontramos un problema con contenido de
+'Plantilla_CargaMasiva_v13_compatibilidad.xlsm'. ¿Deseas que intentemos recuperar el máximo de
+contenido posible?"*.** Producción se revirtió a los `.xlsm` que el usuario editó a mano.
+
+**La causa fue tocar algo FUERA de `<sheetData>`, que era lo único que había que tocar.** El
+original trae `<pane ySplit="1" topLeftCell="A39" …/>` y el script lo llevaba a `topLeftCell="A1"`
+"por cortesía", para no dejar la hoja abierta a media página. Con **una fila congelada el panel
+inferior no puede empezar en A1**: la incoherencia basta para que Excel declare el libro dañado.
+De paso quedaba un `<selection activeCell="A152"/>` apuntando fuera del nuevo `dimension` (136).
+
+**La lección que importa no es el atributo, es qué probaba cada verificación.** Se comprobó que el
+zip estaba íntegro, que el XML parseaba, que `vbaProject.bin` seguía byte a byte, que sólo cambiaba
+1 entrada de 33 y que `verify-template-layout` daba 10/10 — y **las seis pasaron mientras el archivo
+estaba roto**. Ninguna responde *«¿Excel lo acepta?»*; sólo responden *«¿el zip y el XML son
+coherentes con lo que YO esperaba?»*. El único juez del formato de Excel es Excel. Que la única
+prueba que faltaba fuera justo la que no podía correr desde el repo **no la vuelve opcional**: la
+convierte en el paso que bloquea la publicación, no en una nota al pie.
+
+**Vía vigente: `--text`.** [`tools/rebuild-ayuda-sheet.js`](../../tools/rebuild-ayuda-sheet.js)
+`<archivo> --text` emite el contenido —generado igual, leyendo la hoja `Upload` real— para pegarlo a
+mano en la columna A. No toca el empaquetado, así que no puede romperlo. La escritura directa quedó
+corregida (ya no toca el `<pane>`) pero **marcada como no validada contra Excel** en el encabezado
+del script.
+
+### Cómo se genera el contenido (esta parte sí sirve)
 
 El repo tiene la regla de que **el `.xlsm` no se genera por XML** (habría que reescribir 7 504
 fórmulas, `calcChain.xml`, validaciones y referencias cruzadas). Esto NO es eso: se reescribe **una
 sola entrada del zip** —`xl/worksheets/sheet4.xml`, una hoja de una columna sin fórmulas— con
 `zip <archivo> <entrada>`, que actualiza esa entrada y deja el resto tal cual.
 
-Verificado en ambas plantillas: **exactamente 1 entrada modificada** de 33, `vbaProject.bin`
-**idéntico byte a byte** (md5 antes = después), `3× For c = 1 To 67` del `Module5_v19` intacto, las
-4 macros presentes, el XML válido, y `tools/verify-template-layout.js` en **10/10**. Los textos van
+Se verificó en ambas plantillas: **1 entrada modificada** de 33, `vbaProject.bin` **idéntico byte a
+byte**, `3× For c = 1 To 67` del `Module5_v19` intacto, las 4 macros presentes, el XML válido y
+`tools/verify-template-layout.js` en **10/10** — y aun así Excel las rechazaba (ver arriba). Los textos van
 como `inlineStr` con `xml:space="preserve"` — así no hay que reindexar `sharedStrings.xml` y la
 sangría, que ES el formato de esa hoja, no se pierde. Los estilos se reusan de `styles.xml`
 (`s=1` título, `s=3` sección, `s=4` contenido, `s=5` nota); el formato anterior estaba aplicado sin

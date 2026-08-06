@@ -14,7 +14,17 @@
  * Sólo reescribe la entrada del zip de esa hoja: el resto del .xlsm —incluido
  * vbaProject.bin— se queda byte a byte como estaba.
  *
- * Uso:  node tools/rebuild-ayuda-sheet.js <archivo.xlsm> [--dry]
+ * ⚠️ LA ESCRITURA EN EL .xlsm NO ESTÁ VALIDADA CONTRA EXCEL. El primer intento produjo
+ * archivos que Excel abría con "Encontramos un problema con contenido de …" pese a que el
+ * zip era válido, el XML parseaba y verify-template-layout daba 10/10: ninguna de esas tres
+ * comprobaciones prueba que Excel lo acepte. La causa fue tocar el <pane> fuera de
+ * <sheetData> (ya corregido), pero NADIE ha vuelto a abrir el resultado en Excel.
+ *
+ * La vía PROBADA es --text: emite el contenido para pegarlo a mano en la hoja, sin tocar el
+ * empaquetado. Úsala salvo que vayas a abrir el .xlsm resultante en Excel antes de publicar.
+ *
+ * Uso:  node tools/rebuild-ayuda-sheet.js <archivo.xlsm> --text   ← recomendado
+ *       node tools/rebuild-ayuda-sheet.js <archivo.xlsm> [--dry]  ← escribe en el .xlsm
  */
 const fs = require('fs');
 const os = require('os');
@@ -24,6 +34,11 @@ const { readSheet } = require('./lib/xlsx-read.js');
 
 const FILE = process.argv[2];
 const DRY = process.argv.includes('--dry');
+// --text: emite el contenido como TEXTO plano para pegar a mano en la hoja.
+// Existe porque reescribir la hoja por XML produjo un .xlsm que Excel abre con
+// "Encontramos un problema con contenido de …" — el zip era válido y el XML parseaba,
+// pero Excel es más estricto que ambas comprobaciones. Pegar no toca el empaquetado.
+const TEXT = process.argv.includes('--text');
 if (!FILE || !fs.existsSync(FILE)) {
   console.error('uso: node tools/rebuild-ayuda-sheet.js <archivo.xlsm> [--dry]');
   process.exit(2);
@@ -173,12 +188,25 @@ function buildSheetXml(prev) {
   const sheetData = `<sheetData>${cells.join('')}</sheetData>`;
   let out = prev.replace(/<sheetData>[\s\S]*?<\/sheetData>|<sheetData\/>/, sheetData);
   out = out.replace(/<dimension ref="[^"]*"\/>/, `<dimension ref="A1:A${r}"/>`);
-  // El panel congelado apuntaba a una fila del contenido viejo; se deja arriba.
-  out = out.replace(/topLeftCell="A\d+"/, 'topLeftCell="A1"');
+
+  // NO se toca el <pane>. La primera versión "de cortesía" lo llevaba a
+  // topLeftCell="A1", y con ySplit="1" (una fila congelada) el panel inferior NO PUEDE
+  // empezar en A1 — Excel abre el libro con "Encontramos un problema con contenido de…".
+  // Sólo se corrige la SELECCIÓN si quedó fuera del nuevo rango, que es lo único que el
+  // cambio de contenido puede invalidar de verdad.
+  out = out.replace(/<selection([^>]*?)activeCell="A(\d+)"([^>]*?)sqref="A(\d+)"([^>]*?)\/>/,
+    (m, a, ac, b, sq, c) => (+ac <= r && +sq <= r) ? m : `<selection${a}activeCell="A1"${b}sqref="A1"${c}/>`);
   return out;
 }
 
 // ── Reescribir SOLO esa entrada del zip ───────────────────────────────────
+if (TEXT) {
+  const salida = [];
+  for (const item of L) salida.push(item ? item.text : '');
+  process.stdout.write(salida.join('\n') + '\n');
+  process.exit(0);
+}
+
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ayuda-'));
 try {
   execSync(`unzip -o -q "${path.resolve(FILE)}" -d "${dir}"`);
