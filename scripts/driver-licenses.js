@@ -32,7 +32,7 @@
   const C_BG = '#1c2430', C_FG = '#e6e9ee', C_INPUT = '#141a23', C_ACCENT = '#13a36f';
   const C_MUTED = '#8b97a8', C_AMBER = '#e0a33e', C_RED = '#e06c60', C_LINE = '#2b3644';
 
-  let state = { files: [], published: null, hookSource: '', hookCompiled: '', busy: false };
+  let state = { files: [], published: null, hookSource: '', hookCompiled: '', busy: false, exhausted: false };
 
   const log = (m) => { try { api().log('[driver-licenses] ' + m); } catch (e) { /* noop */ } };
 
@@ -42,32 +42,94 @@
     ));
   }
 
+  // ── Miniatura ─────────────────────────────────────────────────────────────
+  //
+  // Sirve para contestar de un vistazo «¿la foto corresponde al chofer?», que hoy exige abrir
+  // cada liga. `/api/files` entrega la imagen ORIGINAL —no hay thumbnails del lado del
+  // servidor— así que va `loading="lazy"`: sólo baja lo que entra en pantalla.
+  const THUMB_PX = 44;
+
+  // Un archivo que no es imagen (o cuyo nombre no se pudo leer) NO se disfraza de foto rota:
+  // se dibuja un marcador que dice qué pasa. Y si la descarga falla en vivo, el `onerror`
+  // degrada al mismo marcador en vez de dejar el icono de imagen quebrada del navegador.
+  function thumbPlaceholder(title, glyph) {
+    return `<div title="${esc(title)}" style="width:${THUMB_PX}px;height:${THUMB_PX}px;`
+      + `border:1px dashed ${C_LINE};border-radius:6px;display:flex;align-items:center;`
+      + `justify-content:center;color:${C_MUTED};font-size:15px">${glyph}</div>`;
+  }
+
+  function thumbCell(fileName) {
+    if (!fileName) return thumbPlaceholder('Sin archivo en la carpeta', '—');
+    if (!CORE.isImageFile(fileName)) return thumbPlaceholder('El archivo no es una imagen', '📄');
+    const url = CORE.buildLicenseUrl(fileName, location.origin);
+    if (!url) return thumbPlaceholder('No se pudo armar la liga', '—');
+    // `onerror` se desarma a sí mismo (onerror=null) para que el reemplazo no vuelva a
+    // dispararlo si el marcador tampoco cargara.
+    return `<img src="${esc(url)}" alt="" loading="lazy" decoding="async"
+      style="width:${THUMB_PX}px;height:${THUMB_PX}px;object-fit:cover;border-radius:6px;
+             border:1px solid ${C_LINE};background:${C_INPUT};display:block"
+      onerror="this.onerror=null;this.outerHTML='${
+        thumbPlaceholder('La imagen no cargó', '⚠').replace(/'/g, '&#39;')
+      }'">`;
+  }
+
   // ── Red ───────────────────────────────────────────────────────────────────
 
   // Dos pasadas: `fetchFolderless` es excluyente. Con false llegan las que están EN carpeta
   // (las que se subieron a mano); con true, las sueltas — que son las que sube este applet,
   // porque CreateUserFile no puede asignar carpeta. El filtro real lo hace el core.
-  async function fetchLicenseFiles() {
+  //
+  // ⚠️ EL FILTRO LO HACE EL SERVIDOR, con `searchQuery`. Antes se paginaba el catálogo
+  // COMPLETO (23,147 archivos ⇒ ~460 peticiones) y eso TUMBABA LA SESIÓN del ERP: el
+  // `/graphql` se cuelga a las ~40-45 y el límite es por SESIÓN, así que ni recargar salva
+  // —y se caen también las pantallas nativas—. Ver CLAUDE.md §API de Steelhead.
+  async function fetchLicenseFiles(publishedCatalog) {
     const byName = new Map();
-    for (const folderless of [false, true]) {
-      let offset = 0;
-      const page = 100;
-      for (;;) {
-        const data = await api().query('SearchUserFilesQuery', {
-          includeArchived: 'NO', fetchCustomer: false, fetchCreator: false,
-          fetchPartNumber: false, fetchReceivedOrder: false, fetchWorkOrder: false,
-          fetchVendor: false, offset, first: page,
-          orderBy: ['CREATED_AT_DESC'], searchQuery: '', fetchFolderless: folderless
-        });
-        const nodes = (data && data.searchUserFiles && data.searchUserFiles.nodes) || [];
-        nodes.forEach((n) => { if (n && n.name && !byName.has(n.name)) byName.set(n.name, n); });
-        if (nodes.length < page) break;
-        offset += page;
+    const page = 100;
+    let requests = 0;
+    let exhausted = false;
+
+    // Presupuesto DURO. Se prefiere una lista incompleta —dicha en voz alta— a dejar al
+    // operador sin ERP: pasarse del límite no da error, cuelga la sesión completa.
+    // `exact` = el término es el nombre completo de un archivo. En cuanto aparece se corta:
+    // la segunda pasada (`fetchFolderless` es excluyente) ya no puede aportar nada, y cada
+    // petición ahorrada es margen contra el límite por sesión. Medido: las de la carpeta
+    // salen en la pasada `false`, así que el ahorro es real, no teórico.
+    async function search(term, exact) {
+      for (const folderless of [false, true]) {
+        if (exact && byName.has(term)) return;
+        for (let p = 0; p < CORE.MAX_PAGES; p++) {
+          if (requests >= CORE.MAX_REQUESTS) { exhausted = true; return; }
+          const data = await api().query('SearchUserFilesQuery', {
+            includeArchived: 'NO', fetchCustomer: false, fetchCreator: false,
+            fetchPartNumber: false, fetchReceivedOrder: false, fetchWorkOrder: false,
+            fetchVendor: false, offset: p * page, first: page,
+            orderBy: ['CREATED_AT_DESC'], searchQuery: term, fetchFolderless: folderless
+          });
+          requests++;
+          const nodes = (data && data.searchUserFiles && data.searchUserFiles.nodes) || [];
+          nodes.forEach((n) => { if (n && n.name && !byName.has(n.name)) byName.set(n.name, n); });
+          if (nodes.length < page) break;   // última página de este término
+        }
       }
+    }
+
+    // 1) El prefijo trae todas las que siguen la convención (las altas nuevas, siempre).
+    await search(CORE.buildSearchTerms(null)[0]);
+    // 2) Sólo lo publicado que NO apareció: las 8 viejas, subidas sin prefijo. Este
+    //    número no crece con el catálogo, porque toda alta nueva cae en el paso 1.
+    const missing = CORE.missingPublishedFiles(Array.from(byName.keys()), publishedCatalog);
+    for (let i = 0; i < missing.length && !exhausted; i++) await search(missing[i], true);
+
+    log('archivos: ' + byName.size + ' en ' + requests + ' peticiones'
+        + (exhausted ? ' — PRESUPUESTO AGOTADO, la lista puede estar incompleta' : ''));
+    if (exhausted) {
+      console.warn('[driver-licenses] se agotó el presupuesto de ' + CORE.MAX_REQUESTS
+                   + ' peticiones; la lista puede estar incompleta.');
     }
     const all = Array.from(byName.values());
     all.sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
-    return CORE.selectLicenseFiles(all, FOLDER_NAME);
+    return { files: CORE.selectLicenseFiles(all, FOLDER_NAME), exhausted: exhausted };
   }
 
   async function fetchHook() {
@@ -110,7 +172,7 @@
     if (el) el.remove();
     // Libera el estado: el panel puede abrirse muchas veces en una sesión larga y estos
     // arreglos traen nodos completos del ERP.
-    state = { files: [], published: null, hookSource: '', hookCompiled: '', busy: false };
+    state = { files: [], published: null, hookSource: '', hookCompiled: '', busy: false, exhausted: false };
   }
 
   function shell() {
@@ -162,11 +224,15 @@
     setBody(`<div style="color:${C_MUTED}">Leyendo licencias y catálogo publicado…</div>`);
     setFoot('');
     try {
-      const [files, hook] = await Promise.all([fetchLicenseFiles(), fetchHook()]);
-      state.files = files;
+      // EN SERIE, no en paralelo: el catálogo publicado dice qué archivos buscar por
+      // nombre exacto (los que no llevan el prefijo). Sin él la búsqueda los perdería.
+      const hook = await fetchHook();
       state.hookSource = hook.code;
       state.hookCompiled = hook.compiled;
       state.published = CORE.parseBlockCatalog(hook.code);
+      const listed = await fetchLicenseFiles(state.published);
+      state.files = listed.files;
+      state.exhausted = listed.exhausted;
     } catch (e) {
       setBody(`<div style="color:${C_RED}">No se pudo cargar: ${esc(e.message || e)}</div>`);
       setFoot(btn('dl-retry', 'Reintentar', 'primary'));
@@ -196,6 +262,7 @@
       const label = r.status === 'publicado' ? 'publicada'
         : (r.status === 'desactualizado' ? 'cambió, falta publicar' : 'falta publicar');
       return `<tr style="border-top:1px solid ${C_LINE}">
+        <td style="padding:7px 4px;width:${THUMB_PX}px">${thumbCell(r.file)}</td>
         <td style="padding:7px 4px;font-weight:600">${esc(r.key)}</td>
         <td style="padding:7px 4px;color:${C_MUTED};font-size:11px">${esc(r.file)}</td>
         <td style="padding:7px 4px;color:${color};text-align:right;white-space:nowrap">${label}</td>
@@ -208,6 +275,16 @@
         <b>${inv.orphans.length} licencia(s) publicada(s) sin archivo:</b>
         ${esc(inv.orphans.map((o) => o.key).join(', '))}.<br>
         <span style="color:${C_MUTED}">Se siguen imprimiendo con una liga que ya nadie administra. Vuelve a subirlas o publica para quitarlas.</span>
+      </div>` : '';
+
+    // Un presupuesto agotado significa «puede faltar gente en esta lista». Eso se DICE:
+    // si no, el operador lee la ausencia de un chofer como «no está dado de alta».
+    const budgetBlock = state.exhausted ? `
+      <div style="margin-top:14px;border:1px solid ${C_AMBER};border-radius:8px;padding:10px 12px;color:${C_AMBER}">
+        <b>Esta lista puede estar incompleta.</b> Se alcanzó el tope de consultas al ERP
+        (${CORE.MAX_REQUESTS}) antes de terminar de buscar.<br>
+        <span style="color:${C_MUTED}">Si falta un chofer que sí existe, vuelve a abrir el panel.
+        No publiques hasta confirmarlo: publicarías un catálogo sin él.</span>
       </div>` : '';
 
     const warnBlock = inv.warnings.length ? `
@@ -224,13 +301,14 @@
       </div>
       <table style="width:100%;border-collapse:collapse">
         <tr style="color:${C_MUTED};font-size:11px;text-align:left">
+          <th style="padding:0 4px 6px;width:${THUMB_PX}px">Foto</th>
           <th style="padding:0 4px 6px">Se nombra así en el embarque</th>
           <th style="padding:0 4px 6px">Archivo</th>
           <th style="padding:0 4px 6px;text-align:right">Estado</th>
         </tr>
-        ${rows || `<tr><td colspan="3" style="padding:12px 4px;color:${C_MUTED}">Todavía no hay licencias cargadas.</td></tr>`}
+        ${rows || `<tr><td colspan="4" style="padding:12px 4px;color:${C_MUTED}">Todavía no hay licencias cargadas.</td></tr>`}
       </table>
-      ${orphanBlock}${warnBlock}
+      ${budgetBlock}${orphanBlock}${warnBlock}
       <div style="margin-top:18px;border-top:1px solid ${C_LINE};padding-top:14px">
         <div style="font-weight:600;margin-bottom:8px">Subir una licencia</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
@@ -251,18 +329,23 @@
         </div>
       </div>`);
 
+    // CANDADO: no encontrar NINGÚN archivo teniendo catálogo publicado no es «las dieron de
+    // baja», es una lectura que falló. Publicar ahí borraría el catálogo entero en silencio.
+    const suspect = CORE.looksLikeFailedSearch(state.files, state.published);
+
     setFoot(`
-      <span style="flex:1;color:${C_MUTED};font-size:12px">
-        ${diff.isEmpty ? 'No hay nada que publicar.'
-          : `${diff.added.length} alta(s) · ${diff.changed.length} cambio(s) · ${diff.removed.length} baja(s)`}
+      <span style="flex:1;color:${suspect ? C_RED : C_MUTED};font-size:12px">
+        ${suspect ? 'Publicación bloqueada: no se leyó ninguna licencia y sí hay catálogo publicado.'
+          : (diff.isEmpty ? 'No hay nada que publicar.'
+          : `${diff.added.length} alta(s) · ${diff.changed.length} cambio(s) · ${diff.removed.length} baja(s)`)}
       </span>
-      ${btn('dl-publish', 'Revisar y publicar…', diff.isEmpty ? '' : 'primary')}`);
+      ${btn('dl-publish', 'Revisar y publicar…', (diff.isEmpty || suspect) ? '' : 'primary')}`);
 
     document.getElementById('dl-upload').onclick = onUpload;
     const pub = document.getElementById('dl-publish');
     pub.onclick = () => showPublishConfirm(next, diff);
-    pub.disabled = diff.isEmpty;
-    if (diff.isEmpty) pub.style.opacity = '.5';
+    pub.disabled = diff.isEmpty || suspect;
+    if (pub.disabled) pub.style.opacity = '.5';
   }
 
   // ── Subir ─────────────────────────────────────────────────────────────────
