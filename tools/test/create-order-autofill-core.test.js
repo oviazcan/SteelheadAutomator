@@ -181,6 +181,36 @@ test('isReceiveWizardHeading ancla el wizard padre en ES y EN', () => {
 // 2026-08-06: cuando el cliente NO tiene sus customInputs, el panel deja de ser un callejón
 // sin salida y ofrece la ficha del cliente para configurarla. Formato confirmado por el
 // operador: https://app.gosteelhead.com/Domains/344/Customers/6 para BRAININ (#6).
+// Regresión 2026-08-06 — reportado desde producción con captura: el modal mostraba
+// `USD - Dólar americano` YA PUESTO y el panel marcaba DIVISA en rojo con "usuario tocó
+// después de autofill". Causa: se llenaba por substring (score 60) pero se verificaba por
+// igualdad exacta, así que en la re-pasada del poll el applet no reconocía su propio
+// trabajo. Razón Social se salvaba sólo porque ahí el cliente guarda el texto completo.
+const DIVISA_OPTS = ['', 'USD - Dólar americano', 'MXN - Peso mexicano'];
+
+test('isSelectAlreadyOnTarget: el applet RECONOCE lo que él mismo puso por substring', () => {
+  // El cliente guarda el CÓDIGO; la opción trae código + descripción.
+  assert.equal(Core.isSelectAlreadyOnTarget(DIVISA_OPTS, 1, 'USD'), true);
+  assert.equal(Core.isSelectAlreadyOnTarget(DIVISA_OPTS, 2, 'MXN'), true);
+  // …y también cuando guarda el texto completo (caso Razón Social)
+  assert.equal(Core.isSelectAlreadyOnTarget(DIVISA_OPTS, 1, 'USD - Dólar americano'), true);
+});
+
+test('isSelectAlreadyOnTarget: un cambio REAL del operador sigue detectándose', () => {
+  // El candado que evita pisar al operador no se debilita: si el select quedó en MXN y
+  // nosotros pondríamos USD, NO es nuestro trabajo → false (y el glue respeta el cambio).
+  assert.equal(Core.isSelectAlreadyOnTarget(DIVISA_OPTS, 2, 'USD'), false);
+  assert.equal(Core.isSelectAlreadyOnTarget(DIVISA_OPTS, 1, 'MXN'), false);
+  // Sin selección (índice 0 = opción vacía) tampoco es "ya está"
+  assert.equal(Core.isSelectAlreadyOnTarget(DIVISA_OPTS, 0, 'USD'), false);
+});
+
+test('isSelectAlreadyOnTarget: sin match razonable nunca dice "ya está"', () => {
+  assert.equal(Core.isSelectAlreadyOnTarget(['Apple', 'Banana'], 0, 'USD'), false);
+  assert.equal(Core.isSelectAlreadyOnTarget(DIVISA_OPTS, 1, ''), false);
+  assert.equal(Core.isSelectAlreadyOnTarget([], 0, 'USD'), false);
+});
+
 test('customerUrl arma la ficha del cliente', () => {
   assert.equal(Core.customerUrl(344, 6), '/Domains/344/Customers/6');
   assert.equal(Core.customerUrl('344', '6'), '/Domains/344/Customers/6');
