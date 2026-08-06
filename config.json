@@ -1,6 +1,6 @@
 {
-  "version": "1.11.87",
-  "lastUpdated": "2026-08-05T20:21",
+  "version": "1.11.88",
+  "lastUpdated": "2026-08-05T21:12",
   "extensionVersion": "1.7.3",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -32,6 +32,7 @@
         "SendEmailChecked": "63afd0cb799d8c9d17106fb1827fa210641d6608e9c1c2483480eb0be17635bc",
         "CreateReceivedOrder": "363cab20f9bd7fc89619e575de8d5a018cd2d59784081bef48fb77f9a41b07e5",
         "CreateUserFile": "9028f6b729fe0cd253b1d47d5f27d84cc15293bbc12381225a7c00a402849ec9",
+        "CreatePdfLowCode": "d62963890dc2ea10df8e5be2dc2b8f85443074969a3ecdb337d7e9459afbd9d4",
         "CreateReceivedOrderUserFile": "5896851dd3ee71e025bd59be3a0a3795d2ccf177636ee1bb45b10084f1541f57",
         "SetPartNumberPricesAsDefaultPrice": "9f89b40ef7d5754e8e94a94b028ce4c54c3cbf53a102098fd4d3cbec28c9e293",
         "UpdatePartNumber": "a2c3fb5491160f6539d4a52dba9894e9fa070ac4c55d309b1538a9f21405a67b",
@@ -115,6 +116,8 @@
         "SearchUnits": "0a23ee49dd85ae9bb0285f3f9ed2e45a3b8e73e5f4a76c559cf1bdf9f02bd2b8",
         "SearchProductsComprehensive": "b3e2b9c63285487866fe098c936cd37e60ffff373a9fa9e30296574cffcfbba0",
         "SearchPartNumbers": "e65235b5f0b6b5aeff8691955c6d842343cef568968bc1e8d63516301a78df32",
+        "SearchUserFilesQuery": "306e3f270dddf80e5799116a7370c11e3a113663c8cad83a40c66db7dffc5c51",
+        "PdfLowCode": "3952791b76693673c2f7e3ae38f1cd880e5591954c484a7b7ba01502be434788",
         "GetPartNumber": "98f2b7fae6163caefaab0758ff1c6e13918e269b68c140755386412bf8bf9747",
         "GetPartNumberForPartNumberPage": "34ed9de74300219ae0af48c77640e080e0ad7c5b3b2a442d63901d6742846ac4",
         "GetPartNumberInventoryBatch": "5a86da1bc53521a1204e32f8778e7b188082f7b93e132becb6af881c8719d109",
@@ -965,6 +968,33 @@
           "type": "primary",
           "handler": "message",
           "message": "run-auditor"
+        }
+      ]
+    },
+    {
+      "id": "driver-licenses",
+      "name": "Licencias de Choferes",
+      "subtitle": "Identificaciones de choferes externos para la lista de embarque",
+      "icon": "🪪",
+      "category": "Embarques",
+      "scripts": [
+        "scripts/steelhead-api.js",
+        "scripts/driver-licenses-core.js",
+        "scripts/driver-licenses.js"
+      ],
+      "requiredPermissions": [
+        "READ_ALL_UPLOADED_FILES"
+      ],
+      "actions": [
+        {
+          "id": "open-driver-licenses",
+          "label": "Administrar Licencias",
+          "sublabel": "Subir la identificación de un chofer externo y publicar el catálogo",
+          "icon": "🪪",
+          "type": "primary",
+          "handler": "message",
+          "message": "open-driver-licenses",
+          "fn": "DriverLicenses.open"
         }
       ]
     },
@@ -2917,6 +2947,8 @@
     "scripts/claude-api.js": "15e112fd05c69ffa54b0f43752cb636b7c057e08e7953b7d5134534a9728cf7c",
     "scripts/create-order-autofill-core.js": "188557e7ecf9759423ec54d4d0364dc33bf1303006b518c491e10ecabd7d0484",
     "scripts/create-order-autofill.js": "0981d9c51fa47fbab3ced3850af0c06dd429454eda3340b0da7b8330ee7327d7",
+    "scripts/driver-licenses-core.js": "c3bcadb41ecbb125dfdecf72f7ec933c2ab865a92fb00aeabcff0167dc67ddc8",
+    "scripts/driver-licenses.js": "5a990aacd53d0f66f52c011ade4c5e8f0c00e77d032177528dd6e07d1f9ca51b",
     "scripts/duplicate-tiers.js": "93f93691b833cd00254c26a752e1266587d1e7f31e3dafc5c31bb325b8136077",
     "scripts/file-uploader-core.js": "c59cc259fffacbef361ce3331fd384a0d6acd0a0f7c5e771ec04b215476c6fd5",
     "scripts/file-uploader.js": "fb3565a9dd4a49afc71cd569b0472a919312108cb85e47b05e3e79927d0966de",
