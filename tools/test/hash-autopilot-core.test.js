@@ -76,6 +76,64 @@ test('planDeploy: exactamente 6 rotados NO dispara freno', () => {
   assert.equal(p.toDeploy.length, 6);
 });
 
+// ── Freno de masa condicionado al PROBE (2026-08-05) ───────────────────────
+// El freno medía "cuántos rotaron" y nunca "qué cuesta NO actuar". El 2026-08-05 bloqueó
+// ~5 h el deploy de 14 hashes MUERTOS con los applets rotos en producción. Ahora la
+// pregunta es: ¿el hash del config sigue vivo?
+//   - cfgHash MUERTO  ⇒ el applet YA está roto. Corregir SIEMPRE, sin importar cuántos.
+//   - cfgHash VIVO    ⇒ rotación "de futuro". Ahí sí frenar: no urge y protege del rollback.
+const P = (ops, verdict) => Object.fromEntries(ops.map((o) => [o, verdict]));
+
+test('planDeploy: 14 rotados con el hash viejo MUERTO se deployan TODOS (el caso 2026-08-05)', () => {
+  const ops = Array.from({ length: 14 }, (_, i) => 'OP' + i);
+  const res = ops.map((o) => R(o, 'rotadoValidado'));
+  const p = planDeploy(res, { probeVerdicts: P(ops, 'stale') });
+  assert.equal(p.massBrake, false, 'con el config muerto, frenar GARANTIZA el daño');
+  assert.equal(p.toDeploy.length, 14);
+});
+
+test('planDeploy: muchos rotados con el hash viejo VIVO SÍ frenan (rotación de futuro)', () => {
+  const ops = Array.from({ length: 7 }, (_, i) => 'OP' + i);
+  const res = ops.map((o) => R(o, 'rotadoValidado'));
+  const p = planDeploy(res, { probeVerdicts: P(ops, 'vigente') });
+  assert.equal(p.massBrake, true);
+  assert.deepEqual(p.toDeploy, [], 'nada urgente que salvar: los viejos siguen sirviendo');
+  assert.equal(p.heldBack.length, 7);
+});
+
+test('planDeploy: freno MIXTO — retiene las de futuro pero deploya las MUERTAS', () => {
+  // Lo que el freno viejo no podía hacer: era todo o nada, y elegía "nada".
+  const muertas = ['M1', 'M2'];
+  const vivas = Array.from({ length: 7 }, (_, i) => 'V' + i);
+  const res = [...muertas, ...vivas].map((o) => R(o, 'rotadoValidado'));
+  const p = planDeploy(res, { probeVerdicts: { ...P(muertas, 'stale'), ...P(vivas, 'vigente') } });
+  assert.equal(p.massBrake, true, 'las 7 de futuro siguen frenando');
+  assert.deepEqual(p.toDeploy.map((x) => x.op).sort(), ['M1', 'M2'], 'las MUERTAS se salvan igual');
+  assert.equal(p.heldBack.length, 7);
+  assert.match(p.reason, /vivo/i, 'la razón debe decir que el viejo sigue vivo, no solo contar');
+});
+
+test('planDeploy: SIN probe se comporta como antes (fail-safe: "no sé" no habilita deploy masivo)', () => {
+  const res = Array.from({ length: 7 }, (_, i) => R('OP' + i, 'rotadoValidado'));
+  assert.equal(planDeploy(res, {}).massBrake, true);
+  assert.equal(planDeploy(res, { probeVerdicts: {} }).massBrake, true);
+});
+
+test('planDeploy: probe auth/unknown NO cuenta como muerto (no se asume urgencia)', () => {
+  const ops = Array.from({ length: 7 }, (_, i) => 'OP' + i);
+  const res = ops.map((o) => R(o, 'rotadoValidado'));
+  assert.equal(planDeploy(res, { probeVerdicts: P(ops, 'auth') }).massBrake, true);
+  assert.equal(planDeploy(res, { probeVerdicts: P(ops, 'unknown') }).massBrake, true);
+});
+
+test('planDeploy: pocas rotadas de futuro NO frenan (el umbral sigue vivo)', () => {
+  const ops = ['A', 'B'];
+  const res = ops.map((o) => R(o, 'rotadoValidado'));
+  const p = planDeploy(res, { probeVerdicts: P(ops, 'vigente') });
+  assert.equal(p.massBrake, false);
+  assert.equal(p.toDeploy.length, 2);
+});
+
 test('planDeploy: rotado SIN cfgHash (hash de otro repo) NO se deploya, va a external', () => {
   const res = [
     { op: 'GetInsightsReportDetails', verdict: 'rotadoValidado', cfgHash: null, liveHash: 'new' },

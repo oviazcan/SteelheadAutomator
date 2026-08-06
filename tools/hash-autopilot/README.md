@@ -452,10 +452,28 @@ tiene** la señal que falta (`probeVerdicts`: si el `cfgHash` está muerto). El 
 
 Con `cfgHash` muerto, **no deployar no es la opción segura: es la que garantiza el daño**. El peor caso
 de deployar es que SH revierta el release y el autopilot re-deploye los viejos en la siguiente corrida
-(≤1 h de rotura) — contra las 5 h que costó frenar. **Propuesta pendiente:** condicionar el freno al
-probe en vez de al conteo. Mientras tanto existe `--mass-brake=N` (**flag MANUAL**; el cron nunca lo
-pasa, su umbral de 6 sigue intacto) para ejecutar la conclusión de la revisión humana que el freno pide,
-sin editar el default ni saltarse la validación por-op (solo se deploya lo que sigue `rotadoValidado`).
+(≤1 h de rotura) — contra las 5 h que costó frenar. **✅ IMPLEMENTADO (2026-08-05).** El freno ya NO cuenta rotados: pregunta **¿sigue vivo el hash que
+tenemos?**, usando el `probeVerdicts` que el motor ya calculaba y no usaba para esto.
+
+| `cfgHash` según el probe | Lectura | Qué hace |
+|---|---|---|
+| **`stale`** (muerto) | el applet **ya está roto** para el operador | **deploya siempre**, sin importar cuántos sean |
+| `vigente` | rotación *de futuro* (el viejo sigue sirviendo) | cuenta para el freno |
+| `auth` / `unknown` / sin probe | **no se sabe** | cuenta para el freno (**fail-safe**) |
+
+Tres consecuencias que valen más que el cambio de umbral:
+
+1. **El freno dejó de ser todo-o-nada.** Cuando actúa, retiene las de futuro **y deploya igual las
+   muertas** (`toDeploy` + `heldBack`). Antes elegía "nada", que es la peor mitad cuando hay applets caídos.
+2. **Sin probe se comporta exactamente como antes.** "No sé" nunca habilita un deploy masivo.
+3. **El correo dice qué se retuvo, por qué NO urge y el comando exacto para liberarlo**
+   (`--mass-brake=N`), en vez de dejar al operador deducirlo.
+
+El flag `--mass-brake=N` sigue existiendo para el caso legítimo que queda: liberar a mano un lote de
+rotaciones *de futuro* tras revisarlas. Cubierto por 6 pruebas en `hash-autopilot-core.test.js`
+(incluida la reproducción del caso del 2026-08-05: 14 muertas ⇒ no frena) y 2 trinquetes de cableado
+en `deploy-live-verification-wired.test.js` — verificados por mutación: al quitar `probeVerdicts` de
+la llamada, la suite se pone roja.
 
 ## "Commiteé" no es "publiqué": el deploy que no llegó a producción (2026-08-05)
 
