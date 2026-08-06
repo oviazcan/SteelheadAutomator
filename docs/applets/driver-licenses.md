@@ -1,8 +1,8 @@
 # `driver-licenses` — Licencias de Choferes
 
 **Versión:** 0.1.0 · **Estado:** construido en rama `feat/driver-licenses-applet`, **sin deployar**.
-**Bloqueante abierto:** dos hashes sin ruta de regeneración (ver §Deuda). El trinquete
-`hash-regen-coverage` está **ROJO a propósito** — no se silenció.
+**Rutas de hash:** las tres operaciones quedaron con ruta y el trinquete `hash-regen-coverage`
+pasa (5/5). La del centinela está **declarada pero no validada en vivo** — ver §Rutas.
 
 Administra las identificaciones de los **choferes externos** y publica el catálogo al hook
 low-code `pdf:SHIPMENT_TEMPLATE` de **SteelheadPowerTools**, que pinta la licencia en la lista
@@ -100,24 +100,55 @@ Esa liga queda embebida en un PDF que se manda al cliente.
 El panel lo advierte al subir y recomienda **foto y nombre** o el **gafete laboral** de la
 transportista. No lo bloquea —no es decisión del applet— pero no deja que pase inadvertido.
 
-## Deuda: dos hashes sin ruta de regeneración ⚠️
+## Rutas de regeneración de hash
 
-El applet introduce tres operaciones. Una ya estaba cubierta; **dos no**:
+El applet introduce tres operaciones. Las tres quedaron con ruta y el trinquete
+`tools/test/hash-regen-coverage.test.js` pasa (5/5):
 
-| Operación | Tipo | Ruta de regeneración |
+| Operación | Tipo | Ruta |
 |---|---|---|
-| `SearchUserFilesQuery` | query | ✅ Ya existía — vive en los `captures` de la pantalla *UploadedFiles* del `route-catalog.json` |
-| `PdfLowCode` | query | ❌ **Falta** — necesita la ruta del editor low-code de PDF |
-| `CreatePdfLowCode` | mutation | ❌ **Falta** — necesita centinela **captura-y-aborta** (`_estrategia: capture-abort`): publicar un hook de prueba SÍ persistiría, así que el interceptor tiene que registrar el `sha256Hash` y **abortar** el request |
+| `SearchUserFilesQuery` | query | ✅ Ya existía — `captures` de la pantalla *UploadedFiles* |
+| `PdfLowCode` | query | ✅ `quote-pdf-powertools-editor` en `route-catalog.json` |
+| `CreatePdfLowCode` | mutation | ✅ `pdfLowCodeSave` en `sentinels-config.json`, **capture-abort** |
 
-**El trinquete `tools/test/hash-regen-coverage.test.js` está rojo y se dejó así.** Subir la línea
-base habría tapado deuda real: la regla del repo es que *un hash sin ruta de regeneración es
-deuda*, y el test existe justamente para que no se cuele.
+### El camino: cuatro modales y ninguna URL
 
-**Lo que falta para cerrarlo** es un dato de operación, no de código: la **URL de la pantalla del
-editor low-code** (`screenPath`) y el ancla del botón de guardar. Con eso se escriben las dos
-entradas y el trinquete vuelve a verde. No se inventó una ruta plausible a propósito — una ruta
-falsa da cobertura falsa, que es peor que la deuda declarada.
+El editor low-code **no tiene URL propia**. Se llega por modales anidados desde la Cotización
+Centinela 288, y la barra de direcciones nunca cambia:
+
+```
+/Domains/{domain}/Quotes/288
+  → «Open PDF»
+    → icono «Editar PDFs con estos Datos»
+      → «Edit Power Tools»          ← aquí carga PdfLowCode
+        → «Save»                    ← aquí dispara CreatePdfLowCode
+```
+
+Los clics intermedios llevan `once: true`: re-clicar **cerraría** el modal.
+
+Las anclas van por **la forma del icono** (prefijo del `path` del SVG), no por texto ni por
+`data-testid` —estos SVG de MUI no lo traen— ni por el `aria-label`, que está en español.
+
+### Por qué abortar no es opcional aquí
+
+Cada save del editor low-code **crea una versión nueva del hook y la última es la activa**: no
+existe `Update` ni mutation de «activar». Un centinela que dejara pasar el request **publicaría
+código productivo en cada corrida del autopilot**. Por eso `_estrategia: capture-abort`: se marca
+la op en `abortOps` antes de clicar Save, el interceptor registra el `sha256Hash` y aborta.
+
+### ⚠️ Declarada, no validada en vivo
+
+La receta está escrita y el trinquete la cuenta, pero **no se ha corrido el headless contra ella**.
+Dos cosas pueden faltar:
+
+1. **El handler de navegación por modales anidados en el motor.** Los sentinels existentes llegan
+   por `screenPath` + un clic; éste necesita tres antes del Save.
+2. **La corrida de validación.** Hasta que el autopilot capture el hash por este camino, la
+   cobertura es *declarativa*: el test mide que la ruta exista, no que funcione.
+
+Mientras tanto, si `CreatePdfLowCode` rota, el applet deja de publicar hasta actualizar el hash a
+mano en `remote/config.json` (el valor vive también en
+`SteelheadPowerTools/sync/lowcode_sync.py`, que sirve de referencia cruzada).
 
 ## Pendientes
 

@@ -93,6 +93,16 @@
       "_estrategia": "capture-abort",
       "_nota": "GenerateDuckDb (usedBy report-regen) por CAPTURA-Y-ABORTA en /Reporting/Databases → botón 'Regenerate Database' (svg[data-testid=\"CloudDownloadIcon\"]). Se marca la op en abortOps ANTES de clicar → el interceptor aborta → NO regenera la DB. Sin objeto Centinela (botón global); el load verifica el botón presente. id string (no numérico) — no se usa en la URL, solo para pasar el gate (mutEntityType exige id truthy). Rotó 2026-07-20 (cfg 8f29d420 muerto). El gate 'no-auto' (Generate… no matchea prefijos) lo permite por _estrategia:capture-abort."
     },
+    "pdfLowCodeSave": {
+      "id": 288,
+      "screenPath": "/Domains/{domain}/Quotes/{id}",
+      "marker": "Centinela",
+      "_para": [
+        "CreatePdfLowCode"
+      ],
+      "_estrategia": "capture-abort",
+      "_nota": "CreatePdfLowCode (usedBy driver-licenses) por CAPTURA-Y-ABORTA sobre la Cotización Centinela 288. Camino: /Quotes/288 → 'Open PDF' → icono 'Editar PDFs con estos Datos' → 'Edit Power Tools' → botón 'Save'. TODO por modales anidados: la URL NUNCA cambia, así que no hay screenPath propio del editor. ABORTAR ES OBLIGATORIO, no una precaución: cada save del editor low-code CREA UNA VERSIÓN NUEVA del hook y la última es la activa — no existe Update ni 'activar', así que un centinela que dejara pasar el request publicaría código productivo en cada corrida. Se marca la op en abortOps ANTES de clicar Save → el interceptor registra el sha256Hash y aborta → cero versiones nuevas. Anclas por la FORMA del icono (path del SVG): estos SVG de MUI no traen data-testid y el único aria-label ('Editar PDFs con estos Datos') está en español. Open PDF: path^='M20 2H8c-1.1 0-2 .9-2 2v12'. Editar PDFs: path^='M23 7V1h-6v2H7V1H1v6h2v10H1v6h6v-2h10v2h6v-6h-2V7'. Edit Power Tools: path^='M4 7v2c0 .55-.45 1-1 1H2v4h1c.55 0 1 .45 1 1v2c0 1.65 1.35 3 3 3h3v-2H7'. Save: bilingüe 'save|guardar'. Los clics intermedios necesitan once:true — re-clicar cierra el modal. ⚠ PENDIENTE: receta DECLARADA, NO VALIDADA EN VIVO. Falta el handler de navegación por modales anidados en el motor (los sentinels existentes llegan por screenPath + un clic; éste necesita tres) y una corrida headless que lo confirme. Ver docs/applets/driver-licenses.md §Deuda."
+    },
     "reportFolderDelete": {
       "id": "reporting-folder-centinela",
       "screenPath": "/Reporting/Edit",
