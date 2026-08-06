@@ -434,6 +434,13 @@ renglón. **Antes de tocar un applet, lee su bitácora.**
 | `sensor-graph-hide-all` | 0.2.0 | Al entrar a un Sensor Dashboard esconde todos los sensores + combo para aislar uno | [`sensor-graph-hide-all.md`](docs/applets/sensor-graph-hide-all.md) |
 | `hash-scanner` | 0.6.24 | Captura hashes de persisted queries navegando la app (degrada las muestras, no las descarta) | [`hash-scanner.md`](docs/applets/hash-scanner.md) |
 | `process-canon` | varios | Canon de nodos de proceso (helper compartido) | [`processes-architecture.md`](docs/processes-architecture.md) |
+| `bill-autofill` | 0.1.0 | Autollena cuenta AP, divisa, TC y cuentas de gasto al crear un Bill (aprende de selecciones previas) | [`bill-autofill.md`](docs/applets/bill-autofill.md) |
+| `inventory-reset` | 0.1.0 | Archiva los lotes activos y carga inventario nuevo desde CSV | [`inventory-reset.md`](docs/applets/inventory-reset.md) |
+| `invoice-default-tab` | 0.1.0 | Al entrar a /Invoices sin `mode=`, navega solo al tab Packing Slips | [`invoice-default-tab.md`](docs/applets/invoice-default-tab.md) |
+| `paros-linea` | 0.1.0 | Botón flotante Andon: registra paros de línea con cronómetro y evidencia | [`paros-linea.md`](docs/applets/paros-linea.md) |
+| `po-reconciler` | 0.1.0 | Rebalancea OVs temporales contra POs reales de Schneider QRO (lee los PDF) | [`po-reconciler.md`](docs/applets/po-reconciler.md) |
+| `report-liberator` | 0.1.0 | Saca reportes de sus carpetas en masa (`folderId = null`) | [`report-liberator.md`](docs/applets/report-liberator.md) |
+| `wo-deadline` | 0.1.0 | Cambia plazos y etiquetas de OTs en masa (script: `wo-deadline-changer.js`) | [`wo-deadline.md`](docs/applets/wo-deadline.md) |
 | `integrity-tiers` | 1.5.3 | Módulo `duplicate-tiers.js` + UI en `auditor` + tier scan | [`integrity-tiers.md`](docs/applets/integrity-tiers.md) |
 
 **Tools standalone (DevTools, NO son la extensión — se pegan en consola una vez):**
