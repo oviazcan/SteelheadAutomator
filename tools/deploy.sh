@@ -82,6 +82,50 @@ if [ -n "$DIRTY_NON_REMOTE" ]; then
   exit 1
 fi
 
+# --- gate de INTEGRIDAD: no se publica nada sin firma ---
+# INCIDENTE 2026-08-05: el deploy de 1.11.90 corrió sin SA_KMS_KEY en el entorno. Más abajo
+# había un `else` que solo IMPRIMÍA un aviso, así que se publicó el config nuevo conservando el
+# `config.sig` Y los `scriptIntegrity` de 1.11.89. Como la verificación es FAIL-CLOSED, la
+# extensión ENTERA quedó muerta para todos los usuarios («Sin conexión» en el popup) — no sólo
+# el applet que se estaba deployando. Un aviso en medio de 30 líneas de salida no es un candado.
+#
+# El criterio es el mismo que usa el smoke-check del final: si hay pública real embebida estamos
+# en Fase 2 y firmar NO es opcional. Si algún día hay que operar sin firma, se vacía la pública
+# —una decisión visible y versionada—, no se deploya a ciegas.
+PUB_PREFLIGHT=$(node -e "globalThis.self={};require('$MAINWT/extension/integrity-pubkey.js');process.stdout.write(self.SA_INTEGRITY_PUBKEY||'')" 2>/dev/null || true)
+if [ -n "$PUB_PREFLIGHT" ] && [ -z "${SA_KMS_KEY:-}" ]; then
+  echo "ERROR: SA_KMS_KEY no está en el entorno y la extensión SÍ verifica firma (Fase 2)." >&2
+  echo "       Publicar así deja el config sin re-firmar y apaga la extensión ENTERA para" >&2
+  echo "       todos los usuarios (fail-closed). Pasó el 2026-08-05 con 1.11.90." >&2
+  echo "" >&2
+  echo "       La llave vive en ~/.zshrc; si tu shell no la heredó:" >&2
+  echo "         export SA_KMS_KEY=\"projects/…/cryptoKeys/config-signing/cryptoKeyVersions/N\"" >&2
+  echo "       y confirma el acceso con:  gcloud auth list" >&2
+  exit 1
+fi
+
+# --- gate de CANDADO: el hook instalado debe ser el versionado ---
+# El pre-push valida espejo, bump Y firma, pero `install-hooks.sh` lo COPIA a .git/hooks:
+# mejorar `.githooks/pre-push` NO protege a nadie hasta que cada clon reinstale, y nada avisaba
+# del desfase. El 2026-08-05 el hook activo era del 23 de julio —anterior a que se le agregara la
+# validación de firma— así que el push roto atravesó un candado que en el repo YA existía.
+# Se reinstala solo: es idempotente, y el peor caso de equivocarse es copiar un archivo de más.
+HOOKS_SRC="$MAINWT/.githooks"
+HOOKS_DST="$(git -C "$MAINWT" rev-parse --git-common-dir)"
+case "$HOOKS_DST" in /*) ;; *) HOOKS_DST="$MAINWT/$HOOKS_DST" ;; esac
+HOOKS_DST="$HOOKS_DST/hooks"
+if [ -d "$HOOKS_SRC" ]; then
+  for h in "$HOOKS_SRC"/*; do
+    [ -f "$h" ] || continue
+    if ! diff -q "$h" "$HOOKS_DST/$(basename "$h")" >/dev/null 2>&1; then
+      echo "⚠️  hook '$(basename "$h")' desfasado respecto a .githooks/ — reinstalando"
+      "$MAINWT/tools/install-hooks.sh" >/dev/null || {
+        echo "ERROR: no pude reinstalar los hooks. Corre tools/install-hooks.sh a mano." >&2; exit 1; }
+      break
+    fi
+  done
+fi
+
 # --- gate de calidad: la suite DEBE estar verde antes de tocar producción ---
 # Evita deployar con tests rojos (bugs de producto o refactors que rompieron un
 # golden). Corre desde el worktree de main = lo que realmente se va a deployar.
@@ -128,7 +172,9 @@ if [ -n "${SA_KMS_KEY:-}" ]; then
     --sig "$MAINWT/remote/config.sig" --scripts-dir "$MAINWT/remote/scripts" \
     --backend kms --kms-key "$SA_KMS_KEY" || { echo "ERROR: seal falló (¿acceso KMS?). Aborto."; exit 1; }
 else
-  echo "⚠️  SA_KMS_KEY no seteada — deploy SIN firmar (pre-Fase-0). config.sig no se actualiza."
+  # Sólo se llega aquí con la pública VACÍA (pre-Fase-0): nadie verifica, así que publicar sin
+  # firmar no apaga a nadie. Con pública real el pre-flight de arriba ya abortó.
+  echo "⚠️  SA_KMS_KEY no seteada y pública vacía (pre-Fase-0) — deploy SIN firmar."
 fi
 
 # --- commit en main ---

@@ -107,13 +107,21 @@ fi
 # 2c) sellar: scriptIntegrity + firma (config.sig). Mismo candado que deploy.sh — este
 # path NO llama a deploy.sh, así que debe sellar por su cuenta (si no, en Fase 2 pushearía
 # un config.json bumpeado con config.sig viejo/ausente y el pre-push lo bloquearía).
+PUB_WB=$(node -e "globalThis.self={};require('$MAINWT/extension/integrity-pubkey.js');process.stdout.write(self.SA_INTEGRITY_PUBKEY||'')" 2>/dev/null || true)
+if [ -n "$PUB_WB" ] && [ -z "${SA_KMS_KEY:-}" ]; then
+  die "SA_KMS_KEY no está en el entorno y la extensión SÍ verifica firma (Fase 2).
+       Publicar así deja el config sin re-firmar y apaga la extensión ENTERA para todos
+       los usuarios (fail-closed). Pasó el 2026-08-05 con 1.11.90.
+       La llave vive en ~/.zshrc; confirma el acceso con 'gcloud auth list'."
+fi
 if [ -n "${SA_KMS_KEY:-}" ]; then
   echo "→ seal: scriptIntegrity + firma KMS"
   node "$MAINWT/tools/seal-config.mjs" --config "$MAINWT/remote/config.json" \
     --sig "$MAINWT/remote/config.sig" --scripts-dir "$MAINWT/remote/scripts" \
     --backend kms --kms-key "$SA_KMS_KEY" || die "seal falló (¿acceso KMS?)."
 else
-  echo "⚠️  SA_KMS_KEY no seteada — deploy SIN firmar (pre-Fase-0)."
+  # Sólo con pública VACÍA (pre-Fase-0): nadie verifica, así que no apaga a nadie.
+  echo "⚠️  SA_KMS_KEY no seteada y pública vacía (pre-Fase-0) — deploy SIN firmar."
 fi
 
 # 3) commit main (solo el script + config)

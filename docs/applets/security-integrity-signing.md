@@ -9,6 +9,59 @@ y el hash SHA-256 de cada script **antes** de ejecutarlo, con **fail-closed**.
 - **Plan:** [`docs/superpowers/plans/2026-07-09-remote-script-integrity-signing.md`](../superpowers/plans/2026-07-09-remote-script-integrity-signing.md)
 - **Runbook KMS (Fase 0):** [`docs/deploy-signing-setup.md`](../deploy-signing-setup.md)
 
+## INCIDENTE 2026-08-05 — la extensión ENTERA se apagó por un config sin re-firmar
+
+El deploy de **1.11.90** corrió **sin `SA_KMS_KEY` en el entorno**. `deploy.sh` tenía un `else`
+que sólo **imprimía un aviso**, así que publicó el `config.json` nuevo conservando el `config.sig`
+**y los `scriptIntegrity`** de 1.11.89. Como la verificación es **fail-closed**,
+`fetchConfigFresh` descartó el config completo: el popup mostró **«Sin conexión»** a todos los
+usuarios y **ningún applet cargó** — no sólo el que se estaba deployando.
+
+Medido antes de reparar:
+
+```
+gh-pages   v1.11.90  firma propia ❌   ← la firma viva validaba contra el config de 1.11.89
+gh-pages~1 v1.11.89  firma propia ✅
+```
+
+Reparado re-sellando en **1.11.91** (el bump lo exige el propio pre-push: la versión es el
+cache-bust). Verificado en vivo: firma válida y los dos hashes de `create-order-autofill`
+coincidiendo con lo que sirve gh-pages.
+
+### Había DOS candados y no actuó ninguno — por razones distintas
+
+**1. `deploy.sh` degradaba a aviso.** Un `⚠️` en medio de 30 líneas de salida no frena a nadie, y
+menos a una sesión que no conoce el repo. Ese `else` se escribió para «pre-Fase-0», cuando la
+pública era placeholder y nadie verificaba; una vez embebida la pública real, quedó como un
+camino que **sólo sirve para publicar algo que ningún cliente puede usar**.
+
+**2. `.githooks/pre-push` SÍ valida la firma… pero el hook ACTIVO era de otra época.**
+`install-hooks.sh` lo **copia** a `.git/hooks`, así que mejorar el hook versionado **no protege a
+ninguna máquina** hasta que cada clon reinstale — y nada avisaba del desfase. El instalado era
+del **23 de julio**, anterior a que se le agregara el paso de firma. El candado existía en el
+repo y **no existía en la máquina**.
+
+> **La lección, que es más general que este incidente:** un candado que se propaga **por copia**
+> caduca en silencio. Su versión instalada es un estado más que puede driftear, y hay que
+> vigilarlo igual que se vigila el espejo de `gh-pages`. «Está en el repo» no es «está activo».
+
+### Qué se cerró
+
+| Capa | Cambio |
+|---|---|
+| `deploy.sh` | **Aborta** en el pre-flight si hay pública real y falta `SA_KMS_KEY` — **antes** del bump, para no dejar el config a medias |
+| `deploy.sh` | Compara `.githooks/*` con el hook instalado y **reinstala solo** si driftó |
+| `wb-deploy.sh` | Mismo guard: es la OTRA vía de publicación y no pasa por `deploy.sh` |
+| `tools/test/deploy-signing-required.test.js` | Trinquete de las tres cosas |
+
+**El trinquete se verificó rompiéndolo.** Su primera versión comprobaba que el guard *existiera*
+y **seguía en verde** al degradar el `exit 1` a un `echo` — el mismo defecto que causó el
+incidente, reproducido en el test que debía evitarlo. Ahora lee el **cuerpo del `if`** y exige la
+consecuencia (`exit 1` / `die`); con la regresión inyectada en ambos scripts, falla 2 de 6.
+
+Y el guard se probó en sus tres casos, aislado: pública real sin llave → **aborta**; pública real
+con llave → continúa; pública vacía sin llave (pre-Fase-0) → continúa.
+
 ## Arquitectura
 - **`config.json` es el manifiesto raíz firmado.** Lleva `scriptIntegrity: { "scripts/foo.js": "<sha256-hex>" }`. La firma va en **`config.sig` separado** (base64 de la firma raw P1363, sobre los bytes exactos del config).
 - **Raíz de confianza:** la **pública embebida** en la extensión (`extension/integrity-pubkey.js` → `self.SA_INTEGRITY_PUBKEY`), firmada por el Web Store → un atacante con acceso a gh-pages no puede forjar firma sin la **privada, que vive en GCP KMS** del proyecto del cliente (nunca en el repo).
