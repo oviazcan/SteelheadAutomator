@@ -71,14 +71,15 @@
   }
 
   async function fetchHook() {
-    const data = await api().query('PdfLowCode', { pdfType: PDF_TYPE });
-    // El shape varía según la forma del slot; se busca el nodo que traiga `code`.
-    const node = data && (data.pdfLowCode || data.PdfLowCode || data);
-    const found = node && (node.code ? node : (node.nodes && node.nodes[0]));
-    if (!found || typeof found.code !== 'string') {
+    // `PdfLowCode` es un LISTADO paginado de versiones: `$first`/`$offset` son `Int!` y sin
+    // ellos el ERP responde HTTP 400. La elección de la versión ACTIVA (la más reciente por
+    // createdAt) vive en el core, testeada — publicar sobre una versión vieja no da error.
+    const data = await api().query('PdfLowCode', CORE.hookQueryVariables(PDF_TYPE));
+    const found = CORE.pickActiveHook(data);
+    if (!found) {
       throw new Error('No se pudo leer el hook de embarques del servidor.');
     }
-    return { code: found.code, compiled: found.compiled || '' };
+    return { code: found.code, compiled: found.compiled };
   }
 
   async function uploadBinary(file) {
@@ -361,12 +362,43 @@
       }
 
       await publishHook(newCode, newCompiled);
-      log('publicado: ' + Object.keys(next).length + ' entradas');
+
+      // `CreatePdfLowCode` responde {clientMutationId:null}: ni el id ni el valor. Un `await`
+      // sin excepción NO prueba que se escribió — y esto publica CÓDIGO PRODUCTIVO. Se RELEE
+      // del servidor y se compara el catálogo que quedó VIVO contra el que se mandó.
+      let verified = false;
+      let verifyNote = '';
+      try {
+        const after = await fetchHook();
+        const live = CORE.parseBlockCatalog(after.code);
+        if (!live) {
+          verifyNote = 'El bloque del servidor no se pudo releer para confirmarlo.';
+        } else if (!CORE.diffCatalogs(live, next).isEmpty) {
+          verifyNote = 'Lo que quedó vivo en el servidor NO coincide con lo que se mandó.';
+        } else {
+          verified = true;
+        }
+      } catch (ve) {
+        verifyNote = 'No se pudo releer para confirmar: ' + (ve && ve.message ? ve.message : ve);
+      }
+      log((verified ? 'publicado y VERIFICADO: ' : 'publicado SIN verificar: ')
+          + Object.keys(next).length + ' entradas');
+
+      // No tener la confirmación no es «falló»: es «no sé». Va en ámbar, distinto del rojo
+      // de bloqueo, y dice qué hacer — nunca en verde, que afirmaría lo que no se midió.
+      const head = verified
+        ? `<div style="border:1px solid ${C_ACCENT};border-radius:8px;padding:14px;color:${C_ACCENT}">
+             <b>Catálogo publicado y verificado</b> con ${Object.keys(next).length} licencia(s)
+             en este dominio. Se releyó del servidor y coincide.
+           </div>`
+        : `<div style="border:1px solid ${C_AMBER};border-radius:8px;padding:14px;color:${C_AMBER}">
+             <b>Se mandó, pero no pude verificarlo.</b> ${esc(verifyNote)}<br>
+             <span style="color:${C_MUTED}">Vuelve a abrir el panel y revisa el listado antes de
+             darlo por bueno: puede haberse publicado, o no.</span>
+           </div>`;
 
       setBody(`
-        <div style="border:1px solid ${C_ACCENT};border-radius:8px;padding:14px;color:${C_ACCENT}">
-          <b>Catálogo publicado</b> con ${Object.keys(next).length} licencia(s) en este dominio.
-        </div>
+        ${head}
         <div style="margin-top:14px;border:1px solid ${C_AMBER};border-radius:8px;padding:12px 14px;color:${C_AMBER}">
           <b>Falta el otro dominio.</b> Este applet publica donde estás ahora. Para dejar TLC y MTY
           iguales, abre el otro dominio y publica de nuevo desde aquí.<br>
