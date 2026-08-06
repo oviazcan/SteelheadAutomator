@@ -58,8 +58,14 @@ Los **7** quedaron con bitácora y fila en el índice: `report-liberator`, `inve
 `po-reconciler`, `wo-deadline`, `invoice-default-tab`, `paros-linea`, `bill-autofill`
 (más `cfdi-attacher`, que fue el que destapó el hueco).
 
-**Quedan 4 sin ficha propia** (se mencionan en `CLAUDE.md` pero no tienen fila ni bitácora):
-`auditor` · `po-comparator` · `invoice-listing-marker` · `portal-importer`.
+**✅ Los 4 restantes también quedaron documentados** (2026-08-05): `auditor`,
+`po-comparator`, `invoice-listing-marker`, `portal-importer`.
+
+**Cobertura hoy: 45/45 apps del `config.json` con fila en el índice y bitácora.** Los dos
+que la auditoría automática marca como faltantes son falsos positivos conocidos:
+`carga-masiva` es el `id` de la app cuyo applet se documenta como **`bulk-upload`**, y
+`process-canon` es un **helper compartido**, no un applet (su documentación vive en
+[`processes-architecture.md`](processes-architecture.md)).
 
 ## 3. ✅ RESUELTO — inventario del paquete de capacitación
 
@@ -73,25 +79,19 @@ lección del §4 de este documento aplicada a sí misma.
 (`repos-y-mantenimiento.html`, `manual-arquitectura.html`, `catalogo-mantenimiento.html`) son
 idénticos byte-a-byte en los tres paquetes: tocar uno obliga a republicar los tres.
 
-## 4. Freno de masa: propuesta sin implementar
+## 4. ✅ IMPLEMENTADO — el freno de masa ya no cuenta, pregunta
 
-Medido sobre el histórico (log 2026-07-06 → 2026-08-05, **92 corridas**, 20 auto-deploys): el
-máximo de rotados en una corrida que **sí** deployó fue **3**. El umbral de 6 nunca estorbó en
-operación normal, y **la única vez que actuó bloqueó un deploy urgente** durante ~5 h con los
-applets rotos en producción.
+Condicionado al `probeVerdicts` que el motor **ya calculaba y no usaba para esto**:
 
-- Su comentario dice defender contra *"captura corrupta / cookie de otro dominio"*: **eso no
-  aplica** — un hash de persisted query identifica el *texto* de la query, es **global al
-  build**, no al tenant. Una sesión en el dominio equivocado capturaría los mismos hashes.
-- **Lo que sí protege:** un bug del propio motor (si el interceptor asociara hashes a
-  operaciones equivocadas, el síntoma sería *"rotaron 14 de golpe"*). Es un *circuit breaker*
-  contra nosotros, no un detector de anomalías del ERP.
-- **Propuesta:** condicionar el freno al **probe del `cfgHash`** en vez de al conteo —
-  *viejo muerto* ⇒ corregir siempre (no deployar **garantiza** el daño); *viejo vivo* ⇒
-  retener y avisar (rotación de futuro, protege del rollback de Steelhead).
-- Mientras tanto existe `--mass-brake=N`, **flag manual** (el cron nunca lo pasa).
+| `cfgHash` según el probe | Qué hace |
+|---|---|
+| **muerto** (`stale`) | **deploya siempre** — el applet ya está roto; retener garantiza el daño |
+| vivo (`vigente`) | cuenta para el freno: rotación *de futuro*, no urge y protege del rollback |
+| `auth` / `unknown` / sin probe | cuenta para el freno (**fail-safe**: "no sé" no habilita deploy masivo) |
 
----
+Dejó de ser todo-o-nada: al frenar **retiene las de futuro y deploya igual las muertas**.
+El correo dice qué retuvo, por qué no urge y el comando exacto para liberarlo
+(`--mass-brake=N`). 6 pruebas + 2 trinquetes de cableado, verificados **por mutación**.
 
 ## 5. Deuda de anclaje y de cobertura (de bitácoras previas)
 

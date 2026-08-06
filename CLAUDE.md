@@ -441,6 +441,10 @@ renglón. **Antes de tocar un applet, lee su bitácora.**
 | `po-reconciler` | 0.1.0 | Rebalancea OVs temporales contra POs reales de Schneider QRO (lee los PDF) | [`po-reconciler.md`](docs/applets/po-reconciler.md) |
 | `report-liberator` | 0.1.0 | Saca reportes de sus carpetas en masa (`folderId = null`) | [`report-liberator.md`](docs/applets/report-liberator.md) |
 | `wo-deadline` | 0.1.0 | Cambia plazos y etiquetas de OTs en masa (script: `wo-deadline-changer.js`) | [`wo-deadline.md`](docs/applets/wo-deadline.md) |
+| `auditor` | 0.1.42 | Audita NPs contra criterios de calidad + duplicados por similitud (ejemplo canónico de memory hardening) | [`auditor.md`](docs/applets/auditor.md) |
+| `invoice-listing-marker` | 0.1.0 | Marca en el listado de facturas las notas de crédito, los montos cero y los borradores | [`invoice-listing-marker.md`](docs/applets/invoice-listing-marker.md) |
+| `po-comparator` | 0.1.0 | Lee el PDF de la OC y lo compara línea por línea contra la OV (motor que reusa `po-reconciler`) | [`po-comparator.md`](docs/applets/po-comparator.md) |
+| `portal-importer` | 0.1.0 | Importa el XLS de los portales de clientes (Hubbell y otros) y crea las OVs | [`portal-importer.md`](docs/applets/portal-importer.md) |
 | `integrity-tiers` | 1.5.3 | Módulo `duplicate-tiers.js` + UI en `auditor` + tier scan | [`integrity-tiers.md`](docs/applets/integrity-tiers.md) |
 
 **Tools standalone (DevTools, NO son la extensión — se pegan en consola una vez):**
