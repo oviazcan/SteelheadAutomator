@@ -178,6 +178,40 @@ test('isReceiveWizardHeading ancla el wizard padre en ES y EN', () => {
   assert.equal(Core.isReceiveWizardHeading(null), false);
 });
 
+// 2026-08-06: cuando el cliente NO tiene sus customInputs, el panel deja de ser un callejón
+// sin salida y ofrece la ficha del cliente para configurarla. Formato confirmado por el
+// operador: https://app.gosteelhead.com/Domains/344/Customers/6 para BRAININ (#6).
+test('customerUrl arma la ficha del cliente', () => {
+  assert.equal(Core.customerUrl(344, 6), '/Domains/344/Customers/6');
+  assert.equal(Core.customerUrl('344', '6'), '/Domains/344/Customers/6');
+  assert.equal(Core.customerUrl(1, 20), '/Domains/1/Customers/20');
+});
+
+test('customerUrl NO inventa la URL si falta un dato (degrada a aviso sin liga)', () => {
+  // Un dominio inventado mandaría al operador a la ficha de OTRO dominio (TLC vs MTY) —
+  // peor que no ofrecer liga.
+  assert.equal(Core.customerUrl(null, 6), null);
+  assert.equal(Core.customerUrl(344, null), null);
+  assert.equal(Core.customerUrl(undefined, undefined), null);
+  assert.equal(Core.customerUrl('', 6), null);
+  assert.equal(Core.customerUrl(344, ''), null);
+  // Nada que no sea numérico: cierra la puerta a interpolar basura en la ruta
+  assert.equal(Core.customerUrl('344; drop', 6), null);
+  assert.equal(Core.customerUrl(344, '6/../../evil'), null);
+  assert.equal(Core.customerUrl('abc', 'def'), null);
+});
+
+test('domainIdFromPath saca el dominio de la ruta, y null cuando no lo trae', () => {
+  assert.equal(Core.domainIdFromPath('/Domains/344/SalesOrders'), '344');
+  assert.equal(Core.domainIdFromPath('/Domains/1/Customers/6'), '1');
+  assert.equal(Core.domainIdFromPath('/Domains/344'), '344');
+  // El flujo de Recibo NO lleva el dominio en la ruta → lo resuelve el glue por otra vía
+  assert.equal(Core.domainIdFromPath('/Receiving/CustomerParts'), null);
+  assert.equal(Core.domainIdFromPath('/Domains/abc/SalesOrders'), null);
+  assert.equal(Core.domainIdFromPath(''), null);
+  assert.equal(Core.domainIdFromPath(null), null);
+});
+
 test('matchesCreateOrderUrl gatea Receiving y la lista de SalesOrders', () => {
   assert.equal(Core.matchesCreateOrderUrl('/Receiving/CustomerParts'), true);
   assert.equal(Core.matchesCreateOrderUrl('/Receiving/CustomerParts/'), true);
