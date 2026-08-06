@@ -75,9 +75,29 @@ versiones ajenas**; se resolvió con cherry-pick quirúrgico, no con merge.
   Ver [`docs/architecture/rollback.md`](docs/architecture/rollback.md).
 - Si solo cambia `extension/`, no hace falta tocar `gh-pages`.
 - `extensionVersion` en `config.json` solo se bumpea cuando cambia el código de `extension/` y se republica el `.zip`.
-- Procedimiento manual de fallback (si `deploy.sh` falla): bump `version` + `lastUpdated` → commit
-  en `main` → `git show main:… > …` sobre `gh-pages` → push ambas → verificar con
-  `tools/check-deploy.sh`. GitHub Pages publica en ~30-60s.
+- Procedimiento manual de fallback (si `deploy.sh` falla): bump `version` + `lastUpdated` →
+  **RE-SELLAR la firma y los hashes** → commit en `main` → `git show main:… > …` sobre `gh-pages` →
+  push ambas → verificar con `tools/check-deploy.sh`. GitHub Pages publica en ~30-60s.
+
+  ⚠️ **El re-sellado NO es opcional y este procedimiento lo omitía** (incidente 2026-08-05): se
+  bumpeó `config.json` a mano y **`1.11.90` se publicó con la firma y los hashes de `1.11.89`**.
+  Como la verificación es **fail-closed**, una firma que no corresponde **bloquea a quien ya
+  actualizó el zip** — y nada en el bump lo delata: `deploy-status.sh` compara **versiones**, no
+  firmas, así que decía "✅ todo alineado" con el config roto. Lo cazó otra sesión
+  (`fix(integrity): re-sella el config`, dos commits). **Comprobación explícita** —la que sí
+  contesta la pregunta— con la pública REAL (no la primera cadena base64 que aparezca en el
+  archivo, error cometido el mismo día):
+  ```bash
+  PUB=$(node -e "globalThis.self={};require('./extension/integrity-pubkey.js');process.stdout.write(self.SA_INTEGRITY_PUBKEY||'')")
+  node tools/verify-config-sig.mjs <config.json servido> <config.sig servido> "$PUB"
+  ```
+
+- **Si el worktree de `main` tiene WIP de OTRA sesión, `deploy.sh` se niega** (hace `git add remote/`
+  y la arrastraría). **No stashees trabajo ajeno.** La vía limpia: `git add` selectivo de tus
+  archivos + commit, y el espejo a `gh-pages` desde un **worktree temporal**
+  (`git worktree add <tmp> gh-pages` → copiar `main:remote/…` → commit → push → `git worktree
+  remove` + `git worktree prune`). El `pre-push` valida el espejo igual. **Removerlo siempre**: un
+  worktree huérfano de `gh-pages` bloquea TODO deploy posterior (ver §Trabajo paralelo).
 
 ## API de Steelhead
 - Endpoint: `POST https://app.gosteelhead.com/graphql`
@@ -422,7 +442,7 @@ renglón. **Antes de tocar un applet, lee su bitácora.**
 | `wo-schedule-button` | 0.9.0 | Readout de programación en la ficha de OT + programar por tratamiento ancla | [`wo-schedule-button.md`](docs/applets/wo-schedule-button.md) |
 | `batch-name-filter` | 0.3.1 | Selecciona de un jalón todos los lotes con un nombre exacto en el Panel de Envío | [`batch-name-filter.md`](docs/applets/batch-name-filter.md) |
 | `packing-slip-drawings` | 0.3.0 | Adjunta los planos del NP al correo de la remisión (y delata en ámbar los NP sin plano) + imprime remisión y selección en un PDF | [`packing-slip-drawings.md`](docs/applets/packing-slip-drawings.md) |
-| `driver-licenses` | 0.1.0 · **sin deployar** | Administra las identificaciones de choferes EXTERNOS y **publica el catálogo dentro del hook `pdf:SHIPMENT_TEMPLATE`** de SteelheadPowerTools (sustituye un condicional por chofer en la plantilla). Único applet que **publica código productivo**: relee del servidor, muestra diff, exige confirmación y aborta si los marcadores no están sanos. Pertenencia por **prefijo** `licencia-` en el nombre, no por carpeta (`CreateUserFile` no puede asignarla) | [`driver-licenses.md`](docs/applets/driver-licenses.md) |
+| `driver-licenses` | 0.1.0 · **en producción** (`1.11.88`) · iPad `0.6.32` | Administra las identificaciones de choferes EXTERNOS y **publica el catálogo dentro del hook `pdf:SHIPMENT_TEMPLATE`** de SteelheadPowerTools (sustituye un condicional por chofer en la plantilla). Único applet que **publica código productivo**: relee del servidor, muestra diff, exige confirmación y aborta si los marcadores no están sanos. Pertenencia por **prefijo** `licencia-` en el nombre, no por carpeta (`CreateUserFile` no puede asignarla) | [`driver-licenses.md`](docs/applets/driver-licenses.md) |
 | `schedule-batch-highlighter` | 0.2.0 | Resalta un lote en el Schedule Board y 📦 agrupa sus órdenes en una tarea | [`schedule-batch-highlighter.md`](docs/applets/schedule-batch-highlighter.md) |
 | `po-listing-filters` | 0.4.0 | Buscador global de OC/proveedor/factura + toggle "Sólo Proquipa" | [`po-listing-filters.md`](docs/applets/po-listing-filters.md) |
 | `invoice-autofill` | 0.5.67 | Autollena cliente/divisa/TC/CXC y la cuenta de ingreso por línea al crear factura | [`invoice-autofill.md`](docs/applets/invoice-autofill.md) |
@@ -491,6 +511,11 @@ Al integrar applets al bundle usa la skill **`safari-bundle-sync`**. Reglas dura
 - **Criterio NO-APLICA**: un applet se excluye solo cuando su **flujo core** es la descarga de
   archivos (auditor, carga-masiva, file-uploader). Si la descarga es una función lateral y opt-in
   (p. ej. el PDF de `wo-listing-columns`), el applet **sí** va al bundle.
+  **DESCARGAR ≠ SUBIR, y el criterio es sólo la descarga.** `driver-licenses` (bundle 0.6.32) toca
+  archivos y aun así entra: su única interacción es `<input type="file" accept="image/*">`, que en
+  iPadOS **abre la cámara** — el iPad no es un sustituto pobre del escritorio, es el mejor lugar
+  para tomar la foto de la identificación del chofer, en el andén. Ver un `input[type=file]` y
+  asumir NO-APLICA es el error a evitar.
 - **TERCERA VÍA — integrar SIN sus librerías** (`excludeScripts` en `bundle.json`, 2026-08-05). Cuando
   lo pesado o lo prohibido está en una **librería** y no en el flujo core, el applet entra y la
   librería no. Nació con `packing-slip-drawings`: `pdf.js`+`pdf-lib` pesan 902 KB **y** el worker de

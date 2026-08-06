@@ -47,8 +47,13 @@ otras **12 están vivas y se dejaron intactas** — no alertan hoy.
 ### 1.3 Otras rutas declaradas pero sin guionizar
 - **`partNumberRackType`** (`CreatePartNumberPerPerRackType`, `UpdatePartNumberPerPerRackType`):
   su propia nota dice *"PENDIENTE de correr headless: falta guionizar el DOM del diálogo"*.
-- Línea base del trinquete: **56 huérfanas** (bajó de 58 el 2026-08-05 al cubrir las dos de specs) (queries 110/119, mutations 18/69).
-  **El hueco son las mutations**: cada una necesita su centinela.
+- Línea base del trinquete: **53 huérfanas** — leída del código
+  (`HUERFANAS_BASE = 53` en `tools/test/hash-regen-coverage.test.js:59`) y **re-medida en verde el
+  2026-08-05** (`node --test tools/test/hash-regen-coverage.test.js` → 5/5). Este renglón decía
+  **56** y contradecía al §1.2 de este mismo documento, que ya narraba el 55 → 53; el desglose que
+  traía (`queries 110/119, mutations 18/69`) también era viejo — el vigente
+  (**queries 115/122, mutations 29/75**) está en el índice de `CLAUDE.md`.
+  **El hueco siguen siendo las mutations**: cada una necesita su centinela.
 
 ---
 
@@ -116,3 +121,36 @@ El correo dice qué retuvo, por qué no urge y el comando exacto para liberarlo
 - **Concurrencia de sesiones:** el cron del autopilot y una sesión manual pueden escribir
   `remote/config.json` a la vez (pasó hoy, sin choque por tocar ops distintas). Antes de correr
   el autopilot a mano: `ps aux | grep hash-autopilot`.
+
+---
+
+## 7. `create-order-autofill` — el disparo automático en la lista de OVs (2026-08-05)
+
+**Sin causa raíz.** La extracción del cliente quedó arreglada (v0.1.4/v0.1.5, `1.11.90`) y el
+autofill funciona **cuando se invoca**: log del propio applet
+`autofill | razon=OK | divisa=OK | consolidar=OK` con SCHNEIDER (#1). Pero en
+`/Domains/<id>/SalesOrders` **no arrancó solo**: sólo corrió al llamar `scanForModal()` a mano.
+
+**Medido, con el modal abierto y el cliente ya elegido:** cero entradas de `modal detectado` en
+consola (con `sa_debug` activo, mientras `report-regen` **sí** logueaba), y una mutación directa
+sobre `document.body` tampoco lo despertó.
+
+Descartado con evidencia — **no volver a probarlo**:
+- No lo introdujeron los fixes: `git diff v1.11.87 v1.11.89 -- create-order-autofill.js` no toca
+  ni una línea de `init`/`checkUrl`/`setupObserver`/`scanForModal`/observer.
+- No es el debounce posponiéndose por ráfaga: 17 mutaciones con **11 gaps > 350 ms** (máx **2049 ms**).
+- No es el gate de URL (`matches=true` en el log de init), ni el latch de habilitación, ni permisos
+  (`autoInject` no los consulta), ni una excepción no capturada (consola limpia).
+
+**Sospecha sin confirmar:** `setupObserver()` pone `observerActive = true` **antes** de
+`obs.observe(document.body, …)` ⇒ un fallo de montaje queda congelado para siempre. Es el
+anti-patrón que este mismo CLAUDE.md nombra (*«un latch marca el ÉXITO, no el INTENTO»*).
+**No se arregló a ciegas.**
+
+⚠️ **Al retomar, sesión LIMPIA.** El diagnóstico acumuló ~50 peticiones al `/graphql` y
+probablemente lo dejó degradado (el límite es **por sesión** y no se recupera recargando), además
+de congelar una pestaña al re-evaluar el script remoto con `new Function`. **Las mediciones de
+timing del final de esa sesión no son confiables.**
+
+Nota: en el flujo de **Recibo** el síntoma «no sale el banner» resultó ser otra cosa (el cliente
+vive en el wizard padre) y **ya está corregido** en v0.1.5 — no confundir los dos casos.
