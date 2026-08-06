@@ -460,7 +460,7 @@ renglón. **Antes de tocar un applet, lee su bitácora.**
 | `spec-params-bulk` | 0.9.0 | Alta masiva de parámetros de spec | [`spec-params-bulk.md`](docs/applets/spec-params-bulk.md) |
 | `pn-lifecycle` | 0.2.0 | Ciclo de vida de NPs: marcar/quitar validación, desarchivar, borrado definitivo (escanear o pegar IDs) | [`pn-lifecycle.md`](docs/applets/pn-lifecycle.md) |
 | `file-uploader` | 0.5.1 | Carga masiva de fotos a NPs con convención `<PN>_<VISTA>_<num>` | [`file-uploader.md`](docs/applets/file-uploader.md) |
-| `create-order-autofill` | 0.1.6 | Autollena el modal de creación de OV / Sales Order | [`create-order-autofill.md`](docs/applets/create-order-autofill.md) |
+| `create-order-autofill` | 0.1.7 | Autollena el modal de creación de OV / Sales Order | [`create-order-autofill.md`](docs/applets/create-order-autofill.md) |
 | `vale-almacen` | 0.1.0 | Vale de almacén: emite evento de mantenimiento con líneas artículo+cantidad+usuario | [`vale-almacen.md`](docs/applets/vale-almacen.md) |
 | `wo-completer` | 0.1.0 | Completar/Descompletar OTs en masa | [`wo-completer.md`](docs/applets/wo-completer.md) |
 | `wo-mover` | 0.2.0 | Reasigna el encabezado de OTs entre OVs (la parte/PT se asocia manual) | [`wo-mover.md`](docs/applets/wo-mover.md) |

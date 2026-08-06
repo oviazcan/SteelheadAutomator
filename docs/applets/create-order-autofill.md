@@ -6,6 +6,37 @@ Auto-llena las Entradas Personalizadas (`Razón Social de la Venta`, `Divisa`, `
 1. `/Receiving/CustomerParts → RECEIVE → +/Create` — título **"Crear Orden de Venta"** (ES). Cliente pre-cargado; expone **"Enviar a:"** (ship-to) → maneja Consolidar.
 2. `/Domains/<id>/SalesOrders → "New Sales Order"` — título **"Create Sales Order"** (EN). Cliente **vacío** al abrir (el operador lo elige a mano); **sin ship-to** → Consolidar no aplica.
 
+## Fix 2026-08-06 (v0.1.7) — la Divisa se reportaba en ROJO estando bien puesta
+
+**Reportado desde producción con captura**, ya con el poll vivo y el autofill arrancando solo en
+las dos pantallas: el modal mostraba `USD - Dólar americano` **puesto**, y el panel marcaba
+`✗ DIVISA — usuario tocó después de autofill`. Razón Social, en la misma pasada, salía en verde
+(`ya estaba: ECO030618BR4 - ECOPLATING SA DE CV…`).
+
+**Root cause — el applet no reconocía su propio trabajo.** `fillNativeSelectByText` **llenaba** con
+`scoreOptionMatch` (substring: el cliente guarda `"USD"` y la opción dice `"USD - Dólar
+americano"`, score 60) pero **comprobaba** «¿ya está bien?» con **igualdad exacta** del texto. En la
+re-pasada, la Divisa no coincidía consigo misma, caía en la rama del candado anti-sobrescritura y
+se reportaba como cambio del operador. **Razón Social se salvaba por casualidad**: ahí el cliente
+guarda el texto completo, así que la igualdad exacta sí daba — por eso una salía verde y la otra
+roja teniendo AMBAS el valor correcto, que es lo que delató la asimetría.
+
+El poll **no causó** el bug: lo hizo visible al repetir la pasada. Con el observer solo, la
+segunda evaluación casi nunca ocurría.
+
+**Fix:** `Core.isSelectAlreadyOnTarget(optionTexts, selectedIndex, target)` — puro y testeado —
+pregunta con **la misma vara** con la que se escribe: ¿el `selectedIndex` actual es el índice que
+elegiría `scoreOptionMatch`? El candado que respeta al operador **no se debilita**: sólo se llega a
+él cuando el valor actual NO es el que pondríamos, o sea cuando el cambio sí es ajeno; hay test
+para las dos caras.
+
+> **Regla que sale de aquí:** *se verifica con la misma vara con la que se escribe.* Una
+> comprobación más estricta que la acción que verifica no protege — **delata el trabajo propio como
+> ajeno**, y encima en el color que el operador lee como "esto falló".
+
+**Validación:** core **24/24**, suite **1885/1885**. Deploy **1.11.95**, verificado en vivo
+(`isSelectAlreadyOnTarget` servido). Bundle iPad **0.6.34**.
+
 ## Fix 2026-08-06 (v0.1.6) — el disparo pasa a POLL + liga para configurar al cliente
 
 ### 1. El disparo: se deja de confiar sólo en el `MutationObserver`

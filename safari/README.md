@@ -8,6 +8,18 @@ Pasos de build/firma/instalación en **`docs/deploy-safari.html`**.
 - **POC del candado de surtido VALIDADO en vivo (Safari iPad, 2026-06-30):** `world:"MAIN"` intercepta
   `fetch`, el login OAuth funciona y el bloqueo de una pieza no programada quedó confirmado (no se necesitó
   el plan B).
+- **Bundle v0.6.34 — 34 applets (2026-08-06):** sin applets nuevos; toma
+  **`create-order-autofill` v0.1.6/v0.1.7**, que es justo lo que el iPad necesitaba:
+  (1) el autofill **arranca solo** — disparo por **poll de 1 s** copiado de `weight-quick-entry`,
+  porque el `MutationObserver` no despertaba en la lista de OVs; (2) si al cliente le faltan sus
+  Entradas Personalizadas, el panel lo dice y ofrece **liga a su ficha**; (3) dejó de reportar en
+  rojo la Divisa que él mismo había puesto bien (verificaba con vara más estricta que la de
+  escribir). Peso **1.90 MB** (+8 KB medidos **en bytes**).
+  ⚠️ Recordatorio que este rebuild volvió a confirmar: `build-safari.sh` imprime **caracteres**,
+  y compararlos contra los **bytes** del baseline hace ver un bundle "encogido" (1 894 857 B →
+  «1 861 985» que eran caracteres; en bytes reales **creció** a 1 902 882). **Mide siempre lo
+  mismo contra lo mismo.**
+
 - **Bundle v0.6.33 — 34 applets (2026-08-06):** **fix** de `driver-licenses`. El panel **no abría
   en el iPad**: `PdfLowCode` se llamaba sin `$first`/`$offset`, que son `Int!` obligatorios, y el
   ERP contestaba **HTTP 400**. Es el mismo bug que en Chrome, pero aquí importaba más — el iPad es
