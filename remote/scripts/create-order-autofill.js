@@ -60,6 +60,7 @@ const CreateOrderAutofill = (() => {
   const _nameIdCache = new Map();     // normalizedName → idInDomain|null
   let observerActive = false;
   let debounceTimer = null;
+  let detectPollTimer = null;
   let state = {
     runId: 0,
     lastSig: null,
@@ -97,20 +98,60 @@ const CreateOrderAutofill = (() => {
     if (!urlMatches(location.pathname)) {
       removePanel();
       state.lastSig = null;
+      stopDetectPoll();
       return;
     }
     setupObserver();
   }
 
+  // El MutationObserver por sí solo NO es confiable para detectar este modal: medido en la
+  // máquina del operador (2026-08-06), en `/Domains/<id>/SalesOrders` el modal se abría y el
+  // applet no corría — pero al invocar `scanForModal()` a mano hacía todo el trabajo (o sea:
+  // no era la firma ni la extracción, era el DISPARO). En `/Receiving/CustomerParts` el mismo
+  // observer sí despertaba. No se encontró la causa de esa asimetría, así que en vez de seguir
+  // parchando el ancla se adopta el mecanismo que en ESTE repo ya detecta modales de forma
+  // fiable en las mismas pantallas: `weight-quick-entry` no se fía del observer, agrega un
+  // POLL acotado. El observer se queda (reacciona en el mismo frame cuando sí dispara) y el
+  // poll es la red de seguridad.
+  const DETECT_POLL_MS = 1000;
+
   function setupObserver() {
     if (observerActive) return;
-    observerActive = true;
     const obs = new MutationObserver(() => {
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(scanForModal, 350);
     });
     obs.observe(document.body, { childList: true, subtree: true });
+    // El latch marca el ÉXITO, no el intento: si `observe` tirara, `observerActive` se queda
+    // en false y el siguiente checkUrl() reintenta, en vez de congelar el fallo para siempre.
+    observerActive = true;
+    startDetectPoll();
     scanForModal();
+  }
+
+  // Tick barato: `scanForModal` arranca con tres getElementById y sale de inmediato si el
+  // modal no está montado; es idempotente por `state.lastSig`, así que el poll no repite
+  // trabajo ni refetchea (el customer va cacheado por idInDomain).
+  //
+  // Se llama SIEMPRE, sin filtrar antes por "¿hay modal?": ese camino es también el que
+  // RESETEA `lastSig` al cerrarse el modal. Sin ese reset, abrir una segunda OV para el
+  // MISMO cliente y destino produce una firma idéntica y el applet se salta el trabajo,
+  // dejando el modal nuevo —que es DOM nuevo, con los campos vacíos— sin llenar.
+  function startDetectPoll() {
+    if (detectPollTimer) return;
+    detectPollTimer = setInterval(() => {
+      try {
+        scanForModal();
+      } catch (err) {
+        warn(`poll de detección: ${err.message}`);
+      }
+    }, DETECT_POLL_MS);
+  }
+
+  function stopDetectPoll() {
+    if (!detectPollTimer) return;
+    clearInterval(detectPollTimer);
+    detectPollTimer = null;
   }
 
   // ── Detección del modal ──
@@ -515,7 +556,9 @@ const CreateOrderAutofill = (() => {
     // Razón Social
     let razonResult;
     if (!targetRazon) {
-      razonResult = { ok: false, msg: 'cliente sin DatosFactura.RazonSocialVenta' };
+      // `needsSetup`: no es una falla del applet, es un dato que falta EN EL CLIENTE. El panel
+      // lo distingue y ofrece la liga a su ficha (ver renderPanel).
+      razonResult = { ok: false, needsSetup: true, msg: 'el cliente no tiene DatosFactura.RazonSocialVenta' };
     } else {
       const r = fillNativeSelectByText(razonSel, targetRazon);
       razonResult = r.success
@@ -526,7 +569,7 @@ const CreateOrderAutofill = (() => {
     // Divisa
     let divisaResult;
     if (!targetDivisa) {
-      divisaResult = { ok: false, msg: 'cliente sin DatosFactura.Divisa' };
+      divisaResult = { ok: false, needsSetup: true, msg: 'el cliente no tiene DatosFactura.Divisa' };
     } else {
       const r = fillNativeSelectByText(divisaSel, targetDivisa);
       divisaResult = r.success
@@ -553,7 +596,7 @@ const CreateOrderAutofill = (() => {
     state.results = { razon: razonResult, divisa: divisaResult, consolidar: consolidarResult };
     log(`autofill | razon=${razonResult.ok ? 'OK' : 'FAIL'} | divisa=${divisaResult.ok ? 'OK' : 'FAIL'} | consolidar=${consolidarResult.ok ? 'OK' : 'FAIL'}`);
 
-    renderPanel({ customerName, shipTo });
+    renderPanel({ customerName, shipTo, idInDomain });
   }
 
   // ── Panel UI ──
@@ -581,7 +624,48 @@ const CreateOrderAutofill = (() => {
       </div>`;
   }
 
-  function renderPanel({ customerName, shipTo }) {
+  // Dominio actual: de la ruta cuando estamos bajo /Domains/<id>/… y, si no (flujo de
+  // Recibo, cuya URL no lo trae), del config que ya carga SteelheadAPI. Si ninguno lo da,
+  // devuelve null y el aviso se muestra SIN liga — antes que mandar al operador a la ficha
+  // de otro dominio.
+  function currentDomainId() {
+    const c = core();
+    const fromPath = c?.domainIdFromPath ? c.domainIdFromPath(location.pathname) : null;
+    if (fromPath) return fromPath;
+    try {
+      const d = api()?.getDomain ? api().getDomain() : null;
+      return d && d.id != null ? String(d.id) : null;
+    } catch (_) { return null; }
+  }
+
+  // Bloque de ayuda cuando lo que falta son los customInputs DEL CLIENTE (no un fallo del
+  // applet). Explica dónde se configura y ofrece la ficha del cliente en pestaña aparte.
+  function setupHintHtml({ customerName, idInDomain }) {
+    const c = core();
+    const url = c?.customerUrl ? c.customerUrl(currentDomainId(), idInDomain) : null;
+    const quien = customerName ? escHtml(customerName) : 'este cliente';
+    const liga = url
+      ? `<a href="${escHtml(url)}" target="_blank" rel="noopener noreferrer"
+            style="display:inline-block;margin-top:6px;background:#13a36f;color:#0b1220;font-weight:700;
+                   text-decoration:none;border-radius:6px;padding:5px 9px;font-size:11px;">
+           Abrir ficha del cliente ↗
+         </a>`
+      : `<div style="margin-top:6px;font-size:11px;color:#fca5a5;">
+           No pude armar la liga (falta el dominio) — búscalo en el Catálogo de Clientes.
+         </div>`;
+    return `
+      <div style="margin-top:8px;padding:8px;border-radius:8px;background:#2a2113;border:1px solid #a16207;">
+        <div style="color:#fbbf24;font-weight:700;font-size:11px;margin-bottom:4px;">⚠️ Falta configurar el cliente</div>
+        <div style="color:#e2e8f0;font-size:11px;line-height:1.45;">
+          ${quien} no tiene sus <b>Entradas Personalizadas</b> en el <b>Catálogo de Clientes</b>.
+          Captura ahí <b>DatosFactura → Razón Social de la Venta</b> y <b>Divisa</b>; desde la
+          próxima orden se llenan solas.
+        </div>
+        ${liga}
+      </div>`;
+  }
+
+  function renderPanel({ customerName, shipTo, idInDomain }) {
     let panel = document.getElementById('sa-create-order-autofill-panel');
     if (!panel) {
       panel = document.createElement('div');
@@ -592,6 +676,8 @@ const CreateOrderAutofill = (() => {
     state.panel = panel;
     const { razon, divisa, consolidar } = state.results;
     const allOk = [razon, divisa, consolidar].every(r => r && (r.ok || r.skipped));
+    // Lo que falta es configuración DEL CLIENTE, no un fallo nuestro: se ofrece la ficha.
+    const needsSetup = [razon, divisa].some(r => r && r.needsSetup);
     const headerColor = allOk ? '#10b981' : '#f59e0b';
     panel.innerHTML = `
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
@@ -602,11 +688,18 @@ const CreateOrderAutofill = (() => {
       ${row('Razón Social', razon)}
       ${row('Divisa', divisa)}
       ${row('Consolidar', consolidar)}
+      ${needsSetup ? setupHintHtml({ customerName, idInDomain }) : ''}
       <div style="text-align:right;margin-top:6px;">
         <button id="sa-coa-redo" style="background:#334155;color:#e2e8f0;border:none;border-radius:6px;padding:4px 8px;cursor:pointer;font-size:11px;">Re-aplicar</button>
       </div>`;
     panel.querySelector('#sa-coa-close')?.addEventListener('click', () => removePanel());
-    panel.querySelector('#sa-coa-redo')?.addEventListener('click', () => {
+    panel.querySelector('#sa-coa-redo')?.addEventListener('click', (ev) => {
+      // MUI marca `aria-hidden` en todo el fondo al abrir su modal, y nuestro panel vive en
+      // el <body> ⇒ queda dentro. Un control NUESTRO con el foco dentro de un subárbol
+      // aria-hidden es un error real de accesibilidad, y la consola de SH lo reporta:
+      // "Blocked aria-hidden on an element because its descendant retained focus".
+      // Soltar el foco tras el clic lo evita sin tocar el DOM de SH.
+      ev.currentTarget.blur();
       // Forzar re-run reseteando las marcas dataset y la firma
       [RJSF_RAZON_ID, RJSF_DIVISA_ID, RJSF_CONSOLIDAR_ID].forEach(id => {
         const el = document.getElementById(id);
