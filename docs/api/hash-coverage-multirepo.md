@@ -1,18 +1,39 @@
 # Cobertura multi-repo del validador + autohealing (2026-07-21 → 22)
 
-## 1. El validador valida las 3 fuentes de hashes
+## 1. El validador valida las 4 fuentes de hashes
 
-`tools/validate-hashes.py` valida los persisted-query hashes de **las 3 fuentes**
+`tools/validate-hashes.py` valida los persisted-query hashes de **las 4 fuentes**
 que consumen la API de Steelhead con hashes propios, no solo la extensión:
 
 | Fuente | Origen del hash | # ops |
 |---|---|---|
 | `extension` | `remote/config.json` | 180 |
-| `reportes-sh` | `Reportes SH/scripts/steelhead_client.py` (`PERSISTED_QUERIES`) | 40 |
+| `reportes-sh` | `Reportes SH/scripts/steelhead_client.py` (`PERSISTED_QUERIES`) | 42 |
 | `powertools` | `SteelheadPowerTools/sync/lowcode_sync.py` + `maintenance_plans_sync.py` | 22 |
+| `procesos` | `SteelheadProcesos/src/data/persisted-queries.json` | 2 |
 
-Dedup por `(op, hash)` → **232 items únicos** (52 externas nuevas). Cada `stale`
-reporta su `[source]`. Fuentes externas **opcionales** (degradan a `{}` si el repo
+`procesos` se sumó el **2026-08-05** (commit `73f501d`) por el mismo patrón de
+incidente: rotó `CurrentUser`, el portal de procesos publicado quedó con el hash
+muerto, su gate de permisos falló cerrado y se vio como si nadie tuviera sesión.
+Es JSON plano `{op: hash}` en vez de hashes en código, así que `hash_sources.py`
+lo lee con `json.load` y filtra a 64 hex; un JSON corrupto o ausente omite la
+fuente sin tumbar al validador. Está también en `external-sinks.json`, así que el
+autohealing **escribe** ahí, no sólo detecta (verificado simulando
+`syncExternalToSinks`: aplica y el JSON queda válido).
+
+Sus 2 ops se comparten con la extensión, así que el dedup las funde en 2 entradas
+multi-fuente (`CurrentUser` → extension+procesos; `SearchUserFilesQuery` →
+extension+reportes-sh+procesos): no agregan pruebas nuevas, agregan **atribución**
+— cuando una rota, el reporte ahora dice que el portal también la usa.
+
+⚠️ Para `procesos` el repo al día **no basta**: el HTML publicado en el ERP conserva
+los hashes con los que se generó. Eso lo cubre `verifica_formato_publicado.py` (repo
+Reportes SH), que `run-hash-autopilot.sh` invoca cada hora con
+`--prefijo portal_procesos_payload` y compara el archivo SUBIDO contra el catálogo.
+
+Dedup por `(op, hash)` → **252 items únicos** (medido 2026-08-05; eran 232 al
+escribirse esta nota en julio — el catálogo crece con los deploys, no lo tomes como
+constante). Cada `stale` reporta su `[source]`. Fuentes externas **opcionales** (degradan a `{}` si el repo
 no está en la máquina). Módulo puro `tools/hash_sources.py` (`extract_py_hashes` /
 `infer_kind` / `build_validation_items`), auto-test `python3 tools/hash_sources.py`.
 Commit main `fe0e132`.

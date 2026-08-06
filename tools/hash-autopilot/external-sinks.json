@@ -3,6 +3,8 @@
   "sinks": [
     { "name": "reportes-sh", "repo": "/Users/oviazcan/Projects/Ecoplating/Reportes SH", "file": "scripts/steelhead_client.py" },
     { "name": "powertools-lowcode", "repo": "/Users/oviazcan/Projects/Ecoplating/SteelheadPowerTools", "file": "sync/lowcode_sync.py" },
-    { "name": "powertools-maintenance", "repo": "/Users/oviazcan/Projects/Ecoplating/SteelheadPowerTools", "file": "sync/maintenance_plans_sync.py" }
-  ]
+    { "name": "powertools-maintenance", "repo": "/Users/oviazcan/Projects/Ecoplating/SteelheadPowerTools", "file": "sync/maintenance_plans_sync.py" },
+    { "name": "procesos", "repo": "/Users/oviazcan/Projects/Ecoplating/SteelheadProcesos", "file": "src/data/persisted-queries.json" }
+  ],
+  "_nota_procesos": "El sink de `procesos` deja el REPO al día, pero el portal PUBLICADO en Steelhead sigue con el hash viejo hasta que alguien corra `npm run build:mvp` y re-suba el payload desde el navegador (POST /api/files da 400 desde script). Ese desfase lo vigila aparte `verifica_formato_publicado.py --prefijo portal_procesos_payload`, que ya corre en run-hash-autopilot.sh. Re-subir el payload NO cambia la liga repartida: el cascarón toma siempre el más reciente."
 }
