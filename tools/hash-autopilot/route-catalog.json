@@ -1353,6 +1353,31 @@
         "UsersToInvite"
       ]
     },
+    "quote-pdf-powertools-editor": {
+      "type": "query",
+      "module": "Quotes",
+      "_nota": "Editor low-code de Power Tools, alcanzable SÓLO por modales anidados (la URL nunca cambia): Cotización Centinela 288 → 'Open PDF' → icono 'Editar PDFs con estos Datos' → 'Edit Power Tools'. El editor carga el hook activo con PdfLowCode. Los tres clics van con once:true porque re-clicar CERRARÍA el modal. Anclas por la FORMA del icono (path del SVG): estos SVG de MUI no traen data-testid y el único aria-label está en español.",
+      "steps": [
+        {
+          "goto": "/Domains/{domain}/Quotes/288"
+        },
+        {
+          "clickFirst": "button:has(svg path[d^=\"M20 2H8c-1.1 0-2 .9-2 2v12\"])",
+          "once": true
+        },
+        {
+          "clickFirst": "button:has(svg path[d^=\"M23 7V1h-6v2H7V1H1v6h2v10H1v6h6v-2h10v2h6v-6h-2V7\"])",
+          "once": true
+        },
+        {
+          "clickFirst": "button:has(svg path[d^=\"M4 7v2c0 .55-.45 1-1 1H2v4h1c.55 0 1 .45 1 1v2c0 1.65 1.35 3 3 3h3v-2H7\"])",
+          "once": true
+        }
+      ],
+      "captures": [
+        "PdfLowCode"
+      ]
+    },
     "uploadedfiles-pn-filter": {
       "type": "query",
       "module": "UploadedFiles",
