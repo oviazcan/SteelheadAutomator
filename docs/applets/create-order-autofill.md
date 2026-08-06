@@ -6,6 +6,62 @@ Auto-llena las Entradas Personalizadas (`Razón Social de la Venta`, `Divisa`, `
 1. `/Receiving/CustomerParts → RECEIVE → +/Create` — título **"Crear Orden de Venta"** (ES). Cliente pre-cargado; expone **"Enviar a:"** (ship-to) → maneja Consolidar.
 2. `/Domains/<id>/SalesOrders → "New Sales Order"` — título **"Create Sales Order"** (EN). Cliente **vacío** al abrir (el operador lo elige a mano); **sin ship-to** → Consolidar no aplica.
 
+## Fix 2026-08-06 (v0.1.6) — el disparo pasa a POLL + liga para configurar al cliente
+
+### 1. El disparo: se deja de confiar sólo en el `MutationObserver`
+
+**Evidencia que lo obligó** (máquina del operador, sesión sana — no la contaminada del día
+anterior): en `/Domains/<id>/SalesOrders` el modal estaba abierto y el applet **no había corrido**;
+en cuanto se invocó `scanForModal()` a mano, hizo todo el trabajo y logueó
+`modal detectado | cliente=BRAININ DE MEXICO (#6)`. Eso **descarta la firma pegada**
+(`sig === lastSig` habría retornado sin loguear) y **descarta la extracción**: el problema era el
+**DISPARO**. Y el contraste que faltaba:
+
+| Pantalla | ¿el observer despierta solo? |
+|---|---|
+| `/Receiving/CustomerParts` | **sí** (cerrar y reabrir el modal lo corrió) |
+| `/Domains/<id>/SalesOrders` | **no** |
+
+**La causa de esa asimetría nunca se encontró.** En vez de seguir parchando el ancla se cambió el
+mecanismo, y no por uno inventado: **`weight-quick-entry` —que en los mismos logs del operador se
+ve funcionando— no se fía del observer, agrega un POLL** (`DETECT_POLL_MS = 1000`). Se copió ese
+patrón. El observer se queda (reacciona en el mismo frame cuando sí dispara) y el poll es la red de
+seguridad. `scanForModal` ya era idempotente por `lastSig`, así que el poll no repite trabajo ni
+refetchea (el customer va cacheado por `idInDomain`).
+
+Dos detalles que **no** son cosméticos:
+- **El poll llama a `scanForModal` SIEMPRE**, sin filtrar antes por «¿hay modal?». Ese camino es
+  también el que **resetea `lastSig`** al cerrarse el modal; sin el reset, abrir una segunda OV
+  para el **mismo cliente y destino** da una firma idéntica y el applet se salta el trabajo,
+  dejando el modal nuevo —DOM nuevo, campos vacíos— sin llenar.
+- **`observerActive` pasa a marcar el ÉXITO**, no el intento: se pone *después* de `obs.observe()`,
+  así un fallo de montaje se reintenta en el próximo `checkUrl()` en vez de congelarse. (La regla
+  del CLAUDE.md, que este applet violaba.)
+
+### 2. Cuando al cliente le faltan los customInputs, el panel deja de ser un callejón sin salida
+
+`razon=FAIL | divisa=FAIL` con `cliente sin DatosFactura.*` **no es un fallo del applet**: es un
+dato que falta **en el cliente**. Ahora esos resultados se marcan `needsSetup` y el panel muestra un
+bloque ámbar que dice **dónde** se configura (Catálogo de Clientes → Entradas Personalizadas →
+`DatosFactura`) y ofrece **la ficha del cliente en pestaña aparte**
+(`/Domains/<domainId>/Customers/<idInDomain>`, formato confirmado por el operador con
+`…/Domains/344/Customers/6` para BRAININ (#6)).
+
+`Core.customerUrl(domainId, idInDomain)` **devuelve `null` si falta cualquiera de los dos, o si no
+son numéricos**, y entonces el aviso se muestra **sin liga**: un dominio inventado mandaría al
+operador a la ficha de OTRO dominio (TLC vs MTY), que es peor que no ofrecer liga. El `domainId`
+sale de la ruta (`domainIdFromPath`) y, en Recibo —cuya URL no lo trae—, de
+`SteelheadAPI.getDomain().id`.
+
+También se soltó el foco del botón «Re-aplicar» al hacer clic: MUI marca `aria-hidden` en todo el
+fondo al abrir su modal y nuestro panel vive en el `<body>`, así que un control nuestro con el foco
+dentro disparaba el error real que reportaba la consola de SH (*«Blocked aria-hidden on an element
+because its descendant retained focus»*). Con el enlace nuevo eso habría empeorado.
+
+**Validación:** core **21/21**, suite **1882/1882**. Deploy **1.11.93** con `tools/deploy.sh` (con
+re-sellado de firma, a diferencia del manual del día anterior). **Falta la corrida real del
+operador.**
+
 ## Fix 2026-08-05 (v0.1.5) — en Recibo el cliente vive en el WIZARD PADRE, no en el modal
 
 **Síntoma:** tras el v0.1.4, en `/Receiving/CustomerParts` seguía sin pasar nada — y el detalle
