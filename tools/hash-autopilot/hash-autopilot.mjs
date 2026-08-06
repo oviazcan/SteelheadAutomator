@@ -366,7 +366,13 @@ async function main() {
     const verdict = classifyOp({ cfgHash, liveHash, http: ok ? 200 : null, shapeOk: ok });
     return { op, cfgHash, liveHash, responseOk: ok, verdict };
   });
-  const plan = planDeploy(results, MASS_BRAKE == null ? {} : { massBrakeThreshold: MASS_BRAKE });
+  // probeVerdicts alimenta el freno: con el cfgHash MUERTO se corrige siempre (el applet ya
+  // está roto); el freno solo retiene rotaciones cuyo hash viejo SIGUE VIVO. Si el probe
+  // falló, llega {} y el freno se comporta como antes (fail-safe).
+  const plan = planDeploy(results, {
+    ...(MASS_BRAKE == null ? {} : { massBrakeThreshold: MASS_BRAKE }),
+    probeVerdicts,
+  });
 
   // Reporte
   console.log(`\n=== hash-autopilot ${RUN_DATE}${DRY ? ' (dry-run)' : ''} ===`);
@@ -586,8 +592,14 @@ async function main() {
       sec.push(`✅ CORREGIDAS Y DEPLOYADAS (${plan.toDeploy.length}):\n${plan.toDeploy.map((r) => `   • ${r.op}: ${r.cfgHash.slice(0, 8)}… → ${r.liveHash.slice(0, 8)}… — applets: ${appletsOf(r.op).join(', ') || '—'}`).join('\n')}`);
     }
     if (plan.massBrake) {
-      const rotados = results.filter((r) => r.verdict === 'rotadoValidado').map((r) => r.op).join(', ');
-      sec.push(`⚠️ FRENO DE MASA — NO se deployó (${plan.reason}):\n   Rotados detectados: ${rotados}\n   Revisa manualmente (posible captura corrupta o cambio grande de Steelhead).`);
+      // Con el freno reformulado, lo retenido son SOLO las rotaciones cuyo hash viejo sigue
+      // VIVO (no urgen). Si además hubo urgentes, ésas YA se deployaron y se dicen aparte,
+      // para que el correo no sugiera que quedó todo detenido.
+      const retenidos = (plan.heldBack || []).map((r) => r.op).join(', ');
+      const salvados = plan.toDeploy.length
+        ? `\n   ✅ Aparte SÍ se deployaron ${plan.toDeploy.length} con el hash viejo MUERTO (esas no esperan a nadie): ${plan.toDeploy.map((r) => r.op).join(', ')}`
+        : '';
+      sec.push(`⚠️ FRENO DE MASA — retenidas ${(plan.heldBack || []).length} (${plan.reason}):\n   ${retenidos}\n   NO urgen: su hash viejo SIGUE SIRVIENDO, así que ningún applet está roto por esto. Se retienen porque un lote grande con el viejo vivo es la firma de un bug del MOTOR (captura cruzada), no de Steelhead.\n   Para deployarlas tras revisar: node hash-autopilot.mjs --mass-brake=${(plan.heldBack || []).length}${salvados}`);
     }
     if ((plan.external || []).length) {
       // Rotadas cuyo hash vive en OTRO repo (Reportes SH `steelhead_client.py`,

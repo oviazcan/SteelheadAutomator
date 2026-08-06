@@ -220,6 +220,14 @@ Mac** (en GitHub) por diseño: si viviera en el mismo launchd, moriría con lo q
 - Mutations con ciclo centinela funcionando: `UpdatePartNumber`, `UpdateQuote`,
   `CreateReceivedOrder`, `CreateMaintenanceEvent`, `CreateMaintenanceEventComment`,
   `UpdateMaintenanceEvent`, `UpdateReceivedOrder` (7/7 — validadas headless).
+- **Familia de PARÁMETROS DE SPEC — 3/3 validadas end-to-end (2026-08-05):**
+  `SaveMultipleSpecFieldParams`, `UpdatePartNumberSpecParam` y `AddParamsToPartNumber`, las tres
+  por captura-y-aborta en **un solo ciclo** (entidad `partNumberSpecParams`, PN Centinela #3770957,
+  handler `specParamsAborted`). Ruta `/PartNumbers/{id}` **sin** `/Domains/{d}`. Incluye **fallback**:
+  si el PN aparece archivado, desarchiva → captura → **re-archiva** en el `restore`.
+  El sink corrigió dos suposiciones: el lápiz individual dispara el **mismo**
+  `SaveMultipleSpecFieldParams` (SH unificó los caminos), y `Add Spec` dispara
+  `ApplySpecsToPartNumber`, no `AddParamsToPartNumber` (esa sale del `+` del **spec field**).
 - **Mutations de REPORTES por CAPTURA-Y-ABORTA — VALIDADAS 4/4 headless (2026-07-20):**
   `GenerateDuckDb` (botón "Regenerate Database" en `/Reporting/Databases`), `DeleteFolderById`,
   `CreateUpdateReportWithPermissions`, `ArchiveReport` (los 3 en `/Reporting/Edit`). Entidades
@@ -232,8 +240,9 @@ Mac** (en GitHub) por diseño: si viviera en el mismo launchd, moriría con lo q
   cero efecto. Rotaron 2026-07-20; corregidas por scan (config 1.7.149) + GenerateDuckDb 1.7.151.
 - **Mutation por CAPTURA-Y-ABORTA validada headless END-TO-END: `AddPartsToWorkOrders`**
   (centinela `workOrderPartCount` = OV #1603 "Centinela" → OT #13678; handler
-  `saveWoPartCountAborted` en `mutation-deps.mjs`). A diferencia de las de precios
-  (`partNumberPrice`/`quotePrice`, andamiadas/bloqueadas por hidratación del quote), la OV
+  `saveWoPartCountAborted` en `mutation-deps.mjs`). (Esta nota comparaba con las de precios
+  «bloqueadas por hidratación del quote»: **ya no aplica** — `quotePrice` se destrabó el
+  2026-08-05 con deep-link al DETALLE, ver §«El centinela que se archivó solo».) La OV
   **SÍ hidrata headless** → el ciclo captura de punta a punta. **AUTO-DEPLOYABLE** (2026-07-17):
   como el request se aborta no hay `responseOk`, pero el motor **prueba el liveHash capturado
   con variables vacías** (validación de tipos, **sin ejecutar la escritura**) — si el server lo
@@ -452,10 +461,28 @@ tiene** la señal que falta (`probeVerdicts`: si el `cfgHash` está muerto). El 
 
 Con `cfgHash` muerto, **no deployar no es la opción segura: es la que garantiza el daño**. El peor caso
 de deployar es que SH revierta el release y el autopilot re-deploye los viejos en la siguiente corrida
-(≤1 h de rotura) — contra las 5 h que costó frenar. **Propuesta pendiente:** condicionar el freno al
-probe en vez de al conteo. Mientras tanto existe `--mass-brake=N` (**flag MANUAL**; el cron nunca lo
-pasa, su umbral de 6 sigue intacto) para ejecutar la conclusión de la revisión humana que el freno pide,
-sin editar el default ni saltarse la validación por-op (solo se deploya lo que sigue `rotadoValidado`).
+(≤1 h de rotura) — contra las 5 h que costó frenar. **✅ IMPLEMENTADO (2026-08-05).** El freno ya NO cuenta rotados: pregunta **¿sigue vivo el hash que
+tenemos?**, usando el `probeVerdicts` que el motor ya calculaba y no usaba para esto.
+
+| `cfgHash` según el probe | Lectura | Qué hace |
+|---|---|---|
+| **`stale`** (muerto) | el applet **ya está roto** para el operador | **deploya siempre**, sin importar cuántos sean |
+| `vigente` | rotación *de futuro* (el viejo sigue sirviendo) | cuenta para el freno |
+| `auth` / `unknown` / sin probe | **no se sabe** | cuenta para el freno (**fail-safe**) |
+
+Tres consecuencias que valen más que el cambio de umbral:
+
+1. **El freno dejó de ser todo-o-nada.** Cuando actúa, retiene las de futuro **y deploya igual las
+   muertas** (`toDeploy` + `heldBack`). Antes elegía "nada", que es la peor mitad cuando hay applets caídos.
+2. **Sin probe se comporta exactamente como antes.** "No sé" nunca habilita un deploy masivo.
+3. **El correo dice qué se retuvo, por qué NO urge y el comando exacto para liberarlo**
+   (`--mass-brake=N`), en vez de dejar al operador deducirlo.
+
+El flag `--mass-brake=N` sigue existiendo para el caso legítimo que queda: liberar a mano un lote de
+rotaciones *de futuro* tras revisarlas. Cubierto por 6 pruebas en `hash-autopilot-core.test.js`
+(incluida la reproducción del caso del 2026-08-05: 14 muertas ⇒ no frena) y 2 trinquetes de cableado
+en `deploy-live-verification-wired.test.js` — verificados por mutación: al quitar `probeVerdicts` de
+la llamada, la suite se pone roja.
 
 ## "Commiteé" no es "publiqué": el deploy que no llegó a producción (2026-08-05)
 

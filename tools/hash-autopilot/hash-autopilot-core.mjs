@@ -42,6 +42,10 @@ export function isValidatedCapture({ responseOk = false, abortProbeVigente = fal
 // contra captura corrupta / cookie de otro dominio) y pide revisión humana.
 export function planDeploy(results, opts = {}) {
   const threshold = opts.massBrakeThreshold ?? 6;
+  // probeVerdicts: op -> 'stale' | 'vigente' | 'auth' | 'unknown' (probe directo del cfgHash).
+  // Es la señal que le faltaba al freno: distingue "el applet YA está roto" de "rotó pero el
+  // viejo sigue sirviendo". Ver la reformulación abajo.
+  const probe = opts.probeVerdicts || {};
   const rotatedAll = results.filter((r) => r.verdict === 'rotadoValidado');
   // EXTERNOS: capturamos su hash vivo pero la op NO vive en remote/config.json (su
   // hash está en OTRO repo — p.ej. Reportes SH `steelhead_client.py`, PowerTools).
@@ -52,13 +56,39 @@ export function planDeploy(results, opts = {}) {
   const rotated = rotatedAll.filter((r) => r.cfgHash);
   const suspicious = results.filter((r) => r.verdict === 'sospechoso');
   const notCaptured = results.filter((r) => r.verdict === 'noCapturado');
-  if (rotated.length > threshold) {
+  // ── Freno de masa, reformulado (2026-08-05) ─────────────────────────────────
+  // ANTES: contaba rotados y, pasado el umbral, NO deployaba NADA. Medía el costo de
+  // ACTUAR y nunca el de NO actuar. El 2026-08-05 el release BB7C5204 rotó 14 queries de
+  // golpe; los hashes viejos daban STALE estable en el probe (= applets ROTOS en producción)
+  // y el freno mantuvo el config muerto ~5 h repitiendo el mismo correo cada hora.
+  //
+  // Su premisa declarada ("captura corrupta / cookie de otro dominio") tampoco se sostiene:
+  // un hash de persisted query identifica el TEXTO de la query, es GLOBAL al build y no al
+  // tenant — una sesión en el dominio equivocado capturaría los MISMOS hashes.
+  // Lo que sí protege, y por eso no se elimina, es un BUG DEL PROPIO MOTOR: si el interceptor
+  // asociara hashes a operaciones equivocadas, el síntoma sería justo "rotaron N de golpe".
+  // Es un circuit breaker contra nosotros, no un detector de anomalías del ERP.
+  //
+  // AHORA la pregunta no es CUÁNTOS rotaron sino ¿SIGUE VIVO EL HASH QUE TENEMOS?
+  //   - cfgHash MUERTO (probe 'stale') ⇒ el applet YA está roto para el operador. Corregir
+  //     SIEMPRE: retener no es la opción segura, es la que GARANTIZA el daño. Nunca frena.
+  //   - cfgHash VIVO / no concluyente  ⇒ rotación "de futuro": no urge, y si Steelhead
+  //     revierte el release nos quedaríamos apuntando a un hash que dejó de existir. Ahí el
+  //     conteo sí informa, y el freno actúa.
+  // FAIL-SAFE: sin probe (auth caído, red, o probeVerdicts vacío) NADA cuenta como muerto ⇒
+  // el freno se comporta EXACTAMENTE como antes. "No sé" jamás habilita un deploy masivo.
+  const urgentes = rotated.filter((r) => probe[r.op] === 'stale');
+  const futuras = rotated.filter((r) => probe[r.op] !== 'stale');
+  if (futuras.length > threshold) {
     return {
-      toDeploy: [], suspicious, notCaptured, external, massBrake: true,
-      reason: `Freno de masa: ${rotated.length} > ${threshold} rotados en una corrida`,
+      // Aun frenando se deployan las urgentes: el freno viejo era todo-o-nada y elegía
+      // "nada", que es la peor mitad cuando hay applets caídos.
+      toDeploy: urgentes, suspicious, notCaptured, external, massBrake: true, heldBack: futuras,
+      reason: `Freno de masa: ${futuras.length} > ${threshold} rotados cuyo hash viejo SIGUE VIVO`
+        + `${urgentes.length ? ` (se deployan aparte ${urgentes.length} con el hash viejo MUERTO)` : ''}`,
     };
   }
-  return { toDeploy: rotated, suspicious, notCaptured, external, massBrake: false, reason: null };
+  return { toDeploy: rotated, suspicious, notCaptured, external, massBrake: false, heldBack: [], reason: null };
 }
 
 // Construye el payload de needs-attention.json (Nivel B). Enriquece cada op con

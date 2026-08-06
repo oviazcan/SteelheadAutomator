@@ -75,3 +75,22 @@ test('deploy.sh restaura la rama tras rebasear gh-pages', () => {
   assert.match(f, /previa/, 'debe recordar la rama previa');
   assert.match(f, /checkout "\$previa"/, 'debe volver a la rama previa');
 });
+
+// ── Freno de masa condicionado al probe (2026-08-05) ───────────────────────
+// El núcleo puede estar perfecto y el motor no pasarle la señal: ahí el freno volvería a
+// medir sólo el conteo y a retener hashes muertos con producción caída.
+test('el motor pasa probeVerdicts a planDeploy (si no, el freno vuelve a ser ciego)', () => {
+  const m = SRC.match(/const plan = planDeploy\(results,[\s\S]{0,300}?\);/);
+  assert.ok(m, 'no encontré la llamada a planDeploy');
+  assert.match(m[0], /probeVerdicts/, 'planDeploy DEBE recibir probeVerdicts');
+});
+
+test('el correo del freno distingue retenidas de deployadas', () => {
+  // OJO: hay DOS `if (plan.massBrake)` — el del console.log y el del correo. Se busca el
+  // del CORREO (el que hace sec.push), no el primero que aparezca.
+  const i = SRC.indexOf("sec.push(`⚠️ FRENO DE MASA");
+  assert.ok(i > 0, 'no encontré el bloque del freno en el correo');
+  const bloque = SRC.slice(i - 900, i + 900);
+  assert.match(bloque, /heldBack/, 'debe reportar lo RETENIDO, no "todos los rotados"');
+  assert.match(bloque, /--mass-brake=/, 'debe decir el comando exacto para liberar tras revisar');
+});

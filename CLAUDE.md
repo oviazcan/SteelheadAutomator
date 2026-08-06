@@ -121,9 +121,14 @@ cuando Steelhead lo rote. **Un hash sin ruta de regeneración es deuda.**
 
 **La regla se VERIFICA:** `tools/test/hash-regen-coverage.test.js` mide la cobertura real y funciona
 como **TRINQUETE** — falla si el número de huérfanas **sube**, y si baja obliga a actualizar la línea
-base en el mismo commit. Línea base al 2026-08-04: **59 huérfanas** (queries 110/119, mutations
-18/69 — el hueco son las mutations, cada una necesita su centinela). El caso que destapó la falta de
-verificación: `CreateUpdateDeleteRoutes`, LA mutation del auto-ruteador, vivió sin ruta desde su fase 1.
+base en el mismo commit. Línea base al **2026-08-05**: **53 huérfanas** (queries **115/122**, mutations
+**29/75** — el hueco siguen siendo las mutations, cada una necesita su centinela). Bajó de 58 ese día por
+DOS vías distintas, y la diferencia entre ellas importa: la familia de parámetros de spec ganó **ruta
+real** (entidad `partNumberSpecParams`, 3 ops en un ciclo), y aparte se **retiraron del catálogo** 2
+hashes MUERTOS que no consumía nadie. Reducir deuda documentándola y reducirla borrando lo que sobra son
+cosas distintas; el trinquete cuenta igual las dos, así que el commit debe decir cuál fue.
+El caso que destapó la falta de verificación: `CreateUpdateDeleteRoutes`, LA mutation del auto-ruteador,
+vivió sin ruta desde su fase 1. **Cobertura de doc: 45/45 apps con bitácora e índice (2026-08-05).**
 
 El validador y el autopilot cubren las **3 fuentes** con hashes propios (extensión, Reportes SH,
 PowerTools); cuando un hash externo rota, el autopilot lo captura, valida, **escribe, commitea y
@@ -156,6 +161,16 @@ pushea el otro repo automáticamente**. Ver `tools/hash-autopilot/README.md` y l
   pieza por carga» convierte 141 min en ~112 días. Muestra `?`, nombra el hueco y di dónde se corrige.
   Para un candado: «no tengo el dato» **jamás** puede significar «prohibido» (fail-safe), y el
   fail-safe **se dice** en la UI (nota ámbar «no pude verificar», distinta del rojo de bloqueo).
+- **El juez de un formato es la app que lo consume, no tus verificaciones.** Se editó la hoja
+  `Ayuda` de las plantillas reescribiendo su XML dentro del `.xlsm`, y **Excel abrió los archivos
+  como dañados** —«¿Deseas que intentemos recuperar el máximo de contenido posible?»— después de que
+  pasaran SEIS comprobaciones: zip íntegro, XML válido, `vbaProject.bin` byte a byte, 1 entrada
+  modificada de 33, macros intactas y `verify-template-layout` en 10/10. Ninguna contestaba *«¿Excel
+  lo acepta?»*; todas contestaban *«¿esto es coherente con lo que yo esperaba?»*. **Un `.xlsm` no se
+  edita por XML — tampoco "solo una hoja"**: la vía es emitir el contenido y pegarlo en Excel
+  (`--text`). Corolario general: cuando la única prueba que falta es la que no puedes correr,
+  **ésa es la que bloquea la publicación**, no una nota al pie. (Causa concreta: tocar el `<pane>`,
+  fuera de `<sheetData>`, que era lo único que había que tocar.)
 - **Una fuente que viene FILTRADA solo puede AFIRMAR, nunca negar.** Si una query se pide con un
   filtro en las variables, la ausencia de un registro no prueba que no exista: prueba que no está
   *en ese filtro*. Antes de investigar por qué una fuente «no llega», mira **con qué variables se
@@ -435,6 +450,17 @@ renglón. **Antes de tocar un applet, lee su bitácora.**
 | `sensor-graph-hide-all` | 0.2.0 | Al entrar a un Sensor Dashboard esconde todos los sensores + combo para aislar uno | [`sensor-graph-hide-all.md`](docs/applets/sensor-graph-hide-all.md) |
 | `hash-scanner` | 0.6.24 | Captura hashes de persisted queries navegando la app (degrada las muestras, no las descarta) | [`hash-scanner.md`](docs/applets/hash-scanner.md) |
 | `process-canon` | varios | Canon de nodos de proceso (helper compartido) | [`processes-architecture.md`](docs/processes-architecture.md) |
+| `bill-autofill` | 0.1.0 | Autollena cuenta AP, divisa, TC y cuentas de gasto al crear un Bill (aprende de selecciones previas) | [`bill-autofill.md`](docs/applets/bill-autofill.md) |
+| `inventory-reset` | 0.1.0 | Archiva los lotes activos y carga inventario nuevo desde CSV | [`inventory-reset.md`](docs/applets/inventory-reset.md) |
+| `invoice-default-tab` | 0.1.0 | Al entrar a /Invoices sin `mode=`, navega solo al tab Packing Slips | [`invoice-default-tab.md`](docs/applets/invoice-default-tab.md) |
+| `paros-linea` | 0.1.0 | Botón flotante Andon: registra paros de línea con cronómetro y evidencia | [`paros-linea.md`](docs/applets/paros-linea.md) |
+| `po-reconciler` | 0.1.0 | Rebalancea OVs temporales contra POs reales de Schneider QRO (lee los PDF) | [`po-reconciler.md`](docs/applets/po-reconciler.md) |
+| `report-liberator` | 0.1.0 | Saca reportes de sus carpetas en masa (`folderId = null`) | [`report-liberator.md`](docs/applets/report-liberator.md) |
+| `wo-deadline` | 0.1.0 | Cambia plazos y etiquetas de OTs en masa (script: `wo-deadline-changer.js`) | [`wo-deadline.md`](docs/applets/wo-deadline.md) |
+| `auditor` | 0.1.42 | Audita NPs contra criterios de calidad + duplicados por similitud (ejemplo canónico de memory hardening) | [`auditor.md`](docs/applets/auditor.md) |
+| `invoice-listing-marker` | 0.1.0 | Marca en el listado de facturas las notas de crédito, los montos cero y los borradores | [`invoice-listing-marker.md`](docs/applets/invoice-listing-marker.md) |
+| `po-comparator` | 0.1.0 | Lee el PDF de la OC y lo compara línea por línea contra la OV (motor que reusa `po-reconciler`) | [`po-comparator.md`](docs/applets/po-comparator.md) |
+| `portal-importer` | 0.1.0 | Importa el XLS de los portales de clientes (Hubbell y otros) y crea las OVs | [`portal-importer.md`](docs/applets/portal-importer.md) |
 | `integrity-tiers` | 1.5.3 | Módulo `duplicate-tiers.js` + UI en `auditor` + tier scan | [`integrity-tiers.md`](docs/applets/integrity-tiers.md) |
 
 **Tools standalone (DevTools, NO son la extensión — se pegan en consola una vez):**
@@ -484,9 +510,16 @@ Estado vivo, historial de versiones e inventario: [`safari/README.md`](safari/RE
 [`docs/deploy-safari.md`](docs/deploy-safari.md).
 
 ## Paquete de documentación para clientes (`docs/training/`)
-Material didáctico HTML self-contained para **Ecoplating** (Key User + Jefe de TI), 15 documentos,
+Material didáctico HTML self-contained para **Ecoplating** (Key User + Jefe de TI), 16 documentos,
 generado con la skill `steelhead-docs-package`. **No es bitácora técnica** — es lo que el cliente lee.
 Entrada: `docs/training/00-mapa-empieza-aqui.html`.
+
+**`guia-plantilla-v13.html` NO se edita a mano: se GENERA** con `tools/build-guia-v13.js` desde
+`guia-plantilla-v13.src.html` + **la plantilla `.xlsm` real** —encabezados, tipos, valores iniciales
+y las bandas de grupo de la fila 6 se leen del archivo, no se transcriben—. Al cambiar el layout se
+re-corre. Mismo principio en la hoja `Ayuda` de la plantilla (`tools/rebuild-ayuda-sheet.js --text`):
+**la doc que describe un layout se deriva del layout, o se desfasa** — esa hoja llevaba versiones
+describiendo el v10 dentro de las plantillas v13.
 
 **Publicación:** los TRES paquetes de la familia viven en el `gh-pages` de ESTE repo, en carpetas
 separadas — `training/` (Automator) · `reportes-sh/` · `powertools/`. Se publican **copiando el HTML
@@ -539,7 +572,12 @@ errores) · `.gitignore` cubre `scan_results_*.json` y `~$*.xlsm/xlsx` · histor
 5. **`console.log` en producción (BAJO) — HECHO** (gate central por flag `sa_debug`; `warn` intacto).
 6. **Anclajes bilingües (audit) — MAPA COMPLETO; hardening bloqueado por evidencia.** 25 anclajes
    mono-idioma en 12 applets. **No se hardeniza sin el string real del otro locale** (regla dura: no
-   adivinar). Ver [`docs/architecture/bilingual-anchoring-debt.md`](docs/architecture/bilingual-anchoring-debt.md).
+   adivinar). **2026-08-05: 3 salieron de la lista con evidencia MEDIDA** — `Show Spec`,
+   `Archive Parameter` y `Edit Spec Field Parameter` aparecen **en inglés** en un DOM productivo con la
+   UI **en español** (la misma fila trae `Cambiar Nodo de Proceso` y `Copiar arriba`): SH **no** los
+   traduce, así que su anclaje mono-idioma es correcto. Que traduzca unos sí y otros no **dentro de la
+   misma tabla** es la prueba de que no hay patrón que adivinar — hay que mirar.
+   Ver [`docs/architecture/bilingual-anchoring-debt.md`](docs/architecture/bilingual-anchoring-debt.md).
 7. **Memory-hardening audit por applet — HECHO.** 9 ADOPTADO, 5 PARCIAL, 2 NO-ADOPTADO
    (`portal-importer`, `po-comparator`).
 
