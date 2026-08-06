@@ -6,6 +6,62 @@ Auto-llena las Entradas Personalizadas (`Razón Social de la Venta`, `Divisa`, `
 1. `/Receiving/CustomerParts → RECEIVE → +/Create` — título **"Crear Orden de Venta"** (ES). Cliente pre-cargado; expone **"Enviar a:"** (ship-to) → maneja Consolidar.
 2. `/Domains/<id>/SalesOrders → "New Sales Order"` — título **"Create Sales Order"** (EN). Cliente **vacío** al abrir (el operador lo elige a mano); **sin ship-to** → Consolidar no aplica.
 
+## Fix 2026-08-05 (v0.1.4) — el cliente se mudó del `singleValue` al `value` del input
+
+**Síntoma reportado:** "el order autofill no está funcionando". Ni Razón Social ni Divisa se
+llenaban, en **las dos** pantallas.
+
+**Root cause (MEDIDA en vivo, no inferida del HTML estático).** El HTML que pasó el operador era
+del modal **recién abierto**, y ahí el applet se comporta bien (espera en silencio a que haya
+cliente). La falla solo aparece **después de elegir cliente**, así que se reprodujo en
+`/Domains/344/SalesOrders`: se tecleó `HUBBELL` en el combo de Cliente y se confirmó la opción.
+Estado resultante del modal:
+
+| Sonda | Valor medido |
+|---|---|
+| `singleValues` del modal | `MAKE_TO_ORDER`, `Miguel Castillo`, `Cinco Sur 104…`, `Cinco Sur 104…`, `Flete Propio`, `67 Días` |
+| ¿alguno con `(#N)`? | **no** — `pickCustomerFromSingleValues → null` |
+| `input[role=combobox].value` del Cliente | **`HUBBELL PRODUCTS MEXICO (#20)`** |
+| `wrap.querySelector('[class*="singleValue"]')` del Cliente | **`null`** |
+| Panel del applet | `Miguel Castillo → Cinco Sur 104…` · `✗ RAZÓN SOCIAL sin idInDomain` |
+
+**SH cambió el control de "Cliente:": el valor elegido ya no se pinta como
+`<div class="…singleValue">`, se escribe en el `value` del `<input role="combobox">`.** La prueba
+de que lo puso SH y no el tecleo: se escribió `HUBBELL` y el input quedó en
+`HUBBELL PRODUCTS MEXICO (#20)` — el label completo del valor, con badge.
+
+Dos fallas encadenadas, y la segunda es la peor:
+1. `collectSingleValueTexts()` ya no ve al cliente → sin `(#N)` que parsear.
+2. El fallback `findSingleValueByLabel(/cliente/)` recorría **8 hermanos** buscando un
+   `singleValue`; al no haber ya uno en el bloque del Cliente, seguía de largo y devolvía el del
+   **Contacto**. El panel entonces mostraba `Miguel Castillo` **como si fuera el cliente**: no
+   fallaba, mentía coherentemente. Es el mismo patrón que el CLAUDE.md marca como el peor modo de
+   falla — un dato equivocado se ve igual que un dato bueno.
+
+**Fix:**
+1. `Core.pickCustomerFromCandidates(singleValues, comboboxValues)` (nuevo, puro): elige por badge
+   `(#N)` sobre la unión de las DOS formas. Los `singleValue` van **primero** → si SH repone la
+   forma vieja, ésta sigue mandando. **Se AMPLÍA el anclaje, no se cambia.**
+2. `collectComboboxValues(root)` en el glue.
+3. `findSingleValueByLabel` → **`findFieldTextByLabel(root, re, maxHops)`**: devuelve
+   `{text, from:'singleValue'|'input'}` y acepta un tope de hermanos. Cliente = **`maxHops:1`**
+   (solo su propio bloque, mata el robo al Contacto); ship-to = `8` (sin cambio, sigue resolviendo).
+4. **Un `value` de input sin `(#N)` NO se acepta como cliente**: es texto EN TRÁNSITO mientras el
+   operador teclea. Aceptarlo dispararía un `CustomerSearchByName` **por tecla** contra un
+   `/graphql` que se cuelga bajo ráfaga (~40 requests). El `singleValue` sí se acepta sin badge —
+   para eso existe el fallback por nombre.
+
+**Hallazgo colateral que corrige la bitácora previa:** el modal **sí** expone `Enviar a:`, pero
+sólo **después** de elegir cliente (junto con Contacto, Facturar a, Enviar vía, Términos de
+Facturación y el nuevo `¿Envío Directo?`). Leyendo sólo el HTML del modal vacío parecía que el
+ship-to había desaparecido y que la regla Rojo Gómez estaba muerta; **no lo está**. Registro del
+error de método: *un modal vacío no prueba qué campos tiene el modal lleno.* También apareció
+`Ubicación:` con `data-steelhead-component-id="CREATE_SALES_ORDER_SHOW_LOCATION_SELECT"`.
+
+**Validación:** core **17/17 verde** (3 tests nuevos con el snapshot real medido, incluido el
+assert de que la vía histórica sigue ganando y que el contacto **no** puede pasar por cliente);
+suite completa **1867/1867**. Verificación end-to-end contra el ERP tras el deploy: ver abajo.
+
 ## Add 2026-07-09 (v0.1.3) — segunda pantalla: lista de Órdenes de Venta ("New Sales Order")
 
 Cerrado el pendiente "Segunda vista de creación de OV". El usuario indicó la pantalla `https://app.gosteelhead.com/Domains/344/SalesOrders?receivedOrderStatusFilter=OPEN` con el botón **"New Sales Order"** que abre el modal **"Create Sales Order"** (mismos IDs RJSF `root_RazonSocialVenta`/`root_Divisa`/`root_VerificadaPor`/`root_ConsolidarPorProducto`).

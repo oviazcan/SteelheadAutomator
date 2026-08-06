@@ -55,6 +55,56 @@ test('pickCustomerFromSingleValues → null si ningún singleValue trae badge', 
   assert.equal(Core.pickCustomerFromSingleValues(null), null);
 });
 
+// ── Regresión 2026-08-05: el cliente dejó de vivir en un singleValue ──
+// SH cambió el control de "Cliente:" del modal: al confirmar la selección YA NO monta
+// un <div class="…singleValue">NOMBRE (#N)</div>; escribe el label completo del valor
+// en el `value` del <input role="combobox">. Medido en vivo: se tecleó "HUBBELL" y el
+// input quedó en "HUBBELL PRODUCTS MEXICO (#20)" — ese texto lo puso SH, no el tecleo.
+// Consecuencia: leer SOLO singleValues dejaba al cliente invisible y el fallback por
+// label agarraba el singleValue del CONTACTO ("Miguel Castillo") → sin (#N) → "sin
+// idInDomain" → no autofill. El fix AMPLÍA las fuentes: singleValues + values de los
+// combobox, y sigue eligiendo por el badge (#N).
+test('pickCustomerFromCandidates: halla al cliente cuando vive en el value del input (no en singleValue)', () => {
+  // Snapshot REAL del modal tras elegir cliente (2026-08-05, /Domains/344/SalesOrders).
+  const singleValues = [
+    'MAKE_TO_ORDER',                       // Tipo
+    'Miguel Castillo',                     // Contacto  ← el que el fallback robaba
+    'Cinco Sur 104,\nParque Industrial Toluca 2000,\nToluca de Lerdo,, Estado de México,  50200,\nMéxico,', // Facturar a
+    'Cinco Sur 104,\nParque Industrial Toluca 2000,\nToluca de Lerdo,, Estado de México,  50200,\nMéxico,', // Enviar a
+    'Flete Propio',                        // Enviar vía
+    '67 Días'                              // Términos
+  ];
+  const comboboxValues = ['HUBBELL PRODUCTS MEXICO (#20)'];
+
+  // Antes del fix: ninguna de las fuentes históricas ve al cliente.
+  assert.equal(Core.pickCustomerFromSingleValues(singleValues), null);
+
+  const got = Core.pickCustomerFromCandidates(singleValues, comboboxValues);
+  assert.deepEqual(got, {
+    raw: 'HUBBELL PRODUCTS MEXICO (#20)',
+    name: 'HUBBELL PRODUCTS MEXICO (#20)',
+    idInDomain: 20
+  });
+});
+
+test('pickCustomerFromCandidates: el singleValue con (#N) sigue ganando (forma histórica intacta)', () => {
+  // Si SH repone el SingleValue, la vía vieja debe seguir mandando: los singleValues
+  // van primero, así que un combobox con texto tecleado a medias no puede desbancarla.
+  const got = Core.pickCustomerFromCandidates(
+    ['CONTROLES Y MEDIDORES ESPECIALIZADOS (#10)', 'Francisca Felipe Gómez'],
+    ['CONTROLES Y MEDIDORES ESPECIALIZADOS (#10)']
+  );
+  assert.equal(got.idInDomain, 10);
+});
+
+test('pickCustomerFromCandidates: sin badge en ninguna fuente → null (degrada, no inventa)', () => {
+  // "Miguel Castillo" (el contacto) NO puede pasar por cliente: sin (#N) no hay cliente.
+  assert.equal(Core.pickCustomerFromCandidates(['Miguel Castillo', '67 Días'], ['']), null);
+  assert.equal(Core.pickCustomerFromCandidates([], []), null);
+  assert.equal(Core.pickCustomerFromCandidates(null, null), null);
+  assert.equal(Core.pickCustomerFromCandidates(undefined, ['ACME (#7)']).idInDomain, 7);
+});
+
 test('scoreOptionMatch Divisa: "USD" matchea la opción "USD - Dólar americano" (substring, score 60)', () => {
   // RJSF: enum=value ("USD"), enumNames=text ("USD - Dólar americano"). El cliente
   // guarda "USD" (código) pero matcheamos contra opt.text.
