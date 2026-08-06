@@ -246,13 +246,81 @@ const CreateOrderAutofill = (() => {
     // singleValue del CONTACTO ("Miguel Castillo") como si fuera el cliente — una mentira
     // coherente que el panel mostraba como dato bueno.
     const hit = findFieldTextByLabel(root, /^\s*(?:cliente|customer):?\s*$/i, 1);
-    if (!hit) return null;
+    if (!hit) return extractCustomerFromReceiveWizard(root);
     // Un input sin "(#N)" es texto EN TRÁNSITO (el operador está tecleando la búsqueda),
     // no un cliente: aceptarlo dispararía un CustomerSearchByName por tecla contra un
     // /graphql que se cuelga bajo ráfaga. El singleValue sí puede ir sin badge — para eso
     // existe el fallback de resolver el idInDomain por nombre.
-    if (hit.from === 'input' && !(c && c.extractCustomerIdInDomain(hit.text))) return null;
-    return c ? c.cleanCustomerName(hit.text) : hit.text;
+    if (hit.from === 'input' && !(c && c.extractCustomerIdInDomain(hit.text))) {
+      return extractCustomerFromReceiveWizard(root);
+    }
+    if (hit.text) return c ? c.cleanCustomerName(hit.text) : hit.text;
+    return extractCustomerFromReceiveWizard(root);
+  }
+
+  // Último recurso: el WIZARD PADRE de recepción. En /Receiving/CustomerParts el modal
+  // "Crear Orden de Venta" nace con su campo "Cliente:" VACÍO (antes SH lo precargaba) y
+  // el cliente real vive en el wizard "Recibir piezas del cliente", FUERA del
+  // [role="dialog"] del modal — así que getModalRoot() no lo alcanza y el applet no
+  // pintaba NADA, ni el panel. Ahí el nombre viene SIN "(#N)" (p. ej. "SCHNEIDER ELECTRIC
+  // USA INC"), así que el idInDomain se resuelve por CustomerSearchByName.
+  //
+  // El anclaje (wizard = [role="dialog"] con heading bilingüe, y buscar el valor en el
+  // CONTENEDOR del label leyendo singleValue **o** input) está copiado de
+  // weight-quick-entry, que resuelve el cliente en esta misma pantalla en producción.
+  const HEADING_SEL = 'h1, h2, h3, h4, h5, h6, [class*="MuiTypography"], [class*="heading"], [class*="title"]';
+  const WIZARD_RE = /receive\s+parts\s+from\s+customer|recibir\s+piezas\s+del\s+cliente/i;
+
+  // Mismo regex que weight-quick-entry: un combo sin elegir muestra "Select..." /
+  // "Buscar..." como TEXTO, y tomarlo por nombre de cliente dispararía una búsqueda
+  // inútil contra el /graphql (y peor: un cliente equivocado si algo hiciera match).
+  const PLACEHOLDER_RE = /^(buscar|search|select|seleccionar|todo|all|elegir|choose)/i;
+  const isPlaceholderText = (t) => !t || t.length < 3 || PLACEHOLDER_RE.test(t);
+
+  // Contenedor del wizard. Cascada copiada de weight-quick-entry: el wizard NO siempre es
+  // un [role="dialog"] (en la captura del 2026-08-05 se ve como pantalla completa), así
+  // que se degrada a MuiDialog → MuiPaper → document.body. Con body de último recurso el
+  // ancla nunca se apaga en silencio; el subárbol del modal se excluye aparte.
+  function findReceiveWizardRoot(modalRoot) {
+    for (const h of document.querySelectorAll(HEADING_SEL)) {
+      const t = (h.textContent || '').trim();
+      if (!t || t.length > 60) continue;
+      const c = core();
+      const match = c?.isReceiveWizardHeading ? c.isReceiveWizardHeading(t) : WIZARD_RE.test(t);
+      if (!match) continue;
+      if (modalRoot && modalRoot.contains(h)) continue;   // el heading del propio modal, no
+      return h.closest('[role="dialog"]')
+        || h.closest('[class*="MuiDialog"]')
+        || h.closest('[class*="MuiPaper"]')
+        || document.body;
+    }
+    return null;
+  }
+
+  function extractCustomerFromReceiveWizard(modalRoot) {
+    const wizard = findReceiveWizardRoot(modalRoot);
+    if (wizard) {
+      for (const el of wizard.querySelectorAll('label, span, div, p')) {
+        const txt = (el.textContent || '').trim();
+        if (!/^(?:customer|cliente):?$/i.test(txt)) continue;
+        // El wizard ENVUELVE al modal: si el label es el del propio modal (vacío), fuera.
+        if (modalRoot && modalRoot.contains(el)) continue;
+        const box = el.closest('div[class*="field"]') || el.closest('div')?.parentElement || el.parentElement;
+        if (!box || (modalRoot && modalRoot.contains(box))) continue;
+        const sv = box.querySelector('[class*="singleValue"], [class*="SingleValue"]');
+        if (sv) {
+          const clone = sv.cloneNode(true);
+          clone.querySelectorAll('[class*="avatar"], [class*="Avatar"], svg, img').forEach(a => a.remove());
+          const t = (clone.textContent || '').trim();
+          if (!isPlaceholderText(t)) return t;
+        }
+        for (const inp of box.querySelectorAll('input')) {
+          const v = (inp.value || '').trim();
+          if (!isPlaceholderText(v)) return v;
+        }
+      }
+    }
+    return null;
   }
 
   function extractShipToFromModal() {
@@ -338,9 +406,16 @@ const CreateOrderAutofill = (() => {
     const key = c ? c.normalizeForMatch(clean) : clean.toLowerCase();
     if (_nameIdCache.has(key)) return _nameIdCache.get(key);
     try {
-      const r = await SteelheadAPI.query('CustomerSearchByName', { searchText: clean, name: clean, query: clean, first: 12 });
-      const nodes = r?.searchCustomers?.nodes || [];
+      // Variables COPIADAS de weight-quick-entry, que resuelve clientes por nombre en
+      // producción (log real: "usarLBS=false (via Customer idInDomain=20)"). Las que había
+      // aquí (searchText/name/query/first) no coinciden con ninguna firma viva — este
+      // fallback dejó de ser teórico al volverse la vía principal del flujo de Recibo,
+      // donde el nombre del wizard llega SIN "(#N)".
+      const r = await SteelheadAPI.query('CustomerSearchByName',
+        { nameLike: `%${clean}%`, orderBy: ['NAME_ASC'] }, 'CustomerSearchByName');
+      const nodes = r?.searchCustomers?.nodes || r?.allCustomers?.nodes || [];
       let hit = nodes.find(n => (c ? c.normalizeForMatch(n.name) : String(n.name || '').toLowerCase()) === key);
+      if (!hit) hit = nodes.find(n => String(n.name || '').toUpperCase().includes(clean.toUpperCase()));
       if (!hit && nodes.length === 1) hit = nodes[0];
       const id = hit ? hit.idInDomain : null;
       _nameIdCache.set(key, id);
