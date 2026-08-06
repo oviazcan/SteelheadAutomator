@@ -6,6 +6,50 @@ Auto-llena las Entradas Personalizadas (`Razón Social de la Venta`, `Divisa`, `
 1. `/Receiving/CustomerParts → RECEIVE → +/Create` — título **"Crear Orden de Venta"** (ES). Cliente pre-cargado; expone **"Enviar a:"** (ship-to) → maneja Consolidar.
 2. `/Domains/<id>/SalesOrders → "New Sales Order"` — título **"Create Sales Order"** (EN). Cliente **vacío** al abrir (el operador lo elige a mano); **sin ship-to** → Consolidar no aplica.
 
+## Fix 2026-08-05 (v0.1.5) — en Recibo el cliente vive en el WIZARD PADRE, no en el modal
+
+**Síntoma:** tras el v0.1.4, en `/Receiving/CustomerParts` seguía sin pasar nada — y el detalle
+que lo delató: *"ni siquiera sale el banner"*. El panel sólo se pinta cuando hay cliente; sin
+cliente el applet hace `removePanel()` y se calla. **Un applet mudo era el síntoma de "no
+encuentro cliente", no de "no me cargué".**
+
+**Lo que se descartó primero (medido, no supuesto):** el applet **sí** se inyecta en esa ruta —
+`window.__saLoadedApps.ids` la trae junto con otros 8 applets, `matchesCreateOrderUrl` da `true` y
+el core nuevo está cargado. O sea: cargaba y corría; simplemente no veía a nadie.
+
+**Root cause.** El modal "Crear Orden de Venta" del flujo de Recibo **nace con su campo
+`Cliente:` VACÍO** (SH dejó de precargarlo; en la bitácora de julio venía lleno, era uno de los 7
+`singleValue`). El cliente real está en el wizard **"Recibir piezas del cliente"**, y `getModalRoot()`
+ancla al `[role="dialog"]` del modal justamente para **no** leer del wizard padre — la protección
+que en v0.1.1 evitaba confundirse ahora impedía ver el único lugar donde estaba el dato.
+
+**Fix:** si el modal no tiene cliente, se lee del wizard padre. **El anclaje no se inventó: está
+copiado de [`weight-quick-entry`](weight-quick-entry.md), que resuelve el cliente en esta misma
+pantalla en producción** — heading bilingüe (`Recibir piezas del cliente` / `Receive Parts From
+Customer`, ahora `Core.isReceiveWizardHeading`), cascada de contenedor
+`[role=dialog]` → `MuiDialog` → `MuiPaper` → `document.body` (el wizard **no** siempre es un
+diálogo), lectura de `singleValue` **o** `input.value`, y filtro de placeholder
+(`/^(buscar|search|select|seleccionar|…)/i`) para no tomar un "Select..." por nombre de cliente. El
+subárbol del modal se excluye explícitamente, así que el `Cliente:` vacío de adentro nunca gana.
+
+**Bug latente que salió a la luz:** ahí el nombre llega **sin `(#N)`** (`SCHNEIDER ELECTRIC USA
+INC`), así que el idInDomain depende de `resolveIdInDomainByName` → `CustomerSearchByName`… que
+iba con variables **`{searchText, name, query, first}`**, las cuales no corresponden a ninguna
+firma viva. Nunca se había notado porque era un fallback teórico; al volverse la vía **principal**
+del flujo de Recibo, importaba. Se alinearon con las de `weight-quick-entry`
+(**`{nameLike: '%…%', orderBy: ['NAME_ASC']}`**), probadas en producción, más su match por
+`includes` en mayúsculas. *Lección: un fallback que nunca se ejerce no está probado — está
+supuesto.*
+
+**Validación:** core **18/18**, suite **1868/1868**. Deploy **1.11.90**.
+
+**Nota de proceso:** el deploy NO usó `tools/deploy.sh` — el worktree de `main` tenía WIP **de otra
+sesión viva** (`hash-coverage-multirepo`, `wo-spec-params`, `extract-process-tree`,
+`external-sinks`, modificados minutos antes). Se hizo `git add` selectivo de los 3 archivos
+propios y el espejo a `gh-pages` desde un **worktree temporal** (removido con `git worktree
+remove` + `prune` para no dejar el huérfano que bloquea todo deploy). El `pre-push` validó el
+espejo. La WIP ajena quedó intacta.
+
 ## Fix 2026-08-05 (v0.1.4) — el cliente se mudó del `singleValue` al `value` del input
 
 **Síntoma reportado:** "el order autofill no está funcionando". Ni Razón Social ni Divisa se
