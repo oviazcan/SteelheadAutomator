@@ -303,8 +303,60 @@
     return { rows: rows, orphans: orphans, warnings: built.warnings };
   }
 
+  // ── Lectura del hook: PdfLowCode es un LISTADO, no un fetch por tipo ────────
+  //
+  // `$first` y `$offset` son `Int!` OBLIGATORIOS: sin ellos el ERP responde HTTP 400 y el
+  // panel no abre (bug de producción 2026-08-06). El contrato está tomado de la
+  // implementación de referencia que sí funciona con este mismo hash:
+  // SteelheadPowerTools/sync/lowcode_sync.py::_fetch_single_slot.
+  const HOOK_PAGE = 50;
+
+  function hookQueryVariables(pdfType, page, offset) {
+    return {
+      first: typeof page === 'number' ? page : HOOK_PAGE,
+      offset: typeof offset === 'number' ? offset : 0,
+      pdfType: pdfType
+    };
+  }
+
+  // La respuesta trae TODAS las versiones del hook bajo una key `all<Algo>LowCodes`, y
+  // **la activa es la MÁS RECIENTE por `createdAt`**: cada save crea una versión nueva y no
+  // existe mutation de «activar». Tomar `nodes[0]` a ciegas puede devolver una versión vieja
+  // — y como este applet PUBLICA CÓDIGO PRODUCTIVO, eso significaría republicarla encima de
+  // la buena, sin error y sin que nadie se entere.
+  function pickActiveHook(data) {
+    if (!data || typeof data !== 'object') return null;
+    let nodes = null;
+    const keys = Object.keys(data);
+    for (let i = 0; i < keys.length; i++) {
+      const k = keys[i];
+      if (k.indexOf('all') !== 0 || !/LowCodes$/.test(k)) continue;
+      const slot = data[k];
+      if (slot && Array.isArray(slot.nodes)) { nodes = slot.nodes; break; }
+    }
+    if (!nodes || !nodes.length) return null;
+    // Un nodo sin `code` no es una versión utilizable, por muy reciente que sea.
+    const usable = nodes.filter(function (n) {
+      return n && typeof n.code === 'string' && n.code.length > 0;
+    });
+    if (!usable.length) return null;
+    usable.sort(function (a, b) {
+      return String(b.createdAt || '').localeCompare(String(a.createdAt || ''));
+    });
+    const active = usable[0];
+    return {
+      code: active.code,
+      compiled: typeof active.compiled === 'string' ? active.compiled : '',
+      id: active.id,
+      createdAt: active.createdAt || ''
+    };
+  }
+
   const api = {
     MARK_START: MARK_START,
+    HOOK_PAGE: HOOK_PAGE,
+    hookQueryVariables: hookQueryVariables,
+    pickActiveHook: pickActiveHook,
     MARK_END: MARK_END,
     LICENSE_PREFIX: LICENSE_PREFIX,
     normalizeText: normalizeText,
