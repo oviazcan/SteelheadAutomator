@@ -1,22 +1,29 @@
 #!/usr/bin/env python3
-"""Extrae y unifica los persisted-query hashes de las 3 fuentes que consumen la
+"""Extrae y unifica los persisted-query hashes de las 4 fuentes que consumen la
 API de Steelhead con hashes propios:
 
   1. extension   → remote/config.json (la extensión SteelheadAutomator)
   2. reportes-sh → Reportes SH: PERSISTED_QUERIES en scripts/steelhead_client.py
   3. powertools  → SteelheadPowerTools: dicts de hashes en sync/*.py
+  4. procesos    → SteelheadProcesos: src/data/persisted-queries.json (portal de
+                   procesos: el sitio Astro y el portal que se publica en el ERP)
 
 El validador (validate-hashes.py) usa esto para checar TODAS las fuentes en una
 sola corrida, no solo la extensión. Un hash que rota y solo lo usa Reportes SH o
 PowerTools se detecta igual (incidente 2026-07-20: GenerateDuckDb rotó, la
 extensión se actualizó pero Reportes SH quedó con el hash muerto).
 
+`procesos` se agregó el 2026-08-05 por el mismo patrón: `CurrentUser` rotó y el
+portal publicado quedó con el hash muerto —el gate de permisos falló cerrado y se
+vio como si nadie tuviera sesión—, sin que ninguna fuente vigilada lo cubriera.
+
 Funciones PURAS (testeables sin red ni FS): extract_py_hashes / infer_kind /
 build_validation_items. load_external_sources toca el FS pero degrada a {} si un
-repo no existe (una máquina puede no tener los 3 repos).
+repo no existe (una máquina puede no tener los 4 repos).
 """
 from __future__ import annotations
 
+import json
 import re
 from pathlib import Path
 
@@ -24,6 +31,8 @@ from pathlib import Path
 REPORTES_SH_CLIENT = Path("/Users/oviazcan/Projects/Ecoplating/Reportes SH/scripts/steelhead_client.py")
 POWERTOOLS_ROOT = Path("/Users/oviazcan/Projects/Ecoplating/SteelheadPowerTools")
 PT_SYNC_FILES = ["sync/lowcode_sync.py", "sync/maintenance_plans_sync.py"]
+PROCESOS_HASHES = Path(
+    "/Users/oviazcan/Projects/Ecoplating/SteelheadProcesos/src/data/persisted-queries.json")
 
 # Prefijos que indican MUTATION (para inferir kind — solo cosmético en el reporte;
 # el probe no distingue). El resto se asume query.
@@ -52,6 +61,7 @@ def infer_kind(op: str) -> str:
 def load_external_sources(
     rsh_client: Path = REPORTES_SH_CLIENT,
     powertools_root: Path = POWERTOOLS_ROOT,
+    procesos_hashes: Path = PROCESOS_HASHES,
 ) -> dict[str, dict[str, str]]:
     """{source: {op: hash}} para las fuentes externas DISPONIBLES.
 
@@ -72,6 +82,21 @@ def load_external_sources(
             pt.update(extract_py_hashes(f.read_text()))
     if pt:
         out["powertools"] = pt
+    # SteelheadProcesos guarda sus hashes en un JSON plano {op: hash} en vez de en
+    # código, así que se lee con json.load y no con extract_py_hashes. Un JSON
+    # corrupto se omite en silencio, igual que un repo ausente: este módulo alimenta
+    # al validador y no debe poder tumbarlo — si la fuente desaparece, lo que se
+    # pierde es cobertura, y eso lo reporta el propio validador al listar sus fuentes.
+    if procesos_hashes.exists():
+        try:
+            ops = json.loads(procesos_hashes.read_text())
+        except (json.JSONDecodeError, OSError):
+            ops = None
+        if isinstance(ops, dict):
+            validos = {op: h for op, h in ops.items()
+                       if isinstance(h, str) and re.fullmatch(r"[a-f0-9]{64}", h)}
+            if validos:
+                out["procesos"] = validos
     return out
 
 
@@ -162,6 +187,44 @@ def _selftest() -> None:
         external_sources={"reportes-sh": {"GenerateDuckDb": HB}},
     )
     assert len(drift) == 2, drift
+
+    # ── Fuente `procesos` (JSON plano). Se prueba contra archivos temporales porque
+    # el riesgo real no es leer bien un JSON válido, sino que un JSON roto/ausente
+    # tumbe al validador entero o —peor— cuele hashes basura al probe.
+    import tempfile
+    with tempfile.TemporaryDirectory() as tmp:
+        d = Path(tmp)
+        ausente = d / "no-existe.json"
+        bueno = d / "bueno.json"
+        bueno.write_text(json.dumps({"CurrentUser": HA, "Corta": "abc"}))
+        roto = d / "roto.json"
+        roto.write_text("{ no es json,")
+
+        # Sólo hashes de 64 hex; "Corta" se descarta.
+        src = load_external_sources(rsh_client=ausente, powertools_root=d,
+                                    procesos_hashes=bueno)
+        assert src["procesos"] == {"CurrentUser": HA}, src
+
+        # JSON corrupto → la fuente se omite, NO se propaga la excepción.
+        src = load_external_sources(rsh_client=ausente, powertools_root=d,
+                                    procesos_hashes=roto)
+        assert "procesos" not in src, src
+
+        # Archivo ausente → igual que cualquier repo faltante.
+        src = load_external_sources(rsh_client=ausente, powertools_root=d,
+                                    procesos_hashes=ausente)
+        assert "procesos" not in src, src
+
+    # La op del portal se atribuye a su fuente, y si comparte hash con la extensión
+    # se dedup en una sola entrada con las dos fuentes (no se prueba dos veces).
+    items = build_validation_items(
+        config_queries={"CurrentUser": HA},
+        config_mutations={},
+        external_sources={"procesos": {"CurrentUser": HA, "SearchUserFilesQuery": HB}},
+    )
+    by = {(e["operation"], e["hash"]): e for e in items}
+    assert set(by[("CurrentUser", HA)]["sources"]) == {"extension", "procesos"}
+    assert by[("SearchUserFilesQuery", HB)]["sources"] == ["procesos"]
 
     print("hash_sources selftest OK")
 

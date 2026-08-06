@@ -140,21 +140,45 @@ fi
 # launchd.out.log, no `hash-validation-log.md`: ese archivo es el registro de
 # ALARMAS reales, no un log de progreso) — ni 0 ni 2 son alarma, así que no
 # generan correo ni entrada ahí; sólo el 1 sigue con su tratamiento completo.
-DOMINIOS_FMT="${FORMATO_VALIDACION_DOMINIOS-tlc}"
-if [[ -n "$DOMINIOS_FMT" && -x "$PYTHON" ]]; then
-  if [[ -f "$REPORTES_SH/scripts/verifica_formato_publicado.py" ]]; then
-    for DOM_FMT in $DOMINIOS_FMT; do
-      SALIDA_FMT="$("$PYTHON" "$REPORTES_SH/scripts/verifica_formato_publicado.py" \
-                     --domain "$DOM_FMT" 2>&1)" && CODIGO_FMT=0 || CODIGO_FMT=$?
-      case "$CODIGO_FMT" in
-        0) echo "$(date '+%F %T') Formato publicado ($DOM_FMT): al día." ;;
-        1) echo "$SALIDA_FMT"
-           echo "$SALIDA_FMT" >> "$REPO_ROOT/docs/api/hash-validation-log.md" ;;
-        2) echo "$(date '+%F %T') Formato publicado ($DOM_FMT): no se pudo comprobar (código 2)." ;;
-        *) echo "$(date '+%F %T') Formato publicado ($DOM_FMT): código inesperado $CODIGO_FMT." ;;
-      esac
-    done
-  fi
+#
+# Desde el 2026-08-05 se vigila MÁS DE UN artefacto publicado con este patrón: el
+# formato de validación en piso (Reportes SH) y el portal de procesos
+# (SteelheadProcesos). Los dos publican un par cascarón+payload y los dos se murieron
+# por lo mismo —un hash rotado en el archivo YA SUBIDO— con un día de diferencia. Por
+# eso el chequeo quedó factorizado: sumar el tercero es una línea, no un copy-paste.
+# Cada artefacto pasa los MISMOS parámetros que embebe su cascarón (prefijo y modo de
+# búsqueda); si no coinciden, el chequeo miraría un archivo distinto del que la gente abre.
+
+# chequea_publicado <etiqueta> <dominio> [args extra para verifica_formato_publicado.py]
+chequea_publicado() {
+  local etiqueta="$1" dom="$2"; shift 2
+  local salida codigo
+  salida="$("$PYTHON" "$REPORTES_SH/scripts/verifica_formato_publicado.py" \
+             --domain "$dom" "$@" 2>&1)" && codigo=0 || codigo=$?
+  case "$codigo" in
+    0) echo "$(date '+%F %T') $etiqueta ($dom): al día." ;;
+    1) echo "$salida"
+       echo "$salida" >> "$REPO_ROOT/docs/api/hash-validation-log.md" ;;
+    2) echo "$(date '+%F %T') $etiqueta ($dom): no se pudo comprobar (código 2)." ;;
+    *) echo "$(date '+%F %T') $etiqueta ($dom): código inesperado $codigo." ;;
+  esac
+}
+
+if [[ -x "$PYTHON" && -f "$REPORTES_SH/scripts/verifica_formato_publicado.py" ]]; then
+  DOMINIOS_FMT="${FORMATO_VALIDACION_DOMINIOS-tlc}"
+  for DOM_FMT in $DOMINIOS_FMT; do
+    chequea_publicado "Formato publicado" "$DOM_FMT"
+  done
+
+  # Portal de procesos. `--no-folderless` porque su cascarón busca en TODO el
+  # repositorio (para seguir hallando el payload aunque alguien lo mueva a una carpeta
+  # desde la UI del ERP). Default "tlc": MTY no tiene los archivos del SGC todavía
+  # —76 archivos y cero con códigos del SGC—, así que ahí el portal aún no se publica.
+  DOMINIOS_PORTAL="${PORTAL_PROCESOS_DOMINIOS-tlc}"
+  for DOM_PORTAL in $DOMINIOS_PORTAL; do
+    chequea_publicado "Portal de procesos" "$DOM_PORTAL" \
+      --prefijo portal_procesos_payload --no-folderless
+  done
 fi
 
 exit "$RUN_RC"
