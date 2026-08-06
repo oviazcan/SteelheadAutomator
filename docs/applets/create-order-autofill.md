@@ -60,7 +60,42 @@ error de método: *un modal vacío no prueba qué campos tiene el modal lleno.* 
 
 **Validación:** core **17/17 verde** (3 tests nuevos con el snapshot real medido, incluido el
 assert de que la vía histórica sigue ganando y que el contacto **no** puede pasar por cliente);
-suite completa **1867/1867**. Verificación end-to-end contra el ERP tras el deploy: ver abajo.
+suite completa **1867/1867**. **End-to-end contra el ERP productivo con el script ya deployado
+(1.11.89)**, cliente SCHNEIDER ELECTRIC MEXICO (#1) — log del propio applet:
+
+```
+[SA] [create-order-autofill] modal detectado | cliente=SCHNEIDER ELECTRIC MEXICO (#1) | shipTo=Javier Rojo Gómez 1121-A,…
+[SA] [create-order-autofill] autofill | razon=OK | divisa=OK | consolidar=OK
+```
+
+Razón Social → `ECO030618BR4 - ECOPLATING SA DE CV…`, Divisa → `USD - Dólar americano`,
+Consolidar → **marcado** (la regla Rojo Gómez volvió a disparar). No se guardó ninguna OV.
+
+### ⚠️ Pendiente ABIERTO (sin causa raíz) — el disparo automático
+
+La extracción quedó arreglada, pero en `/Domains/<id>/SalesOrders` **el autofill no arrancó solo**:
+sólo corrió al invocar `scanForModal()` a mano. Medido: con el modal abierto y el cliente ya
+elegido, **cero** entradas de `modal detectado` en consola (con `sa_debug` activo, mientras
+`report-regen` sí logueaba), y una mutación directa sobre `document.body` tampoco lo despertó.
+
+**Lo que SÍ está descartado:**
+- No lo introdujo este fix: `git diff v1.11.87 v1.11.89 -- create-order-autofill.js` no toca ni
+  una línea de `init`/`checkUrl`/`setupObserver`/`scanForModal`/observer.
+- No es el debounce posponiéndose por ráfaga: se midieron 17 mutaciones con **11 gaps > 350 ms**
+  (máximo **2049 ms**) — el timer tuvo margen de sobra.
+- No es el gate de URL (`matches=true` en el log de init), ni el latch de habilitación, ni
+  permisos (`autoInject` no los consulta), ni una excepción no capturada (consola limpia).
+
+**Lo que NO se pudo concluir:** por qué el `MutationObserver` no reacciona. Sospecha principal —
+sin confirmar— el patrón que el propio CLAUDE.md marca como anti-patrón: `setupObserver()` pone
+`observerActive = true` **antes** de `obs.observe(document.body, …)`, así que un fallo de montaje
+queda **congelado para siempre** (latch del INTENTO, no del ÉXITO). **No se arregló a ciegas.**
+
+**Advertencia de método para quien retome esto:** la sesión de diagnóstico acumuló ~50 peticiones
+al `/graphql` y muy probablemente lo dejó degradado (el límite es **por sesión** y no se recupera
+recargando), además de congelar una pestaña al re-evaluar el script remoto con `new Function`.
+**Las mediciones de timing hechas al final de esa sesión no son confiables** y hay que repetirlas
+en sesión limpia antes de sacar conclusiones.
 
 ## Add 2026-07-09 (v0.1.3) — segunda pantalla: lista de Órdenes de Venta ("New Sales Order")
 
