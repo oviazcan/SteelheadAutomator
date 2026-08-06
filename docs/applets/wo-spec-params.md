@@ -1,5 +1,66 @@
 # `wo-spec-params` — Reaplicar Parámetros en Órdenes de Trabajo
 
+## 2026-08-05 — «la OT 6009 sigue con nodo raíz y ya corrimos la corrección dos veces»
+
+Reporte del operador con captura: la OT **6009** (NP `PHA76627`, spec externa «RC Decapado»)
+muestra sus dos campos con **Nodo de Receta = `T101 (DEC)-CU-BARE (4.0) #1`** — el nodo **raíz**.
+
+**El applet no falló. La corrida nunca llegó a esa orden.** El barrido del 2026-08-04 recorre de
+la orden más nueva hacia atrás y **se detuvo**; el corte es casi perfecto y se mide solo:
+
+| Tramo | Movidas | Pendientes |
+|---|---|---|
+| `id_in_domain` ≥ **13 819** (lo que alcanzó a ver) | **700** | 11 |
+| `id_in_domain` < 13 819 (nunca leído) | 12 | **553** |
+
+La 6009 está en **6 009**: ~7 800 posiciones bajo el piso. Del dominio, **2 210 de las 6 061
+órdenes activas** quedaron abajo de ese corte.
+
+**Alcance vivo del daño (snapshot del 5 ago): 564 órdenes activas · 2 395 casillas** con criterio
+de calidad del cliente colgando de un nodo `PROCESS`. **Cero solapamiento** con las 712 que la
+corrida sí tocó — no dejó trabajo a medias, simplemente no las vio.
+
+### La 6009 está SANA para corregirse — se verificó pieza por pieza
+
+Importa porque las dos hipótesis naturales eran otras, y **el dato refutó las dos**:
+
+| Hipótesis | Veredicto |
+|---|---|
+| «El proceso no tiene nodo de inspección» | ❌ lo tiene: `198905 T101-IC00-001`, declara 23 campos |
+| «La orden copió una receta que aún no declaraba el campo» (como la 10837) | ❌ **su** nodo QA `42598561` **sí** declara 19445 y 22067 |
+| «El NP tiene dos filas y el deseado sale `AMBIGUO`» | ❌ las forzadas (`processNodeId=244434`) están **archivadas desde el 30 jul**; queda una viva por campo, sin nodo forzado |
+
+Con eso `findInspectionNode` da **exactamente un** candidato y `desired.via = NP` con `writeId`
+válido ⇒ **`migrarAInspeccion` produciría `MIGRAR` sobre esta orden hoy mismo.** No hace falta
+tocar código: hace falta **volver a barrer el tramo viejo**.
+
+> **Por qué nacieron en el raíz:** los dos params se crearon `2026-06-05 11:54:06`, **el mismo
+> instante que la orden**, heredando la fila del NP forzada a `244434` — que es exactamente su
+> `default_process_node_id`. Es el bug de `bulk-upload` pre-`046ec5b`, ya diagnosticado abajo. El
+> frente NP de este NP **ya se limpió** (30 jul); lo que quedó sin limpiar es la OT.
+
+**Ruido a no confundir con la corrida:** la orden trae una tercera fila (`26890439`, Apariencia
+Homogénea, en el nodo QA) **creada y archivada el 5 ago con 16 s de diferencia**, por un usuario
+del cliente desde la UI. Es un intento manual, no del applet.
+
+### Lección de método (dos, y las dos costaron)
+
+1. **`TIMESTAMP '…-06:00'` en DuckDB DESCARTA el offset** y lo normaliza a UTC-naive: mi ventana
+   se corrió 6 h y la corrida de 712 órdenes se leyó como **2**. La señal fue un número absurdo,
+   no un error. Para comparar contra `TIMESTAMPTZ` hay que escribir **`TIMESTAMPTZ`**.
+2. **`part_number_spec_field_param` NO trae `archived_at` en el snapshot de reportes.** Contar ahí
+   el «frente NP» da **92 055 params forzados** cuando la mayoría están archivados. Ese frente
+   **no se puede medir desde DuckDB** — hay que preguntarle al ERP (`GetPartNumber`).
+
+### Qué hacer
+
+1. **Re-correr el barrido con `migrarAInspeccion`, acotado a `id_in_domain < 13 819`** — son 2 210
+   órdenes, de las que 564 tienen algo que mover.
+2. **Arrancar de cero, no reanudar** (pendiente 2 de abajo sigue abierto: con el modo de mover
+   encendido, un hallazgo duplicado **borra** una casilla — incidente OT 15928).
+3. Al terminar, comparar **`archivados` vs `aplicados`**: la diferencia es el número exacto de
+   casillas huecas.
+
 ## 2026-08-03 — 0.6.0: «las de GDE1214700 Antitarnish no se aplicaron» (OT 10837)
 
 Reporte del operador: *"tengo en el tratamiento y además en el número de parte, así que chocan,

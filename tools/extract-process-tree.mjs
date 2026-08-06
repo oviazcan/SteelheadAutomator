@@ -76,6 +76,29 @@ const ROOTS_FILE = arg('roots');
 const RESUME = !!arg('resume');
 const CKPT = path.join(OUT_DIR, '.extract-checkpoint.json');
 
+// `?domainNanoId=<nano>` en la URL de /graphql. NO es opcional y su ausencia NO se ve como
+// error: el ERP responde **HTTP 200, sin `errors`, y con todos los campos en null** — idéntico
+// a como se ve un token vencido. Medido el 2026-08-05: la corrida daba `0/246 · árbol 0 ·
+// specFields 0` en cada raíz y parecía problema de sesión; con el nano la MISMA petición
+// devuelve el árbol (proceso 244434 → 30 relaciones). El cliente de `Reportes SH` siempre lo
+// mandó (`steelhead_client.call()`); este extractor no, y por eso nunca volvió a extraer nada.
+const DOMAIN = arg('domain', 'tlc');
+const DOMAIN_NANO = arg('domain-nano') || process.env.STEELHEAD_DOMAIN_NANO || nanoFromProject(DOMAIN);
+
+function nanoFromProject(dom) {
+  try {
+    const env = fs.readFileSync(path.join(REPORTES, '.env'), 'utf8');
+    const key = 'STEELHEAD_DOMAIN_' + String(dom).toUpperCase();
+    for (const line of env.split('\n')) {
+      const i = line.indexOf('=');
+      if (i > 0 && line.slice(0, i).trim() === key) {
+        return line.slice(i + 1).trim().replace(/^["']|["']$/g, '') || null;
+      }
+    }
+  } catch { /* sin proyecto hermano: seguimos y el aviso de abajo lo dice */ }
+  return null;
+}
+
 // El access_token de OAuth lo administra `Reportes SH` (rota el refresh token y cachea).
 // Reusarlo evita duplicar aquí el flujo de Authentik; si ese proyecto no está, seguimos sin
 // token y el aviso de sesión hace el resto.
@@ -92,6 +115,16 @@ if (!COOKIE) {
   console.error('ERROR: falta la cookie de sesión.\n' +
     '  node tools/extract-process-tree.mjs --cookie "<cookie>"\n' +
     '  o exporta STEELHEAD_COOKIE_STRING. Ver la skill `steelhead-auth`.');
+  process.exit(1);
+}
+
+// Sin el nano la corrida NO falla: devuelve todo vacío y se lee como sesión caducada. Avisar
+// aquí es la diferencia entre 4 minutos perdidos y un diagnóstico inmediato.
+if (!DOMAIN_NANO) {
+  console.error('ERROR: falta el domainNanoId del dominio "' + DOMAIN + '".\n' +
+    '  Sin él /graphql responde 200 con TODOS los campos en null y la extracción sale vacía.\n' +
+    '  Pásalo con --domain-nano <nano>, exporta STEELHEAD_DOMAIN_NANO, o deja que se lea de\n' +
+    '  `Reportes SH/.env` (STEELHEAD_DOMAIN_' + String(DOMAIN).toUpperCase() + ').');
   process.exit(1);
 }
 
@@ -133,7 +166,8 @@ async function gql(operationName, variables, hash) {
     cookie: COOKIE
   };
   if (IDP_TOKEN) headers['x-steelhead-idp-token'] = IDP_TOKEN;
-  const res = await fetch(BASE + '/graphql', {
+  const url = BASE + '/graphql' + (DOMAIN_NANO ? '?domainNanoId=' + encodeURIComponent(DOMAIN_NANO) : '');
+  const res = await fetch(url, {
     method: 'POST',
     headers,
     body: JSON.stringify({
@@ -288,8 +322,15 @@ const nodeRows = [...NODES.values()].map(n => ({ ...n, en_proceso: montados.has(
 
 const n1 = writeCsv(path.join(OUT_DIR, 'process_tree.csv'),
   ['root_process_node_id', 'node_id', 'parent_node_id', 'child_ind', 'spec_id'], TREE);
+// La declaración nodo→campo NO depende del proceso, pero `harvest` corre una vez por raíz y un
+// nodo vive en muchas (medido: `T101-IC00-001` aparece en 851 raíces con sus mismos 23 campos).
+// Sin deduplicar, el CSV sale 5.7× más grande —19,470 filas para 3,401 pares reales— y aunque el
+// SQL lo absorbe (`eje1` es un SELECT DISTINCT), el conteo de filas deja de ser comparable entre
+// cortes: parece que la configuración se multiplicó cuando no cambió nada. El grano del archivo
+// es el par, y así se escribe.
+const sfUnicos = [...new Map(SF.map(r => [r.process_node_id + '|' + r.spec_field_id, r])).values()];
 const n2 = writeCsv(path.join(OUT_DIR, 'process_node_spec_field.csv'),
-  ['process_node_id', 'spec_field_id', 'spec_field_name', 'order_index'], SF);
+  ['process_node_id', 'spec_field_id', 'spec_field_name', 'order_index'], sfUnicos);
 const n3 = writeCsv(path.join(OUT_DIR, 'process_node.csv'),
   ['id', 'name', 'type', 'treatment_id', 'treatment_name', 'en_proceso'], nodeRows);
 
