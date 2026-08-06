@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Steelhead Automator — iPad",
-  "description": "Bundle de applets de Steelhead para iPad (empaquetado). 34 applets: auto-inyectados (FAB/gate propio) + lanzadores de popup. v0.6.36 pule driver-licenses tras verlo en uso: se quitó el texto basura (⚠'\">) que salía bajo CADA miniatura —era HTML mal formado, el placeholder iba dentro de un onerror inline y sus comillas dobles cerraban el atributo—, la miniatura pasó de 44x44 a 132x84 porque las identificaciones son APAISADAS y el cuadro no dejaba distinguir a la persona, se agregó barra de progreso real (sigue tardando aunque ya no sean ~460 peticiones, y un panel quieto se lee como colgado) y «Subir una licencia» se movió arriba, donde el operador lo ve sin bajar la lista. En el iPad, con la cámara a mano en el andén, ese botón es la acción principal.",
-  "version": "0.6.36",
+  "description": "Bundle de applets de Steelhead para iPad (empaquetado). 34 applets: auto-inyectados (FAB/gate propio) + lanzadores de popup. v0.6.37 suma ARCHIVAR en driver-licenses: botón por renglón con modal de confirmación, que avisa que archivar el ARCHIVO no lo saca del CATÁLOGO publicado (si está publicada, el hook la sigue pidiendo hasta republicar) y verifica releyendo, porque la mutation no devuelve el registro. En el iPad cierra el ciclo completo del andén: dar de alta al chofer con la cámara y darlo de baja cuando deja de venir, sin pasar por una computadora.",
+  "version": "0.6.37",
   "permissions": [
     "storage",
     "tabs"
