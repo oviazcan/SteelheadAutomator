@@ -320,6 +320,110 @@ async function savePartsQuoteAborted(page, sink, { id, domain }) {
   if (dbg) console.log(`       [dbg] Save Parts → ${sink && sink.hashes && sink.hashes.SaveManyPartNumberPrices ? 'CAPTURADO' : 'sin hash aún'}`);
 }
 
+// ── Familia de PARAMETROS DE SPEC del PN Centinela (captura-y-aborta) ────────
+// Cubre SaveMultipleSpecFieldParams y UpdatePartNumberSpecParam en UN solo flujo, como el
+// nodo #55 cubre las 3 de mantenimiento. Descubierto en vivo el 2026-08-05 con el DOM que
+// aporto el operador; "el sink es el juez" corrigio DOS suposiciones:
+//   - El lapiz individual (aria-label="Edit Spec Field Parameter") NO dispara
+//     UpdatePartNumberSpecParam: dispara el MISMO SaveMultipleSpecFieldParams que el modal
+//     multiple. Steelhead unifico ambos caminos.
+//   - "Add Spec" NO dispara AddParamsToPartNumber sino ApplySpecsToPartNumber (otra op).
+//     Por eso AddParamsToPartNumber sigue SIN ruta (ver _paraPendiente en sentinels-config).
+// UpdatePartNumberSpecParam sale de ARCHIVAR un parametro (aria-label="Archive Parameter"
+// + confirmacion), que es exactamente para lo que la usa spec-migrator (archivedAt ISO).
+//
+// RUTA: /PartNumbers/{id} SIN /Domains/{d} — con el dominio delante la ficha NO hidrata.
+//
+// ANCLAJES: aria-label estructural + FORMA del icono. Las clases css-<hash> del DOM
+// (css-mfslm7, css-15k6obg…) NO se usan: emotion las regenera cuando alguien mueve un
+// padding. ⚠️ DEUDA BILINGUE: los aria-label de esta pantalla vienen MEZCLADOS — "Show
+// Spec"/"Archive Parameter"/"Edit Spec Field Parameter" en INGLES, pero "Cambiar Nodo de
+// Proceso"/"Copiar arriba" en ESPAÑOL. Los tres que usamos estan en ingles HOY; si SH los
+// traduce, el ciclo se apaga en silencio. No se inventa la traduccion (regla dura del repo).
+async function openPartNumberSentinel(page, id, intentos = 2) {
+  for (let i = 0; i < intentos; i++) {
+    await page.goto(`${BASE}/PartNumbers/${id}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+    const deadline = Date.now() + 40000;
+    while (Date.now() < deadline) {
+      const ok = await page.evaluate(() => /Specs for Part Number/i.test(document.body ? document.body.innerText : '')).catch(() => false);
+      if (ok) return true;
+      await page.waitForTimeout(1000);
+    }
+    if (process.env.SA_DBG) console.log(`       [dbg] PN #${id}: la ficha no hidrató (intento ${i + 1}/${intentos})`);
+  }
+  return false;
+}
+
+async function specParamsAborted(page, sink, ctx) {
+  const dbg = process.env.SA_DBG;
+  const { id } = ctx;
+  if (sink && sink.abortOps) {
+    sink.abortOps.add('SaveMultipleSpecFieldParams');
+    sink.abortOps.add('UpdatePartNumberSpecParam');
+  }
+  if (!(await openPartNumberSentinel(page, id))) {
+    throw new Error('specParams: la ficha del PN centinela no hidrató (¿id cambiado?)');
+  }
+  // FALLBACK pedido por el operador (2026-08-05): el estado BASE de este centinela fue
+  // ARCHIVADO durante meses, y archivado => la seccion de specs sale READ-ONLY (el aviso
+  // "This is an archived part number" y los botones deshabilitados). Hoy esta activo, pero
+  // si alguien lo re-archiva el ciclo se auto-repara: desarchiva, captura y RE-ARCHIVA en el
+  // restore. La marca viaja en el sink para que restore() sepa si debe revertir.
+  const estabaArchivado = await archivedChecked(page);
+  if (estabaArchivado === true) {
+    if (dbg) console.log('       [dbg] PN archivado → desarchivando (fallback) para poder editar specs');
+    await archivedToggle(page);
+    if (sink) sink.__saPnDesarchivado = true;
+    await page.waitForTimeout(2500);
+  }
+  // Abrir la spec: chevron con aria-label "Show Spec" (+ respaldo por FORMA del icono
+  // ExpandMore, que SH no puede cambiar sin cambiar lo que el operador VE).
+  const CHEVRON = 'M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z';
+  const abierto = await page.locator('button[aria-label="Show Spec"]').first().click({ timeout: 10000 }).then(() => true).catch(() => false);
+  if (!abierto) {
+    await page.evaluate((d) => {
+      const b = [...document.querySelectorAll('button')].find((x) => [...x.querySelectorAll('svg path')].some((p) => (p.getAttribute('d') || '').trim() === d));
+      if (b) b.click();
+    }, CHEVRON);
+  }
+  await page.waitForTimeout(4000);
+  if (dbg) console.log(`       [dbg] spec abierta (${abierto ? 'aria' : 'forma'})`);
+
+  // ── 1) SaveMultipleSpecFieldParams: seleccionar un param → "Edit Selected Params" → Save
+  const sel = await page.evaluate(() => {
+    for (const c of document.querySelectorAll('input[type="checkbox"]')) {
+      const tr = c.closest('tr');
+      if (tr && !c.checked && !c.disabled && c.offsetParent !== null) { c.click(); return true; }
+    }
+    return false;
+  });
+  if (dbg) console.log(`       [dbg] param seleccionado: ${sel}`);
+  await page.waitForTimeout(1500);
+  await page.locator('button').filter({ hasText: /Edit Selected Params/i }).first().click({ timeout: 8000 }).catch(() => {});
+  await page.waitForTimeout(3000);
+  // El Save del modal construye la mutation y el interceptor la ABORTA → cero persistencia.
+  for (const re of [/^Save$/i, /^Guardar$/i]) {
+    const b = page.locator('[role="dialog"] button').filter({ hasText: re }).first();
+    if (await b.count().catch(() => 0)) { await b.click({ timeout: 5000 }).catch(() => {}); break; }
+  }
+  await page.waitForTimeout(3500);
+  await page.evaluate(() => {
+    const c = [...document.querySelectorAll('[role="dialog"] button')].find((b) => /^(Cancel|Cancelar)$/i.test((b.textContent || '').trim()));
+    if (c) c.click();
+  });
+  await page.waitForTimeout(2000);
+
+  // ── 2) UpdatePartNumberSpecParam: "Archive Parameter" → Confirm (ABORTADA: no archiva)
+  await page.locator('button[aria-label="Archive Parameter"]').first().click({ timeout: 8000 }).catch(() => {});
+  await page.waitForTimeout(2500);
+  await page.evaluate(() => {
+    const b = [...document.querySelectorAll('button')].find((x) => /^(Confirm|Confirmar|Archive|Archivar)$/i.test((x.textContent || '').trim()));
+    if (b) b.click();
+  });
+  await page.waitForTimeout(3500);
+  if (dbg) console.log(`       [dbg] capturados: ${Object.keys((sink && sink.hashes) || {}).filter((o) => /SpecFieldParams|SpecParam/.test(o)).join(', ') || '(ninguno aún)'}`);
+}
+
 // workOrderPartCount: AddPartsToWorkOrders vía CAPTURA-Y-ABORTA. La mutation se dispara al
 // GUARDAR el modal "Ajustar Cantidad de Piezas de OT" (icono IsoIcon) de una OT en el detalle
 // de la OV Centinela #1603. Marca la op en abortOps ANTES de tocar el DOM → el interceptor
@@ -799,6 +903,36 @@ const HANDLERS = {
     async restore(page, ctx) {
       // Save Parts se ABORTÓ → nada persistió → nada que restaurar. Solo desmarcar la op.
       if (ctx.sink && ctx.sink.abortOps) ctx.sink.abortOps.delete('SaveManyPartNumberPrices');
+    },
+  },
+  partNumberSpecParams: {
+    // load: abre la ficha del PN centinela y verifica identidad ahi mismo (fail-closed).
+    // NO exige que este activo: si esta archivado, el mutate lo desarchiva (fallback) y el
+    // restore lo devuelve a archivado. Verificar el NOMBRE, no el estado.
+    async load(page, { id }) {
+      const ok = await openPartNumberSentinel(page, id);
+      if (!ok) return { name: '' };
+      const cent = await page.evaluate(() => /Centinela/i.test(document.body ? document.body.innerText : '')).catch(() => false);
+      return { name: cent ? 'Centinela' : '' };
+    },
+    async mutate(page, ctx) { await specParamsAborted(page, ctx.sink, ctx); },
+    async restore(page, ctx) {
+      const sink = ctx.sink;
+      // Las mutations se ABORTARON => nada que revertir de las specs. Lo unico que SI
+      // persiste es el desarchivado del fallback: hay que re-archivar SIEMPRE. Va antes de
+      // limpiar el sink para que un fallo aqui no se coma la marca.
+      if (sink && sink.__saPnDesarchivado) {
+        try {
+          if ((await archivedChecked(page)) === false) {
+            await archivedToggle(page);
+            if (process.env.SA_DBG) console.log('       [dbg] PN re-archivado (restore del fallback)');
+          }
+        } finally { sink.__saPnDesarchivado = false; }
+      }
+      if (sink && sink.abortOps) {
+        sink.abortOps.delete('SaveMultipleSpecFieldParams');
+        sink.abortOps.delete('UpdatePartNumberSpecParam');
+      }
     },
   },
   workOrderPartCount: {

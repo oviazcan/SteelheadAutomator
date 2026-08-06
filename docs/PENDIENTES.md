@@ -11,29 +11,36 @@ viene de otra bitácora se cita como tal en vez de re-afirmarse.
 
 ## 1. Hashes sin ruta de regeneración
 
-### 1.1 Tres mutations de specs — BLOQUEADAS en el último paso
-`AddParamsToPartNumber` · `SaveMultipleSpecFieldParams` · `UpdatePartNumberSpecParam`
+### 1.1 Mutations de specs — 2 de 3 RESUELTAS (2026-08-05)
 
-- **Impacto:** `spec-migrator`, `spec-params-bulk`, `wo-spec-params`, `bulk-upload`.
-- **Estado:** entidad `partNumberSpecParams` registrada en `sentinels-config.json` sobre el
-  PN Centinela **#3770957** (decisión del operador: reusar el existente). Las tres son la
-  misma familia y salen de la sección anclada por
-  `data-steelhead-component-id="PART_NUMBER_PAGE_SPEC"` (estructural, nivel 1).
-- **Verificado en vivo:** el PN **ya está desarchivado** (el aviso *"This is an archived part
-  number"* desapareció) y **tiene spec asignada** (`1.28.001 Zinc Negro Azul - Rev. D1`).
-- **Lo que falta:** guionizar el paso *seleccionar parámetros → `Edit Selected Params` →
-  guardar*. El botón sale `disabled` mientras no haya selección, y **cuatro intentos de
-  aislar la tabla de parámetros por automatización fallaron**: la heurística de subir por el
-  DOM desde el `span` del component-id sigue atrapando el bloque de *Custom Inputs*. Aplica
-  la regla del repo: **pedir el wrapper HTML al operador sale más rápido y más fiable que
-  insistir por automatización.**
-- **Fallback pedido por el operador:** si el ciclo detecta el PN **archivado**, debe
-  desarchivar → capturar → **re-archivar siempre en el `finally`** (mismo toggle que usa
-  `UpdatePartNumber`), con el journal como red ante muerte a media transacción.
-- ⚠️ Las ops están en **`_paraPendiente`**, no en `_para`, **a propósito**: `_para` las
-  contaría como cobertura real ante el trinquete `hash-regen-coverage` y bajaría la deuda de
-  59 a 56 huérfanas **sin que exista el handler**. Al cerrar el handler hay que moverlas a
-  `_para` y actualizar la línea base **en el mismo commit**.
+**Resueltas y deployadas** (`v1.11.85`), con ruta de regeneración real en la entidad
+`partNumberSpecParams` sobre el PN Centinela **#3770957**:
+
+| Op | Hash nuevo | Cómo se dispara |
+|---|---|---|
+| `SaveMultipleSpecFieldParams` | `150956c4…` | seleccionar param → `Edit Selected Params` → Save |
+| `UpdatePartNumberSpecParam` | `ba17174b…` | `aria-label="Archive Parameter"` → Confirm |
+
+Un solo ciclo captura las dos (validado end-to-end con `--only`). Ambas por
+**captura-y-aborta** ⇒ cero persistencia. Incluye el **fallback** pedido: si el PN aparece
+archivado, el ciclo lo desarchiva, captura y **re-archiva en el `restore`**.
+
+> **El sink corrigió dos suposiciones** — las dos parecían obvias y las dos eran falsas:
+> el **lápiz individual** (`Edit Spec Field Parameter`) NO dispara `UpdatePartNumberSpecParam`
+> sino el **mismo** `SaveMultipleSpecFieldParams` (Steelhead unificó los caminos), y
+> **"Add Spec"** dispara `ApplySpecsToPartNumber`, no `AddParamsToPartNumber`.
+
+**Sigue pendiente: `AddParamsToPartNumber`** (applets `bulk-upload`, `spec-migrator`,
+`wo-spec-params`). No sale de ninguno de los flujos probados de la ficha del PN. Vive en
+`_paraPendiente`, que el trinquete **no** cuenta — para no fingir cobertura. Pista para
+retomarlo: los comentarios de `bulk-upload.js` la describen aplicando al PN un parámetro
+recién creado en la *definición de la spec*, así que el flujo probablemente nace en la
+pantalla de la **Spec**, no en la del PN.
+
+⚠️ **Deuda bilingüe nueva:** los `aria-label` de esa tabla vienen **mezclados** — usamos
+`"Show Spec"` y `"Archive Parameter"` (inglés) mientras la misma fila trae `"Cambiar Nodo de
+Proceso"` y `"Copiar arriba"` (español). Si Steelhead traduce los nuestros, **el ciclo se
+apaga en silencio**. No se inventa la traducción (regla dura del repo).
 
 ### 1.2 Dos hashes muertos que no usa ningún applet — decisión pendiente
 | Op | Evidencia |
@@ -48,7 +55,7 @@ hash y conservar la entrada documental). Es decisión del operador, por eso sigu
 ### 1.3 Otras rutas declaradas pero sin guionizar
 - **`partNumberRackType`** (`CreatePartNumberPerPerRackType`, `UpdatePartNumberPerPerRackType`):
   su propia nota dice *"PENDIENTE de correr headless: falta guionizar el DOM del diálogo"*.
-- Línea base del trinquete al 2026-08-04: **59 huérfanas** (queries 110/119, mutations 18/69).
+- Línea base del trinquete: **56 huérfanas** (bajó de 58 el 2026-08-05 al cubrir las dos de specs) (queries 110/119, mutations 18/69).
   **El hueco son las mutations**: cada una necesita su centinela.
 
 ---

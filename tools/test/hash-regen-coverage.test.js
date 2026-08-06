@@ -44,7 +44,11 @@ function opsCubiertas() {
 // que NUNCA las capturaron —0 aciertos en el log histórico— y aquí contaban como
 // cubiertas. La deuda REAL era 63. Un `captures` que nadie verifica contra el log es
 // la misma mentira silenciosa que documenta ESCALATION.md § 2026-07-28.
-const HUERFANAS_BASE = 58;
+// 2026-08-05: 58 -> 56. SaveMultipleSpecFieldParams y UpdatePartNumberSpecParam ya tienen
+// ruta REAL (entidad partNumberSpecParams sobre el PN Centinela 3770957), validada
+// end-to-end en vivo: un solo ciclo captura las dos. AddParamsToPartNumber sigue huerfana
+// -- vive en _paraPendiente, que este trinquete NO cuenta, justamente para no fingir cobertura.
+const HUERFANAS_BASE = 56;
 
 test('las ops del ruteo por grupos tienen ruta de regeneración', () => {
   const cubiertas = opsCubiertas();
