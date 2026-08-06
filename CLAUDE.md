@@ -385,6 +385,11 @@ empaqueta, y verifica el manifest DENTRO del zip SERVIDO). Cada máquina activa 
 aceptar el banner; hasta entonces usa el viejo, que ignora `urlPatterns` (retrocompatible).
 Análisis completo en [`docs/architecture/applet-load-gating.md`](docs/architecture/applet-load-gating.md).
 
+## Pendientes abiertos
+Lista consolidada y **medida** de la deuda viva (hashes sin ruta, applets sin bitácora, inventario
+del paquete de capacitación desfasado, propuesta del freno de masa, anclajes `css-*`, riesgos
+operativos): [`docs/PENDIENTES.md`](docs/PENDIENTES.md). Levantada 2026-08-05.
+
 ## Índice de applets
 
 **Versión viva + qué hace.** El estado detallado (lecciones, config vivo, hallazgos, pendientes) está
