@@ -136,7 +136,42 @@ El correo dice qué retuvo, por qué no urge y el comando exacto para liberarlo
 
 ---
 
-## 7. `create-order-autofill` — el disparo automático en la lista de OVs (2026-08-05)
+## 7. ✅ CERRADO — `create-order-autofill`: no había bug de disparo (2026-08-06)
+
+**El observer SÍ dispara solo.** Confirmado en la máquina del operador, en
+`/Receiving/CustomerParts`: tras **cerrar y reabrir el modal**, sin invocar nada, el applet volvió a
+correr entero —
+
+```
+[SA] [create-order-autofill] modal detectado | cliente=SCHNEIDER ELECTRIC MEXICO | shipTo=Javier Rojo Gómez…
+[SA] [create-order-autofill] idInDomain resuelto por nombre → 1
+[SA] [create-order-autofill] autofill | razon=OK | divisa=OK | consolidar=OK
+```
+
+**El bug real era otro:** en Recibo el cliente llega **sin `(#N)`**, así que todo dependía de
+`resolveIdInDomainByName`, cuyas variables eran inválidas. Al corregirlas (v0.1.5) el flujo cerró.
+Ver la **corrección** al inicio de [`create-order-autofill.md`](applets/create-order-autofill.md).
+
+**Por qué se creyó que era el disparo:** las mediciones que dieron "cero `modal detectado`" se
+hicieron con el `/graphql` ya degradado por la propia sesión de diagnóstico (~50 peticiones; el
+límite es **por sesión** y no se recupera recargando — al final el modal ni abría). **La lección
+operativa es esa: un diagnóstico que consume la sesión que está midiendo produce evidencia falsa,
+y la conclusión que sale de ahí parece sólida.** Dos hipótesis se levantaron y se refutaron sobre
+ese ruido (latch congelado, debounce pospuesto).
+
+### Deuda menor real que sí salió de aquí
+
+`aria-hidden` sobre el panel con el foco adentro — la consola de SH lo reporta:
+`Blocked aria-hidden on an element because its descendant retained focus · Element with focus:
+<button#sa-coa-redo> · Ancestor with aria-hidden: <div#sa-create-order-autofill-panel>`.
+MUI marca `aria-hidden` en el fondo al abrir su modal y nuestro panel queda dentro con el botón
+"Re-aplicar" enfocable. Arreglo: `inert` en vez de depender del `aria-hidden` heredado, o soltar el
+foco al auto-colapsar. No rompe el flujo; sí molesta a lector de pantalla.
+
+---
+
+<details>
+<summary>Redacción original del pendiente (conservada por trazabilidad)</summary>
 
 **Sin causa raíz.** La extracción del cliente quedó arreglada (v0.1.4/v0.1.5, `1.11.90`) y el
 autofill funciona **cuando se invoca**: log del propio applet
@@ -188,3 +223,10 @@ timing del final de esa sesión no son confiables.**
 
 Nota: en el flujo de **Recibo** el síntoma «no sale el banner» resultó ser otra cosa (el cliente
 vive en el wizard padre) y **ya está corregido** en v0.1.5 — no confundir los dos casos.
+*(También esto era incorrecto: el cliente estaba en el modal, sin `(#N)`. Ver el cierre arriba.)*
+
+</details>
+
+**Comprobación de que la hipótesis del caché quedó descartada** (era la "siguiente hipótesis" de
+arriba): el operador reportó `config REMOTO: 1.11.92`, `applet cargado: true`,
+`fix v0.1.4 presente: true`, `fix v0.1.5 presente: true`. No era caché.

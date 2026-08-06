@@ -17,11 +17,38 @@ encuentro cliente", no de "no me cargué".**
 `window.__saLoadedApps.ids` la trae junto con otros 8 applets, `matchesCreateOrderUrl` da `true` y
 el core nuevo está cargado. O sea: cargaba y corría; simplemente no veía a nadie.
 
-**Root cause.** El modal "Crear Orden de Venta" del flujo de Recibo **nace con su campo
-`Cliente:` VACÍO** (SH dejó de precargarlo; en la bitácora de julio venía lleno, era uno de los 7
-`singleValue`). El cliente real está en el wizard **"Recibir piezas del cliente"**, y `getModalRoot()`
-ancla al `[role="dialog"]` del modal justamente para **no** leer del wizard padre — la protección
-que en v0.1.1 evitaba confundirse ahora impedía ver el único lugar donde estaba el dato.
+> ⚠️ **CORRECCIÓN 2026-08-06 — la causa que decía esta sección era EQUIVOCADA.** Se creía que el
+> modal de Recibo nacía sin cliente y que había que leerlo del wizard padre. **Falso**, y lo mostró
+> una sonda en el DOM productivo, con el modal abierto y el flujo ya funcionando:
+>
+> ```
+> 2 modal singleValues: ['MAKE_TO_ORDER', 'SSCHNEIDER ELECTRIC MEXICO', 'Thalia Itzel Salazar', …]
+> 3 modal comboValues : []
+> 4 picked en modal   : null
+> ```
+>
+> **El cliente SÍ está en el modal**, como `singleValue` (la forma histórica — aquí el input va
+> vacío, al revés que en la lista de OVs). Lo que NO trae es el badge **`(#N)`**, y por eso
+> `pickCustomerFromCandidates` devuelve `null`. **Las dos pantallas difieren en las DOS cosas a la
+> vez**: dónde vive el valor *y* si lleva badge —
+> `/Domains/<id>/SalesOrders` → `input.value` **con** `(#N)`; `/Receiving/CustomerParts` →
+> `singleValue` **sin** `(#N)`. Perseguir una sola de esas diferencias lleva al ancla equivocada.
+>
+> **La causa real en Recibo:** sin `(#N)`, el idInDomain depende por completo de
+> `resolveIdInDomainByName` → `CustomerSearchByName`… que iba con variables inválidas
+> (`{searchText,name,query,first}`). **El arreglo que destrabó Recibo fue el de esas variables**
+> (`{nameLike:'%…%', orderBy:['NAME_ASC']}`), no el del wizard padre. Log real de cierre:
+> `idInDomain resuelto por nombre → 1` → `autofill | razon=OK | divisa=OK | consolidar=OK`.
+>
+> El camino del wizard padre **se queda** como red de seguridad (no estorba y cubre el caso de que
+> SH vacíe el campo), pero **no era el bug**. Lección: *que un fix funcione no prueba que la causa
+> que le atribuiste sea la correcta.*
+
+**Root cause (redacción original, conservada por trazabilidad — ver corrección arriba).** Se leyó
+que el modal "Crear Orden de Venta" del flujo de Recibo nacía con su campo `Cliente:` VACÍO y que
+el cliente real vivía en el wizard **"Recibir piezas del cliente"**, fuera del `[role="dialog"]` al
+que ancla `getModalRoot()`. Esa lectura salió de un HTML del modal **recién abierto** (antes de que
+SH lo poblara), no del modal en uso.
 
 **Fix:** si el modal no tiene cliente, se lee del wizard padre. **El anclaje no se inventó: está
 copiado de [`weight-quick-entry`](weight-quick-entry.md), que resuelve el cliente en esta misma
