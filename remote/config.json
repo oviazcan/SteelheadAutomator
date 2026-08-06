@@ -1,6 +1,6 @@
 {
-  "version": "1.11.96",
-  "lastUpdated": "2026-08-06T14:10",
+  "version": "1.11.97",
+  "lastUpdated": "2026-08-06T14:26",
   "extensionVersion": "1.7.3",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -2948,7 +2948,7 @@
     "scripts/create-order-autofill-core.js": "e4a6c7babf232fb619c7ba9155bbae39184c23aa0f46d94db470a1996f74fb37",
     "scripts/create-order-autofill.js": "b447657cb00644416172d2a7edb31ff88db19f8535ea167b2fd78ae688d95a7d",
     "scripts/driver-licenses-core.js": "b4298b6d5cf9adbf2cb78a3b48b92b8cc5722ce7b069d21ea7e6181084acba56",
-    "scripts/driver-licenses.js": "41aa7a1b29d926c3f32e120c64c3e50a3893fec4ba6a6823a93e16796a1ef81d",
+    "scripts/driver-licenses.js": "1a0d7e374acb71cd59943af17dcc8f404da73f6c9b7b7be1613b3c8149646ea4",
     "scripts/duplicate-tiers.js": "93f93691b833cd00254c26a752e1266587d1e7f31e3dafc5c31bb325b8136077",
     "scripts/file-uploader-core.js": "c59cc259fffacbef361ce3331fd384a0d6acd0a0f7c5e771ec04b215476c6fd5",
     "scripts/file-uploader.js": "fb3565a9dd4a49afc71cd569b0472a919312108cb85e47b05e3e79927d0966de",
