@@ -1,7 +1,7 @@
 {
   "name": "Steelhead Automator — iPad",
-  "version": "0.6.34",
-  "description": "Bundle de applets de Steelhead para iPad (empaquetado). 34 applets: auto-inyectados (FAB/gate propio) + lanzadores de popup. v0.6.34 no agrega applets: toma create-order-autofill v0.1.6/v0.1.7, que es justo lo que el piso necesita en el iPad — el autofill ahora ARRANCA SOLO (disparo por poll de 1s, copiado de weight-quick-entry, porque el MutationObserver no despertaba en la lista de OVs), avisa con liga a la ficha del cliente cuando le faltan las Entradas Personalizadas, y dejó de reportar en rojo la Divisa que él mismo había puesto bien.",
+  "version": "0.6.35",
+  "description": "Bundle de applets de Steelhead para iPad (empaquetado). 34 applets: auto-inyectados (FAB/gate propio) + lanzadores de popup. v0.6.35 corrige driver-licenses: leer la carpeta paginaba los 23,147 archivos del ERP (~460 peticiones) y TUMBABA LA SESIÓN (el /graphql se cuelga a las ~40-45 y el límite es por SESIÓN, así que se caían también las pantallas nativas). Ahora filtra el SERVIDOR con searchQuery, en dos etapas, con presupuesto duro de 24 peticiones: ~460 -> ~10. Suma el candado looksLikeFailedSearch (una lectura vacía ya no puede publicarse como bajas y borrar el catálogo) y la miniatura de la foto en el listado. En el iPad importa el doble: es donde se toma la foto de la identificación en el andén, y ahí una sesión caída deja al almacén sin recibir ni surtir.",
   "matches": [
     "https://app.gosteelhead.com/*"
   ],

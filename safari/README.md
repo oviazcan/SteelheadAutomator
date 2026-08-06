@@ -8,6 +8,16 @@ Pasos de build/firma/instalación en **`docs/deploy-safari.html`**.
 - **POC del candado de surtido VALIDADO en vivo (Safari iPad, 2026-06-30):** `world:"MAIN"` intercepta
   `fetch`, el login OAuth funciona y el bloqueo de una pieza no programada quedó confirmado (no se necesitó
   el plan B).
+- **Bundle v0.6.35 — 34 applets (2026-08-06):** **fix** de `driver-licenses`, el segundo del
+  día. Leer la carpeta paginaba **los 23,147 archivos del ERP** (~460 peticiones) y **tumbaba la
+  sesión**: el `/graphql` se cuelga a las ~40-45 y el límite es **por sesión**, así que se caían
+  también las pantallas nativas. En el iPad eso es peor que en escritorio — una sesión caída deja
+  al almacén **sin recibir ni surtir**, y es justo el dispositivo donde se toma la foto de la
+  identificación en el andén. Ahora filtra el **servidor** con `searchQuery` (medido: `totalCount`
+  23,147 → 1) en dos etapas, con presupuesto duro de 24 peticiones: **~460 → ~10**. Suma el candado
+  `looksLikeFailedSearch` (una lectura vacía ya no puede publicarse como bajas y borrar el catálogo)
+  y la miniatura de la foto. Verificado en el **artefacto**: símbolos nuevos 0 → 3/3/3/5/2, el
+  barrido viejo en **0** dentro de su bloque, `node --check` OK, trinquete 10/10. Peso **1.87 MB**.
 - **Bundle v0.6.34 — 34 applets (2026-08-06):** sin applets nuevos; toma
   **`create-order-autofill` v0.1.6/v0.1.7**, que es justo lo que el iPad necesitaba:
   (1) el autofill **arranca solo** — disparo por **poll de 1 s** copiado de `weight-quick-entry`,
