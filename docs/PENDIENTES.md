@@ -136,7 +136,33 @@ El correo dice qué retuvo, por qué no urge y el comando exacto para liberarlo
 
 ---
 
-## 7. ✅ CERRADO — `create-order-autofill`: no había bug de disparo (2026-08-06)
+## 7. `create-order-autofill` — RESUELTO en función, ABIERTA la causa raíz (2026-08-06)
+
+> ### ⛔ Este título decía «CERRADO — no había bug de disparo». Era FALSO.
+> Se cerró con evidencia de **una sola pantalla** (Recibo, donde el observer sí despierta) y se
+> generalizó a las dos. Horas después el operador lo desmintió en la otra: en
+> `/Domains/<id>/SalesOrders`, **sin tocar nada**, el applet no había corrido — y bastó invocar
+> `scanForModal()` a mano para que hiciera todo el trabajo y logueara
+> `modal detectado | cliente=BRAININ DE MEXICO (#6)`. Eso descarta la firma pegada (habría
+> retornado sin loguear) y descarta la extracción: **el disparo SÍ fallaba**.
+>
+> | Pantalla | ¿el observer despierta solo? |
+> |---|---|
+> | `/Receiving/CustomerParts` | **sí** |
+> | `/Domains/<id>/SalesOrders` | **no** |
+>
+> **Estado real hoy:** la FUNCIÓN está resuelta y **validada por el operador en las dos pantallas**
+> (v0.1.6, `1.11.93`+): se dejó de depender del `MutationObserver` y se adoptó el **poll de 1 s** de
+> `weight-quick-entry`. **La CAUSA de la asimetría sigue sin identificar** — el poll la rodea, no la
+> explica. Deuda viva, sin urgencia operativa.
+>
+> **La lección de método, que costó tres intentos:** *«0 detecciones en la pantalla A» no prueba
+> «el observer funciona» ni «no funciona» — prueba lo que pasa en A.* Es la misma regla que este
+> repo ya tenía escrita («0 ocurrencias en N pantallas NO prueba que lo eliminaron») aplicada a un
+> caso nuevo, y aun así se volvió a cometer.
+
+<details>
+<summary>Redacción del cierre prematuro (conservada por trazabilidad)</summary>
 
 **El observer SÍ dispara solo.** Confirmado en la máquina del operador, en
 `/Receiving/CustomerParts`: tras **cerrar y reabrir el modal**, sin invocar nada, el applet volvió a
@@ -159,14 +185,20 @@ operativa es esa: un diagnóstico que consume la sesión que está midiendo prod
 y la conclusión que sale de ahí parece sólida.** Dos hipótesis se levantaron y se refutaron sobre
 ese ruido (latch congelado, debounce pospuesto).
 
-### Deuda menor real que sí salió de aquí
+</details>
 
-`aria-hidden` sobre el panel con el foco adentro — la consola de SH lo reporta:
-`Blocked aria-hidden on an element because its descendant retained focus · Element with focus:
-<button#sa-coa-redo> · Ancestor with aria-hidden: <div#sa-create-order-autofill-panel>`.
-MUI marca `aria-hidden` en el fondo al abrir su modal y nuestro panel queda dentro con el botón
-"Re-aplicar" enfocable. Arreglo: `inert` en vez de depender del `aria-hidden` heredado, o soltar el
-foco al auto-colapsar. No rompe el flujo; sí molesta a lector de pantalla.
+### Deuda menor — `aria-hidden` sobre el panel: MITIGADA, no cerrada
+
+Síntoma en la consola de SH: `Blocked aria-hidden on an element because its descendant retained
+focus · Element with focus: <button#sa-coa-redo> · Ancestor with aria-hidden:
+<div#sa-create-order-autofill-panel>`. MUI marca `aria-hidden` en todo el fondo al abrir su modal y
+nuestro panel vive en el `<body>`, así que queda dentro con controles enfocables.
+
+**Hecho (v0.1.6):** se suelta el foco (`blur()`) al hacer clic en «Re-aplicar», que era el caso que
+disparaba el aviso. **Pendiente:** el panel ahora también trae el enlace «Abrir ficha del cliente»,
+igual de enfocable — si alguien lo enfoca con teclado, el aviso vuelve. El arreglo de fondo es
+`inert` en vez de heredar el `aria-hidden` de MUI. No rompe el flujo; sí molesta a lector de
+pantalla.
 
 ---
 

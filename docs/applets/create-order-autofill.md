@@ -2,9 +2,22 @@
 
 Auto-llena las Entradas Personalizadas (`Razón Social de la Venta`, `Divisa`, `Consolidar por Producto`) del modal de creación de OV. Sustituye al canal write de OV customInputs que no existe en `ordendeventa.ts` (ver bitácoras `powertools-ordendeventa.md` y `powertools-facturacion.md`, ahora en el repo **SteelheadPowerTools**).
 
-**Dos pantallas cubiertas** (mismos IDs RJSF debajo → mismo autofill):
-1. `/Receiving/CustomerParts → RECEIVE → +/Create` — título **"Crear Orden de Venta"** (ES). Cliente pre-cargado; expone **"Enviar a:"** (ship-to) → maneja Consolidar.
-2. `/Domains/<id>/SalesOrders → "New Sales Order"` — título **"Create Sales Order"** (EN). Cliente **vacío** al abrir (el operador lo elige a mano); **sin ship-to** → Consolidar no aplica.
+**Dos pantallas cubiertas** (mismos IDs RJSF debajo → mismo autofill). **Tabla re-MEDIDA el
+2026-08-06 en producción**; la versión anterior de este encabezado describía el modal de julio y
+llevó a perseguir el ancla equivocada tres veces seguidas:
+
+| | `/Receiving/CustomerParts` (RECEIVE → `+`) | `/Domains/<id>/SalesOrders` (**"NUEVA ORDEN DE VENTA"**) |
+|---|---|---|
+| Título del modal | **"Crear Orden de Venta"** | **"Crear Orden de Venta"** — ya NO "Create Sales Order"; hoy salen **las dos en ES** (el heading bilingüe se queda por si vuelve) |
+| Dónde vive el cliente | **`div.…singleValue`** | **`input[role=combobox].value`** |
+| ¿Trae el badge `(#N)`? | **NO** → el `idInDomain` se resuelve por `CustomerSearchByName` | **SÍ** (`BRAININ DE MEXICO (#6)`) |
+| `Enviar a:` (ship-to) | **sí**, pero sólo **después** de elegir cliente | **sí**, igual |
+| ¿El observer despierta solo? | **sí** | **no** → por eso el disparo es por **poll** (v0.1.6) |
+
+⚠️ **Las dos pantallas difieren en las DOS cosas a la vez** —dónde vive el valor *y* si lleva
+badge—, y además **el modal vacío no predice al modal lleno**: al elegir cliente, SH monta Contacto,
+Facturar a, `¿Envío Directo?`, Enviar a, Enviar vía y Términos de Facturación. Un HTML del modal
+recién abierto NO sirve para decidir anclajes.
 
 ## Fix 2026-08-06 (v0.1.7) — la Divisa se reportaba en ROJO estando bien puesta
 
@@ -33,6 +46,12 @@ para las dos caras.
 > **Regla que sale de aquí:** *se verifica con la misma vara con la que se escribe.* Una
 > comprobación más estricta que la acción que verifica no protege — **delata el trabajo propio como
 > ajeno**, y encima en el color que el operador lee como "esto falló".
+
+> ### ✅ VALIDADO POR EL OPERADOR (2026-08-06) — cierre de la saga
+> *"ya jala, también el link del cliente"*. Confirmado **en las dos pantallas**: el autofill
+> **arranca solo** (sin tocar consola), la Divisa dejó de reportarse en rojo, y el bloque ámbar
+> con **«Abrir ficha del cliente ↗»** funciona cuando al cliente le faltan las Entradas
+> Personalizadas. Vivo en `1.11.95`; iPad en bundle `0.6.34` (**pendiente recompilar en Xcode**).
 
 **Validación:** core **24/24**, suite **1885/1885**. Deploy **1.11.95**, verificado en vivo
 (`isSelectAlreadyOnTarget` servido). Bundle iPad **0.6.34**.
@@ -90,8 +109,8 @@ dentro disparaba el error real que reportaba la consola de SH (*«Blocked aria-h
 because its descendant retained focus»*). Con el enlace nuevo eso habría empeorado.
 
 **Validación:** core **21/21**, suite **1882/1882**. Deploy **1.11.93** con `tools/deploy.sh` (con
-re-sellado de firma, a diferencia del manual del día anterior). **Falta la corrida real del
-operador.**
+re-sellado de firma, a diferencia del manual del día anterior). **✅ Corrida real del operador
+CONFIRMADA el 2026-08-06 en las dos pantallas** (ver el recuadro de validación al inicio).
 
 ## Fix 2026-08-05 (v0.1.5) — en Recibo el cliente vive en el WIZARD PADRE, no en el modal
 
@@ -277,7 +296,7 @@ Cerrado el pendiente "Segunda vista de creación de OV". El usuario indicó la p
 3. El glue usa esos helpers vía `urlMatches()`/`headingMatches()` (fallback a regex local si el core no cargara). Las constantes `URL_RE`/`MODAL_HEADING_RE` quedan solo como fallback, en sync con el core.
 4. Panel silencioso mientras no haya cliente elegido; Consolidar omitido sin ship-to.
 
-**Validación:** core **14/14 verde** (2 tests nuevos: heading ES/EN + gate de URL incl. rechazo de `/SalesOrders/9876` y dominio no-numérico). **Pendiente:** run real en la pantalla SalesOrders (que el operador confirme Razón Social + Divisa al elegir un cliente con `DatosFactura` configurado).
+**Validación:** core **14/14 verde** (2 tests nuevos: heading ES/EN + gate de URL incl. rechazo de `/SalesOrders/9876` y dominio no-numérico). ~~**Pendiente:** run real en la pantalla SalesOrders~~ → **CUMPLIDO 2026-08-06** (el operador confirmó Razón Social + Divisa ahí; hizo falta antes arreglar la extracción en v0.1.4 y el disparo en v0.1.6).
 
 ## Fix 2026-07-03 (v0.1.2) — `getModalRoot()` devolvía el TÍTULO (substring `MuiDialog`)
 
@@ -353,9 +372,16 @@ El singleValue del react-select de Cliente trae el sufijo `(#1)` con el `idInDom
 ## Plan de validación pendiente
 
 - [x] Configurar `customer.customInputs.DatosFactura.{RazonSocialVenta, Divisa}` en cliente Schneider Electric Mexico en Steelhead (usuario 2026-05-22).
-- [ ] Probar flujo end-to-end: `/Receiving/CustomerParts` → RECEIVE → `+` Crear OV → verificar que los 3 campos se llenan automáticamente cuando el cliente es Schneider + shipTo Javier Rojo Gómez.
+- [x] ~~Probar flujo end-to-end en `/Receiving/CustomerParts`~~ **CUMPLIDO 2026-08-06**, log del
+      applet en la máquina del operador con SCHNEIDER ELECTRIC MEXICO (#1) y shipTo Javier Rojo
+      Gómez: `idInDomain resuelto por nombre → 1` → `autofill | razon=OK | divisa=OK | consolidar=OK`.
+      Y **arrancando solo**, sin invocar nada (v0.1.6 en adelante).
 - [ ] Probar con otro shipTo de Schneider (no Rojo Gómez) — confirmar que Razón Social y Divisa se llenan pero Consolidar queda sin marcar.
-- [ ] Probar con cliente que NO tenga `DatosFactura.RazonSocialVenta` ni `.Divisa` configurados — confirmar que el applet reporta "cliente sin DatosFactura.X" sin romper el modal.
+      *(Sigue abierto: el caso «otra planta» se vio con BRAININ, que es otro cliente, no con un
+      segundo destino de Schneider.)*
+- [x] ~~Probar con cliente que NO tenga `DatosFactura`~~ **CUMPLIDO 2026-08-06** con BRAININ DE
+      MEXICO (#6): el applet reporta `el cliente no tiene DatosFactura.*` sin romper el modal y
+      —desde v0.1.6— ofrece la liga a su ficha para configurarlo.
 - [ ] Probar cambio de cliente a media carrera (cerrar modal, cambiar cliente del wizard padre, re-abrir) — confirmar que `state.lastSig` detecta el cambio y re-ejecuta.
 - [ ] Probar cambio de shipTo dentro del modal (el operador cambia el "Enviar a:") — confirmar que Consolidar se re-evalúa.
 - [ ] Probar manual override: marcar Razón Social distinto a lo que sugiere el applet, luego cerrar/re-abrir el modal — confirmar que `dataset.saAutofilled='done'` previene el sobreescribir.
