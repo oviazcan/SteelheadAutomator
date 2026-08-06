@@ -119,6 +119,23 @@
     return '/Domains/' + domainId + '/Customers/' + idInDomain;
   }
 
+  // ¿El <select> ya quedó en la MISMA opción que elegiríamos para `target`?
+  //
+  // Bug 2026-08-06: el llenado elegía por `scoreOptionMatch` (substring: el cliente guarda
+  // `"USD"` y la opción dice `"USD - Dólar americano"`, score 60) pero la comprobación de
+  // "ya está bien" exigía **igualdad exacta** del texto. Con el poll re-escaneando, la
+  // segunda pasada no reconocía su propio trabajo en Divisa, caía en la rama
+  // "usuario tocó después de autofill" y el panel marcaba en ROJO un campo BIEN puesto.
+  // Razón Social se salvaba de casualidad: ahí el cliente guarda el texto completo, así que
+  // la igualdad exacta sí daba.
+  //
+  // La regla: **se verifica con la misma vara con la que se escribe.** Una comprobación más
+  // estricta que la acción que verifica no protege, delata trabajo propio como ajeno.
+  function isSelectAlreadyOnTarget(optionTexts, selectedIndex, target) {
+    const m = scoreOptionMatch(optionTexts, target);
+    return !!(m.pass && m.index === selectedIndex);
+  }
+
   // ¿El heading es el del WIZARD de recepción que ENVUELVE al modal de OV?
   // En /Receiving/CustomerParts el modal "Crear Orden de Venta" nace con su campo
   // "Cliente:" VACÍO: el cliente real vive en el wizard padre, FUERA del [role=dialog]
@@ -160,6 +177,7 @@
     pickCustomerFromSingleValues,
     pickCustomerFromCandidates,
     scoreOptionMatch,
+    isSelectAlreadyOnTarget,
     isCreateOrderModalHeading,
     isReceiveWizardHeading,
     domainIdFromPath,

@@ -476,18 +476,25 @@ const CreateOrderAutofill = (() => {
     const targetNorm = c.normalizeForMatch(targetText);
     if (!targetNorm) return { success: false, reason: 'target vacío' };
 
-    // Si ya está en el valor correcto, no tocamos
-    const currentOpt = sel.options?.[sel.selectedIndex];
-    if (currentOpt && c.normalizeForMatch(currentOpt.text || '') === targetNorm) {
-      return { success: true, filled: currentOpt.text, noop: true };
+    const optionTexts = [...sel.options].map(o => o.text || '');
+
+    // ¿Ya está en el valor correcto? Se pregunta con la MISMA vara con la que se escribe
+    // (scoreOptionMatch), no con igualdad exacta: el cliente puede guardar `"USD"` mientras
+    // la opción dice `"USD - Dólar americano"`. Con la comparación exacta, la re-pasada del
+    // poll no reconocía su propio trabajo y reportaba en rojo un campo BIEN puesto.
+    const yaEsta = c.isSelectAlreadyOnTarget
+      ? c.isSelectAlreadyOnTarget(optionTexts, sel.selectedIndex, targetText)
+      : c.normalizeForMatch(sel.options?.[sel.selectedIndex]?.text || '') === targetNorm;
+    if (yaEsta) {
+      return { success: true, filled: sel.options[sel.selectedIndex].text, noop: true };
     }
 
-    // Si el operador ya seleccionó algo distinto, NO sobreescribir
+    // Si el operador ya seleccionó algo distinto, NO sobreescribir. Sólo se llega aquí
+    // cuando el valor actual NO es el que pondríamos ⇒ el cambio sí es del operador.
     if (sel.dataset.saAutofilled === 'done' && sel.value && sel.value !== '') {
       return { success: false, reason: 'usuario tocó después de autofill' };
     }
 
-    const optionTexts = [...sel.options].map(o => o.text || '');
     const match = c.scoreOptionMatch(optionTexts, targetText);
     if (!match.pass) {
       return { success: false, reason: `sin match (mejor score=${match.score})` };
