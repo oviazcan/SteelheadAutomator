@@ -170,14 +170,15 @@ if [[ -x "$PYTHON" && -f "$REPORTES_SH/scripts/verifica_formato_publicado.py" ]]
     chequea_publicado "Formato publicado" "$DOM_FMT"
   done
 
-  # Portal de procesos. `--no-folderless` porque su cascarón busca en TODO el
-  # repositorio (para seguir hallando el payload aunque alguien lo mueva a una carpeta
-  # desde la UI del ERP). Default "tlc": MTY no tiene los archivos del SGC todavía
-  # —76 archivos y cero con códigos del SGC—, así que ahí el portal aún no se publica.
+  # Portal de procesos. Sólo cambia el prefijo: su payload también se publica sin
+  # carpeta, así que le sirve el mismo `fetchFolderless: true` que al formato — que es
+  # además el único valor que lo encuentra (la bandera es EXCLUYENTE, no inclusiva:
+  # `false` devuelve sólo los archivos que SÍ están en una carpeta).
+  # Default "tlc": MTY no tiene los archivos del SGC todavía —76 archivos y cero con
+  # códigos del SGC—, así que ahí el portal aún no se publica.
   DOMINIOS_PORTAL="${PORTAL_PROCESOS_DOMINIOS-tlc}"
   for DOM_PORTAL in $DOMINIOS_PORTAL; do
-    chequea_publicado "Portal de procesos" "$DOM_PORTAL" \
-      --prefijo portal_procesos_payload --no-folderless
+    chequea_publicado "Portal de procesos" "$DOM_PORTAL" --prefijo portal_procesos_payload
   done
 fi
 
