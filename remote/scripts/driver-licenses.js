@@ -47,30 +47,49 @@
   // Sirve para contestar de un vistazo «¿la foto corresponde al chofer?», que hoy exige abrir
   // cada liga. `/api/files` entrega la imagen ORIGINAL —no hay thumbnails del lado del
   // servidor— así que va `loading="lazy"`: sólo baja lo que entra en pantalla.
-  const THUMB_PX = 44;
+  // Las identificaciones son APAISADAS (INE, licencia federal): un cuadro de 44px las
+  // recortaba tanto que no se distinguía a la persona, que es justo para lo que sirve.
+  const THUMB_W = 132, THUMB_H = 84;
 
   // Un archivo que no es imagen (o cuyo nombre no se pudo leer) NO se disfraza de foto rota:
-  // se dibuja un marcador que dice qué pasa. Y si la descarga falla en vivo, el `onerror`
-  // degrada al mismo marcador en vez de dejar el icono de imagen quebrada del navegador.
+  // se dibuja un marcador que dice qué pasa.
   function thumbPlaceholder(title, glyph) {
-    return `<div title="${esc(title)}" style="width:${THUMB_PX}px;height:${THUMB_PX}px;`
+    return `<div title="${esc(title)}" style="width:${THUMB_W}px;height:${THUMB_H}px;`
       + `border:1px dashed ${C_LINE};border-radius:6px;display:flex;align-items:center;`
-      + `justify-content:center;color:${C_MUTED};font-size:15px">${glyph}</div>`;
+      + `justify-content:center;color:${C_MUTED};font-size:18px">${glyph}</div>`;
   }
 
+  // ⚠️ NADA de HTML dentro de un atributo. El `onerror` inline llevaba el placeholder
+  // completo —con sus comillas DOBLES— y cerraba el atributo antes de tiempo: el resto
+  // (`'">`) caía al DOM como texto visible bajo CADA miniatura, cargara o no la imagen.
+  // El handler se cablea con addEventListener después de pintar (`wireThumbs`).
   function thumbCell(fileName) {
     if (!fileName) return thumbPlaceholder('Sin archivo en la carpeta', '—');
     if (!CORE.isImageFile(fileName)) return thumbPlaceholder('El archivo no es una imagen', '📄');
     const url = CORE.buildLicenseUrl(fileName, location.origin);
     if (!url) return thumbPlaceholder('No se pudo armar la liga', '—');
-    // `onerror` se desarma a sí mismo (onerror=null) para que el reemplazo no vuelva a
-    // dispararlo si el marcador tampoco cargara.
-    return `<img src="${esc(url)}" alt="" loading="lazy" decoding="async"
-      style="width:${THUMB_PX}px;height:${THUMB_PX}px;object-fit:cover;border-radius:6px;
+    return `<img src="${esc(url)}" alt="" loading="lazy" decoding="async" data-dl-thumb="1"
+      style="width:${THUMB_W}px;height:${THUMB_H}px;object-fit:cover;border-radius:6px;
              border:1px solid ${C_LINE};background:${C_INPUT};display:block"
-      onerror="this.onerror=null;this.outerHTML='${
-        thumbPlaceholder('La imagen no cargó', '⚠').replace(/'/g, '&#39;')
-      }'">`;
+      title="${esc(fileName)}">`;
+  }
+
+  // Degradación de la miniatura, construida con DOM (no con strings): si la descarga falla,
+  // se sustituye por el marcador en vez de dejar el icono de imagen rota del navegador.
+  function wireThumbs(root) {
+    const imgs = (root || document).querySelectorAll('img[data-dl-thumb]');
+    imgs.forEach(function (img) {
+      img.addEventListener('error', function onErr() {
+        img.removeEventListener('error', onErr);
+        const ph = document.createElement('div');
+        ph.title = 'La imagen no cargó';
+        ph.style.cssText = 'width:' + THUMB_W + 'px;height:' + THUMB_H + 'px;border:1px dashed '
+          + C_LINE + ';border-radius:6px;display:flex;align-items:center;justify-content:center;'
+          + 'color:' + C_MUTED + ';font-size:18px';
+        ph.textContent = '⚠';
+        if (img.parentNode) img.parentNode.replaceChild(ph, img);
+      }, { once: true });
+    });
   }
 
   // ── Red ───────────────────────────────────────────────────────────────────
@@ -83,7 +102,7 @@
   // COMPLETO (23,147 archivos ⇒ ~460 peticiones) y eso TUMBABA LA SESIÓN del ERP: el
   // `/graphql` se cuelga a las ~40-45 y el límite es por SESIÓN, así que ni recargar salva
   // —y se caen también las pantallas nativas—. Ver CLAUDE.md §API de Steelhead.
-  async function fetchLicenseFiles(publishedCatalog) {
+  async function fetchLicenseFiles(publishedCatalog, onProgress) {
     const byName = new Map();
     const page = 100;
     let requests = 0;
@@ -107,6 +126,7 @@
             orderBy: ['CREATED_AT_DESC'], searchQuery: term, fetchFolderless: folderless
           });
           requests++;
+          if (onProgress) onProgress(requests, byName.size);
           const nodes = (data && data.searchUserFiles && data.searchUserFiles.nodes) || [];
           nodes.forEach((n) => { if (n && n.name && !byName.has(n.name)) byName.set(n.name, n); });
           if (nodes.length < page) break;   // última página de este término
@@ -119,6 +139,7 @@
     // 2) Sólo lo publicado que NO apareció: las 8 viejas, subidas sin prefijo. Este
     //    número no crece con el catálogo, porque toda alta nueva cae en el paso 1.
     const missing = CORE.missingPublishedFiles(Array.from(byName.keys()), publishedCatalog);
+    if (onProgress) onProgress(requests, byName.size, missing.length);
     for (let i = 0; i < missing.length && !exhausted; i++) await search(missing[i], true);
 
     log('archivos: ' + byName.size + ' en ' + requests + ' peticiones'
@@ -180,7 +201,7 @@
     const wrap = document.createElement('div');
     wrap.id = PANEL_ID;
     wrap.style.cssText = [
-      'position:fixed', 'top:0', 'right:0', 'width:640px', 'max-width:100vw', 'height:100vh',
+      'position:fixed', 'top:0', 'right:0', 'width:820px', 'max-width:100vw', 'height:100vh',
       'background:' + C_BG, 'color:' + C_FG, 'z-index:2147483000', 'display:flex',
       'flex-direction:column', 'box-shadow:-8px 0 32px rgba(0,0,0,.45)',
       'font:13px/1.5 system-ui,-apple-system,Segoe UI,sans-serif'
@@ -220,8 +241,23 @@
 
   // ── Vista principal ───────────────────────────────────────────────────────
 
+  // Progreso REAL, no un spinner decorativo: el denominador es el presupuesto de peticiones,
+  // que es el techo verdadero. Sigue tardando aunque ya no sean ~460 llamadas, y el operador
+  // necesita ver que avanza — un panel quieto se lee como colgado, que es justo lo que pasaba.
+  function setProgress(step, total, note) {
+    const pct = Math.max(4, Math.min(100, Math.round((step / Math.max(1, total)) * 100)));
+    setBody(`
+      <div style="color:${C_MUTED};margin-bottom:10px">Leyendo licencias y catálogo publicado…</div>
+      <div style="height:6px;background:${C_INPUT};border-radius:99px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:${C_ACCENT};transition:width .18s ease"></div>
+      </div>
+      <div style="margin-top:8px;color:${C_MUTED};font-size:12px">
+        ${esc(note || (step + ' de ' + total + ' consultas'))}
+      </div>`);
+  }
+
   async function render() {
-    setBody(`<div style="color:${C_MUTED}">Leyendo licencias y catálogo publicado…</div>`);
+    setProgress(0, CORE.MAX_REQUESTS, 'Leyendo el hook de embarques…');
     setFoot('');
     try {
       // EN SERIE, no en paralelo: el catálogo publicado dice qué archivos buscar por
@@ -230,7 +266,12 @@
       state.hookSource = hook.code;
       state.hookCompiled = hook.compiled;
       state.published = CORE.parseBlockCatalog(hook.code);
-      const listed = await fetchLicenseFiles(state.published);
+      setProgress(1, CORE.MAX_REQUESTS, 'Buscando las identificaciones…');
+      const listed = await fetchLicenseFiles(state.published, function (done, found, pending) {
+        setProgress(done + 1, CORE.MAX_REQUESTS,
+          done + ' consulta(s) · ' + found + ' archivo(s)'
+          + (pending ? ' · faltan ' + pending + ' por nombre' : ''));
+      });
       state.files = listed.files;
       state.exhausted = listed.exhausted;
     } catch (e) {
@@ -262,7 +303,7 @@
       const label = r.status === 'publicado' ? 'publicada'
         : (r.status === 'desactualizado' ? 'cambió, falta publicar' : 'falta publicar');
       return `<tr style="border-top:1px solid ${C_LINE}">
-        <td style="padding:7px 4px;width:${THUMB_PX}px">${thumbCell(r.file)}</td>
+        <td style="padding:7px 4px;width:${THUMB_W}px">${thumbCell(r.file)}</td>
         <td style="padding:7px 4px;font-weight:600">${esc(r.key)}</td>
         <td style="padding:7px 4px;color:${C_MUTED};font-size:11px">${esc(r.file)}</td>
         <td style="padding:7px 4px;color:${color};text-align:right;white-space:nowrap">${label}</td>
@@ -293,23 +334,7 @@
       </div>` : '';
 
     setBody(`
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
-        <b style="flex:1">${inv.rows.length} licencia(s)</b>
-        <span style="color:${diff.isEmpty ? C_MUTED : C_AMBER}">
-          ${diff.isEmpty ? 'catálogo publicado al día' : 'hay cambios sin publicar'}
-        </span>
-      </div>
-      <table style="width:100%;border-collapse:collapse">
-        <tr style="color:${C_MUTED};font-size:11px;text-align:left">
-          <th style="padding:0 4px 6px;width:${THUMB_PX}px">Foto</th>
-          <th style="padding:0 4px 6px">Se nombra así en el embarque</th>
-          <th style="padding:0 4px 6px">Archivo</th>
-          <th style="padding:0 4px 6px;text-align:right">Estado</th>
-        </tr>
-        ${rows || `<tr><td colspan="4" style="padding:12px 4px;color:${C_MUTED}">Todavía no hay licencias cargadas.</td></tr>`}
-      </table>
-      ${budgetBlock}${orphanBlock}${warnBlock}
-      <div style="margin-top:18px;border-top:1px solid ${C_LINE};padding-top:14px">
+      <div style="margin-bottom:18px;border-bottom:1px solid ${C_LINE};padding-bottom:16px">
         <div style="font-weight:600;margin-bottom:8px">Subir una licencia</div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <input id="dl-file" type="file" accept="image/*"
@@ -327,6 +352,23 @@
           se manda al cliente y <b>se puede abrir sin contraseña</b>. El gafete de la transportista
           es el documento adecuado; la credencial de elector no.
         </div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px">
+        <b style="flex:1">${inv.rows.length} licencia(s)</b>
+        <span style="color:${diff.isEmpty ? C_MUTED : C_AMBER}">
+          ${diff.isEmpty ? 'catálogo publicado al día' : 'hay cambios sin publicar'}
+        </span>
+      </div>
+      <table style="width:100%;border-collapse:collapse">
+        <tr style="color:${C_MUTED};font-size:11px;text-align:left">
+          <th style="padding:0 4px 6px;width:${THUMB_W}px">Foto</th>
+          <th style="padding:0 4px 6px">Se nombra así en el embarque</th>
+          <th style="padding:0 4px 6px">Archivo</th>
+          <th style="padding:0 4px 6px;text-align:right">Estado</th>
+        </tr>
+        ${rows || `<tr><td colspan="4" style="padding:12px 4px;color:${C_MUTED}">Todavía no hay licencias cargadas.</td></tr>`}
+      </table>
+      ${budgetBlock}${orphanBlock}${warnBlock}
       </div>`);
 
     // CANDADO: no encontrar NINGÚN archivo teniendo catálogo publicado no es «las dieron de
@@ -341,6 +383,7 @@
       </span>
       ${btn('dl-publish', 'Revisar y publicar…', (diff.isEmpty || suspect) ? '' : 'primary')}`);
 
+    wireThumbs(document.getElementById('dl-body'));
     document.getElementById('dl-upload').onclick = onUpload;
     const pub = document.getElementById('dl-publish');
     pub.onclick = () => showPublishConfirm(next, diff);
