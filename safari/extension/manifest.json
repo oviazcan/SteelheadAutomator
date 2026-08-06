@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Steelhead Automator — iPad",
-  "description": "Bundle de applets de Steelhead para iPad (empaquetado). 34 applets: auto-inyectados (FAB/gate propio) + lanzadores de popup. v0.6.35 corrige driver-licenses: leer la carpeta paginaba los 23,147 archivos del ERP (~460 peticiones) y TUMBABA LA SESIÓN (el /graphql se cuelga a las ~40-45 y el límite es por SESIÓN, así que se caían también las pantallas nativas). Ahora filtra el SERVIDOR con searchQuery, en dos etapas, con presupuesto duro de 24 peticiones: ~460 -> ~10. Suma el candado looksLikeFailedSearch (una lectura vacía ya no puede publicarse como bajas y borrar el catálogo) y la miniatura de la foto en el listado. En el iPad importa el doble: es donde se toma la foto de la identificación en el andén, y ahí una sesión caída deja al almacén sin recibir ni surtir.",
-  "version": "0.6.35",
+  "description": "Bundle de applets de Steelhead para iPad (empaquetado). 34 applets: auto-inyectados (FAB/gate propio) + lanzadores de popup. v0.6.36 pule driver-licenses tras verlo en uso: se quitó el texto basura (⚠'\">) que salía bajo CADA miniatura —era HTML mal formado, el placeholder iba dentro de un onerror inline y sus comillas dobles cerraban el atributo—, la miniatura pasó de 44x44 a 132x84 porque las identificaciones son APAISADAS y el cuadro no dejaba distinguir a la persona, se agregó barra de progreso real (sigue tardando aunque ya no sean ~460 peticiones, y un panel quieto se lee como colgado) y «Subir una licencia» se movió arriba, donde el operador lo ve sin bajar la lista. En el iPad, con la cámara a mano en el andén, ese botón es la acción principal.",
+  "version": "0.6.36",
   "permissions": [
     "storage",
     "tabs"
