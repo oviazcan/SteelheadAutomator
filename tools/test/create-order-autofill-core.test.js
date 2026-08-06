@@ -163,6 +163,21 @@ test('isCreateOrderModalHeading acepta ES ("Crear Orden de Venta") y EN ("Create
   assert.equal(Core.isCreateOrderModalHeading(null), false);
 });
 
+// Regresión 2026-08-05 (v0.1.5): en /Receiving/CustomerParts el modal de OV nace con su
+// campo "Cliente:" VACÍO y el cliente vive en el wizard padre. Sin poder anclar ese wizard
+// no hay cliente que extraer → el panel ni se pinta ("ni siquiera sale el banner").
+test('isReceiveWizardHeading ancla el wizard padre en ES y EN', () => {
+  assert.equal(Core.isReceiveWizardHeading('Recibir piezas del cliente'), true);
+  assert.equal(Core.isReceiveWizardHeading('  RECIBIR   PIEZAS  DEL  CLIENTE '), true);
+  assert.equal(Core.isReceiveWizardHeading('Receive Parts From Customer'), true);
+  assert.equal(Core.isReceiveWizardHeading('receive parts from customer'), true);
+  // No confundir con el modal que vive DENTRO del wizard
+  assert.equal(Core.isReceiveWizardHeading('Crear Orden de Venta'), false);
+  assert.equal(Core.isReceiveWizardHeading('Entradas Personalizadas'), false);
+  assert.equal(Core.isReceiveWizardHeading(''), false);
+  assert.equal(Core.isReceiveWizardHeading(null), false);
+});
+
 test('matchesCreateOrderUrl gatea Receiving y la lista de SalesOrders', () => {
   assert.equal(Core.matchesCreateOrderUrl('/Receiving/CustomerParts'), true);
   assert.equal(Core.matchesCreateOrderUrl('/Receiving/CustomerParts/'), true);
