@@ -827,3 +827,60 @@ server-side. Es el mismo precedente que `AllWorkOrders` — el frontend puede mi
 nuevo sin que el anterior se dé de baja del registry, así que **`previousHash` en un scan NO
 es evidencia de rotación**; la única evidencia es que el validador lo marque stale.
 Sin acción para `pn-specs-column` / `pn-lifecycle` / `bulk-upload`.
+
+## 2026-08-06 16:25 — 5 rotado(s) → 3 corregidos, 2 pendientes (config 1.11.101)
+
+**253 hashes** únicos por `(op,hash)` — extensión 201 · Reportes SH 42 · PowerTools 22 ·
+Procesos 2. Corrida inicial: **247 ok / 5 stale / 1 skipped**, 214.0 s. Tras corregir:
+**249 ok / 2 stale / 1 skipped**, 230.7 s.
+
+| Operación | Fuente | Acción |
+|---|---|---|
+| `AllEquipments` | extensión | `ce59e8bc…` → **`fb7aa06d…`** (deploy 1.11.101) |
+| `WorkOrderSchedule` | extensión | `7b1b1127…` → **`05283b21…`** (deploy 1.11.101) |
+| `GetStation` | **Reportes SH** | `a41cfd01…` → **`17b32d82…`** (el que ya usaba la extensión) |
+| `CreateManySensorMeasurements` | extensión | **PENDIENTE** — sin hash nuevo en ningún scan |
+| `UpdateSensorDashboardMember` | extensión | **PENDIENTE** — sin hash nuevo en ningún scan |
+
+Impacto de lo corregido: `surtido-guard` (candado), `wo-schedule-button`,
+`wo-listing-columns`, `wo-schedule-core`, `surtido-guard-filter-core`, `paros-linea`,
+`vale-almacen`, y los scripts de estaciones de Reportes SH (`seed_supervisores.py`).
+
+### El scan del día habría dejado 3 sin arreglar
+
+El `scan_results_2026-08-06_161039.json` traía 236 operaciones con hash, pero comparar
+`config.json` contra él daba **2 rotados** — el validador encontró **5**. La causa: el
+archivo tiene dos bloques y solo `scanResults` (49 ops) es tráfico interceptado real;
+`apiKnowledge` es catálogo y en buena parte **espejo del propio config** (`source: "config"`
+47 · `"documentada"` 146), así que compararlo contra el config coincide por construcción.
+**De los 201 hashes del config, solo 14 estaban en `scanResults`** — y 2 de esos 14 rotados
+(14 %). Caso particular de la regla del `CLAUDE.md`: *«0 ocurrencias en N pantallas» prueba
+«no está en esas N»*.
+
+### Dos trampas más, ambas evitadas midiendo
+
+**Un candidato de un scan viejo puede estar tan muerto como el que reemplaza.** El
+`GetStation` capturado el 24-jul (`a41cfd01…`, marcado `changed`) **ya había rotado a su
+vez**: aplicarlo habría cambiado un hash muerto por otro muerto. Se probó contra el ERP
+antes de escribirlo.
+
+**Una operación puede vivir en dos fuentes con hashes distintos, y el stale se etiqueta con
+UNA.** El validador reportó `GetStation [reportes-sh]`; probando cada fuente por separado, el
+de la **extensión (`17b32d82…`) estaba VIVO** y solo el de Reportes SH había muerto. Editar
+el `config.json` ahí habría roto algo que funcionaba. El dedup por `(op,hash)` hace que la
+etiqueta de origen sea orientativa, no autoritativa.
+
+### Las 2 pendientes son mutations sin ruta de regeneración
+
+Se revisaron los **131** `scan_results_*.json` de `~/Downloads`: ambas aparecen únicamente con
+el hash ya muerto. Al ser mutations, **navegar no basta** — hay que ejecutar la acción real
+(registrar un paro en `paros-linea`; cambiar un estatus en `sensor-status-autofill`) con el
+hash-scanner corriendo. Ninguna tiene entrada en `sentinels-config.json`: son parte de las
+mutations sin ruta que mide `tools/test/hash-regen-coverage.test.js`. **Darles centinela
+cerraría este hueco de raíz** — hoy dependen de que alguien ejecute la acción a mano.
+
+### Nota operativa
+`validate-hashes.py` requiere **`/usr/bin/python3`**: el `python3` del PATH es Homebrew
+3.14.6 y muere con `No module named 'requests'` antes de probar un solo hash. Y **leer su
+exit code a través de un pipe (`| tail`) siempre da 0** — la primera corrida murió al
+arrancar y se leyó como éxito.
