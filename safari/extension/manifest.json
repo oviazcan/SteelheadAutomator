@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Steelhead Automator — iPad",
-  "description": "Bundle de applets de Steelhead para iPad (empaquetado). 34 applets: auto-inyectados (FAB/gate propio) + lanzadores de popup. v0.6.32 suma driver-licenses (Licencias de Choferes): da de alta a un chofer externo subiendo la FOTO de su identificación y publica el catálogo que el hook pdf:SHIPMENT_TEMPLATE pinta en la lista de embarque. Entra al bundle porque su única interacción con archivos es SUBIR (<input type=\"file\" accept=\"image/*\">, que en iPadOS abre la cámara directo en el andén), no descargar — el criterio que excluye a auditor/carga-masiva/file-uploader. Sin FAB: el popup es su única puerta. Además toma los fixes de create-order-autofill v0.1.4/v0.1.5 (el cliente se mudó del singleValue al value del input, y en Recibo vive en el wizard padre).",
-  "version": "0.6.32",
+  "description": "Bundle de applets de Steelhead para iPad (empaquetado). 34 applets: auto-inyectados (FAB/gate propio) + lanzadores de popup. v0.6.33 corrige driver-licenses (Licencias de Choferes): el panel no abría en el iPad porque PdfLowCode se llamaba sin $first/$offset — son Int! obligatorios y el ERP respondía HTTP 400. Mismo bug que en Chrome, pero aquí importaba más: el iPad es donde se toma la foto de la identificación en el andén. De paso la lectura ahora toma la versión ACTIVA del hook (la más reciente por createdAt, no nodes[0]) y la publicación VERIFICA RELEYENDO en vez de confiar en el await. v0.6.32 había sumado driver-licenses: entra al bundle porque su única interacción con archivos es SUBIR (<input type=\"file\" accept=\"image/*\">, que en iPadOS abre la cámara directo en el andén), no descargar — el criterio que excluye a auditor/carga-masiva/file-uploader. Sin FAB: el popup es su única puerta. También trae los fixes de create-order-autofill v0.1.4/v0.1.5.",
+  "version": "0.6.33",
   "permissions": [
     "storage",
     "tabs"

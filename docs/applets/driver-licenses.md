@@ -167,7 +167,14 @@ mano en `remote/config.json` (el valor vive también en
 
 ## Safari / iPad
 
-**En el bundle desde v0.6.32** (2026-08-05, 34 applets). Es de los pocos applets donde el iPad no
+**En el bundle desde v0.6.32** (2026-08-05, 34 applets) · **corregido en v0.6.33** (2026-08-06).
+
+⚠️ El HTTP 400 de `PdfLowCode` **también estaba embebido en el bundle**, así que el panel tampoco
+abría en el iPad — y ahí dolía más: el iPad es donde se toma la foto de la identificación en el
+andén. El bundle es **estático**, así que el deploy a `gh-pages` NO lo arregla; hizo falta
+`tools/build-safari.sh` (v0.6.33) y **recompilar en Xcode**. Verificado en el ARTEFACTO, no en el
+log: `hookQueryVariables` y `pickActiveHook` pasaron de 0 a 3 ocurrencias, el patrón viejo
+`query('PdfLowCode', { pdfType: PDF_TYPE })` quedó en **0**, y `node --check` pasa. Es de los pocos applets donde el iPad no
 es una comodidad sino **el lugar correcto**: dar de alta a un chofer externo pide la foto de su
 identificación, y el `<input type="file" accept="image/*">` abre la **cámara** directo en el andén
 — sin pasar por una computadora ni por el consultor.

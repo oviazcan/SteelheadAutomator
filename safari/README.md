@@ -8,6 +8,14 @@ Pasos de build/firma/instalación en **`docs/deploy-safari.html`**.
 - **POC del candado de surtido VALIDADO en vivo (Safari iPad, 2026-06-30):** `world:"MAIN"` intercepta
   `fetch`, el login OAuth funciona y el bloqueo de una pieza no programada quedó confirmado (no se necesitó
   el plan B).
+- **Bundle v0.6.33 — 34 applets (2026-08-06):** **fix** de `driver-licenses`. El panel **no abría
+  en el iPad**: `PdfLowCode` se llamaba sin `$first`/`$offset`, que son `Int!` obligatorios, y el
+  ERP contestaba **HTTP 400**. Es el mismo bug que en Chrome, pero aquí importaba más — el iPad es
+  donde se toma la foto de la identificación en el andén. Recordatorio de por qué existe este
+  renglón: **el bundle es estático**, así que el deploy a `gh-pages` que arregló Chrome (`1.11.92`)
+  **no toca el iPad**; hace falta rebuild + recompilar en Xcode. Verificado en el **artefacto**:
+  `hookQueryVariables`/`pickActiveHook` 0 → 3, patrón viejo en 0, `node --check` OK, trinquete
+  `build-safari` 10/10. Peso **1.85 MB** (+3.9 KB).
 - **Bundle v0.6.32 — 34 applets (2026-08-05):** entra **`driver-licenses`** (Licencias de Choferes).
   Da de alta a un chofer externo subiendo la **foto** de su identificación y publica el catálogo que
   el hook `pdf:SHIPMENT_TEMPLATE` pinta en la lista de embarque. **Por qué sí aplica el criterio:**
