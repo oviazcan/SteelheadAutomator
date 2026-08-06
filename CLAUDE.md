@@ -156,6 +156,16 @@ pushea el otro repo automáticamente**. Ver `tools/hash-autopilot/README.md` y l
   pieza por carga» convierte 141 min en ~112 días. Muestra `?`, nombra el hueco y di dónde se corrige.
   Para un candado: «no tengo el dato» **jamás** puede significar «prohibido» (fail-safe), y el
   fail-safe **se dice** en la UI (nota ámbar «no pude verificar», distinta del rojo de bloqueo).
+- **El juez de un formato es la app que lo consume, no tus verificaciones.** Se editó la hoja
+  `Ayuda` de las plantillas reescribiendo su XML dentro del `.xlsm`, y **Excel abrió los archivos
+  como dañados** —«¿Deseas que intentemos recuperar el máximo de contenido posible?»— después de que
+  pasaran SEIS comprobaciones: zip íntegro, XML válido, `vbaProject.bin` byte a byte, 1 entrada
+  modificada de 33, macros intactas y `verify-template-layout` en 10/10. Ninguna contestaba *«¿Excel
+  lo acepta?»*; todas contestaban *«¿esto es coherente con lo que yo esperaba?»*. **Un `.xlsm` no se
+  edita por XML — tampoco "solo una hoja"**: la vía es emitir el contenido y pegarlo en Excel
+  (`--text`). Corolario general: cuando la única prueba que falta es la que no puedes correr,
+  **ésa es la que bloquea la publicación**, no una nota al pie. (Causa concreta: tocar el `<pane>`,
+  fuera de `<sheetData>`, que era lo único que había que tocar.)
 - **Una fuente que viene FILTRADA solo puede AFIRMAR, nunca negar.** Si una query se pide con un
   filtro en las variables, la ausencia de un registro no prueba que no exista: prueba que no está
   *en ese filtro*. Antes de investigar por qué una fuente «no llega», mira **con qué variables se
@@ -494,9 +504,16 @@ Estado vivo, historial de versiones e inventario: [`safari/README.md`](safari/RE
 [`docs/deploy-safari.md`](docs/deploy-safari.md).
 
 ## Paquete de documentación para clientes (`docs/training/`)
-Material didáctico HTML self-contained para **Ecoplating** (Key User + Jefe de TI), 15 documentos,
+Material didáctico HTML self-contained para **Ecoplating** (Key User + Jefe de TI), 16 documentos,
 generado con la skill `steelhead-docs-package`. **No es bitácora técnica** — es lo que el cliente lee.
 Entrada: `docs/training/00-mapa-empieza-aqui.html`.
+
+**`guia-plantilla-v13.html` NO se edita a mano: se GENERA** con `tools/build-guia-v13.js` desde
+`guia-plantilla-v13.src.html` + **la plantilla `.xlsm` real** —encabezados, tipos, valores iniciales
+y las bandas de grupo de la fila 6 se leen del archivo, no se transcriben—. Al cambiar el layout se
+re-corre. Mismo principio en la hoja `Ayuda` de la plantilla (`tools/rebuild-ayuda-sheet.js --text`):
+**la doc que describe un layout se deriva del layout, o se desfasa** — esa hoja llevaba versiones
+describiendo el v10 dentro de las plantillas v13.
 
 **Publicación:** los TRES paquetes de la familia viven en el `gh-pages` de ESTE repo, en carpetas
 separadas — `training/` (Automator) · `reportes-sh/` · `powertools/`. Se publican **copiando el HTML
