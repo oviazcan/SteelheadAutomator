@@ -49,7 +49,14 @@ function opsCubiertas() {
 // UpdatePartNumberSpecParam y AddParamsToPartNumber, las tres en UN ciclo y las tres
 // validadas end-to-end en vivo (no declaradas de oido: primero se capturo el hash con el
 // flujo DOM real, luego se probo contra el server, y hasta entonces entraron a _para).
-const HUERFANAS_BASE = 55;
+// 2026-08-05 (2ª baja del día): 55 -> 53. Se RETIRARON del catálogo dos hashes MUERTOS que
+// no consume nadie -- CreateInvoiceAndUpdatePartTransferAccounts y TempSpecFieldsAndOptions.
+// Alertaban como URGENTES en cada corrida sin romper nada: cry-wolf que entrena a ignorar el
+// correo. Su entrada documental sigue en config.knownOperations; lo que se fue es el hash.
+// El "nadie" se midió sobre 4 fuentes (applets, extension, Reportes SH, PowerTools) EXCLUYENDO
+// safari/main-bundle.js y dataLoader_v84.js: el primero es un ARTEFACTO que embebe el catálogo
+// completo (las 199 ops salían "usadas") y el segundo trae su PROPIA tabla de hashes.
+const HUERFANAS_BASE = 53;
 
 test('las ops del ruteo por grupos tienen ruta de regeneración', () => {
   const cubiertas = opsCubiertas();
