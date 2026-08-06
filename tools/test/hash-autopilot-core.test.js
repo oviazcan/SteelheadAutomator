@@ -183,6 +183,38 @@ test('pruneNeedsAttention: payload nulo / sin ops → null (fail-safe)', () => {
   assert.equal(pruneNeedsAttention({ date: 'd' }, ['A']), null);
 });
 
+// ── poda por RETIRO del hash (incidente 2026-08-06) ───────────────────────────
+// Una op cuyo hash se RETIRA del config (muerta, sin consumidor) desaparece de
+// `results` para siempre → jamás entra a resolvedOps → el needs-attention quedaba
+// armado indefinidamente y el cron del Nivel B gastaba un `claude -p` DIARIO sobre
+// una op que ya no existe. Pasó con TempSpecFieldsAndOptions: retirada en v1.11.87
+// (commit f56c10e) 50 min después de escalar; el motor ya no la nombra desde
+// entonces y el archivo seguía apuntándola.
+test('pruneNeedsAttention: quita las ops cuyo hash ya no está en el config (retiradas)', () => {
+  const payload = { date: 'd', ops: [{ op: 'TempSpecFieldsAndOptions' }, { op: 'GetStation' }] };
+  const pruned = pruneNeedsAttention(payload, [], ['GetStation', 'AllCustomers']);
+  assert.deepEqual(pruned.ops.map((o) => o.op), ['GetStation'],
+    'la retirada se va aunque nadie la haya "resuelto"');
+});
+
+test('pruneNeedsAttention: knownOps ausente → NO poda por retiro (fail-safe)', () => {
+  const payload = { date: 'd', ops: [{ op: 'A' }] };
+  assert.deepEqual(pruneNeedsAttention(payload, []).ops.map((o) => o.op), ['A']);
+  assert.deepEqual(pruneNeedsAttention(payload, [], null).ops.map((o) => o.op), ['A']);
+});
+
+// AUSENTE ≠ VACÍO: si el config no cargó, knownOps llega [] y eso NO significa
+// "ninguna op existe" — significa "no sé". Borrar todo ahí sería perder la señal.
+test('pruneNeedsAttention: knownOps vacío → NO poda por retiro (AUSENTE ≠ VACÍO)', () => {
+  const payload = { date: 'd', ops: [{ op: 'A' }, { op: 'B' }] };
+  assert.deepEqual(pruneNeedsAttention(payload, [], []).ops.map((o) => o.op), ['A', 'B']);
+});
+
+test('pruneNeedsAttention: retiradas + resueltas hasta vaciar → null', () => {
+  const payload = { date: 'd', ops: [{ op: 'Retirada' }, { op: 'Resuelta' }] };
+  assert.equal(pruneNeedsAttention(payload, ['Resuelta'], ['Resuelta', 'Otra']), null);
+});
+
 // ── escalableNotCaptured: quién merece despertar al Nivel B ────────────────────
 test('escalableNotCaptured: excluye las suppressPendingReport (bug 2026-07-25)', () => {
   const nc = [{ op: 'CreateInvoicePdf' }, { op: 'SearchUnits' }];

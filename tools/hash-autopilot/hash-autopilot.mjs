@@ -686,7 +686,12 @@ async function main() {
       ...results.filter((r) => r.verdict === 'vigente').map((r) => r.op),
       ...(deployed ? plan.toDeploy.map((r) => r.op) : []),
     ];
-    if (resolvedOps.length) pruneNeedsAttentionFile(resolvedOps);
+    // knownOps = las ops CON hash en el config de HOY. Poda también las RETIRADAS, que
+    // por definición ya no aparecen en `results` y por eso nunca se limpiaban solas
+    // (TempSpecFieldsAndOptions, 2026-08-06). Por eso la poda ya no está condicionada a
+    // que este run haya resuelto algo: un run donde todo salió bien también debe limpiar.
+    const knownOps = Object.keys(cfgHashes || {});
+    pruneNeedsAttentionFile(resolvedOps, knownOps);
   }
   return { results, plan, deployed };
 }
@@ -708,14 +713,14 @@ function writeNeedsAttention(notCaptured, recipes, date, observedByOp = {}) {
 // Poda del needs-attention.json de las ops que ESTE run ya resolvió. writeNeedsAttention
 // solo se llama cuando hay algo que escalar, así que un archivo VIEJO persistía aunque un
 // tick posterior recapturara bien; esto lo limpia (hallazgo corrida real 2026-07-17).
-function pruneNeedsAttentionFile(resolvedOps) {
+function pruneNeedsAttentionFile(resolvedOps, knownOps = null) {
   const p = join(RESULTS_DIR, 'needs-attention.json');
   let payload;
   try { payload = JSON.parse(readFileSync(p, 'utf8')); } catch { return; } // no existe/corrupto → nada
   const before = Array.isArray(payload.ops) ? payload.ops.length : 0;
-  const pruned = pruneNeedsAttention(payload, resolvedOps);
+  const pruned = pruneNeedsAttention(payload, resolvedOps, knownOps);
   try {
-    if (pruned === null) { rmSync(p); if (before) console.log('  needs-attention.json limpiado (ops escaladas ya resueltas).'); }
+    if (pruned === null) { rmSync(p); if (before) console.log('  needs-attention.json limpiado (ops escaladas ya resueltas o retiradas del config).'); }
     else if (pruned.ops.length !== before) { writeFileSync(p, JSON.stringify(pruned, null, 2)); console.log(`  needs-attention.json podado: ${before}→${pruned.ops.length} ops pendientes.`); }
   } catch (e) { console.log(`(no se pudo podar needs-attention: ${String(e).slice(0, 80)})`); }
 }

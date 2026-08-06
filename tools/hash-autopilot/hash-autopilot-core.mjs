@@ -121,10 +121,21 @@ export function buildNeedsAttention(notCaptured, recipes, date, observedByOp = {
 // así que si un tick posterior recaptura bien, el archivo VIEJO persistía indefinidamente
 // (hallazgo de la corrida real 2026-07-17). Devuelve el payload podado, o null si ya no
 // quedan ops (el caller borra el archivo). resolvedOps vacío → payload intacto.
-export function pruneNeedsAttention(payload, resolvedOps) {
+//
+// `knownOps` (las ops CON hash en el config de hoy) cubre la segunda puerta del mismo
+// cry-wolf: una op cuyo hash se RETIRA por muerta desaparece de `results` para siempre,
+// así que NUNCA entra a resolvedOps y el archivo quedaba armado indefinidamente — el cron
+// del Nivel B gastaba un `claude -p` DIARIO re-descubriendo la receta de algo que ya no
+// existe. Pasó con TempSpecFieldsAndOptions (escaló 19:32, retirada 20:21 en v1.11.87).
+// Mismo bug que el de CreateInvoicePdf (2026-07-25), por otra puerta.
+// Fail-safe deliberado: knownOps ausente o VACÍO ⇒ NO se poda por retiro. Un mapa vacío es
+// "no pude leer el config", no "ninguna op existe"; AUSENTE ≠ VACÍO y perder la señal es
+// peor que un tick de más.
+export function pruneNeedsAttention(payload, resolvedOps, knownOps = null) {
   if (!payload || !Array.isArray(payload.ops)) return null;
   const resolved = new Set(resolvedOps || []);
-  const remaining = payload.ops.filter((o) => o && !resolved.has(o.op));
+  const known = Array.isArray(knownOps) && knownOps.length ? new Set(knownOps) : null;
+  const remaining = payload.ops.filter((o) => o && !resolved.has(o.op) && (!known || known.has(o.op)));
   if (remaining.length === 0) return null;
   return { ...payload, ops: remaining };
 }

@@ -297,6 +297,27 @@ Mac** (en GitHub) por diseño: si viviera en el mismo launchd, moriría con lo q
   (auto-sanador). Alternativa: correr el motor COMPLETO una vez (prueba mutations por probe directo y
   auto-limpia), o borrar el `needs-attention.json` a mano si se confirma que las 4 están vigentes.
 
+#### Corolario 2026-08-06 — la variante del Hallazgo B que NO se auto-sana: el RETIRO
+
+El Hallazgo B confía en que el Nivel B "las probará, las verá vigentes y limpiará". Eso vale cuando
+la op **sigue existiendo**. Si el hash se **RETIRA** del config por muerto, la op desaparece de
+`results` para siempre ⇒ **nunca** entra a `resolvedOps` ⇒ `pruneNeedsAttentionFile` no la toca
+**jamás** y el cron del Nivel B gasta un `claude -p` **diario** re-descubriendo la receta de algo que
+ya no existe. Pasó con **`TempSpecFieldsAndOptions`**: escaló a las 19:32 del 2026-08-05 y se retiró
+50 minutos después (commit `f56c10e`, `v1.11.87`) — el archivo quedó apuntándola con el motor ya
+limpio (`🔺 STALE real: (ninguna)` en las 7 corridas posteriores). Es la misma clase de cry-wolf que
+el bug del 2026-07-25 (`CreateInvoicePdf`), entrando por otra puerta.
+
+**Cerrado por código:** `pruneNeedsAttention(payload, resolvedOps, knownOps)` poda también las ops
+**sin hash en el config de hoy**, y la poda ya **no** está condicionada a que el run haya resuelto
+algo (un run donde todo salió bien también debe limpiar). **Fail-safe deliberado:** `knownOps`
+ausente o **vacío** ⇒ no se poda por retiro — un mapa vacío es *"no pude leer el config"*, no
+*"ninguna op existe"* (AUSENTE ≠ VACÍO). Tests en `tools/test/hash-autopilot-core.test.js`.
+
+**La lección operativa:** retirar un hash es una operación de DOS lados. Se quita de
+`config.steelhead.hashes` **y** hay que dejar que el motor limpie la señal que esa op dejó abierta;
+si no, la deuda que creías borrar sigue despertando a un agente cada noche.
+
 **No quedan pendientes de código accionables del hash-autopilot** (los 2 hallazgos de arriba son
 mejoras de UX/higiene, no bugs que rompan la autonomía).
 
