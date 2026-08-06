@@ -152,7 +152,9 @@ vivió sin ruta desde su fase 1. **Cobertura de doc: 45/45 apps con bitácora e 
 
 El validador y el autopilot cubren las **3 fuentes** con hashes propios (extensión, Reportes SH,
 PowerTools); cuando un hash externo rota, el autopilot lo captura, valida, **escribe, commitea y
-pushea el otro repo automáticamente**. Ver `tools/hash-autopilot/README.md` y la skill `nuevo-applet`.
+pushea el otro repo automáticamente**. Ver `tools/hash-autopilot/README.md` y el slash command
+`/nuevo-applet` (vive en `.claude/commands/nuevo-applet.md`, **no** es una skill: los commands son
+**de este repo** y no existen desde otro cwd — desde `SteelheadPowerTools` no se puede invocar).
 
 ### Reglas de robustez (cada una nació de un bug de producción)
 - **La UI de ENTRADA de un applet se monta SIEMPRE que la ruta aplique.** El toggle/barra/botón que
@@ -442,7 +444,7 @@ renglón. **Antes de tocar un applet, lee su bitácora.**
 | `wo-schedule-button` | 0.9.0 | Readout de programación en la ficha de OT + programar por tratamiento ancla | [`wo-schedule-button.md`](docs/applets/wo-schedule-button.md) |
 | `batch-name-filter` | 0.3.1 | Selecciona de un jalón todos los lotes con un nombre exacto en el Panel de Envío | [`batch-name-filter.md`](docs/applets/batch-name-filter.md) |
 | `packing-slip-drawings` | 0.3.0 | Adjunta los planos del NP al correo de la remisión (y delata en ámbar los NP sin plano) + imprime remisión y selección en un PDF | [`packing-slip-drawings.md`](docs/applets/packing-slip-drawings.md) |
-| `driver-licenses` | 0.1.0 · **en producción** (`1.11.88`) · iPad `0.6.32` | Administra las identificaciones de choferes EXTERNOS y **publica el catálogo dentro del hook `pdf:SHIPMENT_TEMPLATE`** de SteelheadPowerTools (sustituye un condicional por chofer en la plantilla). Único applet que **publica código productivo**: relee del servidor, muestra diff, exige confirmación y aborta si los marcadores no están sanos. Pertenencia por **prefijo** `licencia-` en el nombre, no por carpeta (`CreateUserFile` no puede asignarla) | [`driver-licenses.md`](docs/applets/driver-licenses.md) |
+| `driver-licenses` | 0.1.1 · **en producción** (`1.11.88`) · iPad `0.6.32` | Administra las identificaciones de choferes EXTERNOS y **publica el catálogo dentro del hook `pdf:SHIPMENT_TEMPLATE`** de SteelheadPowerTools (sustituye un condicional por chofer en la plantilla). Único applet que **publica código productivo**: relee del servidor, muestra diff, exige confirmación y aborta si los marcadores no están sanos. Pertenencia por **prefijo** `licencia-` en el nombre, no por carpeta (`CreateUserFile` no puede asignarla) | [`driver-licenses.md`](docs/applets/driver-licenses.md) |
 | `schedule-batch-highlighter` | 0.2.0 | Resalta un lote en el Schedule Board y 📦 agrupa sus órdenes en una tarea | [`schedule-batch-highlighter.md`](docs/applets/schedule-batch-highlighter.md) |
 | `po-listing-filters` | 0.4.0 | Buscador global de OC/proveedor/factura + toggle "Sólo Proquipa" | [`po-listing-filters.md`](docs/applets/po-listing-filters.md) |
 | `invoice-autofill` | 0.5.67 | Autollena cliente/divisa/TC/CXC y la cuenta de ingreso por línea al crear factura | [`invoice-autofill.md`](docs/applets/invoice-autofill.md) |

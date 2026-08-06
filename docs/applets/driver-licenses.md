@@ -1,7 +1,7 @@
 # `driver-licenses` — Licencias de Choferes
 
-**Versión:** 0.1.0 · **Estado:** **EN PRODUCCIÓN** desde el 2026-08-05 (`config v1.11.88`; el vivo
-ya va en 1.11.89 por un deploy posterior ajeno).
+**Versión:** 0.1.1 · **Estado:** **EN PRODUCCIÓN** desde el 2026-08-05 (`config v1.11.88`).
+El 2026-08-06 se corrigió el HTTP 400 que impedía abrir el panel (§El bug que rompió el panel).
 **Rutas de hash:** las tres operaciones quedaron con ruta y el trinquete `hash-regen-coverage`
 pasa (5/5). La del centinela está **declarada pero no validada en vivo** — ver §Rutas.
 
@@ -13,7 +13,7 @@ de embarque cuando el nombre del chofer aparece en las notas o en el nombre del 
 |---|---|
 | Núcleo puro | `remote/scripts/driver-licenses-core.js` |
 | UI + red | `remote/scripts/driver-licenses.js` |
-| Tests | `tools/test/driver-licenses-core.test.js` — **30 verdes** |
+| Tests | `tools/test/driver-licenses-core.test.js` — **37 verdes** |
 | Contrato | `SteelheadPowerTools/docs/specs/2026-08-05-applet-licencias-choferes.md` |
 | Hook que consume | `SteelheadPowerTools/hooks/pdf/SHIPMENT_TEMPLATE.ts` (TLC `11471` · MTY `11472`) |
 
@@ -187,8 +187,65 @@ script conocido en el test`): hizo exactamente su trabajo.
 ⚠️ **El bundle es estático: falta recompilar en Xcode** para que llegue al iPad. Los artefactos ya
 están sincronizados en `safari/xcode/.../Resources/`.
 
+## El bug que rompió el panel: `PdfLowCode` es un LISTADO, no un fetch por tipo
+
+**2026-08-06, reportado desde producción.** El panel abría con el listado vacío y este mensaje:
+
+```
+No se pudo cargar: HTTP 400 en PdfLowCode:
+  [1] Variable "$first" of required type "Int!" was not provided.
+  [2] Variable "$offset" of required type "Int!" was not provided.
+```
+
+**No era un hash rotado** — ése habría dado `"Must provide a query string."` (ver
+[`persisted-queries-playbook.md`](../api/persisted-queries-playbook.md)). El hash estaba vivo y
+además es **byte-idéntico** al que usa `SteelheadPowerTools/sync/lowcode_sync.py`. Lo que estaba
+mal eran **las variables**: se copió el hash sin copiar el contrato de llamada.
+
+`PdfLowCode` no lee *el* hook de un tipo: enumera **todas las versiones** del slot, paginado.
+El contrato real, tomado de la implementación de referencia que sí funciona
+(`lowcode_sync.py::_fetch_single_slot`):
+
+| | Lo que hacía el applet | Lo correcto |
+|---|---|---|
+| Variables | `{pdfType}` | **`{first, offset, pdfType}`** — los dos primeros son `Int!` |
+| Key de respuesta | `pdfLowCode` / `PdfLowCode` / la raíz | **`allPdfLowCodes.nodes`** |
+| Versión elegida | `nodes[0]` crudo | **la más reciente por `createdAt`** |
+
+**Eran tres defectos, y los dos últimos estaban TAPADOS por el primero**: el 400 ocurría antes,
+así que nunca se llegó a ejercitar el parseo. El tercero es el peligroso — no da error, da la
+versión equivocada, y como este applet **publica código productivo**, leer una versión vieja
+significa **republicarla encima de la buena, en silencio**. Cada save crea una versión nueva y
+no existe mutation de «activar»: la activa es, por convención, la más reciente.
+
+La decisión se movió al núcleo puro (`hookQueryVariables`, `pickActiveHook`) con **7 tests**
+nuevos. `CreatePdfLowCode` se revisó en la misma pasada y **estaba bien**: `{code, compiled,
+pdfType}` es exactamente lo que manda PowerTools.
+
+### Por qué los 30 tests no lo cazaron
+
+Porque `fetchHook()` vivía **en el glue**, que no tiene test, y el core solo cubría el bloque de
+texto. La verificación cross-repo del alta comparó **el bloque generado** —que salió
+byte-idéntico— pero **nunca la llamada GraphQL de lectura**. Un contrato entre dos repos tiene
+dos mitades: el formato del dato y **cómo se pide**. Se verificó una.
+
+## Verificar releyendo (2026-08-06)
+
+`CreatePdfLowCode` responde `{clientMutationId:null}` — ni el id ni el valor — así que el
+`await publishHook()` sin excepción **no probaba que se hubiera escrito**, y aun así el panel
+afirmaba «Catálogo publicado» en verde. Ahora **relee el hook y compara el catálogo vivo**
+contra el que se mandó (`parseBlockCatalog` + `diffCatalogs(...).isEmpty`).
+
+Si no se puede confirmar, la UI lo dice en **ámbar** («Se mandó, pero no pude verificarlo»),
+nunca en verde: no tener la confirmación es *«no sé»*, no *«falló»* ni *«listo»*. PowerTools ya
+hacía esta relectura tras el push; el applet no.
+
 ## Historial
 
+- **0.1.1** (2026-08-06) — **Fix de producción.** `PdfLowCode` se llamaba sin `$first`/`$offset`
+  (HTTP 400: el panel no abría) y, por debajo, leía la key equivocada y no ordenaba por
+  `createdAt`. Nuevos en el core: `hookQueryVariables` y `pickActiveHook` (+7 tests, **37**).
+  Además, la publicación ahora **verifica releyendo** en vez de confiar en el `await`.
 - **0.1.0** (2026-08-05) — Alta. Núcleo puro con 30 tests, panel de administración, publicación
   con diff y confirmación. Contrato con el hook verificado cross-repo: el bloque que genera el
   applet salió **byte-idéntico** al que había publicado el generador Python, y `replaceBlock`

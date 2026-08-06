@@ -278,3 +278,71 @@ test('isImageFile acepta imágenes y rechaza PDF', () => {
   assert.equal(C.isImageFile('Hector.jpeg'), true);
   assert.equal(C.isImageFile('licencia.pdf'), false);
 });
+
+// ── pickActiveHook: leer la respuesta de PdfLowCode ─────────────────────────
+//
+// BUG 2026-08-06 (reportado en producción): el panel abría con
+//   «HTTP 400 en PdfLowCode: Variable "$first" of required type "Int!" was not provided.»
+//
+// `PdfLowCode` NO es un fetch por pdfType: es un LISTADO PAGINADO de todas las VERSIONES
+// del hook. Contrato tomado de la implementación de referencia que sí funciona,
+// SteelheadPowerTools/sync/lowcode_sync.py::_fetch_single_slot:
+//   · variables → { first, offset, pdfType }   ($first y $offset son Int! obligatorios)
+//   · respuesta → { allPdfLowCodes: { nodes: [...] } }
+//   · LA VERSIÓN ACTIVA ES LA MÁS RECIENTE POR createdAt — no existe mutation de «activar».
+//
+// El tercer punto es el peligroso: no da error, da la versión equivocada. Y este applet
+// PUBLICA CÓDIGO PRODUCTIVO, así que leer una vieja significa republicarla encima de la buena.
+
+const HOOK_NODES = [
+  { id: 3, code: 'const A = 1;', compiled: 'var A = 1;', createdAt: '2026-08-01T10:00:00Z' },
+  { id: 7, code: 'const C = 3;', compiled: 'var C = 3;', createdAt: '2026-08-05T22:14:00Z' },
+  { id: 5, code: 'const B = 2;', compiled: 'var B = 2;', createdAt: '2026-08-03T09:00:00Z' }
+];
+
+test('pickActiveHook lee la key real allPdfLowCodes', () => {
+  const got = C.pickActiveHook({ allPdfLowCodes: { nodes: HOOK_NODES } });
+  assert.ok(got, 'debe encontrar el hook en allPdfLowCodes');
+  assert.equal(typeof got.code, 'string');
+});
+
+test('pickActiveHook toma la MÁS RECIENTE por createdAt, no la primera del arreglo', () => {
+  // El servidor devuelve desordenado a propósito en este fixture: la activa es la id 7.
+  const got = C.pickActiveHook({ allPdfLowCodes: { nodes: HOOK_NODES } });
+  assert.equal(got.code, 'const C = 3;');
+  assert.equal(got.compiled, 'var C = 3;');
+});
+
+test('pickActiveHook aguanta cualquier all*LowCodes (el slot cambia de nombre por categoría)', () => {
+  const got = C.pickActiveHook({ allShipmentLowCodes: { nodes: HOOK_NODES } });
+  assert.equal(got.code, 'const C = 3;');
+});
+
+test('pickActiveHook devuelve null si no hay nada — AUSENTE no se disfraza de vacío', () => {
+  assert.equal(C.pickActiveHook({ allPdfLowCodes: { nodes: [] } }), null);
+  assert.equal(C.pickActiveHook({}), null);
+  assert.equal(C.pickActiveHook(null), null);
+  assert.equal(C.pickActiveHook({ allPdfLowCodes: null }), null);
+});
+
+test('pickActiveHook: compiled ausente degrada a cadena vacía, no a undefined', () => {
+  const got = C.pickActiveHook({ allPdfLowCodes: { nodes: [
+    { code: 'x', createdAt: '2026-08-05T00:00:00Z' }
+  ] } });
+  assert.equal(got.compiled, '');
+});
+
+test('pickActiveHook ignora nodos sin code (no son una versión utilizable)', () => {
+  const got = C.pickActiveHook({ allPdfLowCodes: { nodes: [
+    { id: 9, compiled: 'var Z;', createdAt: '2026-08-09T00:00:00Z' },   // más reciente pero sin code
+    { id: 7, code: 'const C = 3;', compiled: 'var C = 3;', createdAt: '2026-08-05T22:14:00Z' }
+  ] } });
+  assert.equal(got.code, 'const C = 3;');
+});
+
+test('hookQueryVariables incluye $first y $offset — el 400 que rompió producción', () => {
+  const v = C.hookQueryVariables('SHIPMENT_TEMPLATE');
+  assert.equal(typeof v.first, 'number');
+  assert.equal(typeof v.offset, 'number');
+  assert.equal(v.pdfType, 'SHIPMENT_TEMPLATE');
+});

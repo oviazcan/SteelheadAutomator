@@ -121,6 +121,18 @@ El correo dice qué retuvo, por qué no urge y el comando exacto para liberarlo
 - **Concurrencia de sesiones:** el cron del autopilot y una sesión manual pueden escribir
   `remote/config.json` a la vez (pasó hoy, sin choque por tocar ops distintas). Antes de correr
   el autopilot a mano: `ps aux | grep hash-autopilot`.
+- **⚠️ Datos personales de terceros expuestos sin autenticación (`driver-licenses`).** Lo que
+  hay cargado hoy son **credenciales INE completas** —domicilio, CURP, clave de elector, fecha
+  de nacimiento— de choferes que **no son personal de Ecoplating**, y `/api/files/<name>`
+  **responde HTTP 200 sin cookie ni token** (Hallazgo de seguridad #1). Esa liga queda
+  **embebida en el PDF de la lista de embarque que se manda al cliente**: cualquiera que reciba
+  o reenvíe ese PDF puede abrir la identificación completa.
+  La bitácora del applet lo tiene como *«sustituir por versión recortada o gafete laboral
+  **antes** de usarlo en producción»* — pero **el applet lleva en producción desde el
+  2026-08-05 con las INE puestas**, así que la condición se incumplió. El panel advierte al
+  subir y recomienda foto+nombre o gafete de la transportista, pero **no lo bloquea**: es
+  decisión del cliente, no del applet. **Acción pendiente: reemplazar las 8 imágenes cargadas
+  y republicar el catálogo en los dos dominios.** Levantado 2026-08-06.
 
 ---
 
