@@ -11,46 +11,38 @@ viene de otra bitácora se cita como tal en vez de re-afirmarse.
 
 ## 1. Hashes sin ruta de regeneración
 
-### 1.1 Mutations de specs — 2 de 3 RESUELTAS (2026-08-05)
+### 1.1 ✅ RESUELTO — familia de parámetros de spec (3 de 3)
 
-**Resueltas y deployadas** (`v1.11.85`), con ruta de regeneración real en la entidad
-`partNumberSpecParams` sobre el PN Centinela **#3770957**:
+Entidad `partNumberSpecParams` sobre el PN Centinela **#3770957**. Las tres en **un ciclo**,
+todas captura-y-aborta, validadas end-to-end y deployadas (`v1.11.85`, `v1.11.86`):
 
-| Op | Hash nuevo | Cómo se dispara |
-|---|---|---|
-| `SaveMultipleSpecFieldParams` | `150956c4…` | seleccionar param → `Edit Selected Params` → Save |
-| `UpdatePartNumberSpecParam` | `ba17174b…` | `aria-label="Archive Parameter"` → Confirm |
-
-Un solo ciclo captura las dos (validado end-to-end con `--only`). Ambas por
-**captura-y-aborta** ⇒ cero persistencia. Incluye el **fallback** pedido: si el PN aparece
-archivado, el ciclo lo desarchiva, captura y **re-archiva en el `restore`**.
-
-> **El sink corrigió dos suposiciones** — las dos parecían obvias y las dos eran falsas:
-> el **lápiz individual** (`Edit Spec Field Parameter`) NO dispara `UpdatePartNumberSpecParam`
-> sino el **mismo** `SaveMultipleSpecFieldParams` (Steelhead unificó los caminos), y
-> **"Add Spec"** dispara `ApplySpecsToPartNumber`, no `AddParamsToPartNumber`.
-
-**Sigue pendiente: `AddParamsToPartNumber`** (applets `bulk-upload`, `spec-migrator`,
-`wo-spec-params`). No sale de ninguno de los flujos probados de la ficha del PN. Vive en
-`_paraPendiente`, que el trinquete **no** cuenta — para no fingir cobertura. Pista para
-retomarlo: los comentarios de `bulk-upload.js` la describen aplicando al PN un parámetro
-recién creado en la *definición de la spec*, así que el flujo probablemente nace en la
-pantalla de la **Spec**, no en la del PN.
-
-⚠️ **Deuda bilingüe nueva:** los `aria-label` de esa tabla vienen **mezclados** — usamos
-`"Show Spec"` y `"Archive Parameter"` (inglés) mientras la misma fila trae `"Cambiar Nodo de
-Proceso"` y `"Copiar arriba"` (español). Si Steelhead traduce los nuestros, **el ciclo se
-apaga en silencio**. No se inventa la traducción (regla dura del repo).
-
-### 1.2 Dos hashes muertos que no usa ningún applet — decisión pendiente
-| Op | Evidencia |
+| Op | Cómo se dispara |
 |---|---|
-| `TempSpecFieldsAndOptions` | **0 usos** en `remote/scripts/` y `extension/`. Solo vive en `dataLoader_v84.js` (ancestro del bulk-upload) y en docs. `docs/api/hash-fase-b-guion-navegacion.html` ya la clasifica como *"Marginal (ningún applet la usa)"* |
-| `CreateInvoiceAndUpdatePartTransferAccounts` | **0 usos** en código. El config la atribuye a `invoice-autofill`, pero su propia descripción dice *"no se intercepta outbound en v1; DOM-fill garantiza valores"*: el applet llena por DOM y nunca la llama |
+| `SaveMultipleSpecFieldParams` | seleccionar param → `Edit Selected Params` → Save |
+| `UpdatePartNumberSpecParam` | `Archive Parameter` → Confirm |
+| `AddParamsToPartNumber` | `+` del **spec field** → `Add Parameter` → llenar parametrización → **Confirm** |
 
-Ambas tienen el hash **muerto** y generan una alerta **urgente en cada corrida** sin romper
-nada: **cry-wolf puro**. No hay que regenerarlas — hay que **sacarlas del radar** (borrar el
-hash y conservar la entrada documental). Es decisión del operador, por eso siguen ahí.
+Incluye el **fallback**: si el PN aparece archivado, desarchiva → captura → **re-archiva**.
+Trinquete 58 → 55. Idioma **medido, no supuesto**: `Show Spec`, `Archive Parameter` y
+`Edit Spec Field Parameter` salen en **inglés** en una sesión con la UI en español (la misma
+fila trae `Cambiar Nodo de Proceso` y `Copiar arriba`). SH no los traduce ⇒ el anclaje
+mono-idioma es correcto ahí y sale de la lista de sospechosos.
+
+### 1.2 ✅ RESUELTO — retirados 2 hashes muertos sin consumidor (`v1.11.87`)
+
+`CreateInvoiceAndUpdatePartTransferAccounts` y `TempSpecFieldsAndOptions` alertaban como
+urgentes en cada corrida sin romper nada. Su entrada documental sigue en
+`config.knownOperations`; lo que se fue es el hash. Trinquete 55 → 53.
+
+**Cómo se definió "nadie" (y por qué el primer intento estaba mal):** se midió sobre **4
+fuentes** — applets, `extension/`, Reportes SH y PowerTools — **excluyendo**
+`safari/extension/main-bundle.js` (ARTEFACTO que embebe el catálogo completo: hacía
+aparecer las **199 ops como "usadas"**) y `dataLoader_v84.js` (standalone con su **propia**
+tabla de hashes). De 199 ops, **14 sin uso real**; de esas, solo **2 estaban muertas**. Las
+otras **12 están vivas y se dejaron intactas** — no alertan hoy.
+
+> La lección: el primer "0 usos" salió de mirar dos directorios. Un inventario incompleto no
+> produce una respuesta incompleta, produce una **respuesta con signo cambiado**.
 
 ### 1.3 Otras rutas declaradas pero sin guionizar
 - **`partNumberRackType`** (`CreatePartNumberPerPerRackType`, `UpdatePartNumberPerPerRackType`):
@@ -60,47 +52,26 @@ hash y conservar la entrada documental). Es decisión del operador, por eso sigu
 
 ---
 
-## 2. Applets invisibles para el repo
+## 2. ✅ RESUELTO — applets invisibles para el repo
 
-`cfdi-attacher` estaba vivo en producción **sin figurar en el índice de `CLAUDE.md` ni tener
-bitácora**; salió a la luz solo al rastrear qué rompía la rotación de `InvoiceByIdInDomain`.
-Ya quedó documentado — pero **no era un caso aislado**.
+Los **7** quedaron con bitácora y fila en el índice: `report-liberator`, `inventory-reset`,
+`po-reconciler`, `wo-deadline`, `invoice-default-tab`, `paros-linea`, `bill-autofill`
+(más `cfdi-attacher`, que fue el que destapó el hueco).
 
-De **45 apps** registradas en `config.json`, **7 siguen sin índice ni bitácora**:
+**Quedan 4 sin ficha propia** (se mencionan en `CLAUDE.md` pero no tienen fila ni bitácora):
+`auditor` · `po-comparator` · `invoice-listing-marker` · `portal-importer`.
 
-`report-liberator` · `inventory-reset` · `po-reconciler` · `wo-deadline` ·
-`invoice-default-tab` · `paros-linea` · `bill-autofill`
+## 3. ✅ RESUELTO — inventario del paquete de capacitación
 
-> **Por qué importa más de lo que parece:** un applet indocumentado no es solo un hueco de
-> documentación — **es un applet cuya rotura nadie sabe atribuir.** Cuando su hash rote, el
-> correo del autopilot dirá un nombre de operación que no le consta a nadie.
+`docs/training/inventario-applets.html`: **35 → 50 applets**, `~77 → ~96` archivos, fecha
+`2026-05-26 → 2026-08-05`. Los 15 faltantes entraron en su sección temática, con descripción
+en lenguaje de usuario y `—` donde no hay versión publicada (no se inventó ninguna).
+**Publicado a `gh-pages` y verificado EN VIVO**, no solo commiteado — que es justamente la
+lección del §4 de este documento aplicada a sí misma.
 
----
-
-## 3. Paquete de capacitación: el inventario va 2 meses atrás
-
-`docs/training/inventario-applets.html` se presenta como **"documento vivo"** y declara
-**"35 Applets y herramientas documentados"**. Sus entradas están fechadas **2026-05-26**.
-
-**Medido hoy contra `config.json`: faltan 15 applets** (verificado también por búsqueda de
-texto: ninguno aparece con otro nombre).
-
-`bill-autofill` · `cfdi-attacher` · `inventory-reset` · `invoice-default-tab` ·
-`invoice-listing-marker` · `packing-slip-drawings` · `paros-linea` · `po-comparator` ·
-`po-listing-filters` · `po-reconciler` · `portal-importer` · `report-liberator` ·
-`wo-deadline` · `wo-listing-columns` · `wo-schedule-button`
-
-Varios de ellos **sí están** en el índice de `CLAUDE.md` (`packing-slip-drawings`,
-`wo-listing-columns`, `wo-schedule-button`, `po-listing-filters`), o sea que el desfase es del
-**paquete del cliente**, no del repo. Es el documento que Ecoplating lee: un inventario que se
-anuncia vivo y va dos meses atrás **enseña a desconfiar de todo el paquete**.
-
-**Al actualizarlo, recordar:** los tres documentos **transversales**
+**Recordatorio vigente:** los tres documentos **transversales**
 (`repos-y-mantenimiento.html`, `manual-arquitectura.html`, `catalogo-mantenimiento.html`) son
-idénticos byte-a-byte en los **tres** paquetes (`training/`, `reportes-sh/`, `powertools/`):
-tocar uno obliga a re-copiar y republicar los tres.
-
----
+idénticos byte-a-byte en los tres paquetes: tocar uno obliga a republicar los tres.
 
 ## 4. Freno de masa: propuesta sin implementar
 
