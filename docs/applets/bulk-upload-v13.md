@@ -314,8 +314,28 @@ sangría, que ES el formato de esa hoja, no se pierde. Los estilos se reusan de 
 (`s=1` título, `s=3` sección, `s=4` contenido, `s=5` nota); el formato anterior estaba aplicado sin
 patrón —líneas equivalentes con `s=2`, `s=3` y `s=4` mezclados—, así que era ruido, no semántica.
 
-> **Falta la única prueba que no se puede hacer desde el repo: abrir las dos plantillas en Excel.**
-> El respaldo es `git checkout` de los `.xlsm`.
+### Cerrado en producción (2026-08-05)
+
+Las dos plantillas publicadas llevan **las tres correcciones juntas** — `Module1 v15.5` (pegado a
+mano en Excel: `vbaProject.bin` es OLE binario y no se puede escribir desde el repo) + la hoja
+`Ayuda` regenerada. Verificado **bajando los archivos del sitio**: `md5` idéntico al local,
+`"Varios clientes"` en el código, `MsgBox "CSV " & TplVer(ws)`, `3× For c = 1 To 67`, cero rastro
+del layout v10 en la Ayuda y `verify-template-layout` en 10/10. Deploy `v1.11.84` para el título
+del panel.
+
+**El paso en falso que hay que no repetir: cada copia traía la MITAD del arreglo.** Se publicaron
+`.xlsm` con la Ayuda corregida y el VBA viejo, mientras los que el usuario editaba venían de una
+descarga previa —VBA nuevo, Ayuda vieja—. Ninguna de las dos copias estaba completa y las dos se
+veían "arregladas" desde su propio lado. La salida fue **tomar como base el archivo del usuario**
+(el único con el VBA bueno, que es lo irreproducible) y reinsertarle la Ayuda encima, no al revés.
+Regla: **cuando un artefacto se edita por dos vías —una a mano y otra por script— la base es
+siempre la que NO se puede regenerar.**
+
+**Y la lección de método por tercera vez en el día:** para comprobar si el bloqueo de multi-cliente
+seguía vivo se buscó la frase `"UN SOLO cliente"` en el VBA — y dio positivo **en el comentario que
+documenta que se quitó**. El mismo patrón que con los regex de self-closing: *buscar el síntoma en
+vez de la cosa*. La comprobación correcta ignora los comentarios (`grep -vE "^\s*'"`) y busca la
+estructura viva (`"Varios clientes"`).
 
 ## Multi-cliente en `COTIZACIÓN+NP`: la plantilla vetaba lo que el applet sí sabe hacer
 
