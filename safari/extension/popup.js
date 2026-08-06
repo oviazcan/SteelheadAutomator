@@ -36,7 +36,11 @@
     { message: 'toggle-price-confirm-guard', icon: '🔒', label: 'Candado de precio (on/off)', sub: 'Activa/desactiva el candado de confirmación de precio' },
     { message: 'open-wo-schedule',        icon: '📅', label: 'Programación de la OT',     sub: 'Refresca el readout de programación (estando en la ficha de una OT)' },
     { message: 'toggle-wo-pn-column',     icon: '🔩', label: 'Columna Núm. de Parte (on/off)', sub: 'En el listado de Órdenes de Trabajo' },
-    { message: 'toggle-wo-sched-column',  icon: '📅', label: 'Columna Programación (on/off)',  sub: 'En el listado de Órdenes de Trabajo' }
+    { message: 'toggle-wo-sched-column',  icon: '📅', label: 'Columna Programación (on/off)',  sub: 'En el listado de Órdenes de Trabajo' },
+    // El iPad es el mejor lugar para esto: dar de alta a un chofer externo pide la FOTO de su
+    // identificación, y aquí el <input type="file" accept="image/*"> abre la cámara directo en
+    // el andén. Es SUBIR, no descargar — por eso sí aplica el criterio del bundle.
+    { message: 'open-driver-licenses',    icon: '🪪', label: 'Administrar Licencias',       sub: 'Subir la identificación de un chofer externo y publicar el catálogo' }
   ];
 
   function getAll(keys) {

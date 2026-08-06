@@ -8,6 +8,15 @@ Pasos de build/firma/instalación en **`docs/deploy-safari.html`**.
 - **POC del candado de surtido VALIDADO en vivo (Safari iPad, 2026-06-30):** `world:"MAIN"` intercepta
   `fetch`, el login OAuth funciona y el bloqueo de una pieza no programada quedó confirmado (no se necesitó
   el plan B).
+- **Bundle v0.6.32 — 34 applets (2026-08-05):** entra **`driver-licenses`** (Licencias de Choferes).
+  Da de alta a un chofer externo subiendo la **foto** de su identificación y publica el catálogo que
+  el hook `pdf:SHIPMENT_TEMPLATE` pinta en la lista de embarque. **Por qué sí aplica el criterio:**
+  su única interacción con archivos es `<input type="file" accept="image/*">` — **subir**, no
+  descargar; en iPadOS eso abre la cámara directo en el andén, que es justo donde se necesita. Sin
+  FAB (`autoInject:false`) ⇒ el **popup es su única puerta**, así que lleva lanzador en los tres
+  archivos. Peso real **1.89 MB** (+44 KB, +2.4%). El mismo rebuild tomó los fixes de
+  `create-order-autofill` v0.1.4/v0.1.5 (verificados en el ARTEFACTO, no en el log).
+
 - **Bundle v0.6.31 — 33 applets (2026-08-05):** entra **`packing-slip-drawings`** (Planos en Remisión)
   en versión **LIGERA**, y con él un mecanismo nuevo: **`excludeScripts`** en `bundle.json`. Peso real
   **1.85 MB** (+63 KB, +3.5%). Ver la lección de abajo sobre la TERCERA VÍA de curación.

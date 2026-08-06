@@ -5,6 +5,16 @@
 
 > **Actualización 2026-07-01 — Bundle v0.5.0 (canal de lanzadores del popup + 6 con-popup).** Se resolvió la infraestructura de "applets con interfaz" en Safari sin tocar el código de los applets: el popup ofrece **botones lanzadores** que mandan el comando a la tab (`tabs.sendMessage(tabId,{__saCmd,action,nonce})`, con fallback a `storage.local`); `bridge.js` (mundo aislado) lo recibe con `runtime.onMessage` y lo reenvía al MAIN world por `postMessage`; y `safari/sa-dispatcher.js` (MAIN world) resuelve la acción → función global del applet vía **allowlist** (`LAUNCH_FN`) + fallback a `config.actions[].fn`. **Ojo:** `storage.onChanged` NO dispara en el content script de iPadOS (por eso el canal es `tabs.sendMessage`, no storage — fix 2026-07-01). Con esto **entraron al bundle**: `vale-almacen` (FAB), y las 6 "con-popup" **`archiver`, `sensor-status-autofill`, `load-calculator`, `auto-router`, `wo-completer`, `wo-deadline`** (lanzadas desde el popup). Total: **23 applets, 8 lanzadores**. Regresión en `tools/test/build-safari.test.js` (cadena popup→bridge→dispatcher→applet). **Gotcha auto-router:** en Chrome su trigger de popup (`chrome.runtime.onMessage`) está muerto en MAIN world y solo corre por el FAB; en Safari el dispatcher usa `postMessage`, así que los lanzadores **sí operan**. **Automatización:** `tools/safari-bundle-scan.py` (escáner de candidatos + clasificación por bloqueadores iOS) + skill `safari-bundle-sync` orquestan escaneo→integración→rebuild. Peso: **~940 KB** (todos los iPads objetivo son nuevos).
 
+> **Actualización 2026-08-05 — Bundle v0.6.32 (34 applets, 1.89 MB).** Entró **`driver-licenses`**
+> (Licencias de Choferes). Es el caso **más limpio** del criterio de curación y conviene tenerlo
+> como referencia: la regla que excluye a `auditor`/`carga-masiva`/`file-uploader` es la
+> **DESCARGA** (`a.download` / `URL.createObjectURL`), que en iOS Safari no funciona — **no** "tocar
+> archivos". Aquí la única interacción es `<input type="file" accept="image/*">`, es decir **SUBIR**,
+> y en iPadOS eso abre la **cámara**: el iPad no es un mal sustituto de la computadora, es el mejor
+> lugar para hacerlo (la foto de la identificación se toma en el andén, donde está el chofer).
+> Sin FAB (`autoInject:false`) ⇒ el popup es su **única** puerta, así que llevó lanzador en los tres
+> archivos. +44 KB (+2.4%). El mismo rebuild tomó los fixes de `create-order-autofill` v0.1.4/v0.1.5.
+
 > **Actualización 2026-08-05 — Bundle v0.6.31 (33 applets, 1.85 MB) y TERCERA VÍA de curación.**
 > Entró **`packing-slip-drawings`** (Planos en Remisión: adjunta los planos del NP al correo del
 > albarán). El scanner lo marcaba **NO-APLICA** por descarga, pero —como ya se corrigió en julio— eso

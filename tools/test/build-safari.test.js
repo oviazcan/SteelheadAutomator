@@ -122,6 +122,7 @@ test('canal de lanzadores consistente: popup LAUNCHERS → dispatcher LAUNCH_FN 
     PNLifecycle: 'scripts/pn-lifecycle.js',
     WoScheduleButton: 'scripts/wo-schedule-button.js',
     WoListingColumns: 'scripts/wo-listing-columns.js',
+    DriverLicenses: 'scripts/driver-licenses.js',
   };
 
   for (const msg of popupMsgs) {

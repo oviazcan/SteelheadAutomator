@@ -49,7 +49,10 @@
     // Columnas del listado de OTs. Los toggles viven en la barra inyectada; estos lanzadores
     // son el atajo desde el popup para las dos más usadas en piso.
     'toggle-wo-pn-column':     'WoListingColumns.toggleFromPopup',
-    'toggle-wo-sched-column':  'WoListingColumns.toggleSchedFromPopup'
+    'toggle-wo-sched-column':  'WoListingColumns.toggleSchedFromPopup',
+    // driver-licenses no tiene FAB (autoInject:false): el popup es su ÚNICA puerta.
+    // window.DriverLicenses = { open, close } — verificado en driver-licenses.js.
+    'open-driver-licenses':    'DriverLicenses.open'
   };
 
   function resolveFn(action) {

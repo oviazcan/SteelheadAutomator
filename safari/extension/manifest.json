@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Steelhead Automator — iPad",
-  "description": "Bundle de applets de Steelhead para iPad (empaquetado). 33 applets: auto-inyectados (FAB/gate propio) + lanzadores de popup. v0.6.31 suma packing-slip-drawings (Planos en Remisión) en versión LIGERA: adjunta los planos del NP al correo del albarán y delata en ámbar los NP sin plano; sin impresión combinada ni miniaturas de PDF (ver _commentExcludeScripts). Se manda remisión desde el iPad, confirmado con el operador 2026-08-05.",
-  "version": "0.6.31",
+  "description": "Bundle de applets de Steelhead para iPad (empaquetado). 34 applets: auto-inyectados (FAB/gate propio) + lanzadores de popup. v0.6.32 suma driver-licenses (Licencias de Choferes): da de alta a un chofer externo subiendo la FOTO de su identificación y publica el catálogo que el hook pdf:SHIPMENT_TEMPLATE pinta en la lista de embarque. Entra al bundle porque su única interacción con archivos es SUBIR (<input type=\"file\" accept=\"image/*\">, que en iPadOS abre la cámara directo en el andén), no descargar — el criterio que excluye a auditor/carga-masiva/file-uploader. Sin FAB: el popup es su única puerta. Además toma los fixes de create-order-autofill v0.1.4/v0.1.5 (el cliente se mudó del singleValue al value del input, y en Recibo vive en el wizard padre).",
+  "version": "0.6.32",
   "permissions": [
     "storage",
     "tabs"

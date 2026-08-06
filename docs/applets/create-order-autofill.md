@@ -43,6 +43,12 @@ supuesto.*
 
 **Validación:** core **18/18**, suite **1868/1868**. Deploy **1.11.90**.
 
+**Safari/iPad (bundle 0.6.32):** el rebuild tomó los dos fixes (v0.1.4 y v0.1.5). Verificado **en el
+ARTEFACTO**, no en el log —`build-safari.sh` imprime caracteres, no bytes—: con baseline **0** antes
+del rebuild, `main-bundle.js` pasó a traer `pickCustomerFromCandidates` (5), `collectComboboxValues`
+(3), `isReceiveWizardHeading` (3) y `extractCustomerFromReceiveWizard` (4), `node --check` OK.
+**Falta recompilar en Xcode.**
+
 **Nota de proceso:** el deploy NO usó `tools/deploy.sh` — el worktree de `main` tenía WIP **de otra
 sesión viva** (`hash-coverage-multirepo`, `wo-spec-params`, `extract-process-tree`,
 `external-sinks`, modificados minutos antes). Se hizo `git add` selectivo de los 3 archivos

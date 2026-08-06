@@ -165,6 +165,28 @@ mano en `remote/config.json` (el valor vive también en
       `!({additionalPayload::hasDriverLicense})` hizo falta. Pendiente sólo la plantilla de **MTY**,
       cuando ese formato se active allá (el hook ya está publicado en los dos dominios).
 
+## Safari / iPad
+
+**En el bundle desde v0.6.32** (2026-08-05, 34 applets). Es de los pocos applets donde el iPad no
+es una comodidad sino **el lugar correcto**: dar de alta a un chofer externo pide la foto de su
+identificación, y el `<input type="file" accept="image/*">` abre la **cámara** directo en el andén
+— sin pasar por una computadora ni por el consultor.
+
+Pasa el criterio de curación porque su única interacción con archivos es **SUBIR**. El criterio que
+excluye a `auditor`, `carga-masiva` y `file-uploader` es la **descarga** (`a.download` /
+`URL.createObjectURL`), que en iOS Safari no funciona; aquí no hay ninguna.
+
+Como `autoInject:false`, **no tiene FAB: el popup es su única puerta**, así que necesitó el
+lanzador cableado en los tres archivos —
+`safari/extension/popup.js` (`LAUNCHERS`) · `safari/sa-dispatcher.js`
+(`'open-driver-licenses': 'DriverLicenses.open'`) · `safari/bundle.json` (`applets[]`) —
+más su global en el mapa de `tools/test/build-safari.test.js`. Ese test es el trinquete del canal
+y **se puso rojo** al agregar el lanzador sin registrar el global (`global DriverLicenses sin
+script conocido en el test`): hizo exactamente su trabajo.
+
+⚠️ **El bundle es estático: falta recompilar en Xcode** para que llegue al iPad. Los artefactos ya
+están sincronizados en `safari/xcode/.../Resources/`.
+
 ## Historial
 
 - **0.1.0** (2026-08-05) — Alta. Núcleo puro con 30 tests, panel de administración, publicación
