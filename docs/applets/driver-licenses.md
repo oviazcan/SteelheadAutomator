@@ -1,6 +1,7 @@
 # `driver-licenses` — Licencias de Choferes
 
-**Versión:** 0.1.0 · **Estado:** construido en rama `feat/driver-licenses-applet`, **sin deployar**.
+**Versión:** 0.1.0 · **Estado:** **EN PRODUCCIÓN** desde el 2026-08-05 (`config v1.11.88`; el vivo
+ya va en 1.11.89 por un deploy posterior ajeno).
 **Rutas de hash:** las tres operaciones quedaron con ruta y el trinquete `hash-regen-coverage`
 pasa (5/5). La del centinela está **declarada pero no validada en vivo** — ver §Rutas.
 
@@ -152,12 +153,17 @@ mano en `remote/config.json` (el valor vive también en
 
 ## Pendientes
 
-- [ ] Rutas de regeneración de `PdfLowCode` y `CreatePdfLowCode` (arriba).
-- [ ] Deploy — requiere coordinación: `remote/config.json` y `gh-pages` son *hot files* y sólo
-      una sesión deploya a la vez.
+- [ ] **Validar en vivo** la receta del centinela `pdfLowCodeSave`: está escrita y el trinquete la
+      cuenta, pero falta una corrida del autopilot y posiblemente el handler de navegación por
+      modales anidados en el motor (§Rutas). Las rutas en sí ya están.
+- [x] ~~Deploy~~ — hecho el 2026-08-05 (bump 1.11.87→1.11.88). Nota: `deploy.sh` commitea y
+      espeja pero **no pushea**, y deja el worktree en `gh-pages`; hay que empujar a mano y volver.
 - [ ] Sustituir las INE por versión recortada o gafete laboral antes de usarlo en producción.
-- [ ] Cambiar la plantilla de PDFGeneratorAPI para que lea `{additionalPayload::driverLicenseUrl}`
-      (hoy sigue con las imágenes y condicionales viejos; el hook ya publica el dato).
+- [x] ~~Plantilla de PDFGeneratorAPI~~ — hecha y **verificada en producción** el 2026-08-05: UNA
+      imagen con `{additionalPayload::driverLicenseUrl}` y **cero condicionales**. Medido que con
+      URL vacía el motor **no pinta nada**, así que ni el genérico
+      `!({additionalPayload::hasDriverLicense})` hizo falta. Pendiente sólo la plantilla de **MTY**,
+      cuando ese formato se active allá (el hook ya está publicado en los dos dominios).
 
 ## Historial
 
