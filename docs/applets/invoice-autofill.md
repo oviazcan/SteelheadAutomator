@@ -1,5 +1,27 @@
 # `invoice-autofill` — bitácora completa
 
+## 0.5.68 (2026-08-07) — el scan inmediato salía detrás del latch del observer
+
+Salió de la **auditoría de los nueve applets** que quedaron sin poll tras el reporte «falla en los
+equipos Windows de menor desempeño» (ver
+[`docs/architecture/modal-mount-audit.md`](../architecture/modal-mount-audit.md)). Este applet **no
+necesita poll** —es de página, y la pantalla sigue mutando mientras el operador llena el
+formulario— pero sí caía en la otra mitad del mismo error:
+
+```js
+if (window.__sa…ObserverActive) return;   // ← el scan inmediato estaba DESPUÉS
+```
+
+`checkUrl` resetea el estado al salir de la ruta pero **no desconecta el observer**, así que al
+REGRESAR por navegación SPA el `return` temprano se comía la única pasada que mira la página **ya
+montada**. A partir de ahí solo quedaba el debounce de **500 ms** —el más largo del repo— que solo
+vuelve a correr si llegan más mutaciones; medido en `create-order-autofill`, con la pantalla quieta
+hubo **0 mutaciones de `childList` en 6 s**.
+
+**Fix:** el observer se crea si falta; el scan corre **siempre**. Un latch protege UN recurso.
+Trinquete en `tools/test/modal-detect-poll-coverage.test.js`.
+
+
 Ciclos documentados: 0.5.26 → 0.5.34 (modal manual) + 0.5.60 → 0.5.63 (PS-embedded) + 0.5.64 (modal OV/PS rediseñado: AR Account label, income commit, gate del panel) + 0.5.65 (AR matcher: divisa "M.N.") + 0.5.66 (SH renombró la columna de ingreso) + 0.5.67 (carrera al leer el cliente del encabezado). Para deploy y reglas generales, ver `../../CLAUDE.md`. Para patrones de DOM, ver `../architecture/dom-patterns.md`.
 
 ## Lección 0.5.67 (2026-08-03) — «no detecta el cliente»: no era una rotura, era una CARRERA

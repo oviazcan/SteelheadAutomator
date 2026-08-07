@@ -93,6 +93,23 @@ test('warehouse-location-prefill: el candado NO depende de que el campo monte (d
     'applyUnusedFieldStates/evaluateSaveGate/watchLineRows, que tocan el DOM y pueden tirar).');
 });
 
+// Los autofill de página no necesitan poll (la pantalla sigue mutando mientras el operador
+// llena el formulario), pero sí caían en la otra mitad del mismo error: colgar el scan inmediato
+// del latch del observer. Al salir de la ruta ninguno de los dos desconecta su observer, así que
+// al REGRESAR el `return` temprano se comía la única pasada que mira la página ya montada.
+for (const file of ['invoice-autofill.js', 'bill-autofill.js']) {
+  test(`${file}: el scan inmediato NO va detrás del latch del observer`, () => {
+    const src = fs.readFileSync(path.join(SCRIPTS, file), 'utf8');
+    const fn = src.slice(src.indexOf('function setupPageObserver()'));
+    const body = fn.slice(0, fn.indexOf('\n  }\n'));
+    assert.doesNotMatch(body, /ObserverActive\)\s*return;/,
+      'un `return` temprano por el latch del observer también se salta el scan: cada recurso ' +
+      'se enciende por su propio estado.');
+    assert.match(body, /scanFor\w+Page\(\);\s*$/,
+      'setupPageObserver debe terminar SIEMPRE con un scan, haya creado el observer o no.');
+  });
+}
+
 test('receiver-date-override: onModalFound devuelve si MONTÓ, no si lo intentó', () => {
   const src = fs.readFileSync(path.join(SCRIPTS, 'receiver-date-override.js'), 'utf8');
   assert.match(src, /if \(!injectField\(modal\)\) return false;/,

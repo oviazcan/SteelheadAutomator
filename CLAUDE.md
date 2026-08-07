@@ -211,7 +211,10 @@ pushea el otro repo automáticamente**. Ver `tools/hash-autopilot/README.md` y e
   `warehouse-location-prefill` se anclan al MISMO encabezado; darle poll al primero (1.11.105) lo hizo
   montar antes, y el segundo —que aún tenía el latch al INTENTO— pasó de «falla a veces» a «falla
   siempre» hasta su fix (1.11.107). **Applets que comparten contenedor se arreglan en el MISMO deploy**,
-  o el intermedio es una regresión visible en piso.
+  o el intermedio es una regresión visible en piso. **Auditoría de los 9 restantes (2026-08-07):
+  7 SANOS, 2 corregidos** — la ausencia de poll NO es un defecto; lo que decide es si un montaje
+  fallido tiene quién lo reintente. Criterio, veredicto por applet y lo que la auditoría NO prueba:
+  [`docs/architecture/modal-mount-audit.md`](docs/architecture/modal-mount-audit.md).
 - **Verifica RELEYENDO cuando la mutation no devuelve el dato.** Varias mutations responden
   `{clientMutationId:null}` — ni el valor ni el id — así que un `await` sin excepción **NO prueba que
   se escribió**. Relee saltando caches y compara el valor (para fechas, el **instante**, no la cadena).
@@ -488,7 +491,7 @@ renglón. **Antes de tocar un applet, lee su bitácora.**
 | `driver-licenses` | 0.1.3 · **en producción** (`1.11.100`) · iPad `0.6.37` | Administra las identificaciones de choferes EXTERNOS y **publica el catálogo dentro del hook `pdf:SHIPMENT_TEMPLATE`** de SteelheadPowerTools (sustituye un condicional por chofer en la plantilla). Único applet que **publica código productivo**: relee del servidor, muestra diff, exige confirmación y aborta si los marcadores no están sanos. Pertenencia por **prefijo** `licencia-` en el nombre, no por carpeta (`CreateUserFile` no puede asignarla) | [`driver-licenses.md`](docs/applets/driver-licenses.md) |
 | `schedule-batch-highlighter` | 0.2.0 | Resalta un lote en el Schedule Board y 📦 agrupa sus órdenes en una tarea | [`schedule-batch-highlighter.md`](docs/applets/schedule-batch-highlighter.md) |
 | `po-listing-filters` | 0.4.0 | Buscador global de OC/proveedor/factura + toggle "Sólo Proquipa" | [`po-listing-filters.md`](docs/applets/po-listing-filters.md) |
-| `invoice-autofill` | 0.5.67 | Autollena cliente/divisa/TC/CXC y la cuenta de ingreso por línea al crear factura | [`invoice-autofill.md`](docs/applets/invoice-autofill.md) |
+| `invoice-autofill` | 0.5.68 | Autollena cliente/divisa/TC/CXC y la cuenta de ingreso por línea al crear factura | [`invoice-autofill.md`](docs/applets/invoice-autofill.md) |
 | `invoice-auto-regen` | 0.5.37 | Regeneración automática de facturas | [`invoice-auto-regen.md`](docs/applets/invoice-auto-regen.md) |
 | `cfdi-attacher` | 0.1.0 | Adjunta el XML del CFDI al correo de la factura (y delata en ámbar las facturas sin XML) | [`cfdi-attacher.md`](docs/applets/cfdi-attacher.md) |
 | `report-regen` | 0.3.5 | Botón de regeneración de reporte con countdown, anclado al icono de correo | [`report-regen.md`](docs/applets/report-regen.md) |
@@ -513,7 +516,7 @@ renglón. **Antes de tocar un applet, lee su bitácora.**
 | `sensor-graph-hide-all` | 0.2.0 | Al entrar a un Sensor Dashboard esconde todos los sensores + combo para aislar uno | [`sensor-graph-hide-all.md`](docs/applets/sensor-graph-hide-all.md) |
 | `hash-scanner` | 0.6.24 | Captura hashes de persisted queries navegando la app (degrada las muestras, no las descarta) | [`hash-scanner.md`](docs/applets/hash-scanner.md) |
 | `process-canon` | varios | Canon de nodos de proceso (helper compartido) | [`processes-architecture.md`](docs/processes-architecture.md) |
-| `bill-autofill` | 0.1.0 | Autollena cuenta AP, divisa, TC y cuentas de gasto al crear un Bill (aprende de selecciones previas) | [`bill-autofill.md`](docs/applets/bill-autofill.md) |
+| `bill-autofill` | 0.1.1 | Autollena cuenta AP, divisa, TC y cuentas de gasto al crear un Bill (aprende de selecciones previas) | [`bill-autofill.md`](docs/applets/bill-autofill.md) |
 | `inventory-reset` | 0.1.0 | Archiva los lotes activos y carga inventario nuevo desde CSV | [`inventory-reset.md`](docs/applets/inventory-reset.md) |
 | `invoice-default-tab` | 0.1.0 | Al entrar a /Invoices sin `mode=`, navega solo al tab Packing Slips | [`invoice-default-tab.md`](docs/applets/invoice-default-tab.md) |
 | `paros-linea` | 0.1.0 | Botón flotante Andon: registra paros de línea con cronómetro y evidencia | [`paros-linea.md`](docs/applets/paros-linea.md) |
