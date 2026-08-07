@@ -170,6 +170,57 @@
     return true;                                                 // MuiDialog-paper / -container → sí
   }
 
+  // ¿Qué hay que encender/apagar al evaluar la ruta actual?
+  //
+  // Bug MEDIDO en producción el 2026-08-07 (/Domains/344/SalesOrders): el poll de
+  // re-detección arrancaba en la PRIMERA visita y ya no volvía nunca. `setupObserver()`
+  // hacía `if (observerActive) return` antes de `startDetectPoll()`, y como el observer
+  // no se desconectaba al salir, el latch seguía en `true` al regresar ⇒ el `startDetectPoll()`
+  // quedaba inalcanzable. Sonda en vivo: **4 ticks / 3.5 s** en la primera visita, **0 al
+  // volver** por navegación SPA. Sin poll, el applet cuelga del MutationObserver, que en esa
+  // pantalla despierta **una sola vez** —al montarse el modal, o sea ANTES de que el operador
+  // elija cliente— así que el autofill ya no vuelve a mirar.
+  //
+  // La decisión sale aquí, pura, en vez de vivir en tres `if` repartidos por el glue: cada
+  // recurso (observer, poll) se enciende por SU PROPIO estado, no por el del vecino.
+  function lifecycleActions(st) {
+    const routeMatches = !!(st && st.routeMatches);
+    if (!routeMatches) {
+      return { observer: 'disconnect', poll: 'stop', resetSignature: true, removePanel: true, scan: false };
+    }
+    return {
+      observer: (st && st.observerConnected) ? 'keep' : 'connect',
+      poll: (st && st.pollRunning) ? 'keep' : 'start',
+      resetSignature: false,
+      removePanel: false,
+      scan: true
+    };
+  }
+
+  // ¿Qué reportar de un campo que sale del cliente? Devuelve `null` cuando SÍ hay valor
+  // ("procede a llenar"), o el resultado que va al panel.
+  //
+  // Bug: un fallo al LEER al cliente (timeout de 90 s, 5xx, red caída) se reportaba idéntico
+  // a "el cliente no tiene el dato" — panel ámbar acusando al catálogo, con liga para ir a
+  // capturar algo que ya estaba capturado. En equipos lentos o con red de planta ese es el
+  // camino frecuente, no el excepcional. **Un dato que no pudimos leer no es un dato ausente.**
+  function customerFieldResult(value, fetchError, fieldName) {
+    if (fetchError) {
+      return { ok: false, needsSetup: false, retry: true, msg: `no pude leer al cliente (${fetchError}) — reintentando` };
+    }
+    if (!value) {
+      return { ok: false, needsSetup: true, msg: `el cliente no tiene DatosFactura.${fieldName}` };
+    }
+    return null;
+  }
+
+  // Corolario del anterior en el CACHÉ: un `null` por fallo de red se guardaba por
+  // idInDomain y envenenaba el resto de la sesión — ni cerrando y reabriendo el modal se
+  // recuperaba, porque el segundo intento leía el veneno en vez de reintentar.
+  function cacheableCustomerResult(customer, fetchError) {
+    return !fetchError;
+  }
+
   const api = {
     normalizeForMatch,
     cleanCustomerName,
@@ -183,7 +234,10 @@
     domainIdFromPath,
     customerUrl,
     matchesCreateOrderUrl,
-    isDialogRootClass
+    isDialogRootClass,
+    lifecycleActions,
+    customerFieldResult,
+    cacheableCustomerResult
   };
   if (typeof window !== 'undefined') window.CreateOrderAutofillCore = api;
   if (typeof module !== 'undefined' && module.exports) module.exports = api;

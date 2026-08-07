@@ -15,6 +15,23 @@
 //
 // Depende de: SteelheadAPI, CreateOrderAutofillCore (create-order-autofill-core.js)
 //
+// FIX 2026-08-07 (v0.1.8): reporte de piso — "falla en equipos Windows de menor desempeño".
+// Tres causas, dos de ellas MEDIDAS en producción (/Domains/344/SalesOrders):
+//   1. EL DISPARO SE MORÍA AL REGRESAR. `setupObserver()` hacía `if (observerActive) return`
+//      ANTES de `startDetectPoll()`, y el observer nunca se desconectaba ⇒ el latch seguía en
+//      true al volver por navegación SPA y el poll ya no arrancaba. Sonda en vivo: 4 ticks/3.5s
+//      en la primera visita, **0 al volver**. Sin poll, el applet queda colgado del
+//      MutationObserver, que en esa pantalla despierta UNA vez —al montarse el modal, o sea
+//      ANTES de que el operador elija cliente— y ya no vuelve a mirar. Ahora cada recurso se
+//      enciende por su propio estado (`Core.lifecycleActions`).
+//   2. UN FALLO DE RED SE REPORTABA COMO "FALTA CONFIGURAR EL CLIENTE" y se CACHEABA. Un
+//      timeout dejaba al cliente marcado como sin `DatosFactura` para el resto de la sesión.
+//   3. EL TICK PAGABA DE MÁS. Con el modal abierto, cada pasada barría los headings de TODO
+//      el documento 3 veces + `label,span,div,p` del documento entero (el walk del wizard, que
+//      en la pantalla de OVs nunca encuentra nada). Medido: 2.94 ms/tick en una Mac con un DOM
+//      de 2308 nodos — en un equipo de piso con la lista cargada, decenas de ms cada segundo,
+//      en el mismo hilo con el que el operador teclea. Ahora el root sale de un `closest()`.
+//
 // FIX 2026-08-05 (v0.1.4): SH cambió el control de "Cliente:" — al confirmar la selección
 // YA NO monta un <div …singleValue>NOMBRE (#N)</div>; escribe el label del valor en el
 // `value` del <input role="combobox">. Como el applet solo leía singleValues, el cliente
@@ -58,24 +75,28 @@ const CreateOrderAutofill = (() => {
 
   const _customerCache = new Map();   // idInDomain → customer
   const _nameIdCache = new Map();     // normalizedName → idInDomain|null
-  let observerActive = false;
+  let observer = null;                // el MutationObserver vivo (null = desconectado)
   let debounceTimer = null;
   let detectPollTimer = null;
   let state = {
     runId: 0,
     lastSig: null,
     panel: null,
+    wizardRoot: null,   // caché del wizard padre (se revalida con isConnected)
+    wizardBox: null,    // caché del bloque del label "Cliente:" dentro del wizard
     results: { razon: null, divisa: null, consolidar: null }
   };
 
   function init() {
     if (window.__saCreateOrderAutofillVersion) return;
-    window.__saCreateOrderAutofillVersion = true;
     if (document.documentElement.dataset.saCreateOrderAutofillEnabled === 'false') {
       log('deshabilitado');
       return;
     }
     setupUrlListener();
+    // El latch marca el ÉXITO, no el intento: si algo de arriba tirara, la siguiente
+    // evaluación reintenta en vez de congelar el fallo para toda la vida de la página.
+    window.__saCreateOrderAutofillVersion = true;
     log(`init en ${location.pathname} (matches=${urlMatches(location.pathname)})`);
     checkUrl();
   }
@@ -94,39 +115,69 @@ const CreateOrderAutofill = (() => {
     window.addEventListener('popstate', checkUrl);
   }
 
+  // Cada recurso se enciende/apaga por SU PROPIO estado. La versión anterior colgaba el
+  // arranque del poll del latch del observer (`if (observerActive) return` antes de
+  // `startDetectPoll()`), y como el observer no se desconectaba nunca, al REGRESAR a la
+  // pantalla por navegación SPA el poll ya no volvía a arrancar. Medido en producción el
+  // 2026-08-07: 4 ticks/3.5 s en la primera visita, **0 al volver**. Decisión en el core
+  // (`Core.lifecycleActions`), con test de regresión.
   function checkUrl() {
-    if (!urlMatches(location.pathname)) {
-      removePanel();
-      state.lastSig = null;
-      stopDetectPoll();
-      return;
-    }
-    setupObserver();
+    const c = core();
+    const st = {
+      routeMatches: urlMatches(location.pathname),
+      observerConnected: !!observer,
+      pollRunning: !!detectPollTimer
+    };
+    const act = c?.lifecycleActions
+      ? c.lifecycleActions(st)
+      : (st.routeMatches
+        ? { observer: st.observerConnected ? 'keep' : 'connect', poll: st.pollRunning ? 'keep' : 'start', scan: true, removePanel: false, resetSignature: false }
+        : { observer: 'disconnect', poll: 'stop', scan: false, removePanel: true, resetSignature: true });
+
+    if (act.observer === 'disconnect') stopObserver();
+    else if (act.observer === 'connect') startObserver();
+    if (act.poll === 'stop') stopDetectPoll();
+    else if (act.poll === 'start') startDetectPoll();
+    if (act.removePanel) removePanel();
+    if (act.resetSignature) { state.lastSig = null; state.wizardRoot = null; state.wizardBox = null; }
+    if (act.scan) scanForModal();
   }
 
   // El MutationObserver por sí solo NO es confiable para detectar este modal: medido en la
   // máquina del operador (2026-08-06), en `/Domains/<id>/SalesOrders` el modal se abría y el
   // applet no corría — pero al invocar `scanForModal()` a mano hacía todo el trabajo (o sea:
   // no era la firma ni la extracción, era el DISPARO). En `/Receiving/CustomerParts` el mismo
-  // observer sí despertaba. No se encontró la causa de esa asimetría, así que en vez de seguir
-  // parchando el ancla se adopta el mecanismo que en ESTE repo ya detecta modales de forma
+  // observer sí despertaba. Se adoptó el mecanismo que en ESTE repo ya detecta modales de forma
   // fiable en las mismas pantallas: `weight-quick-entry` no se fía del observer, agrega un
   // POLL acotado. El observer se queda (reacciona en el mismo frame cuando sí dispara) y el
   // poll es la red de seguridad.
+  //
+  // 2026-08-07 — MEDIDO por qué el observer no alcanza: con el modal abierto hubo **0
+  // mutaciones de `childList` en el body durante 6 s**, incluso tecleando en el buscador de
+  // cliente. No es un vigilante continuo: dispara en eventos discretos, y en esa pantalla el
+  // único que llega es el montaje del modal — o sea, ANTES de que haya cliente que leer. El
+  // poll no es "una red por si acaso": es el ÚNICO mecanismo que ve al operador elegir cliente.
   const DETECT_POLL_MS = 1000;
 
-  function setupObserver() {
-    if (observerActive) return;
+  function startObserver() {
+    if (observer) return;
     const obs = new MutationObserver(() => {
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(scanForModal, 350);
     });
     obs.observe(document.body, { childList: true, subtree: true });
-    // El latch marca el ÉXITO, no el intento: si `observe` tirara, `observerActive` se queda
-    // en false y el siguiente checkUrl() reintenta, en vez de congelar el fallo para siempre.
-    observerActive = true;
-    startDetectPoll();
-    scanForModal();
+    // El latch marca el ÉXITO, no el intento: si `observe` tirara, `observer` se queda en
+    // null y el siguiente checkUrl() reintenta, en vez de congelar el fallo para siempre.
+    observer = obs;
+  }
+
+  // Fuera de las pantallas del applet no hay nada que observar: dejar un observer de
+  // `body + subtree` vivo cobra en CADA render de la SPA, en todas las demás pantallas.
+  function stopObserver() {
+    if (debounceTimer) { clearTimeout(debounceTimer); debounceTimer = null; }
+    if (!observer) return;
+    observer.disconnect();
+    observer = null;
   }
 
   // Tick barato: `scanForModal` arranca con tres getElementById y sale de inmediato si el
@@ -164,14 +215,21 @@ const CreateOrderAutofill = (() => {
       // Modal cerrado o aún no montado
       if (state.lastSig !== null) {
         state.lastSig = null;
+        state.wizardRoot = null;
+        state.wizardBox = null;
         removePanel();
       }
       return;
     }
-    if (!isCreateOrderModal()) return;
+    // El root se calcula UNA vez por pasada y se reparte. Antes lo recalculaba cada extractor
+    // (`getModalRoot()` sin argumento) barriendo los headings de TODO el documento: 3 barridos
+    // por tick, cada segundo, mientras el modal esté abierto. En un equipo de piso eso es
+    // trabajo de sobra en el hilo que el operador está usando para teclear.
+    const root = getModalRoot(razonSel);
+    if (!root || !isCreateOrderModal(root)) return;
 
-    const customerName = extractCustomerNameFromModal();
-    const shipTo = extractShipToFromModal();
+    const customerName = extractCustomerNameFromModal(root);
+    const shipTo = extractShipToFromModal(root);
     const sig = `${customerName || '?'}||${shipTo || '?'}`;
     if (sig === state.lastSig) return;
     state.lastSig = sig;
@@ -181,15 +239,31 @@ const CreateOrderAutofill = (() => {
     log(`modal detectado | cliente=${customerName || '(sin cliente)'} | shipTo=${shipTo || '(sin shipTo)'}`);
 
     runAutofill(myRun, { customerName, shipTo, razonSel, divisaSel, consolidarChk })
-      .catch(err => warn(`runAutofill: ${err.message}`));
+      .catch(err => {
+        warn(`runAutofill: ${err.message}`);
+        // La firma marcaba el INTENTO: si la corrida moría a medias (red caída, timeout de
+        // 90 s, API sin cargar), el modal quedaba sin llenar y NADIE reintentaba, porque la
+        // firma seguía igual. Al soltarla, el siguiente tick del poll vuelve a intentarlo.
+        if (!isStale(myRun)) state.lastSig = null;
+      });
   }
 
   function isStale(myRun) { return state.runId !== myRun; }
 
-  function isCreateOrderModal() {
-    const heads = document.querySelectorAll('h1, h2, h3, h4, [class*="MuiTypography-h"]');
-    for (const h of heads) {
+  const HEAD_SEL_SMALL = 'h1, h2, h3, h4, [class*="MuiTypography-h"]';
+
+  function isCreateOrderModal(root) {
+    const scope = root || document;
+    for (const h of scope.querySelectorAll(HEAD_SEL_SMALL)) {
       if (headingMatches((h.textContent || '').trim())) return true;
+    }
+    // Degradación explícita: si el título no colgara del root, se busca en todo el documento
+    // como siempre. Un gate que no matchea se apaga EN SILENCIO, así que el camino barato no
+    // puede ser el único — solo el primero.
+    if (scope !== document) {
+      for (const h of document.querySelectorAll(HEAD_SEL_SMALL)) {
+        if (headingMatches((h.textContent || '').trim())) return true;
+      }
     }
     return false;
   }
@@ -215,23 +289,27 @@ const CreateOrderAutofill = (() => {
       : (cls.includes('MuiDialog') && !/MuiDialog(Title|Content|Actions|ContentText)/.test(cls));
   }
 
-  function getModalRoot() {
-    const heads = document.querySelectorAll('h1, h2, h3, h4, [class*="MuiTypography-h"]');
-    for (const h of heads) {
-      if (!headingMatches((h.textContent || '').trim())) continue;
-      // Arrancamos ARRIBA del heading: su propia clase MuiDialogTitle-root es un cebo.
-      let cur = h.parentElement;
-      for (let i = 0; i < 14 && cur; i++) {
+  // `hint` = un campo RJSF ya localizado. Con él la vía normal es un `closest()` desde el
+  // propio campo —O(profundidad del nodo)— en vez del barrido de headings de todo el
+  // documento, que era lo que se pagaba antes en cada extracción.
+  function getModalRoot(hint) {
+    const field = hint || document.getElementById(RJSF_RAZON_ID) || document.getElementById(RJSF_DIVISA_ID);
+    if (field) {
+      const dlg = field.closest?.('[role="dialog"]');
+      if (dlg) return dlg;
+      // Sube PAST el paper chico del accordion (que no lleva "MuiDialog") y el DialogContent.
+      let cur = field.parentElement;
+      for (let i = 0; i < 24 && cur; i++) {
         if (isDialogRoot(cur)) return cur;
         cur = cur.parentElement;
       }
     }
-    // Fallback: ascender desde un campo RJSF hasta el diálogo contenedor. Sube PAST el
-    // paper chico del accordion (que no lleva "MuiDialog") y el DialogContent.
-    const field = document.getElementById(RJSF_RAZON_ID) || document.getElementById(RJSF_DIVISA_ID);
-    if (field) {
-      let cur = field.parentElement;
-      for (let i = 0; i < 24 && cur; i++) {
+    // Fallback histórico: desde el heading del modal. Arranca ARRIBA del heading, porque su
+    // propia clase MuiDialogTitle-root es un cebo para `[class*="MuiDialog"]`.
+    for (const h of document.querySelectorAll(HEAD_SEL_SMALL)) {
+      if (!headingMatches((h.textContent || '').trim())) continue;
+      let cur = h.parentElement;
+      for (let i = 0; i < 14 && cur; i++) {
         if (isDialogRoot(cur)) return cur;
         cur = cur.parentElement;
       }
@@ -272,8 +350,8 @@ const CreateOrderAutofill = (() => {
   // Primario: el valor con badge "(#N)" entre TODOS los react-select del modal —
   // singleValues + values de los combobox (label-independiente).
   // Fallback: label-anchored, acotado al bloque del propio campo.
-  function extractCustomerNameFromModal() {
-    const root = getModalRoot();
+  function extractCustomerNameFromModal(rootHint) {
+    const root = rootHint || getModalRoot();
     if (!root) return null;
     const c = core();
     if (c) {
@@ -323,6 +401,7 @@ const CreateOrderAutofill = (() => {
   // que se degrada a MuiDialog → MuiPaper → document.body. Con body de último recurso el
   // ancla nunca se apaga en silencio; el subárbol del modal se excluye aparte.
   function findReceiveWizardRoot(modalRoot) {
+    if (state.wizardRoot && state.wizardRoot.isConnected) return state.wizardRoot;
     for (const h of document.querySelectorAll(HEADING_SEL)) {
       const t = (h.textContent || '').trim();
       if (!t || t.length > 60) continue;
@@ -330,15 +409,49 @@ const CreateOrderAutofill = (() => {
       const match = c?.isReceiveWizardHeading ? c.isReceiveWizardHeading(t) : WIZARD_RE.test(t);
       if (!match) continue;
       if (modalRoot && modalRoot.contains(h)) continue;   // el heading del propio modal, no
-      return h.closest('[role="dialog"]')
+      const found = h.closest('[role="dialog"]')
         || h.closest('[class*="MuiDialog"]')
         || h.closest('[class*="MuiPaper"]')
         || document.body;
+      state.wizardRoot = found;
+      return found;
     }
     return null;
   }
 
+  // Lee el valor de cliente de un bloque ya localizado (singleValue o input). Barato: es lo
+  // único que se repite en cada pasada cuando el bloque ya está cacheado.
+  function readCustomerFromBox(box) {
+    const sv = box.querySelector('[class*="singleValue"], [class*="SingleValue"]');
+    if (sv) {
+      const clone = sv.cloneNode(true);
+      clone.querySelectorAll('[class*="avatar"], [class*="Avatar"], svg, img').forEach(a => a.remove());
+      const t = (clone.textContent || '').trim();
+      if (!isPlaceholderText(t)) return t;
+    }
+    for (const inp of box.querySelectorAll('input')) {
+      const v = (inp.value || '').trim();
+      if (!isPlaceholderText(v)) return v;
+    }
+    return null;
+  }
+
+  const isReceivingRoute = () => /\/Receiving\/CustomerParts(?:\/|$)/.test(location.pathname);
+
   function extractCustomerFromReceiveWizard(modalRoot) {
+    // 1) Bloque ya localizado: releerlo cuesta un querySelector acotado.
+    if (state.wizardBox && state.wizardBox.isConnected
+      && !(modalRoot && modalRoot.contains(state.wizardBox))) {
+      const cached = readCustomerFromBox(state.wizardBox);
+      if (cached) return cached;
+    }
+    // 2) El wizard de recepción SOLO existe en /Receiving/CustomerParts. En la pantalla de
+    //    Órdenes de Venta este camino nunca encontraba nada y aun así pagaba, en CADA tick del
+    //    poll, un `querySelectorAll('label, span, div, p')` sobre todo el documento leyendo el
+    //    `textContent` de cada nodo — el barrido más caro del applet, corriendo justo mientras
+    //    el operador teclea el nombre del cliente. Es el mismo regex de ruta con el que ya se
+    //    gatea la carga del applet, no un ancla nueva.
+    if (!isReceivingRoute()) return null;
     const wizard = findReceiveWizardRoot(modalRoot);
     if (wizard) {
       for (const el of wizard.querySelectorAll('label, span, div, p')) {
@@ -348,24 +461,15 @@ const CreateOrderAutofill = (() => {
         if (modalRoot && modalRoot.contains(el)) continue;
         const box = el.closest('div[class*="field"]') || el.closest('div')?.parentElement || el.parentElement;
         if (!box || (modalRoot && modalRoot.contains(box))) continue;
-        const sv = box.querySelector('[class*="singleValue"], [class*="SingleValue"]');
-        if (sv) {
-          const clone = sv.cloneNode(true);
-          clone.querySelectorAll('[class*="avatar"], [class*="Avatar"], svg, img').forEach(a => a.remove());
-          const t = (clone.textContent || '').trim();
-          if (!isPlaceholderText(t)) return t;
-        }
-        for (const inp of box.querySelectorAll('input')) {
-          const v = (inp.value || '').trim();
-          if (!isPlaceholderText(v)) return v;
-        }
+        const v = readCustomerFromBox(box);
+        if (v) { state.wizardBox = box; return v; }
       }
     }
     return null;
   }
 
-  function extractShipToFromModal() {
-    const root = getModalRoot();
+  function extractShipToFromModal(rootHint) {
+    const root = rootHint || getModalRoot();
     if (!root) return null;
     // Bilingüe: "Enviar a:" (ES) y "Ship To:" (EN, label real de SH observado en las pantallas
     // de facturación); si SH se muestra en inglés, el ancla mono-ES no encontraba el ship-to
@@ -422,18 +526,32 @@ const CreateOrderAutofill = (() => {
 
   // ── Fetch del customer ──
 
+  // Devuelve `{ customer, error }`. La distinción NO es cosmética: un cliente que de verdad
+  // no tiene capturadas sus Entradas Personalizadas y un cliente que no pudimos LEER se veían
+  // idénticos —`null`— y el panel acusaba al catálogo («el cliente no tiene DatosFactura…»,
+  // en ámbar, con liga para ir a capturar algo que ya estaba capturado). Peor: ese `null` de
+  // un timeout se guardaba en el caché por `idInDomain` y envenenaba el RESTO de la sesión,
+  // así que cerrar y reabrir el modal ya no recuperaba. En un equipo lento o con red de planta
+  // ése es el camino frecuente, no el excepcional.
   async function fetchCustomerCustomInputs(idInDomain) {
-    if (idInDomain == null) return null;
-    if (_customerCache.has(idInDomain)) return _customerCache.get(idInDomain);
+    if (idInDomain == null) return { customer: null, error: null };
+    if (_customerCache.has(idInDomain)) return { customer: _customerCache.get(idInDomain), error: null };
+    const c = core();
     try {
-      const data = await SteelheadAPI.query('Customer', { idInDomain, includeAccountingFields: true });
-      const c = data?.customerByIdInDomain || null;
-      _customerCache.set(idInDomain, c);
-      return c;
+      const sdk = api();
+      if (!sdk || typeof sdk.query !== 'function') {
+        // Sin API no hay dato: se dice, no se inventa. (El array `scripts` carga
+        // steelhead-api.js antes, pero un fetch que falló deja al glue solo y en silencio.)
+        return { customer: null, error: 'la API de Steelhead no cargó' };
+      }
+      const data = await sdk.query('Customer', { idInDomain, includeAccountingFields: true });
+      const customer = data?.customerByIdInDomain || null;
+      if (!c || c.cacheableCustomerResult(customer, null)) _customerCache.set(idInDomain, customer);
+      return { customer, error: null };
     } catch (err) {
       warn(`Customer(idInDomain=${idInDomain}) falló: ${err.message}`);
-      _customerCache.set(idInDomain, null);
-      return null;
+      // NO se cachea el fallo: el siguiente tick del poll reintenta.
+      return { customer: null, error: err.message };
     }
   }
 
@@ -452,7 +570,12 @@ const CreateOrderAutofill = (() => {
       // aquí (searchText/name/query/first) no coinciden con ninguna firma viva — este
       // fallback dejó de ser teórico al volverse la vía principal del flujo de Recibo,
       // donde el nombre del wizard llega SIN "(#N)".
-      const r = await SteelheadAPI.query('CustomerSearchByName',
+      const sdk = api();
+      if (!sdk || typeof sdk.query !== 'function') {
+        warn('la API de Steelhead no cargó — no puedo resolver el cliente por nombre');
+        return null;
+      }
+      const r = await sdk.query('CustomerSearchByName',
         { nameLike: `%${clean}%`, orderBy: ['NAME_ASC'] }, 'CustomerSearchByName');
       const nodes = r?.searchCustomers?.nodes || r?.allCustomers?.nodes || [];
       let hit = nodes.find(n => (c ? c.normalizeForMatch(n.name) : String(n.name || '').toLowerCase()) === key);
@@ -553,20 +676,25 @@ const CreateOrderAutofill = (() => {
       return;
     }
 
-    const customer = await fetchCustomerCustomInputs(idInDomain);
+    const { customer, error: fetchError } = await fetchCustomerCustomInputs(idInDomain);
     if (isStale(myRun)) return;
 
     const datos = customer?.customInputs?.DatosFactura || {};
     const targetRazon = datos.RazonSocialVenta || null;
     const targetDivisa = datos.Divisa || null;
 
+    // `needsSetup` = falta el dato EN EL CLIENTE (el panel ofrece la liga a su ficha);
+    // `retry` = no pudimos leerlo. Son cosas distintas y el operador hace algo distinto con
+    // cada una, así que la decisión vive en el core (`customerFieldResult`) y no se confunden.
+    const c2 = core();
+    const fieldResult = (value, name) => (c2?.customerFieldResult
+      ? c2.customerFieldResult(value, fetchError, name)
+      : (fetchError ? { ok: false, retry: true, msg: `no pude leer al cliente (${fetchError})` }
+        : (!value ? { ok: false, needsSetup: true, msg: `el cliente no tiene DatosFactura.${name}` } : null)));
+
     // Razón Social
-    let razonResult;
-    if (!targetRazon) {
-      // `needsSetup`: no es una falla del applet, es un dato que falta EN EL CLIENTE. El panel
-      // lo distingue y ofrece la liga a su ficha (ver renderPanel).
-      razonResult = { ok: false, needsSetup: true, msg: 'el cliente no tiene DatosFactura.RazonSocialVenta' };
-    } else {
+    let razonResult = fieldResult(targetRazon, 'RazonSocialVenta');
+    if (!razonResult) {
       const r = fillNativeSelectByText(razonSel, targetRazon);
       razonResult = r.success
         ? { ok: true, msg: r.noop ? `ya estaba: ${r.filled}` : `seleccionado: ${r.filled}` }
@@ -574,10 +702,8 @@ const CreateOrderAutofill = (() => {
     }
 
     // Divisa
-    let divisaResult;
-    if (!targetDivisa) {
-      divisaResult = { ok: false, needsSetup: true, msg: 'el cliente no tiene DatosFactura.Divisa' };
-    } else {
+    let divisaResult = fieldResult(targetDivisa, 'Divisa');
+    if (!divisaResult) {
       const r = fillNativeSelectByText(divisaSel, targetDivisa);
       divisaResult = r.success
         ? { ok: true, msg: r.noop ? `ya estaba: ${r.filled}` : `seleccionado: ${r.filled}` }
@@ -604,6 +730,11 @@ const CreateOrderAutofill = (() => {
     log(`autofill | razon=${razonResult.ok ? 'OK' : 'FAIL'} | divisa=${divisaResult.ok ? 'OK' : 'FAIL'} | consolidar=${consolidarResult.ok ? 'OK' : 'FAIL'}`);
 
     renderPanel({ customerName, shipTo, idInDomain });
+
+    // No haber podido LEER es reintentable: se suelta la firma para que el siguiente tick del
+    // poll lo intente otra vez. Sin esto, un timeout dejaba el modal con el error puesto hasta
+    // que el operador cambiara de cliente.
+    if ([razonResult, divisaResult].some(r => r && r.retry) && !isStale(myRun)) state.lastSig = null;
   }
 
   // ── Panel UI ──
