@@ -53,10 +53,43 @@ una sola vez. `injectField` ahora devuelve boolean en sus cuatro salidas.
 > se reintenta— necesita dos marcas. Y antes de mover un latch, pregunta **qué más cuelga de él**:
 > aquí colgaba un candado de seguridad.
 
-⚠️ **No verificado en vivo.** El cambio se validó con la suite (110 archivos verdes) y revisión de
-todos los usos de `saWlpAttached`, pero abrir un flujo de recepción en el ERP productivo para verlo
-montar no se hizo. Al primer uso en piso, confirmar que el combo «Ubicación inicial:» aparece y que
-el candado sigue bloqueando un renglón sin ubicación.
+### 0.6.5 (2026-08-07, mismo día) — el campo volvió a montarse PRIMERO
+
+**Reporte de piso con captura: «se quebró WLP, no aparece el campo».** En la captura, el encabezado
+traía «Fecha real de recibido:» (RDO ✔) pero **no** «Ubicación inicial:» — y aun así el candado
+estaba **funcionando**: «Grupo de Piezas» y «Contenedor» en *— Bloqueado —* y el renglón marcado en
+naranja. Esa combinación es la firma exacta del bug de 0.6.4: el modal se detecta y se cablea, y lo
+único que falla es `injectField`.
+
+**Medido en producción con `1.11.107` servido** (wizard abierto por automatización, consola
+capturada): `campoUbicacion_WLP: true`, `campoMontado_WLP: true`, **cero warns**, campo visible en
+`x=1271`. Y forzando el remontaje con el campo de RDO ya presente, **volvió a montar**. O sea: la
+versión con el fix **sí monta**.
+
+**Lo que el operador vio fue la ventana entre `1.11.105` y `1.11.107`** — es decir, entre el fix de
+`receiver-date-override` y el de este applet. En esa franja RDO ya tenía poll (montaba siempre y
+antes) mientras WLP seguía con el latch puesto **al INTENTO**: si `injectField` fallaba en ese
+primer disparo, el latch quedaba puesto y no había reintento. Una pestaña abierta desde antes del
+deploy sigue corriendo el código que se le inyectó: **hace falta recargar** (⌘⇧R).
+
+> **Regla que sale de aquí:** *arreglar el disparo de un applet cambia el timing de sus vecinos.*
+> RDO y WLP se anclan al MISMO encabezado; darle poll a uno lo hace montar antes, y el que todavía
+> no tiene red de seguridad pasa de "falla a veces" a "falla siempre". Cuando dos applets comparten
+> contenedor, **se arreglan en el mismo deploy** o el intermedio es una regresión visible.
+
+**Corrección adicional de este mismo día:** al introducir las dos marcas, `injectField` quedó
+**después** de todo el cableado — detrás de `applyUnusedFieldStatesWithRetry`, `evaluateSaveGate` y
+`watchLineRows`, tres funciones que tocan el DOM del modal y que, si tiran, se llevan por delante el
+montaje del campo. Se restauró el orden original (**el campo primero**) y cada paso del cableado va
+en su propio `try`, para que un fallo no deje sin instalar a los siguientes — el candado es el
+último y el que menos puede faltar. El test ya no fija un orden textual (esa primera versión se
+rompió al restaurar el orden correcto): fija que **no haya un `return` entre el intento de montar el
+campo y `startGatePoll`**, que es la intención real.
+
+⚠️ **Verificado el MONTAJE en vivo** (wizard abierto por automatización con `1.11.107`: campo
+presente y visible, sin warns). **Falta verificar el CANDADO en vivo** — que siga bloqueando el
+guardado de un renglón sin ubicación no se probó, porque exigiría intentar guardar un recibo real en
+el ERP productivo. Al primer uso en piso, confirmarlo.
 
 
 **Safari/iPad:** en el bundle **0.6.38** (2026-08-07). Este fix pesa más en el iPad que en escritorio: es el dispositivo del piso y la CPU más lenta del parque — el perfil exacto donde el montaje llega tarde y el observer ya no vuelve a mirar. **Pendiente recompilar en Xcode** (`Resources/` sincronizado ≠ compilado).

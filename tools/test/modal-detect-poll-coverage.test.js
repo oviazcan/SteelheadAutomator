@@ -72,13 +72,25 @@ test('warehouse-location-prefill: el candado NO depende de que el campo monte (d
   // El interceptor de fetch se sigue activando con la marca de DETECCIÓN.
   assert.match(src, /querySelector\('\[data-sa-wlp-attached="true"\]'\)/,
     'la capa fetch del candado debe seguir atada a saWlpAttached (modal detectado)');
-  const idxAttached = src.indexOf("modal.dataset.saWlpAttached = 'true';");
-  const idxGate = src.indexOf('startGatePoll(modal);');
-  const idxField = src.indexOf('if (!injectField(modal)) return false;');
-  assert.ok(idxAttached > 0 && idxGate > 0 && idxField > 0, 'las tres anclas deben existir');
-  assert.ok(idxGate < idxField,
-    'el candado (startGatePoll) se instala ANTES de intentar el campo: su existencia no puede ' +
-    'depender de que el anclaje del combo funcione.');
+  // La intención NO es un orden textual (esa primera versión del test se rompió en cuanto el
+  // campo volvió a montarse primero, que es su orden correcto): es que un `injectField` que
+  // FALLA no pueda cortar la ejecución antes de instalar el candado. O sea: en `onModalFound`
+  // no puede haber un `return` entre el intento de montar el campo y `startGatePoll`.
+  const cuerpo = src.slice(src.indexOf('function onModalFound(modal) {'));
+  const fin = cuerpo.indexOf('\n  }\n');
+  const body = cuerpo.slice(0, fin);
+  const idxField = body.indexOf('injectField(modal)');
+  const idxGate = body.indexOf('startGatePoll(modal)');
+  assert.ok(idxField > 0 && idxGate > 0, 'injectField y startGatePoll deben estar en onModalFound');
+  const entre = body.slice(Math.min(idxField, idxGate), Math.max(idxField, idxGate));
+  assert.doesNotMatch(entre, /\breturn\b/,
+    'un injectField que falla NO puede cortar antes de instalar el candado: el candado protege ' +
+    'aunque el combo del encabezado no haya montado (el operador conserva los combos por renglón).');
+  // Y el campo se monta ANTES del cableado que toca el DOM del modal: si una de esas funciones
+  // tira, no puede llevarse por delante lo único que el operador ve.
+  assert.ok(idxField < idxGate,
+    'injectField va antes del cableado (orden original del applet; invertirlo lo puso detrás de ' +
+    'applyUnusedFieldStates/evaluateSaveGate/watchLineRows, que tocan el DOM y pueden tirar).');
 });
 
 test('receiver-date-override: onModalFound devuelve si MONTÓ, no si lo intentó', () => {

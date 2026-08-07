@@ -207,6 +207,11 @@ pushea el otro repo automáticamente**. Ver `tools/hash-autopilot/README.md` y e
   inyectan en LISTADOS no lo necesitan —ahí paginar/filtrar/ordenar mutan sin parar—. **Y si el tick
   es caro, lleva presupuesto**: un poll que barre el documento entero cada segundo no es una red, es
   el siguiente reporte de piso (`unit-autoconvert`: 5 intentos por diálogo y se calla).
+  **Y arreglar el disparo de un applet CAMBIA EL TIMING DE SUS VECINOS:** `receiver-date-override` y
+  `warehouse-location-prefill` se anclan al MISMO encabezado; darle poll al primero (1.11.105) lo hizo
+  montar antes, y el segundo —que aún tenía el latch al INTENTO— pasó de «falla a veces» a «falla
+  siempre» hasta su fix (1.11.107). **Applets que comparten contenedor se arreglan en el MISMO deploy**,
+  o el intermedio es una regresión visible en piso.
 - **Verifica RELEYENDO cuando la mutation no devuelve el dato.** Varias mutations responden
   `{clientMutationId:null}` — ni el valor ni el id — así que un `await` sin excepción **NO prueba que
   se escribió**. Relee saltando caches y compara el valor (para fechas, el **instante**, no la cadena).
@@ -489,7 +494,7 @@ renglón. **Antes de tocar un applet, lee su bitácora.**
 | `report-regen` | 0.3.5 | Botón de regeneración de reporte con countdown, anclado al icono de correo | [`report-regen.md`](docs/applets/report-regen.md) |
 | `price-confirm-guard` | 0.1.5 | Candado: exige reconfirmar el precio de un NP (tipo password) antes de guardar | [`price-confirm-guard.md`](docs/applets/price-confirm-guard.md) |
 | `receiver-date-override` | 0.5.82 | Campo de fecha en el modal de recepción | [`receiver-date-override.md`](docs/applets/receiver-date-override.md) |
-| `warehouse-location-prefill` | 0.6.4 | Prellena ubicación de almacén + candado que exige `locationId` en el payload | [`warehouse-location-prefill.md`](docs/applets/warehouse-location-prefill.md) |
+| `warehouse-location-prefill` | 0.6.5 | Prellena ubicación de almacén + candado que exige `locationId` en el payload | [`warehouse-location-prefill.md`](docs/applets/warehouse-location-prefill.md) |
 | `weight-quick-entry` | 0.5.82 | Captura rápida de peso en todas las filas del modal de recepción | [`weight-quick-entry.md`](docs/applets/weight-quick-entry.md) |
 | `load-calculator` | 0.2.0 | Calculadora de piezas por carga (cuadrícula/área/barril) + configurador de estaciones | [`load-calculator.md`](docs/applets/load-calculator.md) |
 | `spec-migrator` | + `validate-duplicate-params` 0.5.5 | Bundle "Ajuste Masivo de Specs": validar duplicados, asignar pendientes, normalizar falsos pendientes | [`spec-migrator.md`](docs/applets/spec-migrator.md) |
