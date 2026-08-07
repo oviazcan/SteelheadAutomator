@@ -193,6 +193,14 @@ pushea el otro repo automáticamente**. Ver `tools/hash-autopilot/README.md` y e
   un fallo transitorio de montaje **se congela para siempre** (síntoma: «desapareció», no «tardó un
   render»). La función de montaje debe devolver si logró montar, y el latch ponerse solo entonces;
   si no montó, el observer reintenta (con el `warn` acotado a uno por modal).
+  **Y un latch protege UN recurso.** Cuando un solo `if (yaEstá) return` guarda DOS arranques, el
+  segundo hereda el ciclo de vida del primero: en `create-order-autofill` el `startDetectPoll()`
+  vivía tras el latch del observer, y como el observer no se desconectaba al salir de la pantalla,
+  al **regresar por navegación SPA** el poll ya no arrancaba — medido en producción: 4 ticks/3.5 s
+  en la primera visita, **0 al volver**. Cada recurso se enciende y se apaga por SU propio estado.
+  Corolario: **lo que se apaga al salir de una ruta, alguien lo tiene que volver a encender**, y el
+  `MutationObserver` no sirve de respaldo — medido en el mismo modal: **0 mutaciones de `childList`
+  en 6 s**, incluso tecleando. Dispara en eventos discretos, no vigila.
 - **Verifica RELEYENDO cuando la mutation no devuelve el dato.** Varias mutations responden
   `{clientMutationId:null}` — ni el valor ni el id — así que un `await` sin excepción **NO prueba que
   se escribió**. Relee saltando caches y compara el valor (para fechas, el **instante**, no la cadena).
@@ -226,6 +234,11 @@ pushea el otro repo automáticamente**. Ver `tools/hash-autopilot/README.md` y e
   servidor valida cada mutación al ejecutarla— así que un falso «sí» cuesta un error visible al hacer
   clic, y un falso «no» deja al operador sin herramienta **y sin explicación**. Decisión en el módulo
   puro [`extension/permission-gate.js`](extension/permission-gate.js) (`tools/test/permission-gate.test.js`).
+  **Y un dato que no pudimos LEER no es un dato ausente — menos aún se cachea.** `create-order-autofill`
+  guardaba el `null` de un timeout (90 s) como si fuera la respuesta del ERP: el panel acusaba en ámbar
+  «el cliente no tiene `DatosFactura`» —con liga para ir a capturar algo ya capturado— y el veneno duraba
+  **toda la sesión**, porque el reintento leía el caché en vez de reintentar. Un fallo de red convertido
+  en dato dura mil veces más que el fallo.
 
 ### Reglas de diseño
 - **UI propia en DARK MODE.** Todo modal, panel, popover o tooltip que inyecte la extensión va en
@@ -477,7 +490,7 @@ renglón. **Antes de tocar un applet, lee su bitácora.**
 | `spec-params-bulk` | 0.9.0 | Alta masiva de parámetros de spec | [`spec-params-bulk.md`](docs/applets/spec-params-bulk.md) |
 | `pn-lifecycle` | 0.2.0 | Ciclo de vida de NPs: marcar/quitar validación, desarchivar, borrado definitivo (escanear o pegar IDs) | [`pn-lifecycle.md`](docs/applets/pn-lifecycle.md) |
 | `file-uploader` | 0.5.1 | Carga masiva de fotos a NPs con convención `<PN>_<VISTA>_<num>` | [`file-uploader.md`](docs/applets/file-uploader.md) |
-| `create-order-autofill` | 0.1.7 | Autollena el modal de creación de OV / Sales Order | [`create-order-autofill.md`](docs/applets/create-order-autofill.md) |
+| `create-order-autofill` | 0.1.8 | Autollena el modal de creación de OV / Sales Order | [`create-order-autofill.md`](docs/applets/create-order-autofill.md) |
 | `vale-almacen` | 0.1.0 | Vale de almacén: emite evento de mantenimiento con líneas artículo+cantidad+usuario | [`vale-almacen.md`](docs/applets/vale-almacen.md) |
 | `wo-completer` | 0.1.0 | Completar/Descompletar OTs en masa | [`wo-completer.md`](docs/applets/wo-completer.md) |
 | `wo-mover` | 0.2.0 | Reasigna el encabezado de OTs entre OVs (la parte/PT se asocia manual) | [`wo-mover.md`](docs/applets/wo-mover.md) |

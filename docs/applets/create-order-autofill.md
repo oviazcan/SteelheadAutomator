@@ -19,6 +19,106 @@ badge—, y además **el modal vacío no predice al modal lleno**: al elegir cli
 Facturar a, `¿Envío Directo?`, Enviar a, Enviar vía y Términos de Facturación. Un HTML del modal
 recién abierto NO sirve para decidir anclajes.
 
+## Fix 2026-08-07 (v0.1.8) — "falla en los equipos Windows de menor desempeño"
+
+**Reporte de piso, sin síntoma concreto**: al usuario no le falla en su máquina; a los equipos
+Windows con menos capacidades, sí. Se investigó **con sondas en producción**, no por lectura.
+Salieron tres causas, y las dos primeras **no son de rendimiento** — son bugs que en una máquina
+rápida quedan tapados por la suerte del *timing*.
+
+### 1. El disparo se moría al REGRESAR a la pantalla (medido)
+
+```js
+function setupObserver() {
+  if (observerActive) return;   // ← el poll está DESPUÉS de este return
+  …
+  observerActive = true;
+  startDetectPoll();
+}
+```
+
+`checkUrl()` apagaba el poll al salir de la ruta (`stopDetectPoll()`) pero **nunca desconectaba el
+observer**, así que `observerActive` seguía en `true`. Al volver, `setupObserver()` retornaba en la
+primera línea y **`startDetectPoll()` quedaba inalcanzable**. El poll —la red de seguridad que se
+introdujo en v0.1.6 justo porque el observer no despierta en esa pantalla— vivía **solo en la
+primera visita**.
+
+**Sonda en vivo** (`/Domains/344/SalesOrders`, contando las llamadas a
+`getElementById('root_RazonSocialVenta')` con las que arranca `scanForModal`):
+
+| momento | ticks |
+|---|---|
+| primera visita, 3.5 s | **4** |
+| fuera de la ruta, 2.5 s | 0 ✔ |
+| **al regresar por `pushState`, 3.5 s** | **0** ❌ |
+
+Y el respaldo que queda tampoco alcanza: con el modal abierto se midieron **0 mutaciones de
+`childList` en el `body` durante 6 s**, incluso tecleando en el buscador de cliente. El observer no
+es un vigilante continuo: dispara en eventos discretos. Se comprobó que al abrir el modal disparó
+**una sola vez** — y en ese instante **todavía no hay cliente elegido**, así que el applet mira
+justo cuando no hay nada que ver y no vuelve a mirar nunca.
+
+> **Por qué pega más en un equipo lento:** el observer despierta 350 ms *después* de que las
+> mutaciones paran. En una máquina rápida, elegir cliente monta Contacto / Facturar a / **Enviar
+> a** dentro de la misma ráfaga y la firma sale completa. En una lenta el montaje se parte, el
+> debounce vence a media construcción, el applet lee un modal **incompleto** (sin ship-to →
+> *Consolidar* nunca se marca) y —sin poll— nadie corrige esa lectura parcial.
+
+**Fix:** cada recurso se enciende y se apaga por **su propio** estado, no por el del vecino. La
+decisión sale a `Core.lifecycleActions({routeMatches, observerConnected, pollRunning})`, pura y con
+test de regresión. De paso, al salir de la ruta el observer **sí se desconecta** (dejarlo vivo
+cobra en cada render de la SPA, en todas las demás pantallas).
+
+> **Regla que sale de aquí:** *un latch protege UN recurso.* Cuando un solo `if` guarda dos
+> arranques, el segundo hereda el ciclo de vida del primero — y si el primero nunca se apaga, el
+> segundo nunca vuelve.
+
+### 2. Un fallo de red se reportaba como «falta configurar el cliente» — y se cacheaba
+
+`fetchCustomerCustomInputs` hacía `catch → _customerCache.set(idInDomain, null)`. Un timeout (el
+default son **90 s**), un 5xx o la red de planta caída producían exactamente el mismo `null` que un
+cliente sin capturar, así que el panel pintaba el bloque **ámbar** «el cliente no tiene
+`DatosFactura.RazonSocialVenta`» con la liga para ir a capturar **algo que ya estaba capturado**. Y
+como el veneno quedaba en el caché por `idInDomain`, **ni cerrando y reabriendo el modal** se
+recuperaba: el segundo intento leía el veneno en vez de reintentar.
+
+**Fix:** `fetchCustomerCustomInputs` devuelve `{customer, error}`; el fallo **no se cachea**;
+`Core.customerFieldResult(value, fetchError, campo)` separa `needsSetup` (falta el dato en el
+cliente → liga a su ficha) de `retry` (no pudimos leerlo → «no pude leer al cliente (…) —
+reintentando»). Y la firma se **suelta** cuando la corrida murió, para que el siguiente tick lo
+intente otra vez: antes `state.lastSig` marcaba el **intento**, así que un fallo transitorio dejaba
+el modal muerto hasta que el operador cambiara de cliente.
+
+> **Regla:** *un dato que no pudimos leer no es un dato ausente.* Y **AUSENTE ≠ ERROR** aplica
+> también al caché: guardar el resultado de una consulta que falló convierte un problema de 200 ms
+> en uno que dura toda la sesión.
+
+### 3. El tick del poll pagaba de más (lo único que sí es rendimiento)
+
+Con el modal abierto, **cada segundo**, la pasada hacía: 3× `querySelectorAll` de headings sobre
+**todo el documento** (`isCreateOrderModal` + `getModalRoot` una vez por extractor), un
+`querySelectorAll('h1…h6, [class*="MuiTypography"], [class*="heading"], [class*="title"]')` global
+leyendo el `textContent` de cada match, y un `querySelectorAll('label, span, div, p')` **del
+documento entero** — el walk del wizard de recepción, que en la pantalla de Órdenes de Venta
+**nunca encuentra nada porque ahí no hay wizard**, y aun así se pagaba entero. Todo eso en el mismo
+hilo con el que el operador teclea el nombre del cliente.
+
+Medición (Mac, DOM de 2308 nodos, modal abierto): **2.94 ms por tick**. En un equipo de piso con la
+lista cargada y CPU de gama baja son **decenas de ms cada segundo**, y otro tanto por cada disparo
+del observer al teclear. La afirmación de la v0.1.6 —*«`scanForModal` ya era idempotente por
+`lastSig`, así que el poll no repite trabajo»*— era cierta para el **fetch** y falsa para el
+**DOM**: la firma se calcula **después** de todo el barrido, así que el trabajo caro se pagaba
+aunque nada hubiera cambiado.
+
+**Fix:** el root se calcula **una vez por pasada** con `campo.closest('[role="dialog"]')`
+—O(profundidad), no O(documento)— y se reparte a los extractores; `isCreateOrderModal` busca el
+título **dentro del root** (con degradación al barrido global si no colgara de ahí, para que el
+gate no se apague en silencio); el wizard y el bloque del label «Cliente:» se **cachean** revalidando
+por `isConnected`; y el walk del wizard **solo corre en `/Receiving/CustomerParts`**, que es la única
+pantalla donde ese wizard existe.
+
+**Validación:** core **32/32** (8 tests nuevos), suite **109 archivos verdes**.
+
 ## Fix 2026-08-06 (v0.1.7) — la Divisa se reportaba en ROJO estando bien puesta
 
 **Reportado desde producción con captura**, ya con el poll vivo y el autofill arrancando solo en

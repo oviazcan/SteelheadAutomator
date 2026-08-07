@@ -282,3 +282,69 @@ test('isDialogRootClass: paper genérico (accordion) NO es root — evita quedar
   assert.equal(Core.isDialogRootClass(''), false);
   assert.equal(Core.isDialogRootClass(null), false);
 });
+
+// ── Ciclo de vida del disparo (bug MEDIDO en producción, 2026-08-07) ───────────────
+// El poll de re-detección se apagaba al salir de la pantalla y NUNCA volvía: `setupObserver()`
+// hacía `if (observerActive) return` ANTES de `startDetectPoll()`, y como el observer nunca se
+// desconecta, el latch seguía en true al regresar. Medido en vivo en /Domains/344/SalesOrders:
+// 4 ticks/3.5s en la primera visita → 0 ticks al volver por navegación SPA. A partir de ahí el
+// applet quedaba colgado del MutationObserver, que en esa pantalla despierta una sola vez (al
+// montarse el modal) — o sea, ANTES de que el operador elija cliente.
+test('lifecycleActions: al REGRESAR por navegación SPA el poll vuelve a arrancar (regresión del disparo muerto)', () => {
+  const a = Core.lifecycleActions({ routeMatches: true, observerConnected: true, pollRunning: false });
+  assert.equal(a.poll, 'start', 'el poll DEBE re-arrancar aunque el observer siga conectado');
+  assert.equal(a.observer, 'keep', 'el observer conectado no se duplica');
+  assert.equal(a.scan, true, 'y se re-escanea de inmediato, sin esperar al primer tick');
+});
+
+test('lifecycleActions: primera entrada conecta observer y poll', () => {
+  const a = Core.lifecycleActions({ routeMatches: true, observerConnected: false, pollRunning: false });
+  assert.equal(a.observer, 'connect');
+  assert.equal(a.poll, 'start');
+  assert.equal(a.scan, true);
+});
+
+test('lifecycleActions: en la misma pantalla no duplica nada', () => {
+  const a = Core.lifecycleActions({ routeMatches: true, observerConnected: true, pollRunning: true });
+  assert.equal(a.observer, 'keep');
+  assert.equal(a.poll, 'keep');
+});
+
+test('lifecycleActions: fuera de la ruta se apaga TODO (incluido el observer sobre el body)', () => {
+  const a = Core.lifecycleActions({ routeMatches: false, observerConnected: true, pollRunning: true });
+  assert.equal(a.observer, 'disconnect');
+  assert.equal(a.poll, 'stop');
+  assert.equal(a.removePanel, true);
+  assert.equal(a.resetSignature, true);
+  assert.equal(a.scan, false);
+});
+
+// ── Fallo al LEER al cliente ≠ cliente SIN CONFIGURAR ─────────────────────────────
+// `fetchCustomerCustomInputs` cacheaba `null` ante CUALQUIER excepción (timeout de 90s, 5xx,
+// red caída). Consecuencia en equipos con red o CPU lenta: el panel acusaba en ámbar «el cliente
+// no tiene DatosFactura.RazonSocialVenta» —culpando al catálogo de un fallo de red— y el veneno
+// quedaba en el caché el RESTO de la sesión, así que ni recargando el modal se recuperaba.
+test('customerFieldResult: un fallo de lectura NO se reporta como "falta configurar el cliente"', () => {
+  const r = Core.customerFieldResult(null, 'Request timeout (90000ms) en Customer', 'RazonSocialVenta');
+  assert.equal(r.ok, false);
+  assert.equal(r.needsSetup, false, 'no se acusa al cliente de un fallo nuestro');
+  assert.equal(r.retry, true, 'y se marca reintentable');
+  assert.match(r.msg, /no pude leer/i);
+});
+
+test('customerFieldResult: dato realmente ausente SÍ es needsSetup (con la liga a su ficha)', () => {
+  const r = Core.customerFieldResult(null, null, 'Divisa');
+  assert.equal(r.needsSetup, true);
+  assert.equal(r.retry, undefined);
+  assert.match(r.msg, /DatosFactura\.Divisa/);
+});
+
+test('customerFieldResult: con dato devuelve null — "hay target, procede a llenar"', () => {
+  assert.equal(Core.customerFieldResult('USD', null, 'Divisa'), null);
+});
+
+test('cacheableCustomerResult: un fetch que FALLÓ no se cachea (no envenenar la sesión)', () => {
+  assert.equal(Core.cacheableCustomerResult({ id: 1 }, null), true);
+  assert.equal(Core.cacheableCustomerResult(null, null), true, 'un cliente que de verdad no existe sí se cachea');
+  assert.equal(Core.cacheableCustomerResult(null, 'NetworkError'), false);
+});
