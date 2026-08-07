@@ -186,7 +186,26 @@
     return null;
   }
 
+  // Recorre los candidatos hasta que UNO monte de verdad. Devuelve el que montó, o null.
+  //
+  // Bug 2026-08-07 (`receiver-date-override`): el scan hacía `return` en cuanto RESOLVÍA un
+  // contenedor, montara o no. Como el `HEADING_SELECTOR` es amplio y el orden de documento no
+  // garantiza nada, si el primer heading que matchea resolvía un contenedor equivocado el
+  // applet se quedaba reintentando con ÉSE para siempre y nunca llegaba al modal bueno. Falla
+  // permanente que depende del orden del DOM — o sea, intermitente entre equipos: "a mí me
+  // funciona, a ellos no".
+  //
+  // La regla: **un intento que no montó no consume el turno del siguiente candidato.**
+  function firstMounted(candidates, tryMount) {
+    if (!candidates || typeof tryMount !== 'function') return null;
+    for (const c of candidates) {
+      if (c && tryMount(c)) return c;
+    }
+    return null;
+  }
+
   return {
+    firstMounted,
     LABEL_CUSTOMER,
     LABEL_RECEIVER_COMMENTS,
     matchLabel,

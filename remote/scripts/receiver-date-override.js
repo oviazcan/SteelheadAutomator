@@ -20,6 +20,7 @@ const ReceiverDateOverride = (() => {
     if (disabled) { console.log(LOG_PREFIX, 'Deshabilitado'); return; }
     patchFetch();
     setupObserver();
+    startDetectPoll();
     console.log(LOG_PREFIX, 'Inicializado');
   }
 
@@ -42,25 +43,73 @@ const ReceiverDateOverride = (() => {
     scanForReceiveView();
   }
 
+  function resolveContainer(el) {
+    return el.closest('[role="dialog"]')
+      || el.closest('.MuiDialog-paper')
+      || el.closest('[class*="MuiPaper"]')
+      || el.closest('main')
+      || el.closest('form')
+      || el.parentElement?.parentElement
+      || null;
+  }
+
+  // No se rinde en el PRIMER candidato. Antes hacía `return` en cuanto resolvía un contenedor,
+  // montara o no: si el primer heading que matchea resuelve un contenedor equivocado (el
+  // `HEADING_SELECTOR` es amplio y el orden de documento no es una garantía), el applet
+  // reintentaba eternamente con ESE y nunca llegaba al modal bueno — falla permanente que
+  // depende del orden del DOM, o sea intermitente entre equipos. Ahora sigue con los demás.
   function scanForReceiveView() {
-    const candidates = document.querySelectorAll(HEADING_SELECTOR);
-    for (const el of candidates) {
+    const containers = [];
+    for (const el of document.querySelectorAll(HEADING_SELECTOR)) {
       if (!VIEW_REGEX.test(el.textContent?.trim())) continue;
-      const container = el.closest('[role="dialog"]')
-        || el.closest('.MuiDialog-paper')
-        || el.closest('[class*="MuiPaper"]')
-        || el.closest('main')
-        || el.closest('form')
-        || el.parentElement?.parentElement;
-      if (container) {
-        onModalFound(container);
-        return;
+      const c = resolveContainer(el);
+      if (c && !containers.includes(c)) containers.push(c);
+    }
+    const Anchor = window.ReceiveModalAnchorCore;
+    return Anchor?.firstMounted
+      ? !!Anchor.firstMounted(containers, onModalFound)
+      : containers.some(c => onModalFound(c));
+  }
+
+  // Red de seguridad: el mismo poll acotado que `weight-quick-entry` corre en ESTE MISMO modal
+  // en producción. El `MutationObserver` no es un vigilante continuo — dispara en eventos
+  // discretos: medido el 2026-08-07 en las pantallas de esta familia, **0 mutaciones de
+  // `childList` en el body durante 6 s** con un modal abierto. Si el único disparo cae cuando
+  // el modal está a medio montar (lo normal en un equipo lento: el encabezado se llena tras la
+  // respuesta de red), `injectField` falla, correctamente NO pone el latch… y nadie vuelve a
+  // llamar. Ése es el "a veces no sale el campo de fecha" que no se reproduce en una máquina
+  // rápida, donde el modal se monta entero dentro de la misma ráfaga.
+  //
+  // El tick es barato a propósito: los diálogos abiertos que aún no llevan nuestro marcador —y
+  // casi siempre no hay ninguno, así que se reduce a un querySelectorAll por atributo.
+  const DETECT_POLL_MS = 1000;
+  let detectPollTimer = null;
+
+  function detectTick() {
+    const dialogs = document.querySelectorAll('[role="dialog"]:not([data-sa-rdo-attached="true"])');
+    if (!dialogs.length) return;
+    for (const dlg of dialogs) {
+      for (const el of dlg.querySelectorAll(HEADING_SELECTOR)) {
+        if (!VIEW_REGEX.test((el.textContent || '').trim())) continue;
+        if (onModalFound(dlg)) return;
+        break;   // este diálogo no montó; probamos el siguiente, no otro heading del mismo
       }
     }
   }
 
+  function startDetectPoll() {
+    if (detectPollTimer) return;
+    detectPollTimer = setInterval(() => {
+      try { detectTick(); } catch (err) {
+        console.warn(LOG_PREFIX, 'Error en el poll de detección:', err);
+      }
+    }, DETECT_POLL_MS);
+  }
+
+  // Devuelve si el campo quedó MONTADO (no si se intentó): de eso depende que el scan siga
+  // probando candidatos y que el poll vuelva a intentarlo en el siguiente tick.
   function onModalFound(modal) {
-    if (modal.dataset.saRdoAttached === 'true') return;
+    if (modal.dataset.saRdoAttached === 'true') return true;
     modalStates.set(modal, {});  // initialize empty state before any downstream code runs
     injectStyles();
 
@@ -68,11 +117,12 @@ const ReceiverDateOverride = (() => {
     // un fallo del anclaje se volvía permanente: el observer volvía a pasar, veía el latch y
     // se iba. Eso convirtió el rehash de emotion del 2026-08-03 en "la fecha desapareció"
     // en vez de "la fecha tardó un render en aparecer". Si no montó, se reintenta.
-    if (!injectField(modal)) return;
+    if (!injectField(modal)) return false;
 
     modal.dataset.saRdoAttached = 'true';
     console.log(LOG_PREFIX, 'Modal de recibo detectado');
     watchModalRemoval(modal);
+    return true;
   }
 
   function watchModalRemoval(modal) {
@@ -393,7 +443,10 @@ const ReceiverDateOverride = (() => {
     console.warn(LOG_PREFIX, msg);
   }
 
-  return { init };
+  // `scanForReceiveView`/`detectTick` se exportan para poder DIAGNOSTICAR desde la consola del
+  // operador: invocarlos a mano distingue "no se dispara" de "no encuentra el ancla" — que fue
+  // exactamente lo que destrabó el caso gemelo de `create-order-autofill`.
+  return { init, scanForReceiveView, detectTick };
 })();
 
 if (typeof window !== 'undefined') {
