@@ -5,7 +5,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { classifyOp, hasShape, planDeploy, missingCoverage, isValidatedCapture, pruneNeedsAttention, escalableNotCaptured } = require('../hash-autopilot/hash-autopilot-core.mjs');
+const { classifyOp, hasShape, planDeploy, missingCoverage, isValidatedCapture, pruneNeedsAttention, escalableNotCaptured, newlyEscalated } = require('../hash-autopilot/hash-autopilot-core.mjs');
 
 const R = (op, verdict) => ({ op, verdict, cfgHash: 'old', liveHash: verdict === 'vigente' ? 'old' : 'new' });
 
@@ -247,4 +247,74 @@ test('escalableNotCaptured: una suppressPending que SÍ capturó no pasa por aqu
   const plan = planDeploy(results, {});
   assert.deepEqual(plan.toDeploy.map((r) => r.op), ['CreateInvoicePdf']);
   assert.deepEqual(escalableNotCaptured(plan.notCaptured, { suppressPending: ['CreateInvoicePdf'] }), []);
+});
+
+// ── newlyEscalated: el disparador de la notificación ─────────────────────────
+// needs-attention.json se reescribe en CADA corrida con algo que escalar (el autopilot
+// corre por hora). Avisar por su existencia mandaría 24 correos al día sobre lo mismo, y un
+// aviso que llega siempre se deja de leer. Solo se avisa por lo que aparece por primera vez.
+const NA = (...ops) => ({ date: '2026-08-06', ops: ops.map((op) => ({ op, observed: 'x' })) });
+
+test('newlyEscalated: sin previo (primera escalada) → avisa de todas', () => {
+  assert.deepEqual(newlyEscalated(null, NA('AllEquipments', 'WorkOrderSchedule')),
+    ['AllEquipments', 'WorkOrderSchedule']);
+});
+test('newlyEscalated: las MISMAS ops de la corrida anterior → NO avisa (nada de spam horario)', () => {
+  assert.deepEqual(newlyEscalated(NA('AllEquipments'), NA('AllEquipments')), []);
+});
+test('newlyEscalated: solo la op nueva, no la que ya venía escalada', () => {
+  assert.deepEqual(newlyEscalated(NA('AllEquipments'), NA('AllEquipments', 'WorkOrderSchedule')),
+    ['WorkOrderSchedule']);
+});
+test('newlyEscalated: una op que se resolvió y REGRESA vuelve a avisar (una regresión es noticia)', () => {
+  // la poda la quitó del previo → reaparece como nueva
+  assert.deepEqual(newlyEscalated(NA('OtraOp'), NA('AllEquipments')), ['AllEquipments']);
+});
+test('newlyEscalated: nada que escalar → no avisa', () => {
+  assert.deepEqual(newlyEscalated(NA('AllEquipments'), { date: 'x', ops: [] }), []);
+  assert.deepEqual(newlyEscalated(null, null), []);
+});
+test('newlyEscalated: previo CORRUPTO se trata como ausente y avisa (AUSENTE ≠ VACÍO)', () => {
+  // Un previo ilegible es "no sé qué había", no "no había nada": perder la señal cuesta
+  // más que un correo de más. Un {ops:[]} explícito SÍ es conocimiento y también avisa,
+  // porque de verdad no había nada escalado antes.
+  assert.deepEqual(newlyEscalated({ basura: true }, NA('AllEquipments')), ['AllEquipments']);
+  assert.deepEqual(newlyEscalated({ date: 'x', ops: [] }, NA('AllEquipments')), ['AllEquipments']);
+});
+test('newlyEscalated: tolera entradas nulas dentro de ops sin reventar', () => {
+  assert.deepEqual(newlyEscalated({ ops: [null] }, { ops: [null, { op: 'A' }] }), ['A']);
+});
+
+// ── Cableado: que la decisión pura llegue de verdad al correo ────────────────
+// El aviso es un contrato entre TRES piezas —el core decide, writeNeedsAttention lo
+// invoca, autopilot-notify.sh manda el correo— y ninguna falla sola: si el runner deja de
+// llamar a notifyNewlyEscalated, los tests puros siguen verdes y el silencio vuelve sin que
+// nada se ponga rojo. Es exactamente el modo de falla que este archivo existe para cerrar.
+const { readFileSync: _rf } = require('fs');
+const RUNNER = _rf(require('path').join(__dirname, '../hash-autopilot/hash-autopilot.mjs'), 'utf8');
+
+test('cableado: el runner importa newlyEscalated del core', () => {
+  assert.match(RUNNER, /import\s*\{[^}]*\bnewlyEscalated\b[^}]*\}\s*from\s*'\.\/hash-autopilot-core\.mjs'/);
+});
+test('cableado: writeNeedsAttention lee el previo ANTES de sobrescribirlo', () => {
+  const fn = RUNNER.slice(RUNNER.indexOf('function writeNeedsAttention'));
+  const cuerpo = fn.slice(0, fn.indexOf('\n}'));
+  const leePrevio = cuerpo.indexOf('readFileSync');
+  const escribe = cuerpo.indexOf('writeFileSync');
+  assert.ok(leePrevio > -1, 'sin leer el previo no se puede distinguir op nueva de op repetida');
+  assert.ok(leePrevio < escribe, 'leer DESPUÉS de escribir compararía el archivo contra sí mismo → nunca avisa');
+});
+test('cableado: writeNeedsAttention dispara la notificación', () => {
+  const fn = RUNNER.slice(RUNNER.indexOf('function writeNeedsAttention'));
+  assert.match(fn.slice(0, fn.indexOf('\n}')), /notifyNewlyEscalated\(/);
+});
+test('cableado: notifica como "revision" (el autopilot funcionó; pide una persona)', () => {
+  const fn = RUNNER.slice(RUNNER.indexOf('function notifyNewlyEscalated'));
+  assert.match(fn.slice(0, 2000), /notify\(\s*'revision'/);
+});
+test('cableado: un dry-run NUNCA manda correo', () => {
+  const fn = RUNNER.slice(RUNNER.indexOf('function notifyNewlyEscalated'));
+  const cuerpo = fn.slice(0, 2000);
+  assert.ok(cuerpo.indexOf('if (DRY)') > -1 && cuerpo.indexOf('if (DRY)') < cuerpo.indexOf("notify('revision'"),
+    'el guard de DRY debe estar ANTES del envío');
 });

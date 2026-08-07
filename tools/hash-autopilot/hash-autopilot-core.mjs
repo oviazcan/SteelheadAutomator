@@ -140,6 +140,32 @@ export function pruneNeedsAttention(payload, resolvedOps, knownOps = null) {
   return { ...payload, ops: remaining };
 }
 
+// Ops que ESTE run escala y que no venían escaladas del run anterior. Es el disparador de
+// la notificación: `needs-attention.json` se reescribe en CADA corrida que tenga algo que
+// escalar, así que avisar por su mera existencia mandaría un correo por hora sobre lo mismo
+// —y un aviso que llega siempre se deja de leer, que es exactamente cómo se pierde la señal
+// que este archivo existe para dar—.
+//
+// El caso que lo motivó (2026-08-06): `AllEquipments` y `WorkOrderSchedule` rotaron, el
+// autopilot intentó recuperarlas, sus recetas ya no disparaban las ops y las escaló aquí a
+// las 15:34 — en SILENCIO. Nadie se enteró hasta que los applets tronaron en piso y el
+// operador lo reportó a mano. El archivo se escribió bien; lo que faltó fue que hablara.
+//
+// Una op que se resolvió y vuelve a fallar SÍ vuelve a avisar: la poda la quitó del previo,
+// así que reaparece como nueva. Es deliberado — una regresión es noticia otra vez.
+//
+// Fail-safe: sin previo legible (primera escalada, archivo borrado o corrupto) se considera
+// TODO nuevo y se avisa. AUSENTE ≠ VACÍO: un previo que no se pudo leer es "no sé qué había",
+// no "no había nada", y perder la señal cuesta más que un correo de más.
+export function newlyEscalated(prevPayload, nextPayload) {
+  const next = (nextPayload && Array.isArray(nextPayload.ops)) ? nextPayload.ops : [];
+  if (!next.length) return [];
+  const prevOps = (prevPayload && Array.isArray(prevPayload.ops)) ? prevPayload.ops : null;
+  if (!prevOps) return next.map((o) => o && o.op).filter(Boolean);
+  const yaEstaban = new Set(prevOps.map((o) => o && o.op).filter(Boolean));
+  return next.map((o) => o && o.op).filter((op) => op && !yaEstaban.has(op));
+}
+
 // Base de la señal de atención: de las ops NO capturadas, cuáles de verdad ameritan
 // alertar/escalar. Excluye dos clases que NO son "la UI cambió y hay que re-descubrir":
 //  (a) knownNoRoute    — hueco conocido sin ruta en el catálogo (estático, Fase B).

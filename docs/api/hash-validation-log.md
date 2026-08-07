@@ -884,3 +884,33 @@ cerraría este hueco de raíz** — hoy dependen de que alguien ejecute la acci�
 3.14.6 y muere con `No module named 'requests'` antes de probar un solo hash. Y **leer su
 exit code a través de un pipe (`| tail`) siempre da 0** — la primera corrida murió al
 arrancar y se leyó como éxito.
+### ⚠️ TERCER FRENTE: el FORMATO PUBLICADO quedó atrás (detectado por el autopilot, 18:24)
+
+Corregir la extensión **no** corrige el formato que ya está subido al ERP: el HTML publicado
+conserva los hashes con los que se generó. `verifica_formato_publicado.py` lo cazó en la corrida
+horaria siguiente al deploy:
+
+```
+EL FORMATO PUBLICADO QUEDÓ ATRÁS — 1 de 8 operaciones:
+  WorkOrderSchedule: publicado 7b1b11275a49…   vigente 05283b212528…
+```
+
+**Pendiente del operador** (la subida es manual — `POST /api/files` da 400 desde script):
+
+```bash
+cd "/Users/oviazcan/Projects/Ecoplating/Reportes SH"
+/usr/bin/python3 scripts/genera_formato_vivo.py --domain tlc
+# …y re-subir el payload desde el navegador
+```
+
+No hace falta cambiar la liga: el cascarón toma el payload más reciente (patrón cascarón+payload).
+
+> **La lección de alcance:** un mismo hash puede vivir en **cuatro** lugares —extensión, Reportes
+> SH, PowerTools y el payload YA SUBIDO al ERP— y arreglar uno no arregla los otros. El validador
+> cubre los tres primeros porque lee sus archivos; el cuarto solo lo ve
+> `verifica_formato_publicado.py`, y por eso corre por separado cada hora. En esta rotación los
+> tres primeros se corrigieron a las 16:19 y el cuarto seguía roto a las 18:24.
+
+**Nota de higiene:** el runner apendeaba a este archivo el `stderr` crudo de Python (el
+`NotOpenSSLWarning` de urllib3) mezclado con el aviso. Se limpió a mano; el redirect del script
+debería filtrar stderr para no ensuciar un markdown versionado.

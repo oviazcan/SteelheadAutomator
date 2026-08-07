@@ -115,6 +115,31 @@ El auto-deploy exige que el worktree esté en `main` y sin WIP ajeno en `remote/
 intenta re-descubrirla sola vía `claude -p` y manda correo con el trace detallado. Gate por
 señal → cero costo en días limpios. Ver `ESCALATION.md`. Carga = paso manual del operador.
 
+### Aviso al ESCALAR (2026-08-06) — el archivo ya no se escribe en silencio
+
+`writeNeedsAttention` manda un correo `[hash-autopilot revision]` con las ops que escalan
+**por primera vez**, su receta vieja, lo observado y **qué applets truenan**.
+
+**El caso que lo motivó:** `AllEquipments` y `WorkOrderSchedule` rotaron; el motor las detectó,
+intentó recuperarlas, sus recetas ya no disparaban las ops y las escaló a `needs-attention.json`
+**a las 15:34 sin avisar a nadie**. El operador se enteró media hora después, porque los applets
+tronaron en piso. El archivo se escribió bien — lo que faltaba era que hablara.
+
+**Solo lo NUEVO, y esa es la parte de diseño.** El motor corre por hora y reescribe el archivo en
+cada corrida con algo pendiente: avisar por su existencia serían ~24 correos diarios sobre lo
+mismo, y un aviso que llega siempre se deja de leer — se perdería la misma señal que se quería
+dar. La decisión vive en `newlyEscalated(prev, next)` (núcleo puro, 7 tests + 5 de cableado).
+Una op que se resolvió y **regresa** sí vuelve a avisar: la poda la quitó del previo, así que
+reaparece como nueva, y una regresión es noticia otra vez.
+
+Es **`revision`**, no `fallo`: el autopilot hizo su trabajo — detectó la rotación e intentó
+recuperarla. Lo que pide es una persona, porque la RUTA quedó obsoleta.
+
+> **Una ruta ROTA no es lo mismo que una ruta AUSENTE, y el trinquete solo ve la segunda.**
+> `hash-regen-coverage.test.js` cuenta ops sin entrada en el catálogo; una op cuya receta existe
+> pero ya no dispara **se cuenta como cubierta**. Por eso la línea base de huérfanas es un piso,
+> no la deuda real, y por eso este correo es hoy la única señal de esa clase de deuda.
+
 ## Refresh-siempre de enmascaradas (2026-07-15)
 
 Las ops "enmascaradas" (session-sensitive) rotan **sin dejar señal para el validador

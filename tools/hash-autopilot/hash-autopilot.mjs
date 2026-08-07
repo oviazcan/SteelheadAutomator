@@ -10,7 +10,7 @@ import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
 import { execFileSync } from 'child_process';
 import { installInterceptor, runRecipe } from './recipe-runner.mjs';
-import { classifyOp, planDeploy, isValidatedCapture, buildNeedsAttention, pruneNeedsAttention, escalableNotCaptured } from './hash-autopilot-core.mjs';
+import { classifyOp, planDeploy, isValidatedCapture, buildNeedsAttention, pruneNeedsAttention, escalableNotCaptured, newlyEscalated } from './hash-autopilot-core.mjs';
 import { classifyCycleOutcomes, formatSentinelAlert } from './sentinel-health.mjs';
 import { readConfigHashes } from './config-io.mjs';
 import { syncExternalToSinks } from './external-sync.mjs';
@@ -704,10 +704,55 @@ function notify(tipo, asunto, cuerpo) {
 function writeNeedsAttention(notCaptured, recipes, date, observedByOp = {}) {
   try {
     mkdirSync(RESULTS_DIR, { recursive: true });
+    const p = join(RESULTS_DIR, 'needs-attention.json');
+    // Leer el previo ANTES de sobrescribir: es lo que distingue "op nueva" de "la misma de
+    // hace una hora" y evita que el aviso se vuelva ruido horario. Ilegible ⇒ null ⇒ se
+    // considera todo nuevo (fail-safe, ver newlyEscalated).
+    let prev = null;
+    try { prev = JSON.parse(readFileSync(p, 'utf8')); } catch { prev = null; }
     const payload = buildNeedsAttention(notCaptured, recipes, date, observedByOp);
-    writeFileSync(join(RESULTS_DIR, 'needs-attention.json'), JSON.stringify(payload, null, 2));
+    writeFileSync(p, JSON.stringify(payload, null, 2));
     console.log(`  señal de escalamiento escrita (${payload.ops.length} op).`);
+    notifyNewlyEscalated(prev, payload);
   } catch (e) { console.log(`(no se pudo escribir needs-attention: ${String(e).slice(0, 80)})`); }
+}
+
+// Avisa SOLO por lo que escala por primera vez. Sin esto el archivo se escribía en silencio
+// y la señal se perdía hasta que un applet tronaba en piso (incidente 2026-08-06:
+// AllEquipments y WorkOrderSchedule escalaron a las 15:34 y nadie se enteró).
+//
+// Es "revision", no "fallo": el autopilot funcionó — detectó la rotación e intentó
+// recuperarla. Lo que pide es una persona, porque la RUTA quedó obsoleta. Esa distinción
+// importa: una ruta rota se cuenta como cubierta en hash-regen-coverage y por eso no aparece
+// como deuda en ningún tablero.
+function notifyNewlyEscalated(prev, payload) {
+  const nuevas = newlyEscalated(prev, payload);
+  if (!nuevas.length) return;
+  if (DRY) { console.log(`  (dry-run) avisaría de ${nuevas.length} op(s) recién escalada(s): ${nuevas.join(', ')}`); return; }
+  // Atribución op→applet igual que el correo principal. `appletsForOp` devuelve un ARRAY:
+  // `x || '(sin atribuir)'` no sirve porque `[]` es TRUTHY y colaría "applets: " vacío —
+  // el mismo modo de falla que dejó invisible el menú de specs (ver permission-gate.js).
+  const scriptSources = loadScriptSources();
+  const knownOps = loadKnownOperations();
+  const appletsOf = (op) => {
+    const a = appletsForOp(op, scriptSources, (knownOps[op] || {}).usedBy || '');
+    return a.length ? a.join(', ') : '(sin atribuir)';
+  };
+  const detalle = (payload.ops || [])
+    .filter((o) => nuevas.includes(o.op))
+    .map((o) => `• ${o.op}\n    receta: ${o.recipeTried || '(sin receta — hay que crearla)'}\n    observado: ${o.observed}\n    applets que truenan: ${appletsOf(o.op)}`)
+    .join('\n');
+  const asunto = nuevas.length === 1
+    ? `1 op necesita ruta nueva: ${nuevas[0]}`
+    : `${nuevas.length} ops necesitan ruta nueva`;
+  notify('revision',
+    asunto,
+    `El autopilot detectó estas operaciones y NO pudo recuperarlas solo.\n` +
+    `Su ruta de regeneración existe pero ya no dispara la op (la pantalla cambió), o no tiene ruta.\n` +
+    `Mientras no se arregle, la próxima rotación tampoco se recupera sola.\n\n${detalle}\n\n` +
+    `Detalle completo: tools/.hash-autopilot/needs-attention.json\n` +
+    `Para re-descubrir la ruta: correr el hash-scanner navegando hasta que la op se dispare, ` +
+    `y actualizar tools/hash-autopilot/route-catalog.json (queries) o sentinels-config.json (mutations).`);
 }
 
 // Poda del needs-attention.json de las ops que ESTE run ya resolvió. writeNeedsAttention
