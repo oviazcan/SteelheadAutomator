@@ -8,6 +8,19 @@ Pasos de build/firma/instalación en **`docs/deploy-safari.html`**.
 - **POC del candado de surtido VALIDADO en vivo (Safari iPad, 2026-06-30):** `world:"MAIN"` intercepta
   `fetch`, el login OAuth funciona y el bloqueo de una pieza no programada quedó confirmado (no se necesitó
   el plan B).
+- **Bundle v0.6.40 — 34 applets (2026-08-07):** cierra la
+  [auditoría de montaje](../docs/architecture/modal-mount-audit.md). De los 9 applets que tocaban
+  modales **sin poll**, **7 resultaron SANOS** (`surtido-guard` con throttle rAF y reintentos
+  escalonados; `packing-slip-drawings` con latch tri-estado que reintenta tras fallar;
+  `invoice-auto-regen` con esperas que tienen timeout; `wo-listing-columns` y
+  `schedule-batch-group` con throttle sobre listados que mutan solos; `cfdi-attacher` y
+  `wo-schedule-button` en riesgo bajo). Se corrigieron **2**: `invoice-autofill` (0.5.68) y
+  `bill-autofill` (0.1.1) tenían el scan inmediato **detrás del latch del observer**, así que al
+  regresar a la ruta por navegación SPA no quedaba ninguna pasada sobre la página ya montada.
+  **A los siete sanos no se les tocó nada** — meter polls «por si acaso» habría cambiado el timing
+  de siete pantallas para arreglar cero bugs, y este repo ya pagó ese precio hoy (el fix de RDO
+  rompió a WLP). Verificado en el **artefacto**: el patrón viejo `ObserverActive) return;` **2 → 0**,
+  los dos nuevos presentes, 76 bloques `BEGIN`/`END`, `node --check` OK, trinquete 10/10.
 - **Bundle v0.6.39 — 34 applets (2026-08-07):** corrige `warehouse-location-prefill` (**0.6.5**) y
   **reemplaza a 0.6.38**, que en el iPad habría dejado el mismo hueco que se reportó en escritorio
   («se quebró WLP, no aparece el campo»). El combo «Ubicación inicial:» vuelve a montarse **ANTES**

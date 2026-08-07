@@ -1,7 +1,7 @@
 {
   "name": "Steelhead Automator — iPad",
-  "version": "0.6.39",
-  "description": "Bundle de applets de Steelhead para iPad (empaquetado). 34 applets: auto-inyectados (FAB/gate propio) + lanzadores de popup. v0.6.39 corrige warehouse-location-prefill (0.6.5): el campo «Ubicación inicial:» vuelve a montarse ANTES del cableado del modal — al introducir las dos marcas en 0.6.4 quedó detrás de applyUnusedFieldStates/evaluateSaveGate/watchLineRows, tres funciones que tocan el DOM y que si tiran se llevan por delante lo único que el operador ve. Cada paso del cableado va ahora en su propio try, y el candado (que protege aunque el combo no monte) sigue instalándose. Reemplaza a 0.6.38, que en el iPad habría dejado el mismo hueco.",
+  "version": "0.6.40",
+  "description": "Bundle de applets de Steelhead para iPad (empaquetado). 34 applets: auto-inyectados (FAB/gate propio) + lanzadores de popup. v0.6.40 cierra la auditoría de montaje (docs/architecture/modal-mount-audit.md): de los 9 applets que tocaban modales sin poll, 7 resultaron SANOS y 2 se corrigieron — invoice-autofill (0.5.68) y bill-autofill (0.1.1) tenían el scan inmediato detrás del latch del observer, así que al regresar a la ruta por navegación SPA no quedaba ninguna pasada sobre la página ya montada. No se les metió poll: no lo necesitan (son de página y la pantalla sigue mutando), y meter polls de más habría cambiado el timing de siete pantallas para arreglar cero bugs.",
   "matches": [
     "https://app.gosteelhead.com/*"
   ],
