@@ -146,6 +146,15 @@ async function archiveCentinelaOVs(page, domain) {
     await page.waitForTimeout(2000);
   }
 }
+// ⚠️ EL CAPTURA-Y-ABORTA SOLO PROTEGE LA OP QUE LE NOMBRAS (incidente 2026-08-06)
+// `sink.abortOps` intercepta por operationName. Si el flujo dispara OTRA op, el request sale y
+// ESCRIBE — con el log diciendo "(abortado)", porque el handler solo sabe que hizo clic.
+// Pasó aquí: se marcó `CreateManySensorMeasurements`, se clicó SAVE del modal del microscopio, y
+// lo que viajó fue `CreateSensorMeasurement` (singular). Resultado: 2 mediciones reales en el
+// sensor productivo 13440 (ids 1602565 y 1602608), creyendo que no persistía nada.
+// REGLA: antes de confiar en el abort de un flujo NUEVO, verifica con el sink QUÉ op viaja de
+// verdad. "Marqué la op" no es lo mismo que "la op que se dispara está marcada", y la diferencia
+// se paga en datos escritos en producción, no en un test rojo.
 // ── sensorDashboardCentinela: las dos ops de sensores, captura-y-aborta ─────
 // DOM medido en vivo el 2026-08-06 (el operador mandó el wrapper; no se adivinó nada).
 // Formas de icono, NO clases css-* (emotion las regenera cuando alguien mueve un padding) y
