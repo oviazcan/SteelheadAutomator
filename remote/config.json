@@ -1,6 +1,6 @@
 {
-  "version": "1.11.107",
-  "lastUpdated": "2026-08-07T16:57",
+  "version": "1.11.108",
+  "lastUpdated": "2026-08-07T17:26",
   "extensionVersion": "1.7.3",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -3018,7 +3018,7 @@
     "scripts/vale-almacen-engine.js": "36241da082a58d03241068bcec6fcde2131eb69a9871eb9cd2f8bce21ccdd1a0",
     "scripts/vale-almacen.js": "cbd6bc27c493cb703d4125211bc33ff510a15ed5061d31770cf2b128e8ea3985",
     "scripts/warehouse-location-guard-core.js": "3731a74bc7c319e31b9768c042111c3c55709d115a318c9c1c1a699489423151",
-    "scripts/warehouse-location-prefill.js": "ebcd83522fe4b71ce920126bbfccbce04d41e673e4e7f0163b34459fe11deda1",
+    "scripts/warehouse-location-prefill.js": "17e929ef7003f97a9931d3ecc7e7deb6df7ff7fb51e29525c62dd265c0fb3de4",
     "scripts/weight-quick-entry.js": "6ad401522329aabaccfa1cf5ed0649e9c36965d4bb4bcd219b9f9ea81c8ca413",
     "scripts/wo-completer-engine.js": "3101a9c8f718f9469e005a02498a89d6467b8f7c49583d7bb6f96f55a5bdfc83",
     "scripts/wo-completer.js": "d2879a8daf876ff2956dfeadcba673ab082f3b28c9bb7fbabb0c00db92f487e9",
