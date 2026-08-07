@@ -199,16 +199,34 @@ async function sensorDashboardOpsAborted(page, { sink }) {
   if (await medir.count().catch(() => 0)) {
     await medir.click({ timeout: 8000 }).catch(() => {});
     await page.waitForTimeout(2500);
-    // Si abrió modal, la mutation se dispara al GUARDAR, no al abrirlo. Se intenta el botón de
-    // guardar bilingüe dentro del diálogo; si no está, se reporta y ya — el abort protege igual.
+    // El modal «Create Sensor Measurement» abre con SAVE **deshabilitado** hasta que se elige un
+    // valor. Costó una corrida: el handler clicaba SAVE y no pasaba nada — un clic sobre un botón
+    // disabled no falla, simplemente no hace nada, así que el ciclo terminaba "sin hash" sin decir
+    // por qué. Hay que tocar el ToggleButtonGroup primero.
     const dlg = page.locator('[role="dialog"]').first();
     if (await dlg.isVisible().catch(() => false)) {
+      // Ancla ESTRUCTURAL: el atributo `value` del toggle, no su etiqueta ("True"/"False" son
+      // EN-only). Se prueba true y si no, false: un sensor numérico no tendrá estos toggles y
+      // habrá que capturar el valor de otro modo — ahí el ciclo lo reporta en vez de inventar.
+      let valorPuesto = false;
+      for (const v of ['true', 'false']) {
+        const tog = dlg.locator(`[role="group"] button[value="${v}"]`).first();
+        if (await tog.count().catch(() => 0)) {
+          await tog.click({ timeout: 6000 }).catch(() => {});
+          valorPuesto = true;
+          break;
+        }
+      }
       const guardar = dlg.locator('button').filter({ hasText: /^(save|guardar|submit|enviar)$/i }).first();
-      if (await guardar.count().catch(() => 0)) {
+      // Esperar a que SAVE se HABILITE es la señal de que el formulario quedó válido; sin esto
+      // volveríamos a clicar en un botón muerto.
+      const listo = await guardar.isEnabled({ timeout: 8000 }).catch(() => false);
+      if (dbg) console.log(`       [dbg] sensorDash: modal medición · valor=${valorPuesto} saveHabilitado=${listo}`);
+      if (listo) {
         await guardar.click({ timeout: 8000 }).catch(() => {});
         await page.waitForTimeout(2500);
-        if (dbg) console.log('       [dbg] sensorDash: guardar del modal de medición (abortado)');
-      } else if (dbg) console.log('       [dbg] sensorDash: modal de medición abierto pero sin botón de guardar reconocible');
+        if (dbg) console.log('       [dbg] sensorDash: SAVE del modal de medición (abortado)');
+      }
     } else if (dbg) console.log('       [dbg] sensorDash: clic en crear medición sin modal (abortado)');
   } else if (dbg) console.log('       [dbg] sensorDash: no vi el botón de crear medición');
 }

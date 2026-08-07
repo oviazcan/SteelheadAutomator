@@ -61,7 +61,17 @@ function opsCubiertas() {
 // centinela — `sensorDashboardCentinela`, captura-y-aborta sobre el Sensor Dashboard #193.
 // Nacieron de una rotación que NO se pudo recuperar de ninguno de los 131 scan_results del
 // operador: sin ruta, un hash muerto solo se arregla cuando alguien ejecuta la acción a mano.
-const HUERFANAS_BASE = 51;
+// 2026-08-06 (misma sesión, corrección): 51 -> 52. **SUBE, y es a propósito.** No es una
+// regresión: es que el 51 era MENTIRA. `sensorDashboardCentinela` se declaró cubriendo también
+// CreateManySensorMeasurements, y la corrida real demostró que esa pantalla dispara
+// CreateSensorMeasurement (SINGULAR) — otra mutation, que ni está en el config ni usa ningún
+// applet. La PLURAL, la que sí usan paros-linea y vale-almacen, solo sale del flujo de
+// MANTENIMIENTO (crear evento en un nodo con sensor y medir), y ese ciclo NO está escrito.
+// Dejarla en `_para` habría sido justo la deuda invisible que este mismo día destapamos en
+// `maintenance-list` y `workorders-detail`: declarada cubierta, capturando cero, y descubierta
+// sólo cuando el hash rota y el applet ya está roto en piso. Un número honesto que sube vale más
+// que uno bonito que miente.
+const HUERFANAS_BASE = 52;
 
 test('las ops del ruteo por grupos tienen ruta de regeneración', () => {
   const cubiertas = opsCubiertas();
