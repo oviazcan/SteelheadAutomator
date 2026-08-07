@@ -163,7 +163,11 @@ test('sensorDashboard: el candado isSentinel lee el NOMBRE, no la URL', () => {
   const ent = sen.entities.sensorDashboardCentinela;
   assert.equal(ent.marker, 'Centinela');
   assert.equal(ent._estrategia, 'capture-abort');
-  const load = DEPS_SRC.slice(DEPS_SRC.indexOf('sensorDashboardCentinela: {'));
-  assert.match(load.slice(0, 1200), /centinela\/i\.test/,
+  // Se acota al bloque `async load(...)`, no a los primeros N caracteres: una ventana fija se
+  // rompe en cuanto alguien agrega un comentario (pasó al documentar los 3 intentos fallidos),
+  // y un test que falla por longitud entrena a ignorarlo.
+  const bloque = DEPS_SRC.slice(DEPS_SRC.indexOf('sensorDashboardCentinela: {'));
+  const load = bloque.slice(bloque.indexOf('async load('), bloque.indexOf('async mutate('));
+  assert.match(load, /centinela\/i\.test/,
     'un id correcto en un dashboard renombrado NO debe pasar el candado');
 });
