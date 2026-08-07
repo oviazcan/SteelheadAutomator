@@ -69,16 +69,18 @@ const BillAutofill = (() => {
 
   // ── Page Observer ──
 
+  // El scan inmediato NO va detrás del latch del observer — ver la nota gemela en
+  // invoice-autofill: al REGRESAR a la ruta por navegación SPA el observer sigue conectado,
+  // así que el `return` temprano se comía la única pasada que mira la página ya montada.
   function setupPageObserver() {
-    if (window.__saBillAutofillObserverActive) return;
-    window.__saBillAutofillObserverActive = true;
-
-    const observer = new MutationObserver(() => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(scanForBillPage, 500);
-    });
-
-    observer.observe(document.body, { childList: true, subtree: true });
+    if (!window.__saBillAutofillObserverActive) {
+      window.__saBillAutofillObserverActive = true;
+      const observer = new MutationObserver(() => {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(scanForBillPage, 500);
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    }
     scanForBillPage();
   }
 

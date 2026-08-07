@@ -178,16 +178,21 @@ const InvoiceAutofill = (() => {
 
   // ── Page Observer ──
 
+  // El scan inmediato NO va detrás del latch del observer. Al salir de la ruta, `checkUrl`
+  // resetea el estado pero NO desconecta el observer, así que al REGRESAR por navegación SPA
+  // el `return` temprano se comía la única pasada que mira la página ya montada — y el
+  // debounce de 500 ms (el más largo del repo) solo vuelve a correr si llegan más mutaciones.
+  // Medido en create-order-autofill el 2026-08-07: con la pantalla quieta hubo **0 mutaciones
+  // de `childList` en 6 s**. Un latch protege UN recurso: el observer, no el scan.
   function setupPageObserver() {
-    if (window.__saInvoiceAutofillObserverActive) return;
-    window.__saInvoiceAutofillObserverActive = true;
-
-    const observer = new MutationObserver(() => {
-      if (debounceTimer) clearTimeout(debounceTimer);
-      debounceTimer = setTimeout(scanForInvoicePage, 500);
-    });
-
-    observer.observe(document.body, { childList: true, subtree: true });
+    if (!window.__saInvoiceAutofillObserverActive) {
+      window.__saInvoiceAutofillObserverActive = true;
+      const observer = new MutationObserver(() => {
+        if (debounceTimer) clearTimeout(debounceTimer);
+        debounceTimer = setTimeout(scanForInvoicePage, 500);
+      });
+      observer.observe(document.body, { childList: true, subtree: true });
+    }
     scanForInvoicePage();
   }
 
