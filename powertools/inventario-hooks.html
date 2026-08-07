@@ -106,18 +106,34 @@ td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:now
   <div class="freshness">
     <span class="ic" aria-hidden="true">🟢</span>
     <div>
-      <b>Documento vivo — corte del 4 de agosto de 2026.</b> Los ids de versión activa que ves abajo se leyeron directamente del ERP ese día, en <strong>los dos dominios</strong> (Toluca y Monterrey). Cada vez que alguien publica un hook, el id cambia: <strong>verifica la versión viva antes de asumir vigencia</strong>.
+      <b>Documento vivo — corte del 6 de agosto de 2026.</b> Los ids de versión activa que ves abajo se leyeron directamente del ERP ese día, en <strong>los dos dominios</strong> (Toluca y Monterrey). Cada vez que alguien publica un hook, el id cambia: <strong>verifica la versión viva antes de asumir vigencia</strong>.
       <p>Comando que reproduce esta tabla: <code>python3 sync/lowcode_sync.py list</code> — y con <code>STEELHEAD_DEFAULT_DOMAIN=mty</code> delante para la columna de Monterrey.</p>
     </div>
   </div>
 
   <div class="callout warn">
     <p class="ct">Cambios de este corte respecto al anterior</p>
-    <p><strong>El certificado ya no puede declarar más piezas muestreadas que las que ampara.</strong> Cambió una ventanilla: el certificado de calidad (11418 / 11419), Toluca y Monterrey el mismo día.</p>
+    <p><strong>Cambiaron seis ventanillas el mismo día, en Toluca y en Monterrey:</strong> el certificado de calidad (11505 / 11511), la remisión (11506 / 11512), la cotización (11507 / 11513), la etiqueta por contenedor (11508 / 11514), la OT con instrucciones (11509 / 11515) y la ficha del número de parte (11510 / 11516).</p>
+
+    <p class="ct" style="margin-top:1rem">Los parámetros que dicen «No aplica» ya no se imprimen</p>
+    <p><strong>Cuando una especificación tiene un parámetro marcado como «No aplica» o «N/A», ese renglón ya no aparece en el documento.</strong> Antes se imprimía tal cual y ocupaba espacio sin decirle nada al cliente: en la remisión ensanchaba la columna de descripción y en la etiqueta se comía el poco lugar disponible.</p>
+    <p>El tamaño del problema, medido contra el ERP de Toluca: <strong>«N/A» aparece en 71,984 parámetros y «No aplica» en 11,852</strong>. Dos de las seis ventanillas ya filtraban «No aplica», pero ninguna filtraba «N/A» —la forma más común, seis veces más frecuente—, así que la mayoría de los casos se seguía colando. <strong>7,307 números de parte</strong> de los 23,479 que tienen especificación imprimían al menos uno; en total desaparecen <strong>9,666 renglones</strong>.</p>
+    <p><strong>Qué NO se filtra, a propósito:</strong> un parámetro que solo <em>menciona</em> «N/A» pero dice algo más —por ejemplo «N/A para acero, 5 µm en latón»— se conserva completo, porque ahí sí hay una instrucción real. La comparación es contra el valor entero, no contra un pedazo. Y el <strong>nombre de la especificación se conserva siempre</strong>, aunque todos sus parámetros hayan quedado fuera: ese sí informa.</p>
+    <p><strong>Un campo sin capturar no es lo mismo que uno marcado «No aplica».</strong> Si nadie escribió el valor, el campo se sigue mostrando como antes —señala que la especificación mide ese punto aunque falte el rango—. Solo desaparece lo que alguien marcó explícitamente como no aplicable.</p>
+
+    <p class="ct" style="margin-top:1rem">La remisión desglosa los lotes</p>
+    <p><strong>La remisión ya no junta en un solo renglón todos los lotes de un mismo número de parte.</strong> Embarques quiere ver cada lote por separado, con sus propias piezas, su peso y sus referencias. Hasta ahora la remisión imprimía un renglón por número de parte y amontonaba los lotes en una lista dentro de la columna de referencias.</p>
+    <p>Un ejemplo real: la remisión 1646 pasa de <strong>7 renglones a 13</strong>. El número de parte <code>46007-314-01</code>, que salía en una sola línea de 168 piezas, ahora sale en cuatro de 42.</p>
+    <p><strong>Se puede volver al formato agrupado cuando el cliente lo prefiera</strong>, con la casilla <strong>Agrupar NP</strong>, que existe en dos lugares: en el <em>cliente</em> —para dejarlo fijo como su forma habitual— y en la <em>remisión</em> —para cambiarlo solo en ese embarque—. Si las dos están capturadas, <strong>manda la de la remisión</strong>. Si no se toca ninguna, los lotes salen separados.</p>
+    <p><strong>Lo que no cambió:</strong> las <em>etiquetas</em> de contenedor se siguen generando igual —esa casilla de la pantalla de embarque, la de agrupar por artículo de la orden de venta, es otra cosa y no se tocó—. Y la <strong>factura tampoco cambia</strong>: ahí el cuerpo tiene que coincidir con el XML timbrado ante el SAT, así que se queda como está. La remisión sí puede, porque es documento interno y el PDF es el único válido.</p>
+    <p><strong>Ojo con dos remisiones grandes:</strong> de las 726 revisadas, 672 se ven idénticas a antes —ya traían un solo lote por número de parte—. Pero una pasa de 12 a 53 renglones y la más grande de 88 a 137: esas van a ocupar más hojas al imprimir.</p>
+
+    <p class="ct" style="margin-top:1rem">El certificado y el tamaño de la muestra</p>
+    <p><strong>El certificado ya no puede declarar más piezas muestreadas que las que ampara.</strong></p>
     <p>Calidad reportó órdenes de trabajo de <strong>una o dos piezas</strong> cuyo certificado imprimía <strong>“Muestra: 5”</strong> junto a <strong>“Cantidad: 1”</strong> en la misma hoja. Se revisó el origen en el ERP: el 5 venía por <em>dos</em> caminos a la vez —lo que el inspector registró como muestreado y lo que el plan de muestreo de la especificación pide—, y ninguno de los dos se comparaba contra el tamaño de la orden. Desde este corte la columna <strong>Muestra</strong> se topa al <strong>menor</strong> de los dos números: la muestra o las piezas de la orden. Una orden de 1 pieza muestra 1; una de 2 muestra 2; una de 500 sigue mostrando lo que el plan indique.</p>
     <p><strong>Lo que no cambió:</strong> el plan de muestreo de las especificaciones sigue igual —esto no reescribe lo que Calidad captura, solo evita imprimir una cifra imposible—. Y cuando la orden <em>no</em> trae cantidad, la muestra se imprime tal cual: se prefiere dejar el dato como está antes que topar contra un cero y hacerlo parecer que no se muestreó nada.</p>
     <p class="ct" style="margin-top:1rem">Del corte anterior — orden de compra sin capturar</p>
-    <p><strong>Cuando no hay orden de compra del cliente, los documentos muestran el lote en lugar del punto rojo.</strong> Cinco ventanillas cambiaron el mismo día: factura (11390 / 11395), remisión (11391 / 11396), certificado (11392 / 11397 — hoy 11418 / 11419), OT con instrucciones (11393 / 11398) y etiqueta por contenedor (11394 / 11399) — Toluca primero, Monterrey después, mismo código en ambas.</p>
+    <p><strong>Cuando no hay orden de compra del cliente, los documentos muestran el lote en lugar del punto rojo.</strong> Cinco ventanillas cambiaron el mismo día: factura (11390 / 11395 — sigue viva), remisión (11391 / 11396 — hoy 11506 / 11512), certificado (11392 / 11397 — hoy 11505 / 11511), OT con instrucciones (11393 / 11398 — hoy 11509 / 11515) y etiqueta por contenedor (11394 / 11399 — hoy 11508 / 11514) — Toluca primero, Monterrey después, mismo código en ambas.</p>
     <p>El ERP deja un <strong>punto</strong> (<code>.</code>) como marcador cuando el cliente no dio su número de orden de compra. Hasta ahora los documentos lo imprimían tal cual, en <strong>rojo y letra grande</strong>. El aviso no aportaba: gritaba algo que ya se sabía, y ocupaba el lugar donde debería ir un dato útil. Desde este corte, en su lugar va el <strong>nombre del lote</strong>, que sí identifica el material.</p>
     <p><strong>El aviso rojo no desapareció, cambió de objetivo.</strong> El lote que toma el lugar de la orden de compra se revisa con la misma vara: si viene vacío, o dice “pendiente”, o trae “SQRO” o “no usar”, o es otro punto, entonces <em>ese</em> lote sale en rojo. Y si no hay ningún lote con qué sustituir —una orden de retrabajo, por ejemplo—, se queda el punto en rojo como antes. Dicho corto: el rojo ahora marca <strong>lo que sí se puede corregir</strong>.</p>
     <p><strong>Lo que no cambió:</strong> los otros motivos de alerta (orden de compra vacía, “PENDIENTE”, “SQRO”, “no usar”) siguen exactamente igual. Y la <em>orden de trabajo general</em> —la versión corta, distinta de la “OT con instrucciones”— se quedó fuera: su ventanilla no recibe el dato del lote, así que ahí no hay con qué reemplazar el punto.</p>
@@ -159,7 +175,7 @@ td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:now
           <td><code>pdf:QUOTE_UNIT_PRICE_TEMPLATE</code></td>
           <td>Arma la tabla de la cotización con los renglones ya formateados: especificaciones de cada línea, etiqueta de producto legible e IVA resuelto por nombre. Filtra las specs marcadas “No aplica”.</td>
           <td><span class="st on">Atendida</span></td>
-          <td class="num">11164</td><td class="num">11165</td>
+          <td class="num">11507</td><td class="num">11513</td>
         </tr>
         <tr>
           <td><strong>Orden de venta — captura</strong><br><span style="color:var(--faint);font-size:.82rem">“Add Parts to Sales Order”</span></td>
@@ -187,7 +203,7 @@ td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:now
           <td><code>pdf:PART_NUMBER_TEMPLATE</code></td>
           <td>Reúne en cada paso del proceso <em>todos</em> los parámetros de especificación que le aplican, y normaliza la lista de estaciones para que la plantilla no tenga que adivinar el formato.</td>
           <td><span class="st on">Atendida</span></td>
-          <td class="num">10481</td><td class="num">11072</td>
+          <td class="num">11510</td><td class="num">11516</td>
         </tr>
         <tr>
           <td><strong>Piso — orden de trabajo</strong><br><span style="color:var(--faint);font-size:.82rem">PDF de OT (vista general)</span></td>
@@ -201,14 +217,14 @@ td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:now
           <td><code>pdf:WORK_ORDER_PART_NUMBER_TEMPLATE</code></td>
           <td>Genera una etiqueta por contenedor físico: calcula cuántos contenedores lleva cada lote y precalcula las conversiones de peso, área y longitud para cada uno.</td>
           <td><span class="st on">Atendida</span></td>
-          <td class="num">11394</td><td class="num">11399</td>
+          <td class="num">11508</td><td class="num">11514</td>
         </tr>
         <tr>
           <td><strong>Piso — OT con instrucciones</strong><br><span style="color:var(--faint);font-size:.82rem">PDF “Orden de Trabajo Completa”</span></td>
           <td><code>pdf:WORK_ORDER_PART_NUMBER_VERBOSE_TEMPLATE</code></td>
           <td>La versión larga: un bloque por número de parte, con acabados en chips de color, y la receta del proceso con sus ayudas visuales e imágenes de instrucción al final.</td>
           <td><span class="st on">Atendida</span></td>
-          <td class="num">11393</td><td class="num">11398</td>
+          <td class="num">11509</td><td class="num">11515</td>
         </tr>
         <tr>
           <td><strong>Piso — etiqueta de rack</strong><br><span style="color:var(--faint);font-size:.82rem">PDF de rack</span></td>
@@ -222,14 +238,14 @@ td.num{font-family:var(--mono);font-variant-numeric:tabular-nums;white-space:now
           <td><code>pdf:CERTIFICATION_TEMPLATE</code></td>
           <td>Aplana mediciones y fotos por grupo de especificación, reconstruye el tamaño de grano, topa la muestra a las piezas de la orden y expone los datos del número de parte en campos planos —con su imagen de display— para que la plantilla los pueda pintar.</td>
           <td><span class="st on">Atendida</span></td>
-          <td class="num">11418</td><td class="num">11419</td>
+          <td class="num">11505</td><td class="num">11511</td>
         </tr>
         <tr>
           <td><strong>Embarque — remisión</strong><br><span style="color:var(--faint);font-size:.82rem">PDF de packing slip</span></td>
           <td><code>pdf:PACKING_SLIP_TEMPLATE</code></td>
-          <td>Numera los contenedores (“2/5”) y arma el cuerpo de la remisión, incluyendo el peso en la unidad correcta y el trato especial de cuentas como Schneider.</td>
+          <td>Numera los contenedores (“2/5”) y arma el cuerpo de la remisión, incluyendo el peso en la unidad correcta y el trato especial de cuentas como Schneider. Desglosa <strong>un renglón por lote</strong>; la casilla <strong>Agrupar NP</strong> —del cliente o de la remisión— lo vuelve a juntar por número de parte.</td>
           <td><span class="st on">Atendida</span></td>
-          <td class="num">11391</td><td class="num">11396</td>
+          <td class="num">11506</td><td class="num">11512</td>
         </tr>
         <tr>
           <td><strong>Facturación — cálculo</strong><br><span style="color:var(--faint);font-size:.82rem">Editor de factura</span></td>

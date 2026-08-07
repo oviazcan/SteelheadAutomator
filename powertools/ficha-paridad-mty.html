@@ -304,6 +304,28 @@ STEELHEAD_DEFAULT_DOMAIN=mty python3 sync/lowcode_sync.py diff &lt;slug&gt;</cod
     <p>El editor de Steelhead recibe un solo archivo y no puede importar nada, así que dentro del hook no se puede probar nada. La regla vive como <strong>pieza patrón</strong> en la biblioteca —donde sí se prueba— y como <strong>copia</strong> dentro del hook. Cambiar una obliga a cambiar la otra: es la disciplina que hace que el patrón sirva de algo.</p>
   </div>
 
+  <!-- 08b -->
+  <h2 class="sec"><span class="num">8b</span>La única excepción: las licencias de los choferes</h2>
+  <p class="sec-lead">Cuándo sí está permitido que las dos plantas tengan algo distinto.</p>
+
+  <p class="measure">La regla de que las dos plantas corren el mismo código es sobre <strong>cómo se comporta el sistema</strong>. Hay un caso —uno solo— donde lo que cambia no es el comportamiento sino <strong>un dato de la planta</strong>: el listado de licencias de los choferes externos que va dentro de la ventanilla de embarques.</p>
+
+  <p class="measure"><strong>Toluca y Monterrey no tienen los mismos choferes.</strong> Obligar a que el listado fuera idéntico significaría publicar en una planta las credenciales de personas que solo manejan para la otra. Y no son gafetes: son <strong>credenciales de elector completas</strong>, con domicilio, CURP y clave de elector. Por eso cada planta lleva su propio listado.</p>
+
+  <div class="callout warn">
+    <p class="ct">Qué se permite exactamente, y qué no</p>
+    <p><strong>Permitido:</strong> que el listado de choferes sea distinto en cada planta. Ese listado vive dentro de un tramo del archivo delimitado por dos marcas, como un recuadro con su cerco pintado.</p>
+    <p><strong>No permitido:</strong> que cambie cualquier otra cosa. Fuera de ese recuadro, el archivo tiene que ser <strong>idéntico letra por letra</strong> en las dos plantas. Hay una verificación automática que lee las dos plantas del ERP y <strong>marca falla</strong> si encuentra una sola diferencia fuera del recuadro.</p>
+    <p><strong>Y si alguien borra las marcas del recuadro,</strong> la verificación deja de tolerar la diferencia y vuelve a marcar falla. Es a propósito: unas marcas que desaparecieron son justo la situación en la que no conviene seguir aceptando diferencias sin darse cuenta.</p>
+  </div>
+
+  <p class="measure">Al corte de este documento la diferencia real entre las dos plantas es de <strong>una sola línea</strong>: un chofer dado de alta en Toluca que no maneja para Monterrey. Eso es la excepción trabajando como debe, no una falla.</p>
+
+  <div class="callout meta">
+    <p class="ct">Por qué esto no abre la puerta a otras diferencias</p>
+    <p>Dar de alta una excepción nueva exige <strong>tres cosas a la vez</strong>: marcar el tramo dentro del archivo, declararlo en la herramienta de verificación <em>con el motivo por escrito</em>, y anotarlo en el documento de paridad del repositorio. Sin las tres, la verificación lo trata como falla. La intención es que agregar una excepción cueste trabajo y quede registrada, no que sea un permiso general.</p>
+  </div>
+
   <!-- 09 -->
   <h2 class="sec"><span class="num">09</span>Lista de verificación antes de publicar</h2>
   <ul class="check">
@@ -313,7 +335,7 @@ STEELHEAD_DEFAULT_DOMAIN=mty python3 sync/lowcode_sync.py diff &lt;slug&gt;</cod
     <li>Si el hook introdujo un número nuevo, está en la tabla de equivalencias con su nombre estable.</li>
     <li>La lógica nueva tiene su prueba con anti-regresión de paridad.</li>
     <li><code>npm test</code> en verde.</li>
-    <li>Publicado <strong>y comparado</strong> en las dos plantas.</li>
+    <li>Publicado <strong>y comparado</strong> en las dos plantas, con la verificación automática de paridad en verde. La única diferencia aceptable es el listado de licencias de choferes, dentro de sus marcas (sección 8b).</li>
   </ul>
 
   <!-- 10 -->
@@ -325,6 +347,7 @@ STEELHEAD_DEFAULT_DOMAIN=mty python3 sync/lowcode_sync.py diff &lt;slug&gt;</cod
     <li>Se hizo una auditoría completa de todos los hooks buscando dependencias de números internos; los casos encontrados se corrigieron para resolver por nombre y se republicaron a ambas plantas.</li>
     <li>Lo que queda pendiente es <strong>dato, no código</strong>: catálogos fiscales, la etiqueta “Lote” y la confirmación de las cuentas prioritarias de la cola.</li>
     <li>Dos comportamientos <strong>no aplican</strong> en Monterrey por diseño de datos: el cargo de lote mínimo (falta la unidad «LO Lote») y el bloque informativo de especificación (esa planta no usa specs todavía). Ambos degradan sin error.</li>
+    <li><strong>Hay una diferencia declarada y es la única:</strong> el listado de licencias de choferes de la ventanilla de embarques (sección 8b). Al 6 de agosto de 2026 las dos plantas difieren en <strong>una línea</strong> —un chofer de Toluca que no maneja para Monterrey—; todo lo demás del archivo es idéntico letra por letra.</li>
   </ul>
 
   <footer class="foot">
