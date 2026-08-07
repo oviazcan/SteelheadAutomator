@@ -8,6 +8,15 @@ Pasos de build/firma/instalación en **`docs/deploy-safari.html`**.
 - **POC del candado de surtido VALIDADO en vivo (Safari iPad, 2026-06-30):** `world:"MAIN"` intercepta
   `fetch`, el login OAuth funciona y el bloqueo de una pieza no programada quedó confirmado (no se necesitó
   el plan B).
+- **Bundle v0.6.39 — 34 applets (2026-08-07):** corrige `warehouse-location-prefill` (**0.6.5**) y
+  **reemplaza a 0.6.38**, que en el iPad habría dejado el mismo hueco que se reportó en escritorio
+  («se quebró WLP, no aparece el campo»). El combo «Ubicación inicial:» vuelve a montarse **ANTES**
+  del cableado del modal: al introducir las dos marcas en 0.6.4 quedó detrás de
+  `applyUnusedFieldStatesWithRetry`, `evaluateSaveGate` y `watchLineRows` —tres funciones que tocan
+  el DOM y que, si tiran, se llevan por delante lo único que el operador ve—. Cada paso del cableado
+  va ahora en su propio `try`, y el candado se sigue instalando aunque el combo no monte. Verificado
+  en el **artefacto**: `primeraVez` 0 → 3, `saWlpFieldMounted` ×3, 76 bloques `BEGIN`/`END`
+  simétricos, `node --check` OK, trinquete 10/10. Peso **1.95 MB**.
 - **Bundle v0.6.38 — 34 applets (2026-08-07):** sin applets nuevos; lleva al iPad el **fix del
   DISPARO** en los **cinco** que montan UI dentro de un modal: `create-order-autofill` (0.1.8),
   `receiver-date-override` (0.5.82), `warehouse-location-prefill` (0.6.4), `proceso-calculator`

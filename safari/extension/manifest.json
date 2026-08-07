@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Steelhead Automator — iPad",
-  "description": "Bundle de applets de Steelhead para iPad (empaquetado). 34 applets: auto-inyectados (FAB/gate propio) + lanzadores de popup. v0.6.38 NO agrega applets: lleva al iPad el fix del DISPARO en los cinco que montan UI dentro de un modal (create-order-autofill, receiver-date-override, warehouse-location-prefill, proceso-calculator, unit-autoconvert). Medido en producción: 0 mutaciones de childList en el body durante 6 s con un modal abierto — el MutationObserver dispara en eventos discretos, no vigila, así que un montaje que falla o que cae con el DOM a medias no tenía quién lo reintentara. Todos llevan ya poll de re-detección. Importa más en el iPad que en escritorio: es el dispositivo del piso (almacén recibe y surte desde ahí) y su CPU es la más lenta del parque, justo el perfil donde el bug se manifiesta.",
-  "version": "0.6.38",
+  "description": "Bundle de applets de Steelhead para iPad (empaquetado). 34 applets: auto-inyectados (FAB/gate propio) + lanzadores de popup. v0.6.39 corrige warehouse-location-prefill (0.6.5): el campo «Ubicación inicial:» vuelve a montarse ANTES del cableado del modal — al introducir las dos marcas en 0.6.4 quedó detrás de applyUnusedFieldStates/evaluateSaveGate/watchLineRows, tres funciones que tocan el DOM y que si tiran se llevan por delante lo único que el operador ve. Cada paso del cableado va ahora en su propio try, y el candado (que protege aunque el combo no monte) sigue instalándose. Reemplaza a 0.6.38, que en el iPad habría dejado el mismo hueco.",
+  "version": "0.6.39",
   "permissions": [
     "storage",
     "tabs"
