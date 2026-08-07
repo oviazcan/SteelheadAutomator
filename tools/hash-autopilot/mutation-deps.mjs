@@ -146,6 +146,56 @@ async function archiveCentinelaOVs(page, domain) {
     await page.waitForTimeout(2000);
   }
 }
+// ── sensorDashboardCentinela: las dos ops de sensores, captura-y-aborta ─────
+// DOM medido en vivo el 2026-08-06 (el operador mandó el wrapper; no se adivinó nada).
+// Formas de icono, NO clases css-* (emotion las regenera cuando alguien mueve un padding) y
+// NO texto como única señal. El aria-label va al final de la cascada y solo cuando nombra la
+// ACCIÓN, no la tecnología — la lección de QrCode2Icon/`/…|qr/i`.
+const ICON_EXPAND = 'M16.59 8.59 12 13.17 7.41 8.59 6 10l6 6 6-6z';           // ExpandMoreIcon
+const ICON_RADIO_OFF = 'M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2m0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8'; // RadioButtonUncheckedIcon
+// El sensor que aporta el parámetro elegible. Se ancla por su LINK (/Sensors/<idInDomain>):
+// el nombre de un sensor no se traduce y el href no depende del idioma ni de emotion.
+const SENSOR_CON_PARAM_IDD = 3977; // T113-DE00-001 Condición Física del Barril (id interno 13440)
+
+async function sensorDashboardOpsAborted(page, { sink }) {
+  const dbg = process.env.SA_DBG;
+  const fila = page.locator('tr').filter({ has: page.locator(`a[href*="/Sensors/${SENSOR_CON_PARAM_IDD}"]`) }).first();
+  const hayFila = await fila.count().catch(() => 0);
+  if (!hayFila) {
+    // Fail-closed explícito: sin la fila no se clica NADA. Un clic "a ver si pega" en esta
+    // pantalla podría caer en el bote de basura rojo de la fila de al lado.
+    throw new Error(`fail-closed: no encontré la fila del sensor ${SENSOR_CON_PARAM_IDD} en el dashboard Centinela`);
+  }
+
+  // (1) CreateManySensorMeasurements — botón de crear medición de la propia fila.
+  //     Se intenta ANTES de expandir para no depender de que la tabla de params cargue.
+  if (sink && sink.abortOps) sink.abortOps.add('CreateManySensorMeasurements');
+  const medir = fila.locator('span[aria-label*="Create a new measurement" i] button').first();
+  if (await medir.count().catch(() => 0)) {
+    await medir.click({ timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(2500);
+    if (dbg) console.log('       [dbg] sensorDash: clic en crear medición (abortado)');
+  } else if (dbg) console.log('       [dbg] sensorDash: no vi el botón de crear medición');
+
+  // (2) UpdateSensorDashboardMember — desplegar la parametrización y marcar el radio.
+  const expandir = fila.locator(`button:has(svg path[d="${ICON_EXPAND}"])`).last();
+  if (await expandir.count().catch(() => 0)) {
+    await expandir.click({ timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(2500);
+    if (dbg) console.log('       [dbg] sensorDash: parametrización desplegada');
+  }
+  if (sink && sink.abortOps) sink.abortOps.add('UpdateSensorDashboardMember');
+  // El radio vive en la tabla que se despliega DEBAJO de la fila, no dentro del <tr>: se
+  // busca a nivel de página. Solo los NO marcados (RadioButtonUnchecked) — un radio ya
+  // activo no dispara nada al clicarlo y el ciclo se iría en blanco sin decir por qué.
+  const radio = page.locator(`button:has(svg path[d="${ICON_RADIO_OFF}"])`).first();
+  if (await radio.count().catch(() => 0)) {
+    await radio.scrollIntoViewIfNeeded().catch(() => {});
+    await radio.click({ timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(2500);
+    if (dbg) console.log('       [dbg] sensorDash: clic en el radio del parámetro (abortado)');
+  } else if (dbg) console.log('       [dbg] sensorDash: no vi ningún radio sin marcar');
+}
 // ── maintenanceNode: create-event-capture ──────────────────────────────────
 // Los 3 hashes (CreateMaintenanceEvent / CreateMaintenanceEventComment /
 // UpdateMaintenanceEvent) se disparan al CREAR un evento de mantenimiento sobre el
@@ -1075,6 +1125,27 @@ const HANDLERS = {
       // UpdateMaintenanceEvent (self-clean). Evitamos re-buscar un checkbox aquí para
       // no clicar por error otro checkbox si la página navegó. Un run INTERRUMPIDO
       // podría dejar un evento sin archivar (fuga menor, evento centinela inofensivo).
+    },
+  },
+  // ── SENSORES (captura-y-aborta) — las DOS ops salen de la MISMA pantalla ──
+  sensorDashboardCentinela: {
+    async load(page, { domain, id }) {
+      await page.goto(`${BASE}/Domains/${domain}/Maintenance/SensorDashboards/${id}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+      await page.waitForTimeout(3000);
+      // isSentinel fail-closed: el nombre del dashboard debe traer "Centinela". Se lee del
+      // documento (título/encabezado), no de la URL: un id correcto en un dashboard
+      // renombrado NO debe pasar — el candado es el nombre, igual que en el resto.
+      const txt = await page.locator('body').innerText().catch(() => '');
+      const ok = /centinela/i.test(txt || '');
+      if (process.env.SA_DBG) console.log(`       [dbg] sensorDash: nombre con Centinela=${ok}`);
+      return { name: ok ? 'Centinela (sensor-dashboard capture-abort)' : '' };
+    },
+    async mutate(page, ctx) { await sensorDashboardOpsAborted(page, ctx); },
+    async restore(page, { sink }) {
+      if (sink && sink.abortOps) {
+        sink.abortOps.delete('UpdateSensorDashboardMember');
+        sink.abortOps.delete('CreateManySensorMeasurements');
+      }
     },
   },
   // ── REPORTES (captura-y-aborta) — cero efecto, restore solo desmarca la op del sink ──

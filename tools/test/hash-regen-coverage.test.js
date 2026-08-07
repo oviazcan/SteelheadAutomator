@@ -56,7 +56,12 @@ function opsCubiertas() {
 // El "nadie" se midió sobre 4 fuentes (applets, extension, Reportes SH, PowerTools) EXCLUYENDO
 // safari/main-bundle.js y dataLoader_v84.js: el primero es un ARTEFACTO que embebe el catálogo
 // completo (las 199 ops salían "usadas") y el segundo trae su PROPIA tabla de hashes.
-const HUERFANAS_BASE = 53;
+// 2026-08-06: 53 -> 51. Baja por RUTA REAL, no por retiro (la distinción que el CLAUDE.md pide
+// que el commit declare): las dos mutations de sensores que rotaron ese día ganaron entidad
+// centinela — `sensorDashboardCentinela`, captura-y-aborta sobre el Sensor Dashboard #193.
+// Nacieron de una rotación que NO se pudo recuperar de ninguno de los 131 scan_results del
+// operador: sin ruta, un hash muerto solo se arregla cuando alguien ejecuta la acción a mano.
+const HUERFANAS_BASE = 51;
 
 test('las ops del ruteo por grupos tienen ruta de regeneración', () => {
   const cubiertas = opsCubiertas();
@@ -114,4 +119,51 @@ test('si la deuda bajó, hay que actualizar la línea base en el mismo commit', 
   assert.ok(n >= HUERFANAS_BASE,
     `¡Bajó la deuda de ${HUERFANAS_BASE} a ${n}! Actualiza HUERFANAS_BASE a ${n} ` +
     'para que el trinquete no permita volver atrás.');
+});
+
+// ── Anclas del centinela de sensores (2026-08-06) ────────────────────────────
+// Las anclas de este handler se MIDIERON del DOM real. El test las fija porque su falla es
+// silenciosa: un selector que deja de matchear no truena — simplemente no captura, y la op
+// vuelve a quedar sin ruta sin que nada se ponga rojo. Es el modo de falla que acabamos de
+// descubrir en `maintenance-list` y `workorders-detail`.
+const DEPS_SRC = require('fs').readFileSync(
+  require('path').join(__dirname, '../hash-autopilot/mutation-deps.mjs'), 'utf8');
+
+test('sensorDashboard: NO se ancla a clases css-* (emotion las regenera sin avisar)', () => {
+  const fn = DEPS_SRC.slice(DEPS_SRC.indexOf('async function sensorDashboardOpsAborted'));
+  const cuerpo = fn.slice(0, fn.indexOf('\n}\n'));
+  assert.ok(!/css-[a-z0-9]{5,}/i.test(cuerpo),
+    'un ancla css-* parece estructura y no lo es: cambia cuando alguien mueve un padding');
+});
+test('sensorDashboard: ancla por FORMA de icono, no solo por texto', () => {
+  assert.match(DEPS_SRC, /ICON_EXPAND\s*=\s*'M16\.59 8\.59/, 'ExpandMoreIcon medido en vivo');
+  assert.match(DEPS_SRC, /ICON_RADIO_OFF\s*=\s*'M12 2C6\.48 2/, 'RadioButtonUncheckedIcon medido en vivo');
+});
+test('sensorDashboard: la fila se ancla al href del sensor (inmune al idioma)', () => {
+  assert.match(DEPS_SRC, /a\[href\*="\/Sensors\/\$\{SENSOR_CON_PARAM_IDD\}"\]/);
+});
+test('sensorDashboard: marca la op en abortOps ANTES de clicar (si no, no hay qué abortar)', () => {
+  const fn = DEPS_SRC.slice(DEPS_SRC.indexOf('async function sensorDashboardOpsAborted'));
+  const cuerpo = fn.slice(0, fn.indexOf('\n}\n'));
+  for (const op of ['CreateManySensorMeasurements', 'UpdateSensorDashboardMember']) {
+    const marca = cuerpo.indexOf(`abortOps.add('${op}')`);
+    assert.ok(marca > -1, `${op} debe marcarse en abortOps`);
+    assert.ok(marca < cuerpo.indexOf('.click(', marca),
+      `${op}: marcar DESPUÉS del clic deja pasar la escritura — el aborto llegaría tarde`);
+  }
+});
+test('sensorDashboard: sin la fila del sensor no clica NADA (fail-closed)', () => {
+  const fn = DEPS_SRC.slice(DEPS_SRC.indexOf('async function sensorDashboardOpsAborted'));
+  const cuerpo = fn.slice(0, fn.indexOf('\n}\n'));
+  const guard = cuerpo.indexOf('fail-closed');
+  assert.ok(guard > -1 && guard < cuerpo.indexOf('.click('),
+    'en esta pantalla hay un bote de basura en la fila de al lado: un clic a ciegas no es opción');
+});
+test('sensorDashboard: el candado isSentinel lee el NOMBRE, no la URL', () => {
+  const ent = sen.entities.sensorDashboardCentinela;
+  assert.equal(ent.marker, 'Centinela');
+  assert.equal(ent._estrategia, 'capture-abort');
+  const load = DEPS_SRC.slice(DEPS_SRC.indexOf('sensorDashboardCentinela: {'));
+  assert.match(load.slice(0, 1200), /centinela\/i\.test/,
+    'un id correcto en un dashboard renombrado NO debe pasar el candado');
 });
