@@ -914,3 +914,33 @@ No hace falta cambiar la liga: el cascarón toma el payload más reciente (patr�
 **Nota de higiene:** el runner apendeaba a este archivo el `stderr` crudo de Python (el
 `NotOpenSSLWarning` de urllib3) mezclado con el aviso. Se limpió a mano; el redirect del script
 debería filtrar stderr para no ensuciar un markdown versionado.
+
+### Cierre del ciclo — rutas reparadas y centinela nuevo (2026-08-06, tarde)
+
+Las dos rutas que el autopilot reportó con «0 capturas» quedaron reparadas con la URL que el
+operador confirmó haber navegado en el scan donde ambas SÍ se capturaron:
+
+| op | ruta vieja (no disparaba) | ruta nueva |
+|---|---|---|
+| `AllEquipments` | `maintenance-list` → `/Maintenance` | `maintenance-equipment` → `/Maintenance/Equipment` |
+| `WorkOrderSchedule` | `workorders-detail` → 1ª OT del listado | `workorders-centinela-detail` → `/WorkOrders/11677` |
+
+**`WorkOrderSchedule` se ancló a la OT CENTINELA, no a «la primera del listado».** Una OT
+cualquiera puede no tener programación y entonces no dispara la op — que es exactamente cómo esa
+ruta se degradó sin que nada avisara. La 11677 se verificó: viva, abierta, 51 nodos de receta, y
+ya se usa como centinela en `sentinels-config` (`workOrderSpecParams`).
+
+Y las dos mutations de sensores ganaron entidad centinela (`sensorDashboardCentinela`, Sensor
+Dashboard #193): **trinquete 53 → 51 huérfanas, por RUTA REAL**.
+
+> **La categoría de deuda que este día destapó:** una ruta **ROTA** no es lo mismo que una
+> **AUSENTE**, y `hash-regen-coverage` solo ve la segunda. Una receta que existe pero ya no
+> dispara su op **se cuenta como cubierta**, así que la línea base de huérfanas es un **piso**, no
+> la deuda real. Hoy la única señal de esa clase es el correo nuevo de `needs-attention` — y solo
+> aparece cuando el hash ya rotó, es decir, cuando el applet ya está roto en piso. Medir
+> `captures` contra el log histórico de capturas cerraría el hueco de raíz; queda anotado.
+
+**Estado EN VIVO verificado** (no leído de una rama de trabajo): `config 1.11.101` servido desde
+GitHub Pages, con `AllEquipments = fb7aa06d…` y `WorkOrderSchedule = 05283b21…`, y la **firma
+ECDSA verifica** contra la pública real embebida en la extensión — la comprobación que
+`deploy-status.sh` NO hace, porque compara versiones y no firmas.
