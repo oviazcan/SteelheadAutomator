@@ -121,6 +121,14 @@ El correo dice qué retuvo, por qué no urge y el comando exacto para liberarlo
 - **Concurrencia de sesiones:** el cron del autopilot y una sesión manual pueden escribir
   `remote/config.json` a la vez (pasó hoy, sin choque por tocar ops distintas). Antes de correr
   el autopilot a mano: `ps aux | grep hash-autopilot`.
+- **El sitio de GitHub Pages no tiene `.nojekyll`** (detectado 2026-08-06). Jekyll procesa TODO
+  el árbol publicado —incluidos los 3 paquetes de docs HTML— y un archivo que no le guste tumba
+  la **publicación completa**, no sólo la suya. Ese día hubo 2 builds `errored` seguidos y el
+  sitio se quedó clavado en `1.11.96` mientras git iba en `1.11.99`; se destrabó re-deployando
+  con bump (`1.11.100`), pero la causa del fallo **no se identificó**. Agregar `.nojekyll`
+  elimina la clase entera de fallo. **No es trivial de meter:** el `pre-push` bloquea cualquier
+  push a `gh-pages` que no espeje `main:remote/` y suba versión, así que hay que integrarlo al
+  flujo de `deploy.sh` (que hace `git add scripts config.json`), no empujarlo a mano.
 - **⚠️ Datos personales de terceros expuestos sin autenticación (`driver-licenses`).** Lo que
   hay cargado hoy son **credenciales INE completas** —domicilio, CURP, clave de elector, fecha
   de nacimiento— de choferes que **no son personal de Ecoplating**, y `/api/files/<name>`

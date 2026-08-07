@@ -44,6 +44,23 @@ tools/deploy.sh "fix(applet-x): descripción" --check applet-x
 
 **Antes de razonar "¿esto ya está vivo?"** corre `tools/deploy-status.sh` — imprime la versión de tu rama, `main`, `gh-pages` y el sitio **EN VIVO**, y verifica el invariante byte-a-byte. **Nunca concluyas el estado de deploy mirando el `config.json` de una rama de trabajo** (puede estar desfasada respecto a `main`/`gh-pages`).
 
+⚠️ **«EN VIVO desfasado» NO siempre es lag: puede ser el build de Pages ROTO, y
+`deploy-status.sh` los reporta IGUAL.** El 2026-08-06 el sitio se quedó clavado en `1.11.96`
+mientras git decía `1.11.99`; el mensaje «⏳ GH Pages publicando (~30-60s + caché CDN)» invitaba a
+esperar, y se perdieron ~30 min esperando algo que no iba a pasar solo. La verdad estaba a una
+llamada:
+```bash
+gh api repos/oviazcan/SteelheadAutomator/pages/builds --jq '.[0:3][] | "\(.status) \(.commit[0:8]) \(.error.message // "")"'
+```
+Salían dos `errored` («Page build failed») y uno atascado en `building`. **La cura es RE-DEPLOYAR
+con bump** (`tools/deploy.sh "chore(pages): repush"`), que es lo que el propio `pre-push` sugiere:
+funcionó a la primera y publicó `1.11.100`. Un commit VACÍO en `gh-pages` **no sirve** — el
+`pre-push` exige que la versión suba, así que el repush pasa por `deploy.sh` o no pasa.
+Regla: **si el vivo no alcanza a git en ~2 min, mira los builds antes de seguir esperando.**
+Nota adicional: el sitio **no tiene `.nojekyll`**, así que Jekyll procesa TODO el árbol (incluidos
+los 3 paquetes de docs) y un archivo que no le guste puede tumbar la publicación completa — no
+sólo la suya. Es candidato a arreglo de fondo si los fallos se repiten.
+
 **Candado:** el hook `pre-push` (`.githooks/pre-push`, instalar una vez con `tools/install-hooks.sh`) **bloquea** pushear `gh-pages` si no espeja `main:remote/`. Si te topas el bloqueo, usa `deploy.sh`.
 
 **`deploy.sh` NO publica los `.xlsm` de `templates/`** (hace `git add scripts config.json`): van en commit aparte y **antes** del config —si el puntero sale primero el botón da 404— pero **en el mismo push** que el deploy (el `pre-push` valida el espejo antes de eximir a los push «solo-docs»).
@@ -444,7 +461,7 @@ renglón. **Antes de tocar un applet, lee su bitácora.**
 | `wo-schedule-button` | 0.9.0 | Readout de programación en la ficha de OT + programar por tratamiento ancla | [`wo-schedule-button.md`](docs/applets/wo-schedule-button.md) |
 | `batch-name-filter` | 0.3.1 | Selecciona de un jalón todos los lotes con un nombre exacto en el Panel de Envío | [`batch-name-filter.md`](docs/applets/batch-name-filter.md) |
 | `packing-slip-drawings` | 0.3.0 | Adjunta los planos del NP al correo de la remisión (y delata en ámbar los NP sin plano) + imprime remisión y selección en un PDF | [`packing-slip-drawings.md`](docs/applets/packing-slip-drawings.md) |
-| `driver-licenses` | 0.1.3 · **en producción** (`1.11.99`) · iPad `0.6.37` | Administra las identificaciones de choferes EXTERNOS y **publica el catálogo dentro del hook `pdf:SHIPMENT_TEMPLATE`** de SteelheadPowerTools (sustituye un condicional por chofer en la plantilla). Único applet que **publica código productivo**: relee del servidor, muestra diff, exige confirmación y aborta si los marcadores no están sanos. Pertenencia por **prefijo** `licencia-` en el nombre, no por carpeta (`CreateUserFile` no puede asignarla) | [`driver-licenses.md`](docs/applets/driver-licenses.md) |
+| `driver-licenses` | 0.1.3 · **en producción** (`1.11.100`) · iPad `0.6.37` | Administra las identificaciones de choferes EXTERNOS y **publica el catálogo dentro del hook `pdf:SHIPMENT_TEMPLATE`** de SteelheadPowerTools (sustituye un condicional por chofer en la plantilla). Único applet que **publica código productivo**: relee del servidor, muestra diff, exige confirmación y aborta si los marcadores no están sanos. Pertenencia por **prefijo** `licencia-` en el nombre, no por carpeta (`CreateUserFile` no puede asignarla) | [`driver-licenses.md`](docs/applets/driver-licenses.md) |
 | `schedule-batch-highlighter` | 0.2.0 | Resalta un lote en el Schedule Board y 📦 agrupa sus órdenes en una tarea | [`schedule-batch-highlighter.md`](docs/applets/schedule-batch-highlighter.md) |
 | `po-listing-filters` | 0.4.0 | Buscador global de OC/proveedor/factura + toggle "Sólo Proquipa" | [`po-listing-filters.md`](docs/applets/po-listing-filters.md) |
 | `invoice-autofill` | 0.5.67 | Autollena cliente/divisa/TC/CXC y la cuenta de ingreso por línea al crear factura | [`invoice-autofill.md`](docs/applets/invoice-autofill.md) |
