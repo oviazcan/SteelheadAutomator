@@ -535,3 +535,48 @@ test('rescate: si la receta maestra no se puede leer, la orden no truena', async
   assert.equal(r.plan.parametersToAdd.length, 0, 'sin receta no se adivina destino');
   assert.equal((r.faltantesSinDestino || []).length, 3, 'y se reporta lo que quedó sin aplicar');
 });
+
+// ── dedup de hallazgos: el candado que evita BORRAR una casilla ──────────────
+// Con `migrarAInspeccion` encendido, procesar una orden dos veces no es ruido: la segunda
+// pasada archiva la casilla que la primera acababa de crear y la deja HUECA. Fue el incidente
+// de la OT 15928 (2026-08-04): 2 de 2,549 casillas quedaron vacías, y las 2 eran justo las
+// únicas repetidas del reporte. La repetición nace de `allOpenWorkOrders`, que pagina con
+// ID_DESC y sin deduplicar: en 40 min una orden cambia de estado y sale en dos páginas.
+const H = (idInDomain, partNumberId, marca) => ({ idInDomain, partNumberId, marca });
+
+test('dedupHallazgos: una orden repetida queda UNA vez', () => {
+  const r = G.dedupHallazgos([H(15928, 3798757, 'a'), H(15928, 3798757, 'b')]);
+  assert.equal(r.length, 1);
+});
+test('dedupHallazgos: gana el ÚLTIMO (es el análisis más fresco)', () => {
+  const r = G.dedupHallazgos([H(15928, 3798757, 'viejo'), H(15928, 3798757, 'nuevo')]);
+  assert.equal(r[0].marca, 'nuevo');
+});
+test('dedupHallazgos: la misma orden con NP distinto NO se colapsa', () => {
+  // Una orden con piezas de dos números de parte produce dos hallazgos legítimos: la unidad
+  // es (orden, NP), no la orden. Colapsar por idInDomain perdería trabajo real.
+  const r = G.dedupHallazgos([H(16000, 111, 'a'), H(16000, 222, 'b')]);
+  assert.equal(r.length, 2);
+});
+test('dedupHallazgos: conserva el orden de aparición', () => {
+  const r = G.dedupHallazgos([H(1, 10), H(2, 20), H(1, 10), H(3, 30)]);
+  assert.deepEqual(r.map(x => x.idInDomain), [1, 2, 3]);
+});
+test('dedupHallazgos: tolera nulos y lista vacía', () => {
+  assert.deepEqual(G.dedupHallazgos(null), []);
+  assert.deepEqual(G.dedupHallazgos([null, undefined]), []);
+});
+
+test('mergeCheckpoint: deduplica la COLA por procesar (la lista puede traer repetidos)', () => {
+  const r = G.mergeCheckpoint([5, 6, 5, 7, 6], null);
+  assert.deepEqual(r.pendientes, [5, 6, 7], 'una orden repetida se procesaría dos veces');
+});
+test('mergeCheckpoint: deduplica los hallazgos que venían del checkpoint', () => {
+  const ck = { done: [1], hallazgos: [H(15928, 3798757, 'a'), H(15928, 3798757, 'b')] };
+  assert.equal(G.mergeCheckpoint([2, 3], ck).hallazgos.length, 1);
+});
+test('mergeCheckpoint: dedup y salto de hechas conviven', () => {
+  const r = G.mergeCheckpoint([1, 2, 2, 3], { done: [1], hallazgos: [] });
+  assert.deepEqual(r.pendientes, [2, 3]);
+  assert.equal(r.yaHechas, 1);
+});
