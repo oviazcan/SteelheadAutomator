@@ -50,3 +50,26 @@ Mientras `SA_INTEGRITY_PUBKEY=''`, TODO se comporta idéntico al actual (fail-op
 ## Interacción con otros sistemas
 - **hash-autopilot:** su `autopilot-deploy.sh` **llama a `tools/deploy.sh`**, así que hereda el `seal` automáticamente — no se tocó por separado. Necesita acceso IAM a KMS cuando corre headless (mismo proyecto del cliente).
 - **Canonicalización:** `seal` re-serializa `config.json` con `JSON.stringify(config,null,2)+'\n'`. El primer deploy con seal puede reformatearlo una vez; después es idempotente. Supera el "preserva formato" del autopilot (inofensivo).
+
+## Trampa: el verificador podía salir 0 SIN verificar (corregido 2026-08-06)
+
+`tools/verify-config-sig.mjs` decidía si corría como CLI comparando `import.meta.url` contra
+`` `file://${process.argv[1]}` ``. **Node resuelve los symlinks en `import.meta.url` pero no en
+`process.argv[1]`**, así que invocarlo por cualquier ruta symlinkeada —en macOS eso incluye
+`/tmp` y `/var/folders`, o sea **cualquier `mktemp`**— hacía que el bloque principal no corriera:
+el proceso salía **0, sin imprimir nada**, y quien lo invocaba lo leía como firma correcta.
+
+En un verificador de firma un OK silencioso es el peor modo de fallo posible, y no era teórico:
+el hook `pre-push` copia el script a un `mktemp` y con esto **dejó pasar un `config.sig`
+deliberadamente corrupto**. `tools/deploy.sh` lo invoca por `$MAINWT`, que hoy no es symlink, pero
+el riesgo latente era idéntico.
+
+**Ahora:** el guard compara las rutas ya resueltas por `realpath` de los dos lados, y el CLI
+**falla cerrado** — sin los tres argumentos sale `2`, y una excepción al verificar sale `2` en vez
+de confundirse con "verifica". Anti-regresión en `tools/test/verify-config-sig.test.js` (dos tests;
+verificado que **fallan** con el código anterior).
+
+**Lección transferible:** distinguir siempre *"no se pudo comprobar"* de *"es inválido"*. El mismo
+hook confundía las dos cosas en el otro sentido — reportaba "config.sig NO verifica" cuando en
+realidad no había podido ni localizar el verificador, y eso mandaba a re-sellar una firma que
+estaba perfecta.
