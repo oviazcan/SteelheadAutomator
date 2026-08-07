@@ -1,5 +1,35 @@
 # Applet: `proceso-calculator` — Calculadora de Procesos
 
+## 0.1.5 (2026-08-07) — red de seguridad por poll: el icono 🧮 podía no aparecer nunca
+
+Corregido **preventivamente**, junto con `unit-autoconvert`, tras el reporte de piso *«falla en los
+equipos Windows de menor desempeño»* que destapó el mismo patrón en `create-order-autofill` (0.1.8),
+`receiver-date-override` (0.5.82) y `warehouse-location-prefill` (0.6.4). Este applet dependía
+**solo** del `MutationObserver`: si `findProcessControl()` devolvía null porque el modal aún se
+estaba montando, `ensureIcon()` salía sin montar y no había quién reintentara.
+
+> **El hallazgo que lo motiva** (medido en producción el 2026-08-07, `/Domains/344/SalesOrders` y
+> `/Receiving/CustomerParts`): con un modal ABIERTO se contaron **0 mutaciones de `childList` en el
+> `document.body` durante 6 segundos**, incluso tecleando dentro del modal. El `MutationObserver`
+> **no es un vigilante continuo**: dispara en eventos discretos. En estas pantallas el único evento
+> que llega es el montaje del modal — y si el debounce vence mientras ese montaje va a medias (lo
+> normal en un equipo lento, donde el contenido se llena con la respuesta de red), el applet mira
+> cuando no hay nada que ver, falla en silencio y **nadie vuelve a llamarlo**. En una máquina rápida
+> todo se monta en la misma ráfaga y el disparo cae con el DOM completo: por eso el síntoma es
+> *«a mí me funciona, a ellos es intermitente»*.
+>
+> Trinquete de familia: [`tools/test/modal-detect-poll-coverage.test.js`](../../tools/test/modal-detect-poll-coverage.test.js).
+
+**El tick usa SOLO el camino barato** de `findProcessControl` (los dos
+`data-steelhead-component-id`, que siguen vivos en fichas de detalle). Su fallback por texto barre
+`p, label, span` de todo el documento y corre justo cuando **no** hay nada montado: pagarlo cada
+segundo, en las cuatro pantallas donde carga el applet, habría cambiado un bug intermitente por un
+costo permanente en el hilo que el operador usa para teclear. Ese fallback se queda para el
+observer, que dispara por evento y no por reloj.
+
+`ensureIcon` ya era idempotente por presencia del nodo (`:scope > .sa-pc-icon`), así que el poll no
+duplica nada. Se exportan `ensureIcon` y `detectTick` para diagnosticar desde la consola.
+
 ## 2026-08-03 — SH quitó los `data-testid`: este applet pasa por el núcleo de iconos
 
 Steelhead publicó un build que **elimina los `data-testid` de los iconos MUI** (medido: 0 ocurrencias en cinco pantallas cargadas y con contenido real). **Sólo los `data-testid`**: los `data-steelhead-component-id` y los ids RJSF **siguen vivos** (38 en la ficha de OT, 40 en la de NP) — afirmar lo contrario fue una sobregeneralización corregida el mismo día. Este applet anclaba a ellos, así que sus `querySelector` pasaron a devolver `null` **en silencio**.

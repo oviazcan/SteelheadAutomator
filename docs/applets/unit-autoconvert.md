@@ -1,6 +1,36 @@
 # Applet: `unit-autoconvert` — Auto-conversión de Unidades
 
-**Versión actual:** 0.1.0 (código completo; **✅ validado en vivo 2026-07-22**, confirmación del operador)
+**Versión actual:** 0.1.1 (código completo; **✅ validado en vivo 2026-07-22**, confirmación del operador)
+
+## 0.1.1 (2026-08-07) — poll de ARRANQUE: el toggle podía no montarse nunca
+
+Corregido **preventivamente**, junto con `proceso-calculator`, tras el reporte de piso *«falla en los
+equipos Windows de menor desempeño»*. El applet dependía **solo** del `MutationObserver` (debounce
+300 ms): si el único disparo caía mientras el modal se montaba, el encabezado todavía no existía,
+`tryInjectToggles` no encontraba dónde colgar el toggle y no había quién reintentara.
+
+> **El hallazgo que lo motiva** (medido en producción el 2026-08-07, `/Domains/344/SalesOrders` y
+> `/Receiving/CustomerParts`): con un modal ABIERTO se contaron **0 mutaciones de `childList` en el
+> `document.body` durante 6 segundos**, incluso tecleando dentro del modal. El `MutationObserver`
+> **no es un vigilante continuo**: dispara en eventos discretos. En estas pantallas el único evento
+> que llega es el montaje del modal — y si el debounce vence mientras ese montaje va a medias (lo
+> normal en un equipo lento, donde el contenido se llena con la respuesta de red), el applet mira
+> cuando no hay nada que ver, falla en silencio y **nadie vuelve a llamarlo**. En una máquina rápida
+> todo se monta en la misma ráfaga y el disparo cae con el DOM completo: por eso el síntoma es
+> *«a mí me funciona, a ellos es intermitente»*.
+>
+> Trinquete de familia: [`tools/test/modal-detect-poll-coverage.test.js`](../../tools/test/modal-detect-poll-coverage.test.js).
+
+**Con presupuesto, y no por capricho:** aquí el trabajo NO es barato — `findByText` recorre
+`p, span, strong, b, h1…h6, div, label` de todo el documento **sin early exit** (busca el match más
+profundo, así que no puede cortar). Correrlo cada segundo mientras hubiera cualquier modal abierto
+habría cambiado el bug por un costo permanente. El poll es entonces una red de **arranque**: cubre
+los primeros `INJECT_TRY_BUDGET` (5) segundos de vida de cada diálogo —la ventana donde el equipo
+lento monta el contenido tarde— y después se calla; el observer vuelve a ser el único mecanismo,
+como hasta hoy. La política es pura y testeada: `Core.shouldAttemptInject({hasToggle, tries, max})`.
+
+> **Regla:** cuando la red de seguridad es cara, se le pone presupuesto y se dice cuál es. Un poll
+> que barre todo el documento cada segundo no es una red — es el siguiente reporte de piso.
 **Archivo:** `remote/scripts/unit-autoconvert.js` (+ `unit-autoconvert-core.js` puro, golden tests en `tools/test/unit-autoconvert-core.test.js`)
 **Global:** `window.UnitAutoConvert` · estado por sesión en `window.__saUac`
 

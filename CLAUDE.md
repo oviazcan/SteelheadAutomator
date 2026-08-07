@@ -200,7 +200,13 @@ pushea el otro repo automáticamente**. Ver `tools/hash-autopilot/README.md` y e
   en la primera visita, **0 al volver**. Cada recurso se enciende y se apaga por SU propio estado.
   Corolario: **lo que se apaga al salir de una ruta, alguien lo tiene que volver a encender**, y el
   `MutationObserver` no sirve de respaldo — medido en el mismo modal: **0 mutaciones de `childList`
-  en 6 s**, incluso tecleando. Dispara en eventos discretos, no vigila.
+  en 6 s**, incluso tecleando. Dispara en eventos discretos, no vigila. **Todo applet que monte UI
+  en un MODAL necesita poll de re-detección** (el mismo bug salió 5 veces: `weight-quick-entry`,
+  `create-order-autofill`, `receiver-date-override`, `proceso-calculator`/`unit-autoconvert`,
+  `warehouse-location-prefill`); trinquete: `tools/test/modal-detect-poll-coverage.test.js`. Los que
+  inyectan en LISTADOS no lo necesitan —ahí paginar/filtrar/ordenar mutan sin parar—. **Y si el tick
+  es caro, lleva presupuesto**: un poll que barre el documento entero cada segundo no es una red, es
+  el siguiente reporte de piso (`unit-autoconvert`: 5 intentos por diálogo y se calla).
 - **Verifica RELEYENDO cuando la mutation no devuelve el dato.** Varias mutations responden
   `{clientMutationId:null}` — ni el valor ni el id — así que un `await` sin excepción **NO prueba que
   se escribió**. Relee saltando caches y compara el valor (para fechas, el **instante**, no la cadena).
@@ -483,7 +489,7 @@ renglón. **Antes de tocar un applet, lee su bitácora.**
 | `report-regen` | 0.3.5 | Botón de regeneración de reporte con countdown, anclado al icono de correo | [`report-regen.md`](docs/applets/report-regen.md) |
 | `price-confirm-guard` | 0.1.5 | Candado: exige reconfirmar el precio de un NP (tipo password) antes de guardar | [`price-confirm-guard.md`](docs/applets/price-confirm-guard.md) |
 | `receiver-date-override` | 0.5.82 | Campo de fecha en el modal de recepción | [`receiver-date-override.md`](docs/applets/receiver-date-override.md) |
-| `warehouse-location-prefill` | 0.6.3 | Prellena ubicación de almacén + candado que exige `locationId` en el payload | [`warehouse-location-prefill.md`](docs/applets/warehouse-location-prefill.md) |
+| `warehouse-location-prefill` | 0.6.4 | Prellena ubicación de almacén + candado que exige `locationId` en el payload | [`warehouse-location-prefill.md`](docs/applets/warehouse-location-prefill.md) |
 | `weight-quick-entry` | 0.5.82 | Captura rápida de peso en todas las filas del modal de recepción | [`weight-quick-entry.md`](docs/applets/weight-quick-entry.md) |
 | `load-calculator` | 0.2.0 | Calculadora de piezas por carga (cuadrícula/área/barril) + configurador de estaciones | [`load-calculator.md`](docs/applets/load-calculator.md) |
 | `spec-migrator` | + `validate-duplicate-params` 0.5.5 | Bundle "Ajuste Masivo de Specs": validar duplicados, asignar pendientes, normalizar falsos pendientes | [`spec-migrator.md`](docs/applets/spec-migrator.md) |
@@ -496,8 +502,8 @@ renglón. **Antes de tocar un applet, lee su bitácora.**
 | `wo-mover` | 0.2.0 | Reasigna el encabezado de OTs entre OVs (la parte/PT se asocia manual) | [`wo-mover.md`](docs/applets/wo-mover.md) |
 | `archiver` | 1.0.0 | Archivado masivo con filtro por etiquetas AND/OR | [`archiver.md`](docs/applets/archiver.md) |
 | `process-deep-audit` | 0.8.0 | Auditoría profunda de árboles de proceso | [`process-deep-audit.md`](docs/applets/process-deep-audit.md) |
-| `proceso-calculator` | 0.1.0 | Calculadora sobre el proceso default de un NP | [`proceso-calculator.md`](docs/applets/proceso-calculator.md) |
-| `unit-autoconvert` | 0.1.0 | Autoconversión de unidades por pieza en el modal de definiciones | [`unit-autoconvert.md`](docs/applets/unit-autoconvert.md) |
+| `proceso-calculator` | 0.1.5 | Calculadora sobre el proceso default de un NP | [`proceso-calculator.md`](docs/applets/proceso-calculator.md) |
+| `unit-autoconvert` | 0.1.1 | Autoconversión de unidades por pieza en el modal de definiciones | [`unit-autoconvert.md`](docs/applets/unit-autoconvert.md) |
 | `sensor-status-autofill` | 0.5.58 | Autollena estatus de sensores | [`sensor-status-autofill.md`](docs/applets/sensor-status-autofill.md) |
 | `sensor-graph-hide-all` | 0.2.0 | Al entrar a un Sensor Dashboard esconde todos los sensores + combo para aislar uno | [`sensor-graph-hide-all.md`](docs/applets/sensor-graph-hide-all.md) |
 | `hash-scanner` | 0.6.24 | Captura hashes de persisted queries navegando la app (degrada las muestras, no las descarta) | [`hash-scanner.md`](docs/applets/hash-scanner.md) |

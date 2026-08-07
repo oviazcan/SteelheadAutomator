@@ -1,4 +1,62 @@
-# `warehouse-location-prefill`: lecciones 0.5.69 → 0.6.3
+# `warehouse-location-prefill`: lecciones 0.5.69 → 0.6.4
+
+## 0.6.4 (2026-08-07) — el latch marcaba el INTENTO, y el candado no podía depender del campo
+
+**Lo destapó un test, no un reporte.** Al escribir el trinquete de familia
+(`modal-detect-poll-coverage`) para los applets que montan UI en modales, WLP salió **rojo**: su
+`GATE_POLL_MS` vigila el CANDADO de un modal **ya detectado**, no la detección. Si la detección
+nunca ocurre, ese poll nunca arranca. Es el applet gemelo de `receiver-date-override` —viven en el
+mismo modal y desaparecieron juntos el 2026-08-03— y tenía el mismo hueco, completo:
+
+> **El hallazgo que lo motiva** (medido en producción el 2026-08-07, `/Domains/344/SalesOrders` y
+> `/Receiving/CustomerParts`): con un modal ABIERTO se contaron **0 mutaciones de `childList` en el
+> `document.body` durante 6 segundos**, incluso tecleando dentro del modal. El `MutationObserver`
+> **no es un vigilante continuo**: dispara en eventos discretos. En estas pantallas el único evento
+> que llega es el montaje del modal — y si el debounce vence mientras ese montaje va a medias (lo
+> normal en un equipo lento, donde el contenido se llena con la respuesta de red), el applet mira
+> cuando no hay nada que ver, falla en silencio y **nadie vuelve a llamarlo**. En una máquina rápida
+> todo se monta en la misma ráfaga y el disparo cae con el DOM completo: por eso el síntoma es
+> *«a mí me funciona, a ellos es intermitente»*.
+>
+> Trinquete de familia: [`tools/test/modal-detect-poll-coverage.test.js`](../../tools/test/modal-detect-poll-coverage.test.js).
+
+### Los tres arreglos
+
+1. **El latch marcaba el intento.** `onModalFound` ponía `saWlpAttached = 'true'` en su **segunda
+   línea**, antes de inyectar. Un fallo de anclaje se volvía **permanente**: el observer volvía a
+   pasar, veía el latch y se iba. RDO corrigió esto en 0.5.81; WLP no.
+2. **Sin poll de re-detección.** Agregado, con el tick barato de `weight-quick-entry`.
+3. **El scan se rendía en el primer candidato.** Ahora recorre todos hasta que uno monte
+   (`ReceiveModalAnchorCore.firstMounted`).
+
+### Lo delicado: el CANDADO no puede depender de que el campo monte
+
+Mover el latch al final —lo obvio— **habría desarmado el candado justo el día que más se necesita**.
+La capa `fetch` que bloquea un recibo sin ubicación se activa con
+`document.querySelector('[data-sa-wlp-attached="true"]')`, es decir con el modal **DETECTADO**. Si
+el anclaje del combo falla (rehash de emotion), el operador se queda sin el combo del encabezado
+**pero conserva los combos por renglón**: frenar el guardado sigue siendo correcto y sigue teniendo
+salida. Atarlo al montaje del campo lo habría apagado precisamente en el escenario de falla.
+
+Por eso van **dos marcas**, y el test lo fija:
+
+| marca | significa | se pone |
+|---|---|---|
+| `data-sa-wlp-attached` | el modal se **detectó** y quedó cableado (candado, watchers, gate poll) | una sola vez |
+| `data-sa-wlp-field-mounted` | el combo de ubicación quedó **montado** | solo tras un `injectField` exitoso |
+
+El poll filtra por la **segunda** (`:not([data-sa-wlp-field-mounted="true"])`): un modal donde el
+campo falló sigue mereciendo reintentos, y re-cablear el modal —que crea observers y timers— pasa
+una sola vez. `injectField` ahora devuelve boolean en sus cuatro salidas.
+
+> **Regla:** cuando un latch protege dos cosas de vida distinta —lo que se cablea una vez y lo que
+> se reintenta— necesita dos marcas. Y antes de mover un latch, pregunta **qué más cuelga de él**:
+> aquí colgaba un candado de seguridad.
+
+⚠️ **No verificado en vivo.** El cambio se validó con la suite (110 archivos verdes) y revisión de
+todos los usos de `saWlpAttached`, pero abrir un flujo de recepción en el ERP productivo para verlo
+montar no se hizo. Al primer uso en piso, confirmar que el combo «Ubicación inicial:» aparece y que
+el candado sigue bloqueando un renglón sin ubicación.
 
 ## 0.6.3 (2026-08-03) — una clase de emotion es MENOS estable que el texto que quisimos evitar
 

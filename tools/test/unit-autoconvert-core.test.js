@@ -82,3 +82,27 @@ test('isConvertible: solo unidades del roster', () => {
   assert.equal(Core.isConvertible('KGM'), true);
   assert.equal(Core.isConvertible('LO'), false);
 });
+
+// ── shouldAttemptInject: el poll de arranque tiene presupuesto ─────────────────────
+// Regresión 2026-08-07: el applet dependía solo del MutationObserver, que en estas pantallas
+// dispara UNA vez (medido: 0 mutaciones de childList en 6 s con un modal abierto). Se agregó un
+// poll, pero `tryInjectToggles` recorre todo el documento SIN early exit — correrlo cada segundo
+// mientras haya cualquier modal abierto cambiaría el bug por un costo permanente. El poll cubre
+// la ventana de arranque del diálogo y luego se calla.
+test('shouldAttemptInject: no reintenta si el toggle ya está montado', () => {
+  assert.equal(Core.shouldAttemptInject({ hasToggle: true, tries: 0, max: 5 }), false);
+});
+
+test('shouldAttemptInject: reintenta mientras quede presupuesto', () => {
+  assert.equal(Core.shouldAttemptInject({ hasToggle: false, tries: 0, max: 5 }), true);
+  assert.equal(Core.shouldAttemptInject({ hasToggle: false, tries: 4, max: 5 }), true);
+  assert.equal(Core.shouldAttemptInject({ hasToggle: false, tries: 5, max: 5 }), false);
+  assert.equal(Core.shouldAttemptInject({ hasToggle: false, tries: 99, max: 5 }), false);
+});
+
+test('shouldAttemptInject: tolera estado ausente o basura', () => {
+  assert.equal(Core.shouldAttemptInject(null), false);
+  assert.equal(Core.shouldAttemptInject({ hasToggle: false, tries: undefined, max: 5 }), true);
+  assert.equal(Core.shouldAttemptInject({ hasToggle: false, tries: 'x', max: 5 }), true);
+  assert.equal(Core.shouldAttemptInject({ hasToggle: false, tries: 0, max: 0 }), false);
+});
