@@ -244,7 +244,8 @@ const WarehouseLocationPrefill = (() => {
   // salida. Atar el candado al montaje del campo lo habría desarmado justo cuando más se
   // necesita. Devuelve si el CAMPO está montado — de eso depende que el poll siga reintentando.
   function onModalFound(modal) {
-    if (modal.dataset.saWlpAttached !== 'true') {
+    const primeraVez = modal.dataset.saWlpAttached !== 'true';
+    if (primeraVez) {
       modal.dataset.saWlpAttached = 'true';
       modalStates.set(modal, {
         selectedLocation: null,
@@ -261,9 +262,29 @@ const WarehouseLocationPrefill = (() => {
       });
       console.log(LOG_PREFIX, 'Modal de recibo detectado');
       injectStyles();
-      watchModalRemoval(modal);
-      watchLineRows(modal);
-      applyUnusedFieldStatesWithRetry(modal);
+    }
+
+    // EL CAMPO VA PRIMERO — y esto no es estilo, es el orden que este applet siempre tuvo.
+    // Al introducir las dos marcas (2026-08-07) quedó DESPUÉS de todo el cableado, y eso lo
+    // pone detrás de `applyUnusedFieldStatesWithRetry`, `evaluateSaveGate` y `watchLineRows`:
+    // tres funciones que TOCAN el DOM del modal y que, si tiran, se llevan por delante el
+    // montaje del campo. El cableado puede esperar un tick; el campo que el operador ve, no.
+    let montado = modal.dataset.saWlpFieldMounted === 'true';
+    if (!montado && injectField(modal)) {
+      modal.dataset.saWlpFieldMounted = 'true';
+      wireCombobox(modal);
+      montado = true;
+    }
+
+    if (primeraVez) {
+      // Cada pieza del cableado va en su propio try: un fallo en una no puede dejar sin
+      // instalar a las siguientes — el CANDADO es la última y la que menos puede faltar.
+      const paso = (nombre, fn) => {
+        try { fn(); } catch (err) { console.warn(LOG_PREFIX, `falló ${nombre}:`, err); }
+      };
+      paso('watchModalRemoval', () => watchModalRemoval(modal));
+      paso('watchLineRows', () => watchLineRows(modal));
+      paso('applyUnusedFieldStates', () => applyUnusedFieldStatesWithRetry(modal));
       // El loader nuevo baja los scripts con un pool de concurrencia, así que el núcleo puede
       // llegar DESPUÉS de este applet: se avisa diferido para no dar una falsa alarma. El poll
       // del candado se instala igual y lo activa en cuanto el núcleo aparece.
@@ -272,16 +293,12 @@ const WarehouseLocationPrefill = (() => {
           console.warn(LOG_PREFIX, 'warehouse-location-guard-core.js no cargó — el candado de guardado queda APAGADO');
         }
       }, 3000);
-      evaluateSaveGate(modal);
-      startGatePoll(modal);
-      preloadAduana(modal);
+      paso('evaluateSaveGate', () => evaluateSaveGate(modal));
+      paso('startGatePoll', () => startGatePoll(modal));
+      paso('preloadAduana', () => preloadAduana(modal));
     }
 
-    if (modal.dataset.saWlpFieldMounted === 'true') return true;
-    if (!injectField(modal)) return false;
-    modal.dataset.saWlpFieldMounted = 'true';
-    wireCombobox(modal);
-    return true;
+    return montado;
   }
 
   async function preloadAduana(modal) {
