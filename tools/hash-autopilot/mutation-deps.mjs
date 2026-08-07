@@ -167,21 +167,16 @@ async function sensorDashboardOpsAborted(page, { sink }) {
     throw new Error(`fail-closed: no encontré la fila del sensor ${SENSOR_CON_PARAM_IDD} en el dashboard Centinela`);
   }
 
-  // (1) CreateManySensorMeasurements — botón de crear medición de la propia fila.
-  //     Se intenta ANTES de expandir para no depender de que la tabla de params cargue.
-  if (sink && sink.abortOps) sink.abortOps.add('CreateManySensorMeasurements');
-  const medir = fila.locator('span[aria-label*="Create a new measurement" i] button').first();
-  if (await medir.count().catch(() => 0)) {
-    await medir.click({ timeout: 8000 }).catch(() => {});
-    await page.waitForTimeout(2500);
-    if (dbg) console.log('       [dbg] sensorDash: clic en crear medición (abortado)');
-  } else if (dbg) console.log('       [dbg] sensorDash: no vi el botón de crear medición');
+  // ORDEN: primero el RADIO, después la medición. Al revés no funciona y costó una corrida
+  // entenderlo: el botón de crear medición abre un MODAL que queda ENCIMA de la tabla, así que
+  // el despliegue posterior y la búsqueda del radio ocurren detrás de él —  el log decía
+  // "parametrización desplegada" y acto seguido "no vi ningún radio sin marcar", con el radio
+  // demostrablemente presente (member 10340, activo=None, 1 parámetro elegible).
 
-  // (2) UpdateSensorDashboardMember — desplegar la parametrización y marcar el radio.
+  // (1) UpdateSensorDashboardMember — desplegar la parametrización y marcar el radio.
   const expandir = fila.locator(`button:has(svg path[d="${ICON_EXPAND}"])`).last();
   if (await expandir.count().catch(() => 0)) {
     await expandir.click({ timeout: 8000 }).catch(() => {});
-    await page.waitForTimeout(2500);
     if (dbg) console.log('       [dbg] sensorDash: parametrización desplegada');
   }
   if (sink && sink.abortOps) sink.abortOps.add('UpdateSensorDashboardMember');
@@ -189,12 +184,33 @@ async function sensorDashboardOpsAborted(page, { sink }) {
   // busca a nivel de página. Solo los NO marcados (RadioButtonUnchecked) — un radio ya
   // activo no dispara nada al clicarlo y el ciclo se iría en blanco sin decir por qué.
   const radio = page.locator(`button:has(svg path[d="${ICON_RADIO_OFF}"])`).first();
-  if (await radio.count().catch(() => 0)) {
+  const hayRadio = await radio.waitFor({ state: 'visible', timeout: 15000 }).then(() => 1).catch(() => 0);
+  if (hayRadio) {
     await radio.scrollIntoViewIfNeeded().catch(() => {});
     await radio.click({ timeout: 8000 }).catch(() => {});
     await page.waitForTimeout(2500);
     if (dbg) console.log('       [dbg] sensorDash: clic en el radio del parámetro (abortado)');
   } else if (dbg) console.log('       [dbg] sensorDash: no vi ningún radio sin marcar');
+
+  // (2) CreateManySensorMeasurements — botón de crear medición de la propia fila. Va al FINAL
+  //     porque abre modal: lo que ensucie la pantalla ya no estorba a nadie.
+  if (sink && sink.abortOps) sink.abortOps.add('CreateManySensorMeasurements');
+  const medir = fila.locator('span[aria-label*="Create a new measurement" i] button').first();
+  if (await medir.count().catch(() => 0)) {
+    await medir.click({ timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(2500);
+    // Si abrió modal, la mutation se dispara al GUARDAR, no al abrirlo. Se intenta el botón de
+    // guardar bilingüe dentro del diálogo; si no está, se reporta y ya — el abort protege igual.
+    const dlg = page.locator('[role="dialog"]').first();
+    if (await dlg.isVisible().catch(() => false)) {
+      const guardar = dlg.locator('button').filter({ hasText: /^(save|guardar|submit|enviar)$/i }).first();
+      if (await guardar.count().catch(() => 0)) {
+        await guardar.click({ timeout: 8000 }).catch(() => {});
+        await page.waitForTimeout(2500);
+        if (dbg) console.log('       [dbg] sensorDash: guardar del modal de medición (abortado)');
+      } else if (dbg) console.log('       [dbg] sensorDash: modal de medición abierto pero sin botón de guardar reconocible');
+    } else if (dbg) console.log('       [dbg] sensorDash: clic en crear medición sin modal (abortado)');
+  } else if (dbg) console.log('       [dbg] sensorDash: no vi el botón de crear medición');
 }
 // ── maintenanceNode: create-event-capture ──────────────────────────────────
 // Los 3 hashes (CreateMaintenanceEvent / CreateMaintenanceEventComment /
@@ -1130,14 +1146,28 @@ const HANDLERS = {
   // ── SENSORES (captura-y-aborta) — las DOS ops salen de la MISMA pantalla ──
   sensorDashboardCentinela: {
     async load(page, { domain, id }) {
-      await page.goto(`${BASE}/Domains/${domain}/Maintenance/SensorDashboards/${id}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
-      await page.waitForTimeout(3000);
+      // LISTADO + CLIC, no `goto` directo al detalle. Dos intentos costó aprenderlo:
+      //   1º con /Domains/{d}/Maintenance/SensorDashboards/{id} (del comentario DESFASADO de
+      //      sensor-status-autofill.js) ni salió de la home;
+      //   2º con /Domains/{d}/SensorDashboards/{id} la URL quedó CONCATENADA
+      //      (…/SensorDashboards/193/Domains/344/Maintenance/…) — el router de la SPA no
+      //      resuelve esa ruta como entrada directa.
+      // Las recetas VIVAS (maintenance-sensordashboards-detail) tampoco hacen goto al detalle:
+      // van al listado y clican. Se replica eso, que es lo único con evidencia de funcionar.
+      await page.goto(`${BASE}/Domains/${domain}/SensorDashboards`, { waitUntil: 'domcontentloaded' }).catch(() => {});
+      const link = page.locator(`a[href*="SensorDashboards/${id}"]`).first();
+      const hay = await link.waitFor({ state: 'visible', timeout: 20000 }).then(() => 1).catch(() => 0);
+      if (hay) { await link.click({ timeout: 10000 }).catch(() => {}); }
+      // Esperar a que el nombre exista en el DOM en vez de dormir un rato fijo: el candado se
+      // evalúa sobre el texto, y un timeout corto lo haría fallar por lentitud de red y no por
+      // identidad — dos causas distintas que se verían igual ("no es centinela").
+      await page.locator('text=/centinela/i').first()
+        .waitFor({ state: 'visible', timeout: 20000 }).catch(() => {});
       // isSentinel fail-closed: el nombre del dashboard debe traer "Centinela". Se lee del
-      // documento (título/encabezado), no de la URL: un id correcto en un dashboard
-      // renombrado NO debe pasar — el candado es el nombre, igual que en el resto.
+      // documento, no de la URL: un id correcto en un dashboard renombrado NO debe pasar.
       const txt = await page.locator('body').innerText().catch(() => '');
       const ok = /centinela/i.test(txt || '');
-      if (process.env.SA_DBG) console.log(`       [dbg] sensorDash: nombre con Centinela=${ok}`);
+      if (process.env.SA_DBG) console.log(`       [dbg] sensorDash: link=${hay} url=${page.url()} nombre con Centinela=${ok}`);
       return { name: ok ? 'Centinela (sensor-dashboard capture-abort)' : '' };
     },
     async mutate(page, ctx) { await sensorDashboardOpsAborted(page, ctx); },
