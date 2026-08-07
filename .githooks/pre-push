@@ -73,10 +73,41 @@ while read -r local_ref local_sha remote_ref remote_sha; do
   if [ -n "$PUB" ]; then
     git show "$local_sha:config.json" > /tmp/sa-pp-config.json 2>/dev/null || true
     git show "$local_sha:config.sig"  > /tmp/sa-pp-config.sig  2>/dev/null || echo "" > /tmp/sa-pp-config.sig
-    if ! node tools/verify-config-sig.mjs /tmp/sa-pp-config.json /tmp/sa-pp-config.sig "$PUB" >/dev/null 2>&1; then
+
+    # El verificador se materializa del BLOB de $mainref, por el mismo motivo que la pública:
+    # el hook corre con el cwd del worktree DESDE EL QUE SE PUSHEA, y gh-pages tiene su propia
+    # carpeta tools/ (macros .bas) SIN este script. Invocarlo por ruta relativa hacía que
+    # `node` fallara por archivo inexistente y el hook lo reportara como "config.sig NO
+    # verifica" — un push de documentación perfectamente sano se veía como firma corrupta
+    # (mordió el 2026-08-06 publicando el paquete de PowerTools).
+    #
+    # Se copian DOS archivos porque verify-config-sig.mjs hace require('../extension/
+    # integrity-verify.js'): esa ruta es relativa AL ARCHIVO, así que hay que reproducir la
+    # estructura tools/ + extension/, no basta con el .mjs suelto.
+    VERIFIER=""
+    SA_PP_TMP="$(mktemp -d 2>/dev/null || echo /tmp/sa-pp-verifier)"
+    mkdir -p "$SA_PP_TMP/tools" "$SA_PP_TMP/extension" 2>/dev/null
+    if git show "$mainref:tools/verify-config-sig.mjs" > "$SA_PP_TMP/tools/verify-config-sig.mjs" 2>/dev/null \
+       && [ -s "$SA_PP_TMP/tools/verify-config-sig.mjs" ] \
+       && git show "$mainref:extension/integrity-verify.js" > "$SA_PP_TMP/extension/integrity-verify.js" 2>/dev/null \
+       && [ -s "$SA_PP_TMP/extension/integrity-verify.js" ]; then
+      VERIFIER="$SA_PP_TMP/tools/verify-config-sig.mjs"
+    elif [ -f tools/verify-config-sig.mjs ]; then
+      # Respaldo: el working tree actual sí lo tiene (push desde el worktree de main).
+      VERIFIER="tools/verify-config-sig.mjs"
+    fi
+
+    if [ -z "$VERIFIER" ]; then
+      # FALLA CERRADO, pero con el motivo correcto: "no se pudo comprobar" ≠ "está mal".
+      # Confundirlos manda a re-sellar una firma que estaba perfecta.
+      echo "  ✗ no pude LOCALIZAR el verificador de firma (ni en $mainref ni en el working tree):"
+      echo "    la firma NO se pudo comprobar — esto no significa que sea inválida."
+      bad=1
+    elif ! node "$VERIFIER" /tmp/sa-pp-config.json /tmp/sa-pp-config.sig "$PUB" >/dev/null 2>&1; then
       echo "  ✗ config.sig NO verifica contra config.json (¿olvidaste seal? usa tools/deploy.sh)"
       bad=1
     fi
+    rm -rf "$SA_PP_TMP" 2>/dev/null
   fi
 
   if [ "$bad" -ne 0 ]; then
