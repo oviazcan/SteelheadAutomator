@@ -119,6 +119,9 @@ pantalla donde ese wizard existe.
 
 **Validación:** core **32/32** (8 tests nuevos), suite **109 archivos verdes**.
 
+
+**Safari/iPad:** en el bundle **0.6.38** (2026-08-07). Este fix pesa más en el iPad que en escritorio: es el dispositivo del piso y la CPU más lenta del parque — el perfil exacto donde el montaje llega tarde y el observer ya no vuelve a mirar. **Pendiente recompilar en Xcode** (`Resources/` sincronizado ≠ compilado).
+
 ## Fix 2026-08-06 (v0.1.7) — la Divisa se reportaba en ROJO estando bien puesta
 
 **Reportado desde producción con captura**, ya con el poll vivo y el autofill arrancando solo en

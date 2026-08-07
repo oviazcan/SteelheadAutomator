@@ -30,6 +30,9 @@ observer, que dispara por evento y no por reloj.
 `ensureIcon` ya era idempotente por presencia del nodo (`:scope > .sa-pc-icon`), así que el poll no
 duplica nada. Se exportan `ensureIcon` y `detectTick` para diagnosticar desde la consola.
 
+
+**Safari/iPad:** en el bundle **0.6.38** (2026-08-07). Este fix pesa más en el iPad que en escritorio: es el dispositivo del piso y la CPU más lenta del parque — el perfil exacto donde el montaje llega tarde y el observer ya no vuelve a mirar. **Pendiente recompilar en Xcode** (`Resources/` sincronizado ≠ compilado).
+
 ## 2026-08-03 — SH quitó los `data-testid`: este applet pasa por el núcleo de iconos
 
 Steelhead publicó un build que **elimina los `data-testid` de los iconos MUI** (medido: 0 ocurrencias en cinco pantallas cargadas y con contenido real). **Sólo los `data-testid`**: los `data-steelhead-component-id` y los ids RJSF **siguen vivos** (38 en la ficha de OT, 40 en la de NP) — afirmar lo contrario fue una sobregeneralización corregida el mismo día. Este applet anclaba a ellos, así que sus `querySelector` pasaron a devolver `null` **en silencio**.

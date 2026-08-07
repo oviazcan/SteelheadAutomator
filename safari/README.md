@@ -8,6 +8,24 @@ Pasos de build/firma/instalación en **`docs/deploy-safari.html`**.
 - **POC del candado de surtido VALIDADO en vivo (Safari iPad, 2026-06-30):** `world:"MAIN"` intercepta
   `fetch`, el login OAuth funciona y el bloqueo de una pieza no programada quedó confirmado (no se necesitó
   el plan B).
+- **Bundle v0.6.38 — 34 applets (2026-08-07):** sin applets nuevos; lleva al iPad el **fix del
+  DISPARO** en los **cinco** que montan UI dentro de un modal: `create-order-autofill` (0.1.8),
+  `receiver-date-override` (0.5.82), `warehouse-location-prefill` (0.6.4), `proceso-calculator`
+  (0.1.5) y `unit-autoconvert` (0.1.1). **Medido en producción:** con un modal abierto hubo **0
+  mutaciones de `childList` en el `body` durante 6 s**, incluso tecleando — el `MutationObserver`
+  dispara en eventos discretos, **no vigila**, así que un montaje que falla (o que ocurre con el DOM
+  a medias) no tenía quién lo reintentara. Todos llevan ya poll de re-detección, con tick barato.
+  **Importa más aquí que en escritorio:** el iPad es el dispositivo del piso —el almacén recibe y
+  surte desde ahí— y es la CPU más lenta del parque, justo el perfil donde el bug se manifiesta; el
+  reporte que lo destapó fue «falla en los equipos Windows de menor desempeño». En WLP el arreglo
+  además destrabó un latch que marcaba el **intento**: un fallo de anclaje se congelaba para siempre.
+  Verificado en el **artefacto**: símbolos nuevos 0 → 6/5/3/6/5/3, `DETECT_POLL_MS` ×12, 76 bloques
+  `BEGIN`/`END` simétricos, `node --check` OK, trinquete 10/10. Peso **1.95 MB** en bytes reales
+  (+24 KB; el log del build dijo «1 903 531» porque cuenta **caracteres**, no bytes — la trampa de
+  siempre).
+- ⚠️ **Hueco de bitácora:** las versiones **0.6.36 y 0.6.37** se construyeron y commitearon
+  (`a67df32`, `f653630`) pero **no se registraron en esta lista**. Sus mensajes de commit son la
+  única descripción que quedó.
 - **Bundle v0.6.35 — 34 applets (2026-08-06):** **fix** de `driver-licenses`, el segundo del
   día. Leer la carpeta paginaba **los 23,147 archivos del ERP** (~460 peticiones) y **tumbaba la
   sesión**: el `/graphql` se cuelga a las ~40-45 y el límite es **por sesión**, así que se caían

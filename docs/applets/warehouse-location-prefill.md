@@ -58,6 +58,9 @@ todos los usos de `saWlpAttached`, pero abrir un flujo de recepción en el ERP p
 montar no se hizo. Al primer uso en piso, confirmar que el combo «Ubicación inicial:» aparece y que
 el candado sigue bloqueando un renglón sin ubicación.
 
+
+**Safari/iPad:** en el bundle **0.6.38** (2026-08-07). Este fix pesa más en el iPad que en escritorio: es el dispositivo del piso y la CPU más lenta del parque — el perfil exacto donde el montaje llega tarde y el observer ya no vuelve a mirar. **Pendiente recompilar en Xcode** (`Resources/` sincronizado ≠ compilado).
+
 ## 0.6.3 (2026-08-03) — una clase de emotion es MENOS estable que el texto que quisimos evitar
 
 **Reporte de piso: «ya no me aparece la fecha y ubicación de la extensión».** Con captura del modal de recepción sin ninguno de los dos campos. Applet hermano `receiver-date-override` afectado idéntico y el mismo día: la bitácora de allá cuenta la misma historia desde su lado.

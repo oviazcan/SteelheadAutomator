@@ -34,6 +34,9 @@ como hasta hoy. La política es pura y testeada: `Core.shouldAttemptInject({hasT
 **Archivo:** `remote/scripts/unit-autoconvert.js` (+ `unit-autoconvert-core.js` puro, golden tests en `tools/test/unit-autoconvert-core.test.js`)
 **Global:** `window.UnitAutoConvert` · estado por sesión en `window.__saUac`
 
+
+**Safari/iPad:** en el bundle **0.6.38** (2026-08-07). Este fix pesa más en el iPad que en escritorio: es el dispositivo del piso y la CPU más lenta del parque — el perfil exacto donde el montaje llega tarde y el observer ya no vuelve a mirar. **Pendiente recompilar en Xcode** (`Resources/` sincronizado ≠ compilado).
+
 ## Qué es
 Al editar un NP, Tab en un campo de unidad → calcula los demás pares del mismo tipo físico:
 - **Peso:** KGM ↔ LBR · **Longitud:** LM ↔ FOT · **Superficie:** CMK ↔ DMK ↔ FTK · (LO se ignora).

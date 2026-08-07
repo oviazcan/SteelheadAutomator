@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
   "name": "Steelhead Automator — iPad",
-  "description": "Bundle de applets de Steelhead para iPad (empaquetado). 34 applets: auto-inyectados (FAB/gate propio) + lanzadores de popup. v0.6.37 suma ARCHIVAR en driver-licenses: botón por renglón con modal de confirmación, que avisa que archivar el ARCHIVO no lo saca del CATÁLOGO publicado (si está publicada, el hook la sigue pidiendo hasta republicar) y verifica releyendo, porque la mutation no devuelve el registro. En el iPad cierra el ciclo completo del andén: dar de alta al chofer con la cámara y darlo de baja cuando deja de venir, sin pasar por una computadora.",
-  "version": "0.6.37",
+  "description": "Bundle de applets de Steelhead para iPad (empaquetado). 34 applets: auto-inyectados (FAB/gate propio) + lanzadores de popup. v0.6.38 NO agrega applets: lleva al iPad el fix del DISPARO en los cinco que montan UI dentro de un modal (create-order-autofill, receiver-date-override, warehouse-location-prefill, proceso-calculator, unit-autoconvert). Medido en producción: 0 mutaciones de childList en el body durante 6 s con un modal abierto — el MutationObserver dispara en eventos discretos, no vigila, así que un montaje que falla o que cae con el DOM a medias no tenía quién lo reintentara. Todos llevan ya poll de re-detección. Importa más en el iPad que en escritorio: es el dispositivo del piso (almacén recibe y surte desde ahí) y su CPU es la más lenta del parque, justo el perfil donde el bug se manifiesta.",
+  "version": "0.6.38",
   "permissions": [
     "storage",
     "tabs"

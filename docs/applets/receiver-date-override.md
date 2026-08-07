@@ -54,6 +54,9 @@ lo que destrabó el caso gemelo.
 
 **Validación:** core de anclaje **34/34** (3 tests nuevos), suite **109 archivos verdes**.
 
+
+**Safari/iPad:** en el bundle **0.6.38** (2026-08-07). Este fix pesa más en el iPad que en escritorio: es el dispositivo del piso y la CPU más lenta del parque — el perfil exacto donde el montaje llega tarde y el observer ya no vuelve a mirar. **Pendiente recompilar en Xcode** (`Resources/` sincronizado ≠ compilado).
+
 ## 0.5.81 (2026-08-03) — el ancla que parecía estructura era un hash de emotion
 
 **Reporte de piso: «ya no me aparece la fecha y ubicación de la extensión».** El campo «Fecha real de recibido:» desapareció del modal de recepción, junto con el combo de ubicación de `warehouse-location-prefill` — mismo incidente, misma causa, mismo día. El análisis completo vive en la [bitácora de WLP](warehouse-location-prefill.md#063-2026-08-03--una-clase-de-emotion-es-menos-estable-que-el-texto-que-quisimos-evitar); aquí van las lecciones propias de este applet.
