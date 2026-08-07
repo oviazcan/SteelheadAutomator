@@ -1,4 +1,58 @@
-# `receiver-date-override`: lecciones 0.5.64 → 0.5.81
+# `receiver-date-override`: lecciones 0.5.64 → 0.5.82
+
+## 0.5.82 (2026-08-07) — «a mí me funciona, a ellos es intermitente»: era el DISPARO, no el ancla
+
+**Reporte de piso:** el campo de fecha aparece siempre en la máquina del consultor y de forma
+**intermitente** en los equipos Windows de menor desempeño. Llegó mientras se cerraba el caso
+gemelo de [`create-order-autofill`](create-order-autofill.md#fix-2026-08-07-v018--falla-en-los-equipos-windows-de-menor-desempeño),
+y el diagnóstico de aquél aplica aquí **medido, no por analogía**: en las pantallas de esta
+familia se contaron **0 mutaciones de `childList` en el `body` durante 6 s** con un modal
+abierto. El `MutationObserver` **no vigila**: dispara en eventos discretos.
+
+Este applet dependía **solo** de ese observer, con un debounce de 300 ms y **sin poll** — el
+mismo perfil que ya había tumbado a `weight-quick-entry` en ESTE MISMO modal (reporte de piso
+2026-07-30) y a `create-order-autofill` (v0.1.6). Dos huecos, y ninguno es del ancla:
+
+### 1. Un fallo de montaje sin nadie que reintente
+
+`onModalFound` ya hacía lo correcto —el latch se pone **solo si `injectField` montó**, lección
+de 0.5.81— pero eso solo sirve **si alguien vuelve a llamar**. El escenario del equipo lento:
+el modal monta el esqueleto → el debounce vence a los 300 ms → el encabezado todavía no llegó
+(se llena con la respuesta de red) → `findHeaderFieldAnchor` devuelve null → se reintenta… y si
+la fase que faltaba no produce más altas/bajas de nodos, **no hay segundo disparo**. En una
+máquina rápida el modal se monta entero dentro de la misma ráfaga y el único disparo cae con
+todo listo — por eso no se reproduce en el escritorio del consultor.
+
+**Fix:** el poll acotado de `weight-quick-entry`, que convive con este applet en el mismo modal
+y en producción: `[role="dialog"]:not([data-sa-rdo-attached="true"])` cada segundo. Barato a
+propósito — casi siempre no hay ningún diálogo pendiente, así que el tick se reduce a un
+`querySelectorAll` por atributo.
+
+### 2. El scan se rendía en el PRIMER candidato
+
+```js
+if (container) { onModalFound(container); return; }   // ← return montara o no
+```
+
+`HEADING_SELECTOR` es amplio (`h1…h6, [class*="MuiTypography"], [class*="heading"], [class*="title"]`)
+y el orden de documento no garantiza cuál llega primero. Si el primero que matcheaba resolvía un
+contenedor equivocado, el applet se quedaba reintentando **con ése** cada vez y nunca llegaba al
+modal bueno: falla **permanente** que depende del orden del DOM — es decir, distinta entre
+equipos y estados de pantalla, que es justo como se ve "intermitente".
+
+**Fix:** `onModalFound` devuelve si **montó**, y el recorrido sigue con los demás candidatos.
+La política sale al core compartido: `ReceiveModalAnchorCore.firstMounted(candidatos, tryMount)`,
+con test.
+
+> **Regla que sale de aquí:** *un intento que no montó no consume el turno del siguiente
+> candidato.* Y su gemela, del caso de Crear OV: **lo que se apaga (o falla) necesita quién lo
+> vuelva a intentar — y el `MutationObserver` no es ese quién.**
+
+También se exportan `scanForReceiveView` y `detectTick` para poder llamarlos desde la consola:
+invocarlos a mano distingue *«no se dispara»* de *«no encuentra el ancla»*, que fue exactamente
+lo que destrabó el caso gemelo.
+
+**Validación:** core de anclaje **34/34** (3 tests nuevos), suite **109 archivos verdes**.
 
 ## 0.5.81 (2026-08-03) — el ancla que parecía estructura era un hash de emotion
 

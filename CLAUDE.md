@@ -482,7 +482,7 @@ renglón. **Antes de tocar un applet, lee su bitácora.**
 | `cfdi-attacher` | 0.1.0 | Adjunta el XML del CFDI al correo de la factura (y delata en ámbar las facturas sin XML) | [`cfdi-attacher.md`](docs/applets/cfdi-attacher.md) |
 | `report-regen` | 0.3.5 | Botón de regeneración de reporte con countdown, anclado al icono de correo | [`report-regen.md`](docs/applets/report-regen.md) |
 | `price-confirm-guard` | 0.1.5 | Candado: exige reconfirmar el precio de un NP (tipo password) antes de guardar | [`price-confirm-guard.md`](docs/applets/price-confirm-guard.md) |
-| `receiver-date-override` | 0.5.81 | Campo de fecha en el modal de recepción | [`receiver-date-override.md`](docs/applets/receiver-date-override.md) |
+| `receiver-date-override` | 0.5.82 | Campo de fecha en el modal de recepción | [`receiver-date-override.md`](docs/applets/receiver-date-override.md) |
 | `warehouse-location-prefill` | 0.6.3 | Prellena ubicación de almacén + candado que exige `locationId` en el payload | [`warehouse-location-prefill.md`](docs/applets/warehouse-location-prefill.md) |
 | `weight-quick-entry` | 0.5.82 | Captura rápida de peso en todas las filas del modal de recepción | [`weight-quick-entry.md`](docs/applets/weight-quick-entry.md) |
 | `load-calculator` | 0.2.0 | Calculadora de piezas por carga (cuadrícula/área/barril) + configurador de estaciones | [`load-calculator.md`](docs/applets/load-calculator.md) |

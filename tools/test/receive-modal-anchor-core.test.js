@@ -372,3 +372,33 @@ test('REGRESIÓN 2026-08-03: resuelve aunque NINGUNA clase css-* legada exista',
   const a = Core.findHeaderFieldAnchor(f.pCli);
   assert.ok(a && a.container, 'con el DOM del incidente el anclaje DEBE resolver');
 });
+
+// ── firstMounted: un intento que no montó no consume el turno del siguiente ─────────
+// Regresión 2026-08-07 (`receiver-date-override`, reporte de piso "el campo de fecha es
+// intermitente en los equipos Windows"): el scan hacía `return` en cuanto RESOLVÍA un
+// contenedor, montara o no. Si el primer heading que matchea resuelve un contenedor
+// equivocado, el applet se quedaba reintentando con ÉSE cada vez y nunca probaba el modal
+// bueno — falla permanente que depende del orden del DOM.
+test('firstMounted sigue con el siguiente candidato cuando el primero NO monta', () => {
+  const intentos = [];
+  const montado = Core.firstMounted(['malo', 'bueno', 'otro'], (c) => {
+    intentos.push(c);
+    return c === 'bueno';
+  });
+  assert.equal(montado, 'bueno');
+  assert.deepEqual(intentos, ['malo', 'bueno'], 'para en cuanto uno monta, sin seguir de largo');
+});
+
+test('firstMounted devuelve null si ninguno monta (y los probó TODOS)', () => {
+  const intentos = [];
+  const montado = Core.firstMounted(['a', 'b', 'c'], (c) => { intentos.push(c); return false; });
+  assert.equal(montado, null);
+  assert.deepEqual(intentos, ['a', 'b', 'c']);
+});
+
+test('firstMounted tolera entradas vacías o inválidas', () => {
+  assert.equal(Core.firstMounted(null, () => true), null);
+  assert.equal(Core.firstMounted([], () => true), null);
+  assert.equal(Core.firstMounted(['x'], null), null);
+  assert.equal(Core.firstMounted([null, 'x'], (c) => c === 'x'), 'x', 'un candidato nulo no aborta el recorrido');
+});
