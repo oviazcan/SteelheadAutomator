@@ -143,14 +143,42 @@
     return out;
   }
 
-  // Reanudar: quita del pendiente lo que el checkpoint ya marcó como hecho.
+  // Una orden procesada DOS VECES deja de ser ruido en cuanto el modo mover está encendido: la
+  // segunda pasada archiva la casilla que la primera acababa de crear, y queda hueca. Es lo que
+  // le pasó a la OT 15928 el 2026-08-04 — 2 de 2,549 casillas, y las 2 eran justo las repetidas.
+  //
+  // La repetición NO viene de la fase 2 (findWorkOrdersForPartNumbers ya deduplica con su Set),
+  // sino de `allOpenWorkOrders`: pagina con orderBy ID_DESC y SIN deduplicar, así que en una
+  // corrida de ~40 min basta que una orden cambie de estado para que dos páginas la devuelvan.
+  // Por eso el candado va aquí y no en la fuente: cubre cualquier origen de la lista.
+  function dedupHallazgos(lista) {
+    const pos = new Map();
+    const out = [];
+    for (const h of (lista || [])) {
+      if (!h) continue;
+      const k = h.idInDomain + '|' + h.partNumberId;   // la unidad real: (orden, número de parte)
+      if (pos.has(k)) { out[pos.get(k)] = h; continue; }  // gana el último: es el análisis más fresco
+      pos.set(k, out.length);
+      out.push(h);
+    }
+    return out;
+  }
+
+  // Reanudar: quita del pendiente lo que el checkpoint ya marcó como hecho, y de paso deduplica
+  // — tanto la cola por procesar como los hallazgos que ya traía el checkpoint.
   function mergeCheckpoint(todas, checkpoint) {
     const done = new Set(((checkpoint && checkpoint.done) || []));
-    const pendientes = (todas || []).filter(id => !done.has(id));
+    const vistos = new Set();
+    const pendientes = [];
+    for (const id of (todas || [])) {
+      if (id == null || done.has(id) || vistos.has(id)) continue;
+      vistos.add(id);
+      pendientes.push(id);
+    }
     return {
       pendientes,
       yaHechas: done.size,
-      hallazgos: (checkpoint && checkpoint.hallazgos) || []
+      hallazgos: dedupHallazgos((checkpoint && checkpoint.hallazgos) || [])
     };
   }
 
@@ -881,6 +909,14 @@
     const totalPendiente = merged.pendientes.length;
 
     async function guardar() {
+      // Se deduplica AL GUARDAR, no solo al leer: así el checkpoint en disco nunca contiene un
+      // repetido, ni siquiera si la corrida se interrumpe entre dos lotes.
+      const limpios = dedupHallazgos(hallazgos);
+      if (limpios.length !== hallazgos.length) {
+        console.warn('[wo-spec-params] ' + (hallazgos.length - limpios.length)
+          + ' hallazgo(s) repetido(s) descartado(s) — la lista de órdenes trajo duplicados');
+        hallazgos.length = 0; hallazgos.push(...limpios);
+      }
       await ckSave(CK_KEY, { done: [...doneSet], hallazgos, ts: new Date().toISOString() });
     }
 
@@ -921,7 +957,7 @@
     if (_memMonitor) { _memMonitor.stop(); _memMonitor = null; }
     try { if (H) H.apolloCacheDrain(); } catch (_) {}
 
-    renderScanResults(ui, hallazgos, fallidas, doneSet.size, todas.length, _stopScan);
+    renderScanResults(ui, dedupHallazgos(hallazgos), fallidas, doneSet.size, todas.length, _stopScan);
   }
 
   function renderScanResults(ui, hallazgos, fallidas, revisadas, total, detenido) {
@@ -1376,7 +1412,7 @@
     VERSION,
     isWorkOrderDetailPath, parseWorkOrderIdInDomain, parsePastedWorkOrders,
     parsePastedPartNumbers, resolvePartNumbers, findWorkOrdersForPartNumbers,
-    runPool, planScanChunks, mergeCheckpoint, slimResult, openScan,
+    runPool, planScanChunks, mergeCheckpoint, dedupHallazgos, slimResult, openScan,
     setSoloNP: (v) => { _soloNP = !!v; },
     getSoloNP: () => _soloNP,
     setMigrarAInspeccion: (v) => { _migrarAInspeccion = !!v; },
