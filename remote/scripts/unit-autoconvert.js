@@ -4,7 +4,7 @@
 // Toggle visible default ON (por sesión). Depende de SteelheadAPI + UnitAutoConvertCore.
 (function () {
   'use strict';
-  const VERSION = '0.1.0';
+  const VERSION = '0.1.1';
   const LOG = '[SA unit-autoconvert]';
   const Core = window.UnitAutoConvertCore;
   const api = () => window.SteelheadAPI;
@@ -114,6 +114,43 @@
       if (code && Core.isConvertible(code)) return inp.closest('.MuiPaper-root');
     }
     return null;
+  }
+
+  // ── Red de seguridad: poll de ARRANQUE por diálogo ────────────────────────────────
+  // El applet dependía solo del MutationObserver (debounce 300 ms). Medido el 2026-08-07 en
+  // las pantallas de esta familia: **0 mutaciones de `childList` en el body durante 6 s** con
+  // un modal abierto — el observer dispara en eventos discretos, no vigila. Si el único
+  // disparo cae mientras el modal se está montando, el heading todavía no existe,
+  // `tryInjectToggles` no encuentra dónde colgar el toggle y **nadie vuelve a llamar**. En una
+  // máquina rápida el modal se monta dentro de la misma ráfaga; por eso el síntoma solo sale
+  // en equipos de menor desempeño.
+  //
+  // El presupuesto por diálogo (`Core.shouldAttemptInject`) existe porque aquí el trabajo NO es
+  // barato: `findByText` recorre todo el documento SIN early exit. Se cubren los primeros
+  // segundos de vida del diálogo —la ventana del bug— y no más.
+  const DETECT_POLL_MS = 1000;
+  let _detectPoll = null;
+
+  function detectTick() {
+    if (killSwitchOff()) return;
+    const dialogs = document.querySelectorAll('[role="dialog"]');
+    if (!dialogs.length) return;   // sin modal abierto no hay dónde inyectar: tick de un selector
+    const max = (Core && Core.INJECT_TRY_BUDGET) || 5;
+    for (const d of dialogs) {
+      const st = { hasToggle: !!d.querySelector('.sa-uac-toggle'), tries: Number(d.dataset.saUacTries) || 0, max };
+      const go = Core && Core.shouldAttemptInject ? Core.shouldAttemptInject(st) : (!st.hasToggle && st.tries < max);
+      if (!go) continue;
+      d.dataset.saUacTries = String(st.tries + 1);
+      tryInjectToggles();
+      return;   // un barrido por tick como máximo
+    }
+  }
+
+  function startDetectPoll() {
+    if (_detectPoll) return;
+    _detectPoll = setInterval(() => {
+      try { detectTick(); } catch (err) { console.warn(LOG, 'Error en el poll de detección:', err); }
+    }, DETECT_POLL_MS);
   }
 
   function tryInjectToggles() {
@@ -256,6 +293,7 @@
       document.addEventListener('focusout', onFocusOut, true);
       S.focusoutBound = true;
     }
+    startDetectPoll();
     tryInjectToggles();
     console.log(LOG, 'init', VERSION);
   }
@@ -352,7 +390,9 @@
     el._t = setTimeout(() => { el.style.opacity = '0'; }, 6000);
   }
 
-  const Applet = { __saVersion: VERSION, init, _state: S };
+  // `tryInjectToggles`/`detectTick` se exportan para DIAGNOSTICAR desde la consola del
+  // operador: invocarlos a mano distingue "no se dispara" de "no encuentra el ancla".
+  const Applet = { __saVersion: VERSION, init, tryInjectToggles, detectTick, _state: S };
   window.UnitAutoConvert = Applet;
   init();
 })();

@@ -1,4 +1,4 @@
-// Calculadora de Procesos (proceso-calculator) v0.1.4
+// Calculadora de Procesos (proceso-calculator) v0.1.5
 // ============================================================================
 // Replica la "Calculadora de Procesos" de la pestaña CAT_Procesos del Excel de
 // carga masiva, DENTRO del UI de Steelhead, como herramienta inline durante la
@@ -42,7 +42,7 @@
 const ProcesosCalculator = (() => {
   'use strict';
 
-  const VERSION = '0.1.4';
+  const VERSION = '0.1.5';
 
   // ── Constantes de dominio ──
   // El catálogo vive en customInputs.CatProcesos de un ARTÍCULO DE INVENTARIO
@@ -531,6 +531,37 @@ const ProcesosCalculator = (() => {
     ensureIcon();
   }
 
+  // Red de seguridad: el `MutationObserver` NO es un vigilante continuo — dispara en eventos
+  // discretos. Medido el 2026-08-07 en las pantallas de esta familia: **0 mutaciones de
+  // `childList` en el body durante 6 s** con un modal abierto. Si el único disparo cae mientras
+  // el modal se está montando, `findProcessControl()` devuelve null, `ensureIcon()` sale sin
+  // montar y **nadie vuelve a llamar**: el icono 🧮 no aparece. En una máquina rápida el modal
+  // se monta dentro de la misma ráfaga y el disparo cae con todo listo — por eso el síntoma es
+  // "a veces no sale" y solo en equipos de menor desempeño. Mismo arreglo que
+  // `weight-quick-entry`, `receiver-date-override` y `create-order-autofill`.
+  //
+  // El tick usa SOLO el camino barato de `findProcessControl` (los dos `data-steelhead-component-id`,
+  // que siguen vivos en fichas de detalle). Su fallback por texto barre `p, label, span` de todo
+  // el documento y corre justo cuando NO hay nada montado: pagarlo cada segundo, en las cuatro
+  // pantallas donde carga el applet, sería peor que el bug que arregla. Ese fallback se queda
+  // para el observer, que dispara por evento y no por reloj.
+  const DETECT_POLL_MS = 1000;
+  let _detectPoll = null;
+  const CHEAP_HOST_SEL = `[data-steelhead-component-id="${PROCESS_COMPONENT_ID}"],`
+    + `[data-steelhead-component-id="${FICHA_PROCESS_COMPONENT_ID}"]`;
+
+  function detectTick() {
+    if (!document.querySelector(CHEAP_HOST_SEL)) return;
+    ensureIcon();   // idempotente por presencia del nodo (`:scope > .sa-pc-icon`)
+  }
+
+  function startDetectPoll() {
+    if (_detectPoll) return;
+    _detectPoll = setInterval(() => {
+      try { detectTick(); } catch (err) { warn(`poll de detección: ${err.message}`); }
+    }, DETECT_POLL_MS);
+  }
+
   // ════════════════════════════════════════════════════════════════════════
   // modal UI — inputs editables, cálculo, resultado, agregar al catálogo
   // ════════════════════════════════════════════════════════════════════════
@@ -747,10 +778,14 @@ const ProcesosCalculator = (() => {
     if (document.documentElement.dataset.saProcesoCalculatorEnabled === 'false') { log('deshabilitado'); return; }
     log(`init v${VERSION} en ${location.pathname}`);
     startObserver();
+    startDetectPoll();
   }
 
   return {
     init, openModal, closeModal,
+    // `ensureIcon`/`detectTick` se exportan para DIAGNOSTICAR desde la consola del operador:
+    // invocarlos a mano distingue "no se dispara" de "no encuentra el ancla".
+    ensureIcon, detectTick,
     // expuesto para tests/depuración
     _internals: { normStr, sameSet, findMatches, buildEntry, etiquetasOf }
   };

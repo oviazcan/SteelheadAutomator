@@ -67,9 +67,30 @@
     return /^\s*parts\s*\//i.test(String(text || ''));
   }
 
+  // ¿Este diálogo merece otro intento de inyección en el tick del poll?
+  //
+  // El poll es la red de seguridad contra el hueco del `MutationObserver` (medido 2026-08-07:
+  // 0 mutaciones de `childList` en 6 s con un modal abierto — dispara en eventos discretos, no
+  // vigila). Pero aquí el trabajo NO es barato: `tryInjectToggles` recorre `p, span, strong, b,
+  // h1…h6, div, label` de TODO el documento **sin early exit** (busca el match más profundo).
+  // Correrlo cada segundo mientras haya cualquier modal abierto sería cambiar un bug por un
+  // costo permanente.
+  //
+  // Por eso el poll aquí es una red de ARRANQUE, no un vigilante: cubre los primeros `max`
+  // segundos de vida del diálogo —la ventana donde el equipo lento monta el contenido tarde—
+  // y después el observer vuelve a ser el único mecanismo, como hasta hoy.
+  const INJECT_TRY_BUDGET = 5;
+  function shouldAttemptInject(st) {
+    if (!st || st.hasToggle) return false;
+    const tries = Number(st.tries) || 0;
+    const max = Number(st.max) || 0;
+    return tries < max;
+  }
+
   const api = {
     UNIT_GROUPS, CONVERTIBLE, round4, getGroup, isConvertible,
     computePeers, unitCodeFromText, isReciprocalAdornment,
+    INJECT_TRY_BUDGET, shouldAttemptInject,
   };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   root.UnitAutoConvertCore = api;
