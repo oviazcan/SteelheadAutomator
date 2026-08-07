@@ -512,7 +512,6 @@
         }
       ],
       "captures": [
-        "AllEquipments",
         "AllMaintenanceEvents",
         "AllMaintenancePlans",
         "CreateMaintenanceEventDialogQuery",
@@ -1595,7 +1594,6 @@
         "WorkOrderCertReportCount",
         "WorkOrderDialogQuery",
         "WorkOrderRelatedLinksCount",
-        "WorkOrderSchedule",
         "WorkPartsInfoWrapperQuery"
       ]
     },
@@ -1630,6 +1628,32 @@
         "GetFilterData",
         "WorkOrderInputSchema"
       ]
+    },
+    "maintenance-equipment": {
+      "type": "query",
+      "module": "Maintenance",
+      "steps": [
+        {
+          "goto": "/Domains/{domain}/Maintenance/Equipment"
+        }
+      ],
+      "captures": [
+        "AllEquipments"
+      ],
+      "_nota": "RUTA CORREGIDA 2026-08-06. Estaba en `maintenance-list` (goto /Maintenance) y ese tablero DEJO de dispararla: el autopilot la escalo a needs-attention con '0 capturas' y no pudo recuperar el hash cuando roto. El listado de equipos es pantalla propia. usedBy: paros-linea, vale-almacen."
+    },
+    "workorders-centinela-detail": {
+      "type": "query",
+      "module": "WorkOrders",
+      "steps": [
+        {
+          "goto": "/Domains/{domain}/WorkOrders/11677"
+        }
+      ],
+      "captures": [
+        "WorkOrderSchedule"
+      ],
+      "_nota": "RUTA CORREGIDA 2026-08-06. Estaba en `workorders-detail`, que entra a la PRIMERA OT del listado — una OT cualquiera puede no tener programacion y entonces no dispara la op; el autopilot la escalo con '0 capturas'. La OT Centinela 11677 es determinista y ya se usa como centinela en sentinels-config (workOrderSpecParams). Solo LECTURA: abrir la ficha. usedBy: surtido-guard (CANDADO), wo-schedule-button, wo-listing-columns, wo-schedule-core, surtido-guard-filter-core."
     }
   }
 }
