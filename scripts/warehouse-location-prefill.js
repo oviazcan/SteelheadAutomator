@@ -155,6 +155,7 @@ const WarehouseLocationPrefill = (() => {
     if (disabled) { console.log(LOG_PREFIX, 'Deshabilitado'); return; }
     patchFetch();
     setupObserver();
+    startDetectPoll();
     console.log(LOG_PREFIX, 'Inicializado');
   }
 
@@ -172,57 +173,115 @@ const WarehouseLocationPrefill = (() => {
     scanForReceiveView();
   }
 
+  function resolveContainer(el) {
+    return el.closest('[role="dialog"]')
+      || el.closest('.MuiDialog-paper')
+      || el.closest('[class*="MuiPaper"]')
+      || el.closest('main')
+      || el.closest('form')
+      || el.parentElement?.parentElement
+      || null;
+  }
+
+  // No se rinde en el PRIMER candidato: si el primer heading que matchea resuelve un
+  // contenedor equivocado, rendirse ahí deja al applet reintentando con ÉSE para siempre.
+  // Mismo arreglo que `receiver-date-override` (gemelo en este mismo modal).
   function scanForReceiveView() {
-    const candidates = document.querySelectorAll(HEADING_SELECTOR);
-    for (const el of candidates) {
+    // Si el campo YA está montado en algún contenedor, no se busca otro: cablear el candado
+    // en dos contenedores del mismo modal duplicaría timers y avisos.
+    if (document.querySelector('[data-sa-wlp-field-mounted="true"]')) return true;
+    const containers = [];
+    for (const el of document.querySelectorAll(HEADING_SELECTOR)) {
       if (!VIEW_REGEX.test(el.textContent?.trim())) continue;
-      const container = el.closest('[role="dialog"]')
-        || el.closest('.MuiDialog-paper')
-        || el.closest('[class*="MuiPaper"]')
-        || el.closest('main')
-        || el.closest('form')
-        || el.parentElement?.parentElement;
-      if (container) {
-        onModalFound(container);
-        return;
+      const c = resolveContainer(el);
+      if (c && !containers.includes(c)) containers.push(c);
+    }
+    const Anchor = window.ReceiveModalAnchorCore;
+    return Anchor?.firstMounted
+      ? !!Anchor.firstMounted(containers, onModalFound)
+      : containers.some(c => onModalFound(c));
+  }
+
+  // Red de seguridad. El `MutationObserver` no es un vigilante continuo: dispara en eventos
+  // discretos (medido 2026-08-07 en estas pantallas: **0 mutaciones de `childList` en el body
+  // durante 6 s** con un modal abierto). El `GATE_POLL_MS` de más abajo NO cubre esto — ése
+  // vigila el CANDADO de un modal ya detectado; si la detección nunca ocurre, nunca arranca.
+  // Mismo arreglo y mismo tick barato que `weight-quick-entry` y `receiver-date-override`.
+  const DETECT_POLL_MS = 1000;
+  let detectPollTimer = null;
+
+  function detectTick() {
+    // El filtro es por el CAMPO montado, no por el modal detectado: un modal donde el campo
+    // falló sigue mereciendo reintentos.
+    const dialogs = document.querySelectorAll('[role="dialog"]:not([data-sa-wlp-field-mounted="true"])');
+    if (!dialogs.length) return;
+    for (const dlg of dialogs) {
+      for (const el of dlg.querySelectorAll(HEADING_SELECTOR)) {
+        if (!VIEW_REGEX.test((el.textContent || '').trim())) continue;
+        if (onModalFound(dlg)) return;
+        break;   // este diálogo no montó; probamos el siguiente
       }
     }
   }
 
-  function onModalFound(modal) {
-    if (modal.dataset.saWlpAttached === 'true') return;
-    modal.dataset.saWlpAttached = 'true';
-    modalStates.set(modal, {
-      selectedLocation: null,
-      aduanaFilterActive: true,
-      aduanaCache: null,
-      aduanaError: null,
-      fullCache: null,
-      fullCacheOffset: 0,
-      fullCacheExhausted: false,
-      fullCacheLoading: false,
-      unusedEnabled: { partGroups: false, container: false },
-      gateTimer: null,
-      lastGate: null,
-    });
-    console.log(LOG_PREFIX, 'Modal de recibo detectado');
-    injectStyles();
-    injectField(modal);
-    wireCombobox(modal);
-    watchModalRemoval(modal);
-    watchLineRows(modal);
-    applyUnusedFieldStatesWithRetry(modal);
-    // El loader nuevo baja los scripts con un pool de concurrencia, así que el núcleo puede
-    // llegar DESPUÉS de este applet: se avisa diferido para no dar una falsa alarma. El poll
-    // del candado se instala igual y lo activa en cuanto el núcleo aparece.
-    setTimeout(() => {
-      if (!guard() && modal.isConnected) {
-        console.warn(LOG_PREFIX, 'warehouse-location-guard-core.js no cargó — el candado de guardado queda APAGADO');
+  function startDetectPoll() {
+    if (detectPollTimer) return;
+    detectPollTimer = setInterval(() => {
+      try { detectTick(); } catch (err) {
+        console.warn(LOG_PREFIX, 'Error en el poll de detección:', err);
       }
-    }, 3000);
-    evaluateSaveGate(modal);
-    startGatePoll(modal);
-    preloadAduana(modal);
+    }, DETECT_POLL_MS);
+  }
+
+  // DOS marcas, a propósito:
+  //   · `saWlpAttached`      → el modal se DETECTÓ y quedó cableado (candado, watchers, poll
+  //                            del gate). Se pone una sola vez: repetirlo duplicaría timers.
+  //   · `saWlpFieldMounted`  → el combo de ubicación quedó MONTADO.
+  // Separarlas es lo que permite reintentar el campo sin re-cablear el modal — y, sobre todo,
+  // **el CANDADO no depende de que el campo monte**: si el anclaje falla (como en el rehash de
+  // emotion del 2026-08-03), el operador se queda sin el combo del encabezado pero conserva los
+  // combos por renglón, así que frenar un recibo sin ubicación sigue siendo correcto y tiene
+  // salida. Atar el candado al montaje del campo lo habría desarmado justo cuando más se
+  // necesita. Devuelve si el CAMPO está montado — de eso depende que el poll siga reintentando.
+  function onModalFound(modal) {
+    if (modal.dataset.saWlpAttached !== 'true') {
+      modal.dataset.saWlpAttached = 'true';
+      modalStates.set(modal, {
+        selectedLocation: null,
+        aduanaFilterActive: true,
+        aduanaCache: null,
+        aduanaError: null,
+        fullCache: null,
+        fullCacheOffset: 0,
+        fullCacheExhausted: false,
+        fullCacheLoading: false,
+        unusedEnabled: { partGroups: false, container: false },
+        gateTimer: null,
+        lastGate: null,
+      });
+      console.log(LOG_PREFIX, 'Modal de recibo detectado');
+      injectStyles();
+      watchModalRemoval(modal);
+      watchLineRows(modal);
+      applyUnusedFieldStatesWithRetry(modal);
+      // El loader nuevo baja los scripts con un pool de concurrencia, así que el núcleo puede
+      // llegar DESPUÉS de este applet: se avisa diferido para no dar una falsa alarma. El poll
+      // del candado se instala igual y lo activa en cuanto el núcleo aparece.
+      setTimeout(() => {
+        if (!guard() && modal.isConnected) {
+          console.warn(LOG_PREFIX, 'warehouse-location-guard-core.js no cargó — el candado de guardado queda APAGADO');
+        }
+      }, 3000);
+      evaluateSaveGate(modal);
+      startGatePoll(modal);
+      preloadAduana(modal);
+    }
+
+    if (modal.dataset.saWlpFieldMounted === 'true') return true;
+    if (!injectField(modal)) return false;
+    modal.dataset.saWlpFieldMounted = 'true';
+    wireCombobox(modal);
+    return true;
   }
 
   async function preloadAduana(modal) {
@@ -437,7 +496,7 @@ const WarehouseLocationPrefill = (() => {
   }
 
   function injectField(modal) {
-    if (modal.querySelector('[data-sa-wlp-field="true"]')) return;
+    if (modal.querySelector('[data-sa-wlp-field="true"]')) return true;
 
     // Se ENTRA por el label "Comentarios del receptor:" / "Receiver Comments:" (ES+EN) y se
     // SUBE por estructura. Hasta el 2026-08-03 aquí decía `p.closest('.css-iyrxkt')`: una
@@ -448,13 +507,13 @@ const WarehouseLocationPrefill = (() => {
     const Anchor = window.ReceiveModalAnchorCore;
     if (!Anchor) {
       console.warn(LOG_PREFIX, 'Falta receive-modal-anchor-core — no se puede anclar');
-      return;
+      return false;
     }
     const labelNode = Anchor.findLabelNode(modal, Anchor.LABEL_RECEIVER_COMMENTS);
     const anchor = labelNode && Anchor.findHeaderFieldAnchor(labelNode);
     if (!anchor) {
       console.warn(LOG_PREFIX, 'No se localizó el wrapper de Receiver Comments — layout cambió?');
-      return;
+      return false;
     }
 
     const label = document.createElement('p');
@@ -497,7 +556,7 @@ const WarehouseLocationPrefill = (() => {
     const host = Anchor.mountHeaderField(document, anchor, label, controls);
     if (!host) {
       console.warn(LOG_PREFIX, 'No se pudo montar el campo de ubicación');
-      return;
+      return false;
     }
     host.dataset.saWlpField = 'true';
 
@@ -546,6 +605,7 @@ const WarehouseLocationPrefill = (() => {
     modalStates.set(modal, state);
 
     console.log(LOG_PREFIX, 'Combobox de ubicación inyectado');
+    return true;
   }
 
   function renderDropdown(state) {
@@ -1291,7 +1351,9 @@ const WarehouseLocationPrefill = (() => {
     state.docClickHandler = docClickHandler;
   }
 
-  return { init };
+  // `scanForReceiveView`/`detectTick` se exportan para DIAGNOSTICAR desde la consola del
+  // operador: invocarlos a mano distingue "no se dispara" de "no encuentra el ancla".
+  return { init, scanForReceiveView, detectTick };
 })();
 
 if (typeof window !== 'undefined') {
