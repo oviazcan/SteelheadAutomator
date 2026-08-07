@@ -71,7 +71,13 @@ function opsCubiertas() {
 // `maintenance-list` y `workorders-detail`: declarada cubierta, capturando cero, y descubierta
 // sólo cuando el hash rota y el applet ya está roto en piso. Un número honesto que sube vale más
 // que uno bonito que miente.
-const HUERFANAS_BASE = 52;
+// 2026-08-06 (cierre): 52 -> 51. Ahora sí por RUTA REAL y EJERCIDA, no declarada: la entidad
+// `maintenanceNodeSensorStep` capturó CreateManySensorMeasurements en vivo
+// (af4afbc5->895008e0). El camino lo dio el operador y desmintió la suposición previa: no sale
+// del dashboard sino de evento -> COMPLETE STEP -> llenar mediciones -> SAVE. Nótese el viaje
+// del número en un solo día: 53 -> 51 (declarado de más) -> 52 (corregido al medir) -> 51 (ya
+// capturando). Solo el último 51 está respaldado por una corrida real.
+const HUERFANAS_BASE = 51;
 
 test('las ops del ruteo por grupos tienen ruta de regeneración', () => {
   const cubiertas = opsCubiertas();

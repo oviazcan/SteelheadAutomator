@@ -239,6 +239,47 @@ async function sensorDashboardOpsAborted(page, { sink }) {
     } else if (dbg) console.log('       [dbg] sensorDash: clic en crear medición sin modal (abortado)');
   } else if (dbg) console.log('       [dbg] sensorDash: no vi el botón de crear medición');
 }
+// ── maintenanceNodeSensorStep: CreateManySensorMeasurements ─────────────────
+// La op NO sale del dashboard (ahí el microscopio dispara CreateSensorMeasurement, SINGULAR y
+// ajena al config). Sale de: evento sobre un nodo CON SENSOR → «Complete Step» → llenar las
+// mediciones → Save. Flujo confirmado por el operador y medido en vivo el 2026-08-06.
+//
+// LA CADENA IMPORTA: al guardar viaja primero `CreateMaintenanceNodeEvent`, y
+// `CreateManySensorMeasurements` usa el `maintenanceNodeEventId` que aquélla devuelve. Si se
+// abortan las dos, la segunda NUNCA se dispara y el ciclo se va en blanco — pasó en la primera
+// medición. Por eso se aborta SOLO la nuestra y se deja pasar la de la cadena.
+async function completeStepConMedicionAborted(page, domain, sink) {
+  const dbg = process.env.SA_DBG;
+  await createMaintenanceEventOnCentinela(page, domain, null); // sink null: que NO haga no-op
+  const step = page.locator('button').filter({ hasText: /complete step|completar paso/i }).first();
+  if (!(await step.count().catch(() => 0))) {
+    throw new Error('fail-closed: el evento centinela no ofrece «Complete Step» (¿el nodo perdió su sensor?)');
+  }
+  await step.scrollIntoViewIfNeeded().catch(() => {});
+  await step.click({ timeout: 10000 }).catch(() => {});
+  const dlg = page.locator('[role="dialog"]').first();
+  await dlg.waitFor({ state: 'visible', timeout: 15000 }).catch(() => {});
+  if (dbg) console.log('       [dbg] maintStep: diálogo «Complete Maintenance Node» abierto');
+
+  // SAVE no se habilita sin datos. Los sensores del nodo pueden ser numéricos (input) o
+  // booleanos (ToggleButtonGroup con value="true"/"false"); se llenan los dos tipos si están.
+  const inp = dlg.locator('input[type="text"], input:not([type])').first();
+  if (await inp.count().catch(() => 0)) await inp.fill('1').catch(() => {});
+  for (const v of ['true', 'false']) {
+    const tg = dlg.locator(`[role="group"] button[value="${v}"]`).first();
+    if (await tg.count().catch(() => 0)) { await tg.click({ timeout: 5000 }).catch(() => {}); break; }
+  }
+  if (sink && sink.abortOps) sink.abortOps.add('CreateManySensorMeasurements');
+  const save = dlg.locator('button').filter({ hasText: /^(save|guardar|submit)$/i }).first();
+  const listo = await save.isEnabled({ timeout: 8000 }).catch(() => false);
+  if (dbg) console.log(`       [dbg] maintStep: saveHabilitado=${listo}`);
+  if (listo) {
+    await save.click({ timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(3500);
+  }
+  // Limpieza: archivar el evento centinela recién creado (mismo toggle que usa el otro handler).
+  await archiveCurrentMaintenanceEvent(page).catch(() => {});
+}
 // ── maintenanceNode: create-event-capture ──────────────────────────────────
 // Los 3 hashes (CreateMaintenanceEvent / CreateMaintenanceEventComment /
 // UpdateMaintenanceEvent) se disparan al CREAR un evento de mantenimiento sobre el
@@ -1144,6 +1185,21 @@ const HANDLERS = {
     async mutate(page, ctx) { await fixScheduleTaskAborted(page, ctx.sink, ctx); },
     async restore(page, { sink }) {
       if (sink && sink.abortOps) sink.abortOps.delete('UpdateManyScheduleTasks');
+    },
+  },
+  maintenanceNodeSensorStep: {
+    async load(page, { domain }) {
+      // Mismo contexto que maintenanceNode: la pantalla de Mantenimiento. La salvaguarda real
+      // es elegir el nodo "Centinela" por NOMBRE en el combobox (fail-closed dentro del mutate).
+      await page.goto(`${BASE}/Domains/${domain}/Maintenance`, { waitUntil: 'domcontentloaded' });
+      const ok = await page.locator('button', { hasText: /New Maintenance Event/ }).first()
+        .waitFor({ state: 'visible', timeout: 20000 }).then(() => 1).catch(() => 0);
+      if (process.env.SA_DBG) console.log(`       [dbg] maintStep: pantalla de Mantenimiento=${ok}`);
+      return { name: ok ? 'Centinela (maint-step capture-abort)' : '' };
+    },
+    async mutate(page, { domain, sink }) { await completeStepConMedicionAborted(page, domain, sink); },
+    async restore(page, { sink }) {
+      if (sink && sink.abortOps) sink.abortOps.delete('CreateManySensorMeasurements');
     },
   },
   maintenanceNode: {
