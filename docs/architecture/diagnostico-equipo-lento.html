@@ -1,0 +1,149 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Diagnóstico en equipo lento — SteelheadAutomator</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#fff; --tinta:#1a2029; --suave:#5b6675; --linea:#e3e7ec;
+    --acento:#13a36f; --ambar:#a16207; --ambar-bg:#fdf6e3; --rojo:#b91c1c; --code:#0f172a;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--tinta);
+       font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .wrap{max-width:820px;margin:0 auto;padding:40px 22px 80px}
+  header{border-bottom:3px solid var(--acento);padding-bottom:18px;margin-bottom:30px}
+  h1{font-size:27px;margin:0 0 6px;letter-spacing:-.02em}
+  .sub{color:var(--suave);font-size:15px;margin:0}
+  h2{font-size:19px;margin:34px 0 12px;padding-top:6px}
+  .card{background:var(--card);border:1px solid var(--linea);border-radius:12px;
+        padding:20px 22px;margin:16px 0;box-shadow:0 1px 3px rgba(16,24,40,.05)}
+  .paso{display:flex;gap:14px;align-items:flex-start;margin:14px 0}
+  .num{flex:0 0 27px;height:27px;border-radius:50%;background:var(--acento);color:#fff;
+       font-weight:700;font-size:14px;display:flex;align-items:center;justify-content:center}
+  .callout{background:var(--ambar-bg);border-left:4px solid var(--ambar);
+           border-radius:0 8px 8px 0;padding:14px 18px;margin:18px 0}
+  .callout b{color:var(--ambar)}
+  .codewrap{position:relative;margin:14px 0}
+  pre{background:var(--code);color:#e2e8f0;border-radius:10px;padding:18px;overflow-x:auto;
+      font:13px/1.55 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;margin:0}
+  .copy{position:absolute;top:10px;right:10px;background:#334155;color:#e2e8f0;border:none;
+        border-radius:7px;padding:6px 12px;font-size:12px;font-weight:600;cursor:pointer}
+  .copy:hover{background:#475569}
+  .copy.ok{background:var(--acento);color:#04150e}
+  table{width:100%;border-collapse:collapse;margin:14px 0;font-size:14.5px}
+  th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--linea);vertical-align:top}
+  th{background:#f0f2f5;font-weight:600}
+  code{background:#eef1f4;padding:1px 6px;border-radius:5px;
+       font:13px ui-monospace,SFMono-Regular,Menlo,monospace}
+  .ok{color:var(--acento);font-weight:700}
+  .mal{color:var(--rojo);font-weight:700}
+  footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--linea);
+         color:var(--suave);font-size:13.5px}
+  @media (max-width:600px){ .wrap{padding:26px 15px 60px} h1{font-size:23px} }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header>
+  <h1>Diagnóstico en un equipo de menor desempeño</h1>
+  <p class="sub">SteelheadAutomator · versión <strong>1.11.109</strong> · 7 de agosto de 2026</p>
+</header>
+
+<p>Los arreglos del 7 de agosto se midieron en una Mac. <strong>Falta comprobarlos en uno de los
+equipos Windows donde se reportó la falla</strong> — eso es lo único que convierte «debería
+funcionar» en «funciona». Esta comprobación toma <strong>menos de dos minutos</strong> y no
+modifica nada: solo lee.</p>
+
+<div class="callout">
+  <b>Antes de empezar:</b> recarga la página con <code>Ctrl</code>+<code>Shift</code>+<code>R</code>.
+  Una pestaña que ya estaba abierta sigue usando el código viejo, y entonces la prueba mide la
+  versión equivocada.
+</div>
+
+<h2>Los pasos</h2>
+<div class="card">
+  <div class="paso"><div class="num">1</div><div>
+    En el equipo lento, entra a Steelhead y ve a <strong>Recepción → Recibir piezas del
+    cliente</strong>, con el modal <strong>abierto</strong>.</div></div>
+  <div class="paso"><div class="num">2</div><div>
+    Abre la consola: <code>F12</code> (o <code>Ctrl</code>+<code>Shift</code>+<code>J</code>) y
+    entra a la pestaña <strong>Console</strong>.</div></div>
+  <div class="paso"><div class="num">3</div><div>
+    Copia el bloque de abajo, pégalo en la consola y presiona <code>Enter</code>.
+    Si Chrome pide escribir <code>allow pasting</code>, escríbelo y vuelve a pegar.</div></div>
+  <div class="paso"><div class="num">4</div><div>
+    Copia el resultado y mándalo. Con eso se cierra la comprobación.</div></div>
+</div>
+
+<div class="codewrap">
+  <button class="copy" id="btn">Copiar</button>
+<pre id="snippet">(() =&gt; {
+  const v = (window.REMOTE_CONFIG || {}).version || '(no cargó el config)';
+  const q = s =&gt; !!document.querySelector(s);
+  const r = {
+    version: v,
+    pantalla: location.pathname,
+    'campo FECHA (receiver-date-override)': q('[data-sa-rdo-field="true"]'),
+    'campo UBICACIÓN (warehouse-location-prefill)': q('[data-sa-wlp-field="true"]'),
+    'modal detectado por WLP': q('[data-sa-wlp-attached="true"]'),
+    'peso rápido (weight-quick-entry)': q('[data-sa-wqe-attached]'),
+    'applets cargados': ['ReceiverDateOverride','WarehouseLocationPrefill','CreateOrderAutofill',
+                         'ProcesosCalculator','UnitAutoConvert']
+      .filter(n =&gt; window[n]).join(', ') || 'NINGUNO',
+    'nucleo de anclaje': !!(window.ReceiveModalAnchorCore || {}).firstMounted,
+    'memoria JS (MB)': performance.memory
+      ? Math.round(performance.memory.usedJSHeapSize / 1048576) : 'n/d',
+    'nucleos de CPU': navigator.hardwareConcurrency || 'n/d'
+  };
+  console.table(r);
+  return JSON.stringify(r, null, 1);
+})()</pre>
+</div>
+
+<h2>Cómo se lee el resultado</h2>
+<table>
+  <tr><th>Renglón</th><th>Qué significa</th></tr>
+  <tr><td><code>version</code></td>
+      <td>Debe decir <strong>1.11.109</strong> o más. Si dice menos, la extensión no se actualizó y
+      la prueba no vale: vuelve a recargar.</td></tr>
+  <tr><td><code>campo FECHA</code> y <code>campo UBICACIÓN</code></td>
+      <td>Los dos en <span class="ok">true</span> = <strong>el arreglo funciona</strong>. Es la
+      respuesta que buscamos.</td></tr>
+  <tr><td>Alguno en <span class="mal">false</span></td>
+      <td>Sigue fallando. Manda el resultado completo <em>y</em> lo que salga en rojo o amarillo en
+      la consola: ahí está el motivo.</td></tr>
+  <tr><td><code>modal detectado por WLP</code> en <span class="ok">true</span> pero
+      <code>campo UBICACIÓN</code> en <span class="mal">false</span></td>
+      <td>Caso concreto y útil: el applet ve el modal pero no logra colgar su campo. Es distinto de
+      «no se enteró», y lleva a otro arreglo.</td></tr>
+  <tr><td><code>nucleos de CPU</code> y <code>memoria JS</code></td>
+      <td>Para saber con qué equipo estamos comparando. No hay que hacer nada con esto.</td></tr>
+</table>
+
+<div class="callout">
+  <b>Si todo sale <code>true</code> a la primera:</b> vale la pena repetirlo una segunda vez
+  <em>navegando por el menú</em> (sin recargar) y abriendo el modal de nuevo. Ese camino
+  —entrar, salir y volver— es justo el que fallaba antes, y es el que más conviene confirmar.
+</div>
+
+<footer>
+  Preparado por <strong>Capaz Consultoría</strong> · Omar Viazcán · para Ecoplating.<br>
+  Detalle técnico: <code>docs/architecture/modal-mount-audit.md</code> en el repositorio
+  SteelheadAutomator.
+</footer>
+</div>
+
+<script>
+  document.getElementById('btn').addEventListener('click', function () {
+    var txt = document.getElementById('snippet').innerText;
+    navigator.clipboard.writeText(txt).then(function () {
+      var b = document.getElementById('btn');
+      b.textContent = '¡Copiado!'; b.classList.add('ok');
+      setTimeout(function () { b.textContent = 'Copiar'; b.classList.remove('ok'); }, 1800);
+    });
+  });
+</script>
+</body>
+</html>

@@ -75,9 +75,18 @@ repo ya sabe lo que eso cuesta.
 
 ## Lo que esta auditoría NO prueba
 
-- **Nada se midió en un equipo de bajo desempeño.** Todo salió de una Mac: los 2.94 ms/tick, las 0
-  mutaciones en 6 s, las sondas del poll. El salto a «en un i3 con Chrome cargado esto alcanza» es
-  razonamiento, no medición. La prueba pendiente es abrir esas pantallas en uno de esos equipos.
+- **Nada se midió en un equipo de bajo desempeño.** Todo salió de una Mac (10 núcleos, 383 MB de
+  heap): los 2.94 ms/tick, las 0 mutaciones en 6 s, las sondas del poll. El salto a «en un i3 con
+  Chrome cargado esto alcanza» es razonamiento, no medición. **La prueba pendiente es abrir esas
+  pantallas en uno de esos equipos** — y ya no requiere preparación: hay un diagnóstico de consola
+  (versión servida, applets cargados, campos montados, núcleos de CPU y heap) **probado contra la
+  pantalla real**, listo para pegárselo a quien tenga el equipo
+  ([`diagnostico-equipo-lento.html`](diagnostico-equipo-lento.html) — ábrelo en el navegador, trae
+  botón de copiar y cómo leer cada renglón). Con `1.11.109` en la Mac devolvió
+  los 5 applets cargados y los dos campos montados; el valor está en comparar contra eso.
+- **Sí se cerró, en cambio, la mitad que sí se podía**: el **candado** de
+  `warehouse-location-prefill` lo probó el operador después del reorden de 0.6.5 y sigue frenando un
+  renglón sin ubicación. El refactor de las dos marcas no lo desarmó.
 - **`cfdi-attacher` y `wo-schedule-button` quedaron en «riesgo bajo» por lectura**, no por
   reproducción. Si aparece un reporte sobre ellos, el diagnóstico ya está escrito: llamar sus
   funciones de detección a mano distingue «no se dispara» de «no encuentra el ancla».

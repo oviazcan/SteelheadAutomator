@@ -86,10 +86,15 @@ en su propio `try`, para que un fallo no deje sin instalar a los siguientes — 
 rompió al restaurar el orden correcto): fija que **no haya un `return` entre el intento de montar el
 campo y `startGatePoll`**, que es la intención real.
 
-⚠️ **Verificado el MONTAJE en vivo** (wizard abierto por automatización con `1.11.107`: campo
-presente y visible, sin warns). **Falta verificar el CANDADO en vivo** — que siga bloqueando el
-guardado de un renglón sin ubicación no se probó, porque exigiría intentar guardar un recibo real en
-el ERP productivo. Al primer uso en piso, confirmarlo.
+### ✅ VERIFICADO EN VIVO — las DOS mitades (2026-08-07)
+
+| Mitad | Cómo se comprobó |
+|---|---|
+| **El campo monta** | Wizard abierto por automatización con `1.11.107` (campo presente y visible en `x=1271`, cero warns, y remonta al forzarlo) y **re-confirmado con `1.11.109`** —ya con el reorden de 0.6.5— vía el diagnóstico de consola: `campo UBICACIÓN: true`. |
+| **El candado frena** | **Probado por el operador**: *«ya probé el candado WLP y sí sirve»*. Sigue bloqueando el guardado de un renglón sin ubicación **después** del reorden. |
+
+Esto cierra la duda que dejó 0.6.4: separar las dos marcas —y luego mover `injectField` al frente—
+**no desarmó el candado**, que era el riesgo real de ese refactor.
 
 
 **Safari/iPad:** en el bundle **0.6.38** (2026-08-07). Este fix pesa más en el iPad que en escritorio: es el dispositivo del piso y la CPU más lenta del parque — el perfil exacto donde el montaje llega tarde y el observer ya no vuelve a mirar. **Pendiente recompilar en Xcode** (`Resources/` sincronizado ≠ compilado).
