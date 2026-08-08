@@ -1255,18 +1255,47 @@
   }
 
   // Fase 2 — análisis y preview
+  // UNA SOLA PASADA POR ORDEN: primero la SPEC, después los PARÁMETROS. Al operador no le importa
+  // la mecánica interna —quiere la orden igual que su Número de Parte— y separarlo en dos acciones
+  // era una costura nuestra, no suya.
+  //
+  // EL ORDEN Y LA RE-LECTURA no son opcionales: al aplicar la spec nueva, el ERP coloca SOLO sus
+  // parámetros en el nodo que declara cada campo (medido en la OT 13219: las 5 casillas quedaron
+  // en T202-IC00-001 sin que nadie las moviera). Analizar los parámetros ANTES de eso daría un
+  // plan sobre un estado que va a dejar de existir, y propondría escribir lo que el ERP ya puso.
   async function runAnalysis(ui, ids, ignored) {
-    setTitle(ui, '🔧 Reaplicar parámetros · analizando ' + ids.length + ' orden' + (ids.length === 1 ? '' : 'es'));
+    setTitle(ui, '🔧 Alinear órdenes con su Número de Parte · analizando ' + ids.length
+      + ' orden' + (ids.length === 1 ? '' : 'es'));
     clear(ui.bd); clear(ui.ft);
     const status = el('p', null, 'Leyendo…');
     const bar = el('div', 'sa-prog'); const fill = el('i'); bar.appendChild(fill);
     ui.bd.append(status, bar);
 
+    // FASE 1 — specs desalineadas.
+    const specPlans = [];
+    for (let i = 0; i < ids.length; i++) {
+      status.textContent = 'Revisando specs de la orden ' + ids[i] + ' (' + (i + 1) + ' de ' + ids.length + ')…';
+      fill.style.width = ((i / ids.length) * 50).toFixed(1) + '%';
+      const r = await analyzeSpecSync(ids[i]).catch(() => null);
+      if (r && r.ok) for (const res of r.results) if (!res.error && res.nCambios) specPlans.push(res);
+    }
+
+    if (specPlans.length) {
+      // Se confirman las specs POR SEPARADO y antes: archivar una spec le quita a la orden un
+      // criterio de calidad completo, así que no puede ir escondido en un "aplicar todo".
+      const seguir = await confirmarSpecSync(ui, specPlans);
+      if (seguir) {
+        status.textContent = 'Aplicando specs…';
+        for (const sp of specPlans) await applySpecSync(sp).catch(() => {});
+      }
+    }
+
+    // FASE 2 — parámetros, SOBRE EL ESTADO NUEVO.
     const results = [];
     const failures = [];
     for (let i = 0; i < ids.length; i++) {
-      status.textContent = 'Leyendo orden ' + ids[i] + ' (' + (i + 1) + ' de ' + ids.length + ')…';
-      fill.style.width = ((i / ids.length) * 100).toFixed(1) + '%';
+      status.textContent = 'Revisando parámetros de la orden ' + ids[i] + ' (' + (i + 1) + ' de ' + ids.length + ')…';
+      fill.style.width = (50 + (i / ids.length) * 50).toFixed(1) + '%';
       const res = await analyzeWorkOrder(ids[i]);
       if (!res.ok) { failures.push({ idInDomain: ids[i], error: res.error }); continue; }
       for (const r of res.results) {
@@ -1276,6 +1305,48 @@
     }
     fill.style.width = '100%';
     renderPreview(ui, results, failures, ignored);
+  }
+
+  // Confirmación propia de la fase de specs. Devuelve si el operador dijo que sí.
+  function confirmarSpecSync(ui, specPlans) {
+    return new Promise((resolve) => {
+      const nArch = specPlans.reduce((a, r) => a + r.plan.archivar.length, 0);
+      const nDes = specPlans.reduce((a, r) => a + r.plan.desarchivar.length, 0);
+      const nAdd = specPlans.reduce((a, r) => a + r.plan.agregar.length, 0);
+      setTitle(ui, '🔄 Paso 1 de 2 · especificaciones desalineadas');
+      clear(ui.bd); clear(ui.ft);
+      ui.bd.appendChild(el('div', 'sa-sum',
+        specPlans.length + ' orden(es) tienen una spec que su Número de Parte ya no usa'));
+      ui.bd.appendChild(el('p', 'sa-mut',
+        nArch + ' a archivar · ' + nDes + ' a desarchivar · ' + nAdd + ' a agregar. '
+        + 'Al aplicar la spec nueva, el ERP coloca sus parámetros solo en el nodo que declara cada '
+        + 'campo; por eso los parámetros se revisan DESPUÉS, sobre el estado ya corregido.'));
+      const t = el('table');
+      const thead = el('thead'); const trh = el('tr');
+      for (const h of ['Orden', 'Número de parte', 'Acción', 'Especificación']) trh.appendChild(el('th', null, h));
+      thead.appendChild(trh); t.appendChild(thead);
+      const tb = el('tbody');
+      for (const r of specPlans) {
+        for (const [accion, x] of [
+          ...r.plan.archivar.map(x => ['Archivar', x]),
+          ...r.plan.desarchivar.map(x => ['Desarchivar', x]),
+          ...r.plan.agregar.map(x => ['Agregar', x])]) {
+          const tr = el('tr');
+          tr.appendChild(el('td', null, String(r.idInDomain)));
+          tr.appendChild(el('td', null, r.partNumberName || ''));
+          tr.appendChild(el('td', null, accion));
+          tr.appendChild(el('td', null, x.specName || ''));
+          tb.appendChild(tr);
+        }
+      }
+      t.appendChild(tb); ui.bd.appendChild(t);
+
+      const si = el('button', 'sa-go', 'Corregir las specs y seguir');
+      si.addEventListener('click', () => resolve(true));
+      const no = el('button', null, 'Saltar y solo revisar parámetros');
+      no.addEventListener('click', () => resolve(false));
+      ui.ft.append(si, no);
+    });
   }
 
   function renderPreview(ui, results, failures, ignored) {
