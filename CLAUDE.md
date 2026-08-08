@@ -232,6 +232,23 @@ pushea el otro repo automáticamente**. Ver `tools/hash-autopilot/README.md` y e
   (`--text`). Corolario general: cuando la única prueba que falta es la que no puedes correr,
   **ésa es la que bloquea la publicación**, no una nota al pie. (Causa concreta: tocar el `<pane>`,
   fuera de `<sheetData>`, que era lo único que había que tocar.)
+- **Verificar que algo EXISTE no dice si se USA — y el VBA no avisa.** Se publicó una plantilla con
+  Spec 2/3/4 rotos porque la comprobación preguntaba `'EscribirFeeder' in codigo → True`: la función
+  estaba definida y **nunca se llamaba**, y el handler comparaba contra una variable `col` **sin
+  declarar** que, sin `Option Explicit`, vale 0 y hace falsas todas las comparaciones **en silencio**.
+  Antes de publicar un `.xlsm` hay que auditar **comportamiento**: ¿la función se INVOCA?, ¿toda
+  variable comparada está DECLARADA?, ¿el código está activo o COMENTADO? (buscar la cadena suelta
+  ya dio una falsa alarma: se reportó una llamada a un módulo inexistente que estaba comentada).
+  Receta y tabla de comprobaciones en
+  [`docs/architecture/vba-proteccion-plantillas.md`](docs/architecture/vba-proteccion-plantillas.md).
+- **Los eventos de hoja de Excel NO son una garantía, y el entorno se descarta ANTES que el código.**
+  El 2026-08-08 se hicieron CINCO arreglos a un sombreado que "no reaccionaba" —todos mejoraron el
+  código, ninguno tocó la causa—: los eventos estaban muertos en **esa instancia de Excel para Mac**,
+  no en la plantilla. La prueba que lo aisló cuesta 10 s y se hizo al final: **libro NUEVO en blanco
+  + `Worksheet_SelectionChange` de una línea**; si ahí tampoco dispara, no es tu archivo.
+  Ojo: `Application.EnableEvents = True` **no** significa "los eventos funcionan" — no cubre el modo
+  interrupción de VBA. Y en Excel para Mac, elegir de una **lista de validación** no dispara
+  `Worksheet_Change` en ese momento: se difiere hasta que la celda pierde el foco.
 - **Una fuente que viene FILTRADA solo puede AFIRMAR, nunca negar.** Si una query se pide con un
   filtro en las variables, la ausencia de un registro no prueba que no exista: prueba que no está
   *en ese filtro*. Antes de investigar por qué una fuente «no llega», mira **con qué variables se

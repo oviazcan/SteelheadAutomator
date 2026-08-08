@@ -1,5 +1,19 @@
 # Protección de hojas en las plantillas de Carga Masiva (VBA)
 
+> **ESTADO: EN PRODUCCIÓN desde el 2026-08-08.** Las dos plantillas v13 se sirven protegidas
+> desde `gh-pages/templates/`, **verificadas EN VIVO** (descargadas de la URL que usan los
+> botones, VBA extraído y auditado). `config.json` NO cambió — los nombres de archivo son los
+> mismos, así que los botones apuntan a las mismas URLs y no hubo bump de versión.
+>
+> | Commit | Qué |
+> |---|---|
+> | `ba790e2` | `ModProteccion` + las 5 macros adaptadas + test + generador + esta doc |
+> | `98b2e19` | las dos plantillas protegidas (8/8 hojas + `lockStructure`) |
+> | `ef44366` | moderna con el `Hoja1` v16 |
+> | `58f8a14` | compatibilidad con el `Hoja1` v16 |
+>
+> gh-pages: `930d3ad` → `f6fc648` → `a41f126`. Suite verde (111 archivos).
+
 **2026-08-07.** Las plantillas `.xlsm` se entregan **protegidas** para que el operador sólo pueda
 escribir en los campos de captura. Todas las macros que ESCRIBEN truenan con error 1004 sobre una
 hoja protegida. Este documento fija cómo se resolvió y qué NO hace la solución.
@@ -234,35 +248,65 @@ El vigilante (`Application.OnTime`) **se descartó** y no va en ninguna plantill
 nada y traía un riesgo propio — un `OnTime` pendiente sobrevive al cierre y hace que Excel
 reabra el archivo solo.
 
+## Verificar COHERENCIA, no presencia (el error que costó un deploy con bug)
+
+El primer deploy publicó la compat **con un bug funcional** porque la verificación preguntaba
+si ciertas cadenas *existían* en el VBA extraído:
+
+```
+'EscribirFeeder' in codigo   →  True   …pero la función no se llamaba NUNCA
+```
+
+El `Worksheet_SelectionChange` traía `If ActiveCell.Column = 23 Or col = 25 Or col = 27 …` con
+**`col` sin declarar**. Sin `Option Explicit`, VBA la trata como Variant vacío = 0, así que las
+tres comparaciones eran **siempre falsas**: *Spec 2, 3 y 4 no alimentaban el filtro*. Y como el
+handler escribía directo en vez de llamar a `EscribirFeeder`, se perdían la auto-reparación, el
+salto de misma-fila y el `ws.Calculate`.
+
+*Existir no es usarse.* La auditoría que sí sirve pregunta por comportamiento, y es la que hay que
+correr sobre cualquier `.xlsm` antes de publicarlo:
+
+| Comprobación | Por qué |
+|---|---|
+| ¿la función se **INVOCA** (`^\s*EscribirFeeder\s+"`)? | definirla y no llamarla compila igual |
+| ¿toda variable comparada está **declarada**? | sin `Option Explicit`, una fantasma vale 0 y calla |
+| ¿contra qué se comparan las columnas 21/23/25/27/29? | delata mezclas de `col` y `ActiveCell.Column` |
+| ¿el código está **activo o comentado**? | buscar la cadena suelta dio una falsa alarma con el vigilante |
+
+Ese último renglón es el mismo error una capa más arriba: se reportó que `ThisWorkbook` llamaba a
+un módulo inexistente cuando la llamada estaba **comentada**. La plantilla compilaba bien.
+
 ## Hallazgos abiertos (no corregidos, fuera de alcance)
 
 1. **`Hoja2` (= `CAT_Procesos`) tiene un `Worksheet_SelectionChange` legacy** que escribe la fila
    activa en `CAT_Procesos!K2` al hacer clic en la columna U *de esa misma hoja* — y **K2 tiene
    fórmula**. El handler vivo y correcto es el de `Upload`, que escribe en `I2`. Como CAT_Procesos
    no está protegida, el daño es silencioso. Se arregla borrando ese handler.
-2. ~~Zona de datos de `Upload` bloqueada casi completa~~ — **DESCARTADO el 2026-08-07.** Se midió el
+2. **La validación de `U9:U508` sigue con `CONTARA(CAT_Procesos!$M:$M)-1`.** `CONTARA` **cuenta las
+   celdas cuya fórmula devuelve `""`**, así que ahora que `M` está copiada a 10 filas el desplegable
+   muestra 9 opciones: los 4 procesos reales y 5 en blanco. Funciona, sólo es feo. Se limpia con
+   `=DESREF(CAT_Procesos!$M$2;0;0;MAX(1;CONTAR.SI(CAT_Procesos!$M$2:$M$10;"?*"));1)`.
+   Mismo patrón en `CAT_Specs!G` (copiada a 498 filas).
+3. ~~Zona de datos de `Upload` bloqueada casi completa~~ — **DESCARTADO el 2026-08-07.** Se midió el
    `.xlsm` **en disco** (mtime 19:30) mientras el archivo llevaba ~1h40m abierto en Excel con el
    *lock* `~$…` presente: el trabajo real estaba en memoria, sin guardar. **Lección de método: el
    mtime y el archivo de bloqueo son parte de la medición, no metadatos decorativos.** Un `.xlsm`
    abierto no es una fuente de verdad sobre lo que su autor lleva hecho, y afirmar sobre él un
    estado "incompleto" es leer un borrador y llamarlo entrega.
-3. **`CAT_Procesos!M2` sin copiar hacia abajo (plantilla de COMPATIBILIDAD).** La lista de
+4. ✅ **RESUELTO — `CAT_Procesos!M2` sin copiar hacia abajo (plantilla de COMPATIBILIDAD).** La lista de
    procesos posibles usa el patrón "FILTER sin FILTER" de Excel 2019:
    `=SI.ERROR(INDICE($G$2:$G$1581;COINCIDIR(FILAS($M$2:M2);$R$2:$R$1581;0));"")`. Ese patrón **no
    desborda**: hay que copiarlo en tantas filas como resultados quepan, porque `FILAS($M$2:M2)`
    es el contador de la k-ésima coincidencia. Estaba **sólo en M2**, así que jamás podía dar más
    de un proceso — cuando el máximo real medido sobre las 1,233 combinaciones del catálogo es
-   **4**. Corregido copiando a `M2:M10`.
+   **4**. Corregido copiando a `M2:M10` y **verificado en el archivo publicado** (9 filas con
+   fórmula en la columna M).
    Lo delator: en la misma hoja, `O` (specs, mismo patrón) sí estaba copiada a 59 filas y
    `P/Q/R` (los helpers del filtro) a 1580. Quien la armó sabía que había que copiar; **se le
    quedó una columna**. La moderna no tiene el bug porque ahí la lista sale de `FILTER`/`UNIQUE`,
    que desborda solo — y por eso el defecto vivió sin que nadie lo viera.
-   Pendiente menor: la validación de `U9:U508` sigue con `CONTARA(CAT_Procesos!$M:$M)-1`, que
-   **cuenta las celdas cuya fórmula devuelve `""`**, así que el desplegable muestra 9 opciones
-   (4 reales + 5 en blanco). Se limpia con
-   `MAX(1;CONTAR.SI(CAT_Procesos!$M$2:$M$10;"?*"))`. Mismo patrón en `CAT_Specs!G`.
 
-4. **Deriva entre las tres copias del mismo módulo.** `Module4` tenía `F3` donde el quoteName vive
+5. **Deriva entre las tres copias del mismo módulo.** `Module4` tenía `F3` donde el quoteName vive
    en `G3` (label en `E3`, valor en `G3`, `F3` vacía): en modo SOLO_PN el campo del layout quedaba
    gris —leyéndose como deshabilitado cuando sí aplica— y se despintaba una celda vacía. El `.xlsm`
    **moderno ya traía la corrección; la compat y la copia del repo no**. Se sincronizó a `G3` en las

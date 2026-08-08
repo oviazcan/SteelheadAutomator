@@ -316,3 +316,39 @@ Detalle en [`docs/architecture/modal-mount-audit.md`](architecture/modal-mount-a
   corregida**: `chequea_publicado()` en `tools/run-hash-autopilot.sh` capturaba `2>&1`, así que el
   `NotOpenSSLWarning` de urllib3 entraba a la bitácora versionada y bloqueaba el siguiente deploy.
   Ahora el stderr va al log de launchd y la entrada lleva encabezado fechado.
+
+---
+
+## Pendientes agregados el 2026-08-08 (protección VBA de las plantillas de Carga Masiva)
+
+Contexto y detalle: [`architecture/vba-proteccion-plantillas.md`](architecture/vba-proteccion-plantillas.md).
+**El grueso quedó HECHO y EN PRODUCCIÓN** (`ba790e2` · `98b2e19` · `ef44366` · `58f8a14`,
+verificado en vivo). Lo que sigue abierto es menor y no bloquea la operación.
+
+### 8.1 `Hoja2` (= `CAT_Procesos`) tiene un handler legacy que corrompe una fórmula
+
+Su `Worksheet_SelectionChange` escribe la fila activa en `CAT_Procesos!K2` al hacer clic en la
+columna U **de esa misma hoja** — y **K2 tiene fórmula**. El handler vivo y correcto es el de
+`Upload`, que escribe en `I2`; éste es residuo de una versión anterior. Como `CAT_Procesos` no está
+protegida, el daño es **silencioso**: si alguien pica ahí, se pierde la fórmula.
+**Fix:** borrar ese `Worksheet_SelectionChange` de `Hoja2` en las dos plantillas. Cinco líneas.
+**No se aplicó** por estar fuera del alcance pedido.
+
+### 8.2 La validación de `U9:U508` cuenta las celdas vacías del filtro
+
+Sigue con `=DESREF(CAT_Procesos!$M$2;0;0;CONTARA(CAT_Procesos!$M:$M)-1;1)`. **`CONTARA` cuenta las
+celdas cuya fórmula devuelve `""`**, así que ahora que `M` está copiada a 10 filas el desplegable
+muestra **9 opciones: los 4 procesos reales y 5 en blanco**. Funciona; sólo es feo.
+**Fix:** `=DESREF(CAT_Procesos!$M$2;0;0;MAX(1;CONTAR.SI(CAT_Procesos!$M$2:$M$10;"?*"));1)`.
+Mismo patrón en `CAT_Specs!G` (copiada a 498 filas). Aplica sobre todo a la **compatibilidad**;
+la moderna usa `FILTER`/`UNIQUE` y no lo necesita.
+
+### 8.3 El VBA de las plantillas no tiene trinquete contra el `.xlsm` publicado
+
+`tools/test/vba-protection.test.js` valida las **fuentes** de `vbas/` y que
+`vbas/entrega-proteccion/` esté al día, pero **nada compara eso contra el VBA que vive dentro de
+los `.xlsm`**. En esta sesión la divergencia se cazó a mano (la moderna se quedó con un `Hoja1`
+v14 y la compat con una variable `col` sin declarar), y una de las dos **se publicó con el bug**.
+**Fix propuesto:** un test que extraiga el VBA de `remote/templates/*.xlsm` con `olevba` y audite
+**comportamiento** — que las funciones se INVOQUEN, que las variables comparadas estén DECLARADAS,
+y que el código no esté comentado. La receta está en la doc de arquitectura; falta guionizarla.

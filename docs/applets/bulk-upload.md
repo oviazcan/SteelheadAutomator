@@ -7,6 +7,19 @@ Versiones documentadas: 1.0.0 → 1.5.20 (+ extensión 1.6.0 → 1.6.2 + VBA Mod
 > Empaque»; VIVO en config 1.11.63, tag `v1.11.63`). Antes de tocar el mapa de columnas, el VBA
 > o cualquier cosa que lea el CSV, lee el v13: el layout es posicional y un corrimiento no
 > truena, escribe en el campo equivocado. La macro vigente es `vbas/Module5_v19.bas`.
+>
+> ⚠️ **Desde el 2026-08-08 las dos plantillas v13 se entregan PROTEGIDAS** (8/8 hojas +
+> `lockStructure`, **sin contraseña**), para que el operador sólo pueda escribir en los campos de
+> captura. Toda macro que ESCRIBE pasa por `vbas/ModProteccion.bas`, que fotografía el estado de
+> protección y lo repone **exacto** — no decide qué celda va bloqueada (eso viaja guardado en el
+> archivo) ni protege con banderas propias. **Antes de tocar cualquier macro de la plantilla, lee
+> [`../architecture/vba-proteccion-plantillas.md`](../architecture/vba-proteccion-plantillas.md)**:
+> ahí está el patrón `Cleanup` obligatorio, por qué `UserInterfaceOnly` obliga a `Workbook_Open`,
+> la auditoría de coherencia que hay que correr antes de publicar un `.xlsm`, y el catálogo de
+> trampas de Excel para Mac que costaron cinco arreglos fallidos.
+> Las fuentes VBA versionadas viven en `vbas/`; los `.bas` importables se generan con
+> `node tools/build-vba-entrega.js` y los cubre `tools/test/vba-protection.test.js`.
+> En producción: `ba790e2` (VBA) · `98b2e19` · `ef44366` · `58f8a14` (plantillas), verificadas EN VIVO.
 
 ## fix 1.5.42 (2026-07-22) — Fast-path SOLO_PRECIO bloqueado por `Validación=F` de plantilla [DEPLOYADO, config 1.7.176, firmado KMS, verificado EN VIVO]
 
