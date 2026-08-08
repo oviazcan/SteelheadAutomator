@@ -1,6 +1,6 @@
 {
-  "version": "1.11.109",
-  "lastUpdated": "2026-08-07T17:56",
+  "version": "1.11.110",
+  "lastUpdated": "2026-08-07T19:27",
   "extensionVersion": "1.7.3",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -87,7 +87,11 @@
         "ArchivePartNumberRecipeNodeSpecFieldParams": "7d33b66bb244910a9065c631630bceb15f01ca282ac208b16fecf85df36937a4",
         "AddParamsToPartNumberRecipeNodeSpecFieldParam": "8e8b0ab50c0404a01985ec894d0c91d3eab4159c6360f923b9920b8e344aaef0",
         "CreatePartNumberPerPerRackType": "8d4440278e2d30c4e66a7ce647c7a4594967d6e490bb909b0f8903c76e6dbc63",
-        "CreateTreatmentTimesWithExpectedStationCostsUI": "57c6367a05e6b225f96c0d3f4fab69155010dffc80f92ce6d063961b05ecb8bc"
+        "CreateTreatmentTimesWithExpectedStationCostsUI": "57c6367a05e6b225f96c0d3f4fab69155010dffc80f92ce6d063961b05ecb8bc",
+        "ArchivePartNumberWorkOrderSpecAndParams": "003d319f4ddc856f3c88aa2d1a31b8540a4e24dd02d350cb78916819178bdef6",
+        "UnarchivePartNumberWorkOrderSpecAndParams": "0b3a3e1f0d5eb68026329f497aadaf4c2f58b0e7ec5045b348d1688726e65a8d",
+        "ApplySpecsToPartNumbersAndWorkOrder": "b482d33a758a040268d17d594eb91187b9261a1aa42febcfc02066ac55ce2383",
+        "UnarchivePartNumberRecipeNodeSpecFieldParam": "6d78669bcf0d0f54394ddddcd9a2b699eea2920d36634e5ccb3beec1012bcc33"
       },
       "queries": {
         "AllStations": "834516258e392dcd9c666c2349992e3f6744aaf536cb127cb8c9eb4347f883f7",
@@ -1150,6 +1154,15 @@
           "handler": "message",
           "message": "reapply-wo-params",
           "fn": "WoSpecParams.openFromPopup"
+        },
+        {
+          "id": "sync-wo-specs",
+          "label": "Sincronizar Specs de OTs",
+          "sublabel": "Archiva la spec vieja y aplica la del NP cuando el número de parte migró",
+          "icon": "🔄",
+          "handler": "message",
+          "message": "sync-wo-specs",
+          "fn": "WoSpecParams.openSpecSyncFromPopup"
         },
         {
           "id": "sweep-forced-node",
@@ -3027,7 +3040,7 @@
     "scripts/wo-mover.js": "e924dfd9fb5d82ed65ab75151adcdc32cd4a94e950b8fcc2add9a9a65c78aefd",
     "scripts/wo-schedule-button.js": "5d5ef5f16431cad2d8ab353bf43691a36f9e4a1c308683bbf19fb1c69838e54d",
     "scripts/wo-schedule-core.js": "9e646f5122536e6a36a8bc603e8b21d67cf25ebae959eb9e7d8b71353e3df219",
-    "scripts/wo-spec-params-core.js": "d27ab9db19b662eab9144a0dd0659ba5ffc07a63ee81b79de66183e5813bcdea",
-    "scripts/wo-spec-params.js": "e5ab3a1b7d13cfe94fd5037d0f13ea377efe3d67102bd64ba3a975dce29b3764"
+    "scripts/wo-spec-params-core.js": "168ad378c64981803f22ca58122708fe73e0e9a8fb9ebefde71b109219b64c38",
+    "scripts/wo-spec-params.js": "e5abf4241903a2079eac4b97c47b45fa8a5092f28e41a4bff2c33f45e9dfeb32"
   }
 }

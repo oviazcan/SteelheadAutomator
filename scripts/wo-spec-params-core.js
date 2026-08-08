@@ -616,11 +616,77 @@
     return out;
   }
 
+
+  // ── Sincronizar las SPECS de la orden con las del Número de Parte ──────────
+  // El caso: el NP migra de spec (80065-DS-004 → RC Ag) y la orden conserva la vieja. Mover el
+  // parámetro de nodo no basta — el operador en piso sigue viendo la spec retirada. Hay que
+  // archivar la vieja y aplicar la nueva; los parámetros del NP se colocan solos SIEMPRE QUE
+  // algún nodo del proceso declare el campo (eje 1 del modelo de mediciones).
+  //
+  // EL CANDADO: solo se tocan las specs que traen `partNumberSpecByPartNumberSpecId`. Una orden
+  // típica trae 8 specs y solo UNA es del NP: las otras 7 vienen del TRATAMIENTO (Inspección
+  // Recibo, T202-LI, Preparación de Embarque…). Archivar "todo lo que no está en el NP" se
+  // llevaría por delante la configuración de la línea entera. Las que no traen NINGÚN origen
+  // —agregadas a mano— tampoco se tocan: no sabemos quién las puso ni por qué.
+  //
+  // DESARCHIVAR ≠ AGREGAR, y confundirlos falla: «agregar una spec que ya estaba y se archivó no
+  // se puede» (el ERP la rechaza). Por eso una spec que YA ESTUVO en la orden se desarchiva, y
+  // solo la que nunca estuvo se agrega.
+  function planSpecSync(workOrderSpecs, npSpecIdsVivos) {
+    const vivosNP = new Set(npSpecIdsVivos || []);
+    const out = { archivar: [], desarchivar: [], agregar: [], intocables: [], sinCambio: [] };
+    const enLaOrden = new Map();   // specId → el registro más relevante
+
+    for (const w of (workOrderSpecs || [])) {
+      if (!w) continue;
+      const spec = w.specBySpecId || {};
+      const info = {
+        pnwosId: w.id, specId: spec.id, specName: spec.name || '',
+        archivedAt: w.archivedAt || null
+      };
+      // Origen: NP, tratamiento, o ninguno. Solo el primero es nuestro.
+      if (!w.partNumberSpecByPartNumberSpecId) {
+        out.intocables.push({ ...info,
+          motivo: w.treatmentSpecByTreatmentSpecId ? 'viene del tratamiento' : 'sin origen declarado' });
+        continue;
+      }
+      // Una spec VIVA gana sobre una archivada del mismo specId (puede haber varias filas).
+      const prev = enLaOrden.get(spec.id);
+      if (!prev || (prev.archivedAt && !info.archivedAt)) enLaOrden.set(spec.id, info);
+    }
+
+    for (const [specId, info] of enLaOrden) {
+      const vivaEnNP = vivosNP.has(specId);
+      if (info.archivedAt && vivaEnNP) out.desarchivar.push(info);        // ya estuvo: se revive
+      else if (!info.archivedAt && !vivaEnNP) out.archivar.push(info);    // el NP ya no la usa
+      else out.sinCambio.push(info);
+    }
+    for (const specId of vivosNP) {
+      if (!enLaOrden.has(specId)) out.agregar.push({ specId });           // nunca estuvo: se agrega
+    }
+    return out;
+  }
+
+  // El ORDEN no es cosmético: si la spec vieja y la nueva declaran los mismos specFields, CHOCAN
+  // y el parámetro no se aplica — hay que reponerlo a mano. Es el mismo 23P01 que ya mordió en el
+  // frente NP (assign-pending-params, 2026-07-16). Y falla EN SILENCIO: la mutation no revienta,
+  // simplemente el parámetro no queda. Por eso el orden vive en el núcleo y está testeado, en vez
+  // de depender de que quien escriba el glue se acuerde.
+  function specSyncSteps(plan) {
+    const p = plan || {};
+    return [
+      ...(p.archivar || []).map(x => ({ op: 'archivar', ...x })),
+      ...(p.desarchivar || []).map(x => ({ op: 'desarchivar', ...x })),
+      ...(p.agregar || []).map(x => ({ op: 'agregar', ...x })),
+    ];
+  }
+
   window.WoSpecParamsCore = {
     rootParamId, normalizeName,
     buildPartNumberIndex, buildCatalogIndex,
     findExternalSpec, findExternalSpecs, findInspectionNode, masterDeclaredFields,
     resolveDesired, isEquivalent,
-    classifyWorkOrder, buildWritePlan
+    classifyWorkOrder, buildWritePlan,
+    planSpecSync, specSyncSteps
   };
 })();
