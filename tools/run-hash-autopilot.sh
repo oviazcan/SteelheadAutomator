@@ -32,6 +32,17 @@
 #     resuelve solo (SearchUserFilesQuery + prefijo, del lado servidor) contra
 #     el payload publicado más reciente — una URL fija se apagaría sola en la
 #     primera re-subida del payload (docs/superpowers/specs/…-design.md § 7).
+#     Desde 2026-08-07, si el chequeo devuelve 1 (desalineado), el wrapper
+#     republica solo con `publica_formato.py --domain <dom> --commit` — ver
+#     el bloque "Frescura del formato de validación publicado" más abajo.
+#
+# Desde 2026-08-07 el wrapper también vigila, UNA vez por corrida (no por
+# dominio), el catálogo de hashes publicado en gh-pages del que dependen el
+# formato de piso y el portal de procesos para auto-repararse
+# (`verifica_catalogo_publicado.py`, sin overrides — el catálogo es uno solo
+# para todos los dominios y los dos repos). El chequeo del portal de procesos
+# se RETIRÓ del wrapper el mismo día: ver el comentario junto a su bloque,
+# más abajo, antes de reponerlo.
 set -uo pipefail
 
 # launchd arranca con PATH mínimo: agrégale homebrew + system para hallar node/git/curl.
@@ -121,8 +132,39 @@ else
   RUN_RC="$MASKED_RC"
 fi
 
+# ── Salud del catálogo de hashes publicado (gh-pages) ────────────────────────
+# El formato de validación en piso (Reportes SH) y el portal de procesos
+# (SteelheadProcesos) dejaron de congelar sus persisted queries (2026-08-06/07):
+# cuando el hash embebido falla, los dos bajan el vigente de ESTE catálogo
+# (config.json en gh-pages) y reintentan. Eso los volvió auto-reparables — y
+# convirtió al catálogo en el punto único de falla de ambos. Su caída es
+# SILENCIOSA: mientras no rote ningún hash, todo sigue sirviendo con los
+# embebidos y nadie nota que el catálogo lleva días caído — hasta la próxima
+# rotación, que es justo el peor momento para enterarse. Por eso se revisa
+# CADA corrida, aunque nada parezca roto todavía.
+#
+# Se corre UNA VEZ, no por dominio ni por artefacto: a diferencia del
+# formato/portal (un archivo por dominio, publicado DENTRO de Steelhead), el
+# catálogo vive en gh-pages y es uno solo para los dos repos.
+#
+# Mismo canal de alarma que "Formato publicado", abajo, usa para un
+# desalineamiento real: docs/api/hash-validation-log.md, el registro de
+# ALARMAS reales del wrapper (no un log de progreso — ver el comentario
+# grande de esa sección). 0 (sano) y 2 (no se pudo comprobar) NO son alarma
+# y sólo dejan una línea discreta en STDOUT (→ launchd.out.log).
+if [[ -x "$PYTHON" && -f "$REPORTES_SH/scripts/verifica_catalogo_publicado.py" ]]; then
+  salida_cat="$("$PYTHON" "$REPORTES_SH/scripts/verifica_catalogo_publicado.py" 2>&1)" && cod_cat=0 || cod_cat=$?
+  case "$cod_cat" in
+    0) echo "$(date '+%F %T') Catálogo de hashes (gh-pages): sano." ;;
+    1) echo "$salida_cat"
+       echo "$salida_cat" >> "$REPO_ROOT/docs/api/hash-validation-log.md" ;;
+    2) echo "$(date '+%F %T') Catálogo de hashes (gh-pages): no se pudo comprobar (código 2)." ;;
+    *) echo "$(date '+%F %T') Catálogo de hashes (gh-pages): código inesperado $cod_cat." ;;
+  esac
+fi
+
 # ── Frescura del formato de validación publicado ─────────────────────────────
-# El autopilot arregla el CATÁLOGO. Este chequeo mira el artefacto PUBLICADO en
+# El bloque de arriba vigila el CATÁLOGO. Éste mira el artefacto PUBLICADO en
 # Steelhead, que conserva los hashes con los que se generó y que ningún script
 # puede re-subir solo (POST /api/files exige navegador). Sin esto, el formato se
 # muere en silencio y se entera el piso. Código 2 = no se pudo comprobar: no se
@@ -141,24 +183,51 @@ fi
 # ALARMAS reales, no un log de progreso) — ni 0 ni 2 son alarma, así que no
 # generan correo ni entrada ahí; sólo el 1 sigue con su tratamiento completo.
 #
-# Desde el 2026-08-05 se vigila MÁS DE UN artefacto publicado con este patrón: el
-# formato de validación en piso (Reportes SH) y el portal de procesos
-# (SteelheadProcesos). Los dos publican un par cascarón+payload y los dos se murieron
-# por lo mismo —un hash rotado en el archivo YA SUBIDO— con un día de diferencia. Por
-# eso el chequeo quedó factorizado: sumar el tercero es una línea, no un copy-paste.
-# Cada artefacto pasa los MISMOS parámetros que embebe su cascarón (prefijo y modo de
-# búsqueda); si no coinciden, el chequeo miraría un archivo distinto del que la gente abre.
+# Desde 2026-08-07 el código 1 además REPUBLICA solo: `publica_formato.py`
+# (Reportes SH) ya sabe subir, registrar, confirmar y archivar sin navegador,
+# así que "sabemos qué arregla el desalineamiento" dejó de ser excusa para no
+# hacerlo. El código 2 NUNCA dispara publicación — "no pude comprobar" no es
+# "está mal", y publicar a ciegas ante un fallo de red subiría un payload por
+# hora sin motivo. La republicación clasifica a su vez el código de SALIDA de
+# `publica_formato.py --commit` (contrato completo en su docstring): 0 =
+# limpio; 3 (EXIT_ARCHIVO_PENDIENTE) = el payload NUEVO quedó publicado y
+# CONFIRMADO pero sólo falló archivar el anterior — se avisa por el mismo
+# canal, sin reintentar (reintentar publicar subiría un TERCER archivo
+# encima del que ya quedó bien); cualquier otro código = la publicación de
+# verdad falló (nada nuevo quedó publicado) y también se avisa por el mismo
+# canal.
+#
+# El PORTAL de procesos (SteelheadProcesos) SE QUITÓ de este chequeo horario
+# el 2026-08-07: ese repo también dejó de congelar hashes y, desde entonces,
+# `verifica_formato_publicado.py --prefijo portal_procesos_payload` devuelve
+# SIEMPRE 0 con un mensaje explicativo (rama `es_portal` de ese script) —
+# llamarlo cada hora sólo gastaba una corrida sin poder decir nada distinto
+# de "0". NO lo repongas por costumbre: si el portal alguna vez expone su
+# propia señal de frescura (una firma de contenido, como la del formato de
+# piso), aquí es donde re-engancharla — con su propia rama de republicación,
+# porque el portal no usa `publica_formato.py`.
 
 # chequea_publicado <etiqueta> <dominio> [args extra para verifica_formato_publicado.py]
 chequea_publicado() {
   local etiqueta="$1" dom="$2"; shift 2
-  local salida codigo
+  local salida codigo salida_pub cod_pub
   salida="$("$PYTHON" "$REPORTES_SH/scripts/verifica_formato_publicado.py" \
              --domain "$dom" "$@" 2>&1)" && codigo=0 || codigo=$?
   case "$codigo" in
     0) echo "$(date '+%F %T') $etiqueta ($dom): al día." ;;
     1) echo "$salida"
-       echo "$salida" >> "$REPO_ROOT/docs/api/hash-validation-log.md" ;;
+       echo "$salida" >> "$REPO_ROOT/docs/api/hash-validation-log.md"
+       echo "$(date '+%F %T') $etiqueta ($dom): desalineado (código 1) → republicando…"
+       salida_pub="$("$PYTHON" "$REPORTES_SH/scripts/publica_formato.py" --domain "$dom" --commit 2>&1)" && cod_pub=0 || cod_pub=$?
+       case "$cod_pub" in
+         0) echo "$(date '+%F %T') $etiqueta ($dom): republicado y archivado limpio." ;;
+         3) echo "$(date '+%F %T') $etiqueta ($dom): republicado y CONFIRMADO — sólo falló archivar el anterior (código 3, no urgente, no se reintenta)."
+            echo "$salida_pub" >> "$REPO_ROOT/docs/api/hash-validation-log.md" ;;
+         *) echo "$(date '+%F %T') $etiqueta ($dom): FALLÓ LA REPUBLICACIÓN (código $cod_pub)."
+            echo "$salida_pub"
+            echo "$salida_pub" >> "$REPO_ROOT/docs/api/hash-validation-log.md" ;;
+       esac
+       ;;
     2) echo "$(date '+%F %T') $etiqueta ($dom): no se pudo comprobar (código 2)." ;;
     *) echo "$(date '+%F %T') $etiqueta ($dom): código inesperado $codigo." ;;
   esac
@@ -168,17 +237,6 @@ if [[ -x "$PYTHON" && -f "$REPORTES_SH/scripts/verifica_formato_publicado.py" ]]
   DOMINIOS_FMT="${FORMATO_VALIDACION_DOMINIOS-tlc}"
   for DOM_FMT in $DOMINIOS_FMT; do
     chequea_publicado "Formato publicado" "$DOM_FMT"
-  done
-
-  # Portal de procesos. Sólo cambia el prefijo: su payload también se publica sin
-  # carpeta, así que le sirve el mismo `fetchFolderless: true` que al formato — que es
-  # además el único valor que lo encuentra (la bandera es EXCLUYENTE, no inclusiva:
-  # `false` devuelve sólo los archivos que SÍ están en una carpeta).
-  # Default "tlc": MTY no tiene los archivos del SGC todavía —76 archivos y cero con
-  # códigos del SGC—, así que ahí el portal aún no se publica.
-  DOMINIOS_PORTAL="${PORTAL_PROCESOS_DOMINIOS-tlc}"
-  for DOM_PORTAL in $DOMINIOS_PORTAL; do
-    chequea_publicado "Portal de procesos" "$DOM_PORTAL" --prefijo portal_procesos_payload
   done
 fi
 
