@@ -1,6 +1,6 @@
 {
-  "version": "1.11.112",
-  "lastUpdated": "2026-08-08T04:00",
+  "version": "1.11.113",
+  "lastUpdated": "2026-08-08T04:02",
   "extensionVersion": "1.7.3",
   "extensionZipUrl": "https://oviazcan.github.io/SteelheadAutomator/steelhead-automator.zip",
   "extensionInstallGuideUrl": "https://oviazcan.github.io/SteelheadAutomator/install-guide.html",
@@ -1148,21 +1148,12 @@
         },
         {
           "id": "reapply-wo-params",
-          "label": "Reaplicar Params en OTs",
-          "sublabel": "Alinea las specs de las órdenes con su Número de Parte",
+          "label": "Alinear OTs con su Número de Parte",
+          "sublabel": "Corrige la spec de la orden y luego sus parámetros, en una sola pasada",
           "icon": "🔧",
           "handler": "message",
           "message": "reapply-wo-params",
           "fn": "WoSpecParams.openFromPopup"
-        },
-        {
-          "id": "sync-wo-specs",
-          "label": "Sincronizar Specs de OTs",
-          "sublabel": "Archiva la spec vieja y aplica la del NP cuando el número de parte migró",
-          "icon": "🔄",
-          "handler": "message",
-          "message": "sync-wo-specs",
-          "fn": "WoSpecParams.openSpecSyncFromPopup"
         },
         {
           "id": "sweep-forced-node",
