@@ -27,7 +27,7 @@
 
 ## Índice
 
-- [`proceso-calculator`](#proceso-calculator) — 0.1.0
+- [`proceso-calculator`](#proceso-calculator) — 0.1.5
 - [`pn-lifecycle`](#pn-lifecycle) — 0.2.0
 - [`load-calculator`](#load-calculator) — 0.2.0
 - [`report-regen`](#report-regen) — 0.3.5
@@ -37,14 +37,14 @@
 - [`pn-specs-column`](#pn-specs-column) — 0.3.3
 - [`spec-migrator`](#spec-migrator) — original + `validate-duplicate-params` 0.5.5
 - [`wo-spec-params`](#wo-spec-params) — 0.6.0
-- [`invoice-autofill`](#invoice-autofill) — 0.5.67
+- [`invoice-autofill`](#invoice-autofill) — 0.5.68
 - [`invoice-auto-regen`](#invoice-auto-regen) — 0.5.37
 - [`sensor-status-autofill`](#sensor-status-autofill) — 0.5.58
-- [`receiver-date-override`](#receiver-date-override) — 0.5.81
-- [`warehouse-location-prefill`](#warehouse-location-prefill) — 0.6.3
+- [`receiver-date-override`](#receiver-date-override) — 0.5.82
+- [`warehouse-location-prefill`](#warehouse-location-prefill) — 0.6.5
 - [`weight-quick-entry`](#weight-quick-entry) — 0.5.82
-- [`create-order-autofill`](#create-order-autofill) — 0.1.3
-- [`unit-autoconvert`](#unit-autoconvert) — 0.1.0
+- [`create-order-autofill`](#create-order-autofill) — 0.1.8
+- [`unit-autoconvert`](#unit-autoconvert) — 0.1.1
 - [`archiver`](#archiver) — 1.0.0
 - [`wo-mover`](#wo-mover) — 0.2.0
 - [`wo-completer`](#wo-completer) — 0.1.0
@@ -74,7 +74,7 @@
 
 ## `proceso-calculator`
 
-**Versión:** 0.1.0 · **Bitácora:** [`docs/applets/proceso-calculator.md`](proceso-calculator.md)
+**Versión:** 0.1.5 · **Bitácora:** [`docs/applets/proceso-calculator.md`](proceso-calculator.md)
 
 
 
@@ -380,7 +380,7 @@ corrida real). El «Sin deployar» del encabezado se corrigió en el mismo commi
 
 ## `invoice-autofill`
 
-**Versión:** 0.5.67 · **Bitácora:** [`docs/applets/invoice-autofill.md`](invoice-autofill.md)
+**Versión:** 0.5.68 · **Bitácora:** [`docs/applets/invoice-autofill.md`](invoice-autofill.md)
 
 (**VIVO config 1.11.62, tag `v1.11.62`, bundle iPad 0.6.28. 2026-08-03 — «no detecta el cliente»: NO era una rotura, era una CARRERA.** Reporte de piso horas después de validar el 0.5.66.
 
@@ -447,7 +447,7 @@ corrida real). El «Sin deployar» del encabezado se corrigió en el mismo commi
 
 ## `receiver-date-override`
 
-**Versión:** 0.5.81 · **Bitácora:** [`docs/applets/receiver-date-override.md`](receiver-date-override.md)
+**Versión:** 0.5.82 · **Bitácora:** [`docs/applets/receiver-date-override.md`](receiver-date-override.md)
 
 **VIVO config 1.11.53, tag `v1.11.53`. 2026-08-03 — «ya no me aparece la fecha y ubicación»: el ancla que PARECÍA estructura era un hash de emotion.** Junto con `warehouse-location-prefill`, mismo día y misma causa.
 
@@ -462,7 +462,7 @@ corrida real). El «Sin deployar» del encabezado se corrigió en el mismo commi
 
 ## `warehouse-location-prefill`
 
-**Versión:** 0.6.3 · **Bitácora:** [`docs/applets/warehouse-location-prefill.md`](warehouse-location-prefill.md)
+**Versión:** 0.6.5 · **Bitácora:** [`docs/applets/warehouse-location-prefill.md`](warehouse-location-prefill.md)
 
 **VIVO config 1.11.53, tag `v1.11.53`. 2026-08-03 — la MISMA causa que `receiver-date-override` el mismo día: el ancla `.css-iyrxkt` era un HASH DE EMOTION y dejó de existir** cuando SH rehizo el encabezado del modal de recepción (de `.css-xd9ivb`+grids `auto 1fr` a **`.css-bomumo` con `.css-1xauu9w` flex-column por campo**). Medido: **0 ocurrencias** de `.css-iyrxkt` y de `.css-xd9ivb`; además el `gridColumn:1/2` que el applet fijaba ya no significaba nada.
 
@@ -494,7 +494,7 @@ corrida real). El «Sin deployar» del encabezado se corrigió en el mismo commi
 
 ## `create-order-autofill`
 
-**Versión:** 0.1.3 · **Bitácora:** [`docs/applets/create-order-autofill.md`](create-order-autofill.md)
+**Versión:** 0.1.8 · **Bitácora:** [`docs/applets/create-order-autofill.md`](create-order-autofill.md)
 
 **2026-07-09**: 2ª pantalla `/Domains/<id>/SalesOrders` → "New Sales Order" → modal "Create Sales Order" EN. Mismos IDs RJSF → mismo autofill; se amplió el gate (`core.matchesCreateOrderUrl` incl. SalesOrders anclado a la lista) + heading bilingüe ES/EN (`core.isCreateOrderModalHeading`). Cliente vacío al abrir → panel espera en silencio hasta la selección; sin ship-to → Consolidar omitido (no falla). Core **14/14**. Run real OK (operador 2026-07-17).
 
@@ -505,7 +505,7 @@ corrida real). El «Sin deployar» del encabezado se corrigió en el mismo commi
 
 ## `unit-autoconvert`
 
-**Versión:** 0.1.0 · **Bitácora:** [`docs/applets/unit-autoconvert.md`](unit-autoconvert.md)
+**Versión:** 0.1.1 · **Bitácora:** [`docs/applets/unit-autoconvert.md`](unit-autoconvert.md)
 
 **VIVO**; el toggle aparece inyectado.
 

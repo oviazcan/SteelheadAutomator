@@ -45,9 +45,20 @@ Pasos de build/firma/instalación en **`docs/deploy-safari.html`**.
   `BEGIN`/`END` simétricos, `node --check` OK, trinquete 10/10. Peso **1.95 MB** en bytes reales
   (+24 KB; el log del build dijo «1 903 531» porque cuenta **caracteres**, no bytes — la trampa de
   siempre).
-- ⚠️ **Hueco de bitácora:** las versiones **0.6.36 y 0.6.37** se construyeron y commitearon
-  (`a67df32`, `f653630`) pero **no se registraron en esta lista**. Sus mensajes de commit son la
-  única descripción que quedó.
+- **Bundle v0.6.37 — 34 applets (2026-08-06):** suma **ARCHIVAR** en `driver-licenses`: botón por
+  renglón con modal de confirmación, que avisa que archivar el ARCHIVO **no lo saca del CATÁLOGO
+  publicado** (si está publicada, el hook la sigue pidiendo hasta republicar) y **verifica
+  releyendo**, porque la mutation no devuelve el registro. En el iPad cierra el ciclo completo del
+  andén: dar de alta al chofer con la cámara y darlo de baja cuando deja de venir, sin pasar por una
+  computadora. *(Recuperado de `f653630` el 2026-08-07 — se había quedado sin registrar aquí.)*
+- **Bundle v0.6.36 — 34 applets (2026-08-06):** pule `driver-licenses` tras verlo en uso: se quitó
+  el **texto basura** (`⚠'">`) que salía bajo CADA miniatura —era HTML mal formado: el placeholder
+  iba dentro de un `onerror` inline y sus comillas dobles cerraban el atributo—, la miniatura pasó
+  de 44×44 a **132×84** porque las identificaciones son APAISADAS y el cuadro no dejaba distinguir a
+  la persona, se agregó **barra de progreso real** (sigue tardando aunque ya no sean ~460
+  peticiones, y un panel quieto se lee como colgado) y «Subir una licencia» se movió **arriba**,
+  donde el operador lo ve sin bajar la lista. En el iPad, con la cámara a mano en el andén, ese
+  botón es la acción principal. *(Recuperado de `a67df32` el 2026-08-07.)*
 - **Bundle v0.6.35 — 34 applets (2026-08-06):** **fix** de `driver-licenses`, el segundo del
   día. Leer la carpeta paginaba **los 23,147 archivos del ERP** (~460 peticiones) y **tumbaba la
   sesión**: el `/graphql` se cuelga a las ~40-45 y el límite es **por sesión**, así que se caían

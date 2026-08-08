@@ -270,3 +270,49 @@ vive en el wizard padre) y **ya está corregido** en v0.1.5 — no confundir los
 **Comprobación de que la hipótesis del caché quedó descartada** (era la "siguiente hipótesis" de
 arriba): el operador reportó `config REMOTO: 1.11.92`, `applet cargado: true`,
 `fix v0.1.4 presente: true`, `fix v0.1.5 presente: true`. No era caché.
+
+---
+
+## Pendientes agregados el 2026-08-07 (reporte «equipos Windows de menor desempeño»)
+
+Detalle en [`docs/architecture/modal-mount-audit.md`](architecture/modal-mount-audit.md).
+
+1. **Nada se midió en un equipo de bajo desempeño.** Los siete fixes de disparo de esa sesión
+   (`create-order-autofill` 0.1.8, `receiver-date-override` 0.5.82, `warehouse-location-prefill`
+   0.6.5, `proceso-calculator` 0.1.5, `unit-autoconvert` 0.1.1, `invoice-autofill` 0.5.68,
+   `bill-autofill` 0.1.1) se midieron **en una Mac**; el escalado a un equipo de piso es
+   razonamiento, no medición. **Cómo se cierra:** abrir el modal de recepción en uno de esos
+   equipos, con la extensión recargada, y confirmar que aparecen el campo de fecha **y** el de
+   ubicación. Hay un diagnóstico de consola listo para pegarle al operador (ver la bitácora de la
+   sesión en `~/.claude/session-doc/summaries/`).
+2. **`unit-autoconvert`: el presupuesto del poll (5 intentos ≈ 5 s por diálogo) puede quedarse
+   corto** en el equipo más lento. Se eligió porque su `findByText` recorre todo el documento sin
+   early exit. Si el reporte vuelve por ahí, la salida es **abaratar el barrido**, no subir el
+   presupuesto a ciegas.
+3. **`create-order-autofill` no está en `SCRIPT_GLOBALS`** (`extension/background.js`), así que no
+   se beneficia del skip de re-evaluación. Arreglarlo obliga a republicar el `.zip`.
+4. **Recompilar en Xcode** el bundle **0.6.40**: `Resources/` está sincronizado, pero sincronizado
+   ≠ compilado.
+5. **`chequea_publicado()` en `tools/run-hash-autopilot.sh` (~línea 215) captura `2>&1`**, así que
+   el `NotOpenSSLWarning` de urllib3 entra a `docs/api/hash-validation-log.md` —una bitácora
+   **versionada**— y ahí **bloquea el siguiente deploy** (`deploy.sh` se niega ante cambios fuera de
+   `remote/`). Pasó el 2026-08-07. **Fix:** mandar el stderr al log de launchd
+   (`2>"$errfile"` + `sed 's/^/[stderr] /'`) y anteponer un encabezado fechado a la entrada, como ya
+   hace `run-hash-validation.sh:65`. **No se aplicó** porque otra sesión estaba editando ese archivo
+   en ese momento.
+
+### Cerrados el mismo día (para que nadie los persiga de nuevo)
+
+- ~~«El CANDADO de WLP no se verificó en vivo»~~ → **PROBADO POR EL OPERADOR (2026-08-07):
+  *«ya probé el candado WLP y sí sirve»*.** Sigue bloqueando el guardado de un renglón sin
+  ubicación después del reorden de 0.6.5. Con esto, WLP queda verificado en sus DOS mitades: el
+  campo monta (medido por automatización con `1.11.109`) y el candado frena (probado en piso).
+
+- ~~«El formato publicado de Reportes SH quedó atrás — republicar»~~ → **YA ESTABA AL DÍA.**
+  Verificado el 2026-08-07 corriendo `verifica_formato_publicado.py --domain tlc`: **código 0**,
+  *«Al día: versión v1 · catálogo del 2026-08-05 · firma 6e9d5873…»*. El aviso venía de una corrida
+  vieja del autopilot que quedó pegada en `hash-validation-log.md`; **no hay nada que republicar.**
+- ~~«Un proceso escribe stderr crudo en `hash-validation-log.md`»~~ → **causa encontrada y
+  corregida**: `chequea_publicado()` en `tools/run-hash-autopilot.sh` capturaba `2>&1`, así que el
+  `NotOpenSSLWarning` de urllib3 entraba a la bitácora versionada y bloqueaba el siguiente deploy.
+  Ahora el stderr va al log de launchd y la entrada lleva encabezado fechado.

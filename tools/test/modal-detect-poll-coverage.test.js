@@ -21,8 +21,8 @@
 // CÓMO SE MANTIENE ESTA LISTA:
 //   - Un applet entra aquí cuando monta UI dentro de un modal/diálogo de SH.
 //   - NO entran los que inyectan en LISTADOS (tablas): ahí las mutaciones son continuas
-//     (paginar, filtrar, ordenar, scroll) y el observer sí despierta. Inventario de los que
-//     hoy corren sin poll a propósito: docs/architecture/applet-load-gating.md.
+//     (paginar, filtrar, ordenar, scroll) y el observer sí despierta. El inventario de quién
+//     corre sin poll, con su veredicto y por qué, es docs/architecture/modal-mount-audit.md.
 //   - El poll debe ser BARATO por tick (ver la nota de cada applet): un `querySelectorAll` por
 //     atributo, o un gate previo antes del barrido caro. Un poll caro cambia un bug por un
 //     costo permanente en el hilo que el operador está usando.
