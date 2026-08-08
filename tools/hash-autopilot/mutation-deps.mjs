@@ -169,8 +169,8 @@ const ICON_DESARCHIVAR_SPEC = 'M12 9.5l5.5 5.5H14v2h-4v-2H6.5z';    // flecha AR
 // OJO: «Archivar Especificación» (por fila) y «Mostrar Archivados» (de la barra) son los DOS un
 // ArchiveIcon y su `d` se parece muchísimo. Se distinguen por el tramo del medio, que es lo que
 // va arriba; anclar al prefijo común los confundiría y archivaríamos al abrir el modal.
-async function ciclarArchivadoDeSpec(page, domain, sink) {
-  const dbg = process.env.SA_DBG;
+// Abre el modal de specs de la OT Centinela y valida la identidad. Compartido por los dos ciclos.
+async function abrirModalDeSpecs(page, domain) {
   await page.goto(`${BASE}/Domains/${domain}/WorkOrders/11677`, { waitUntil: 'domcontentloaded' });
   const abrir = page.locator('button').filter({ hasText: /Editar Especificaciones|Edit Spec/i }).first();
   await abrir.waitFor({ state: 'visible', timeout: 20000 });
@@ -181,13 +181,17 @@ async function ciclarArchivadoDeSpec(page, domain, sink) {
   // que esperar a que haya tabla. Sin esto el candado falla por lentitud y se lee como identidad.
   await dlg.locator('tbody').first().waitFor({ state: 'visible', timeout: 25000 }).catch(() => {});
   await page.waitForTimeout(1200);
-  // Candado: el modal se titula «… Número de Parte Centinela en Orden de Trabajo Centinela».
-  // Se ancla al NOMBRE PROPIO «Centinela», que no se traduce — el resto del título sí:
+  // Candado anclado al NOMBRE PROPIO «Centinela», que no se traduce — el resto del título sí:
   // medido headless sale en INGLÉS («Specs For Part Number Centinela on Work Order Centinela»)
   // aunque el operador lo vea en español.
   const titulo = await dlg.innerText().catch(() => '');
   if (!/centinela/i.test(titulo)) throw new Error('fail-closed: el modal de specs no es el de la OT Centinela');
+  return dlg;
+}
 
+async function ciclarArchivadoDeSpec(page, domain, sink) {
+  const dbg = process.env.SA_DBG;
+  const dlg = await abrirModalDeSpecs(page, domain);
   // La fila de la spec del NP: la que dice «De: Centinela» (las demás vienen de tratamientos y
   // NO se tocan — archivarlas se llevaría la configuración de la línea).
   // BILINGÜE obligatorio: el DOM que aporta el operador viene en SU locale y el headless corre en
@@ -216,6 +220,48 @@ async function ciclarArchivadoDeSpec(page, domain, sink) {
     // Se archivó y no se pudo revertir: hay que decirlo FUERTE, no dejarlo en un debug.
     console.warn('[hash-autopilot] ⚠️ la spec del NP de la OT Centinela quedó ARCHIVADA — desarchívala a mano');
   }
+}
+
+// ── workOrderSpecAdd: agregar una spec a la OT Centinela, captura-y-aborta ──
+// Aquí SÍ es capture-abort (a diferencia del ciclo archivar/desarchivar de arriba): es UNA sola
+// mutation, no una cadena, así que abortarla no deja nada a medias.
+//
+// EL FILTRO NO ES COSMÉTICO. Sin escribir en el combobox, la 1ª opción de las 50 es
+// «1.28.001 (Zinc Negro Azul)» — que YA está en la OT — y ADD SPEC **nunca se habilita**, porque
+// «agregar una spec que ya estaba no se puede» (regla del operador, verificada en vivo). El ciclo
+// terminaba sin capturar y sin decir por qué. Se filtra a una spec que NO está en la centinela.
+const SPEC_A_AGREGAR = 'RC Ag';   // existe en el dominio y NO está en la OT 11677
+async function agregarSpecAOrdenAborted(page, domain, sink) {
+  const dbg = process.env.SA_DBG;
+  await abrirModalDeSpecs(page, domain);
+  const dlg = page.locator('[role="dialog"]').first();
+  const agregar = dlg.locator('button').filter({ hasText: /Agregar Especificaci|Add Spec/i }).first();
+  if (!(await agregar.count().catch(() => 0))) throw new Error('fail-closed: sin botón «Agregar Especificación»');
+  await agregar.click({ timeout: 10000 });
+  await page.waitForTimeout(3000);
+
+  const nuevo = page.locator('[role="dialog"]').last();
+  const combo = nuevo.locator('input[role="combobox"]').first();
+  await combo.click({ timeout: 8000 }).catch(() => {});
+  await combo.fill(SPEC_A_AGREGAR).catch(() => {});
+  await page.waitForTimeout(2500);
+  const opt = page.locator('[role="option"]').first();
+  if (!(await opt.count().catch(() => 0))) {
+    throw new Error(`fail-closed: el combobox no ofreció ninguna spec para «${SPEC_A_AGREGAR}»`);
+  }
+  await opt.click({ timeout: 8000 });
+  await page.waitForTimeout(1500);
+
+  if (sink && sink.abortOps) sink.abortOps.add('ApplySpecsToPartNumbersAndWorkOrder');
+  const addBtn = nuevo.locator('button').filter({ hasText: /^(add spec|agregar especificaci)/i }).first();
+  // Esperar a que se HABILITE es la señal de que la spec elegida es válida (no está ya en la OT).
+  // Clicar un botón disabled en Playwright no lanza error: el ciclo moriría «sin hash» y en
+  // silencio, que es como se perdió una corrida con el modal de medición el 2026-08-06.
+  const listo = await addBtn.isEnabled({ timeout: 8000 }).catch(() => false);
+  if (dbg) console.log(`       [dbg] woSpecAdd: ADD SPEC habilitado=${listo}`);
+  if (!listo) throw new Error('fail-closed: ADD SPEC no se habilitó (¿la spec ya está en la orden?)');
+  await addBtn.click({ timeout: 8000 });
+  await page.waitForTimeout(3000);
 }
 
 // ── sensorDashboardCentinela: las dos ops de sensores, captura-y-aborta ─────
@@ -1300,6 +1346,18 @@ const HANDLERS = {
     },
     async mutate(page, { domain, sink }) { await ciclarArchivadoDeSpec(page, domain, sink); },
     async restore() { /* no-op: el propio mutate desarchiva — el ciclo se revierte solo */ },
+  },
+  workOrderSpecAdd: {
+    async load(page, { domain }) {
+      await page.goto(`${BASE}/Domains/${domain}/WorkOrders/11677`, { waitUntil: 'domcontentloaded' });
+      const ok = await page.locator('button').filter({ hasText: /Editar Especificaciones|Edit Spec/i })
+        .first().waitFor({ state: 'visible', timeout: 20000 }).then(() => 1).catch(() => 0);
+      return { name: ok ? 'Centinela (wo-spec add capture-abort)' : '' };
+    },
+    async mutate(page, { domain, sink }) { await agregarSpecAOrdenAborted(page, domain, sink); },
+    async restore(page, { sink }) {
+      if (sink && sink.abortOps) sink.abortOps.delete('ApplySpecsToPartNumbersAndWorkOrder');
+    },
   },
   sensorDashboardCentinela: {
     async load(page, { domain, id }) {
