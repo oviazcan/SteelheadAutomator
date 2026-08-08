@@ -1,5 +1,83 @@
 # `wo-spec-params` — Reaplicar Parámetros en Órdenes de Trabajo
 
+## 2026-08-07 — el caso que el applet NO cubre: **el NP cambió de spec**
+
+Reporte del operador sobre la OT **13219** (NP `LIV30919378001A`): el applet omite `Espesor` con
+*«el Número de Parte no define este campo y el catálogo ofrece 2 opciones»* — **y el NP sí trae el
+dato** (`7.62 - 12.7 µm`, visto en la ficha).
+
+### Por qué falla: el match es por `specFieldSpecId`, y ése cambia al migrar de spec
+
+`buildPartNumberIndex` indexa los parámetros del NP **por `specFieldSpecId`** (la identidad de
+*(spec, campo)*), y `resolveDesired` busca `pnIndex.get(c.specFieldSpecId)` con el id que trae el
+**catálogo de la ORDEN**. Cuando el NP migra de spec, esos dos ids dejan de coincidir:
+
+| Spec del NP `LIV30919378001A` | ¿viva en el NP? | `specFieldSpecId` de Espesor |
+|---|---|---|
+| **RC Ag (Plata)** | ✅ viva | **177260** ← aquí vive el parámetro del NP |
+| 80065-DS-004 (Plata) | ❌ archivada | **104936** ← ésta es la que heredó la OT |
+| ASTM B700 (Plata) | ❌ archivada | 171775 |
+
+`pnIndex.get(104936)` no existe ⇒ sin hit ⇒ cae a la vía CATÁLOGO ⇒ 2 opciones ⇒ `AMBIGUO`.
+
+**No es un caso raro: 315 de los 348 NP pendientes cambiaron de spec** (tienen vivas y archivadas).
+Es el 90% del universo, y es justo el caso de uso del applet — *el NP se corrigió, la orden quedó
+vieja*.
+
+### El arreglo NO es casar el parámetro por campo
+
+La tentación es buscar en el NP por `specFieldId` saltándose la spec. **Sería un parche que empeora
+las cosas:** si la orden conserva `80065-DS-004` VIVA, el operador en piso sigue viendo la spec
+retirada, ahora con un valor que no le corresponde. Peor que omitirla.
+
+**El modelo correcto (aportado por el operador):** se **archiva la spec anterior** en la OT y se
+**aplica la nueva**; los parámetros del NP se colocan solos *siempre que haya un campo en el proceso
+que los tome* (el eje 1 del modelo de mediciones).
+
+### Las dos operaciones que faltaban — CAPTURADAS 2026-08-07
+
+Ninguna estaba en el config ni en 131 scans previos. Se capturaron haciendo el flujo a mano con el
+hash-scanner y **las dos responden vigentes** (probadas aparte contra el ERP):
+
+| Operación | Hash | Para qué |
+|---|---|---|
+| `ArchivePartNumberWorkOrderSpecAndParams` | `003d319f4ddc856f3c88aa2d1a31b8540a4e24dd02d350cb78916819178bdef6` | archivar la spec vieja de la OT |
+| `ApplySpecsToPartNumbersAndWorkOrder` | `b482d33a758a040268d17d594eb91187b9261a1aa42febcfc02066ac55ce2383` | agregar la spec nueva **con sus parámetros** |
+
+```jsonc
+// ARCHIVAR — el id es el partNumberWorkOrderSpec, no el spec
+{"partNumberWorkOrderSpecId": 5543787, "archivedAt": "2026-08-07T23:44:49.039Z"}
+
+// AGREGAR — los parámetros viajan EN LA MISMA llamada, con su recipeNodeId ya resuelto
+{"workOrderId": 1880048,
+ "partNumberSpecsToApply": [{"partNumberId": 3028987,
+   "specsToApply": [{"specId": 20902, "classificationSetId": null, "classificationIds": [],
+     "parametersToAdd": [{"specFieldParamId": 33193234, "specFieldId": 15630,
+                          "geometryTypeSpecFieldId": null, "locationId": null,
+                          "recipeNodeId": 45934338}]}]}]}
+```
+
+**El ERP no arrastra los parámetros solo.** Van en el mismo payload, y con `recipeNodeId` explícito
+— así que **agregar la spec y colocar cada campo en el nodo correcto es UN acto atómico**: el
+problema del nodo raíz se resuelve ahí mismo, sin migrar nada después.
+
+### Tres reglas duras del flujo (las tres del operador, y las tres muerden)
+
+1. **ARCHIVAR primero, AGREGAR después.** Si las dos specs declaran los mismos specFields,
+   **chocan y el parámetro no se aplica** — hay que reaplicarlo a mano. Es el mismo `23P01` que ya
+   mordió en el frente NP (`assign-pending-params`, 2026-07-16).
+2. **La spec que YA ESTUVO en la OT se DESARCHIVA; la que nunca estuvo se AGREGA.** *Agregar una que
+   ya estaba y se archivó no se puede.* Verificado en la propia OT 13219, que tiene los dos casos a
+   la vez: `T204-LI (16.1)` archivada (se desarchivaría) y `RC Ag (Plata)` ausente (se agrega).
+3. **`drivenBy` dice DE DÓNDE viene el parámetro** — del tratamiento o del NP, que es lo que explica
+   por qué quedó en la OT. **Omitirlo lo deja como «Creación manual»**, perdiendo la trazabilidad.
+
+### Pendiente
+Implementar el modo. **Los hashes NO se agregaron al `config.json` todavía**: entrarían sin ruta de
+regeneración y subirían el trinquete de 51 a 53. Van junto con su entidad centinela, en el mismo
+commit que el modo.
+
+
 ## 2026-08-05 — «la OT 6009 sigue con nodo raíz y ya corrimos la corrección dos veces»
 
 Reporte del operador con captura: la OT **6009** (NP `PHA76627`, spec externa «RC Decapado»)
