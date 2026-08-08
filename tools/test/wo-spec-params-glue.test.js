@@ -580,3 +580,66 @@ test('mergeCheckpoint: dedup y salto de hechas conviven', () => {
   assert.deepEqual(r.pendientes, [2, 3]);
   assert.equal(r.yaHechas, 1);
 });
+
+// ── analyzeSpecSync / applySpecSync: sincronizar las specs de la orden ───────
+// Caso real OT 13219 / NP LIV30919378001A: el NP migró de 80065-DS-004 a RC Ag.
+const WOS = (id, specId, name, { np = false, trat = false, arch = null } = {}) => ({
+  id, archivedAt: arch, specBySpecId: { id: specId, name },
+  partNumberSpecByPartNumberSpecId: np ? { id: 900 + specId } : null,
+  treatmentSpecByTreatmentSpecId: trat ? { id: 800 + specId } : null,
+});
+const depsSync = (woSpecs, npSpecs, log) => ({
+  async getWorkOrderIds() { return { id: 1880048, partNumberIds: [3028987] }; },
+  async getSpecsInfo() { return { partNumberWorkOrderSpecsByWorkOrderId: { nodes: woSpecs } }; },
+  async getPartNumber() { return { name: 'LIV30919378001A', partNumberSpecsByPartNumberId: { nodes: npSpecs } }; },
+  async archiveWorkOrderSpec(id) { log.push('archivar:' + id); },
+  async unarchiveWorkOrderSpec(id) { log.push('desarchivar:' + id); },
+  async applySpecToWorkOrder(wo, pn, specId) { log.push('agregar:' + specId); },
+});
+
+test('analyzeSpecSync: detecta archivar la vieja y agregar la nueva', async () => {
+  const r = await G.analyzeSpecSync(13219, depsSync(
+    [WOS(1, 14260, '80065-DS-004 (Plata)', { np: true }),
+     WOS(2, 301, 'Inspección Recibo', { trat: true })],
+    [{ archivedAt: '2026-01-01', specBySpecId: { id: 14260, name: '80065-DS-004 (Plata)' } },
+     { archivedAt: null, specBySpecId: { id: 20902, name: 'RC Ag (Plata)' } }], []));
+  assert.equal(r.ok, true);
+  const p = r.results[0].plan;
+  assert.deepEqual(p.archivar.map(x => x.specName), ['80065-DS-004 (Plata)']);
+  assert.deepEqual(p.agregar.map(x => x.specName), ['RC Ag (Plata)'], 'el nombre se resuelve del NP');
+  assert.equal(p.intocables.length, 1, 'la del tratamiento no se toca');
+});
+test('analyzeSpecSync: solo las specs VIVAS del NP mandan', async () => {
+  // Una spec archivada en el NP es criterio retirado: no se agrega a la orden.
+  const r = await G.analyzeSpecSync(13219, depsSync([],
+    [{ archivedAt: '2026-01-01', specBySpecId: { id: 999, name: 'vieja' } }], []));
+  assert.deepEqual(r.results[0].plan.agregar, []);
+});
+
+test('applySpecSync: ejecuta en el orden del núcleo — archivar ANTES de agregar', async () => {
+  const log = [];
+  const D = depsSync([], [], log);
+  await G.applySpecSync({ workOrderId: 1, partNumberId: 2, plan: {
+    agregar: [{ specId: 20902 }], archivar: [{ pnwosId: 5543787 }], desarchivar: [{ pnwosId: 77 }],
+  } }, D);
+  assert.deepEqual(log, ['archivar:5543787', 'desarchivar:77', 'agregar:20902']);
+});
+test('applySpecSync: si un paso FALLA se detiene (no deja la orden a medias)', async () => {
+  const log = [];
+  const D = depsSync([], [], log);
+  D.archiveWorkOrderSpec = async () => { throw new Error('23P01'); };
+  const out = await G.applySpecSync({ workOrderId: 1, partNumberId: 2, plan: {
+    archivar: [{ pnwosId: 1 }], agregar: [{ specId: 20902 }],
+  } }, D);
+  assert.equal(out.errores.length, 1);
+  assert.deepEqual(log, [], 'agregar con la vieja aún viva las haría chocar y el parámetro no se aplicaría');
+});
+test('applySpecSync: cuenta lo aplicado por tipo', async () => {
+  const log = [];
+  const out = await G.applySpecSync({ workOrderId: 1, partNumberId: 2, plan: {
+    archivar: [{ pnwosId: 1 }, { pnwosId: 2 }], desarchivar: [], agregar: [{ specId: 9 }],
+  } }, depsSync([], [], log));
+  assert.equal(out.archivadas, 2);
+  assert.equal(out.agregadas, 1);
+  assert.deepEqual(out.errores, []);
+});

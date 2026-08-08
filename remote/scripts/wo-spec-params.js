@@ -392,6 +392,44 @@
       return api().query('AddParamsToPartNumberRecipeNodeSpecFieldParam',
         { input: { partNumberId, parametersToAdd } },
         'AddParamsToPartNumberRecipeNodeSpecFieldParam');
+    },
+    // ── Sincronización de SPECS de la orden (2026-08-07) ─────────────────────
+    // El ORDEN de estas tres lo impone specSyncSteps, no el glue: archivar antes de agregar,
+    // porque si la spec vieja y la nueva declaran los mismos specFields CHOCAN y el parámetro
+    // no se aplica — y falla en silencio, la mutation no revienta.
+    async archiveWorkOrderSpec(partNumberWorkOrderSpecId) {
+      return api().query('ArchivePartNumberWorkOrderSpecAndParams',
+        { partNumberWorkOrderSpecId, archivedAt: new Date().toISOString() },
+        'ArchivePartNumberWorkOrderSpecAndParams');
+    },
+    // OJO: desarchivar NO manda `archivedAt: null` como uno esperaría — repite el INSTANTE con el
+    // que se archivó. Medido en vivo el 2026-08-07: el Archive mandó "…T00:15:55.218Z" y el
+    // Unarchive "…T00:15:55.218+00:00" (mismo instante, otra representación). Se pasa tal cual
+    // viene de la lectura para no reconstruirlo y errarle por formato.
+    async unarchiveWorkOrderSpec(partNumberWorkOrderSpecId, archivedAt) {
+      return api().query('UnarchivePartNumberWorkOrderSpecAndParams',
+        { partNumberWorkOrderSpecId, archivedAt },
+        'UnarchivePartNumberWorkOrderSpecAndParams');
+    },
+    async unarchiveParam(partNumberRecipeNodeSpecFieldParamId, archivedAt) {
+      return api().query('UnarchivePartNumberRecipeNodeSpecFieldParam',
+        { partNumberRecipeNodeSpecFieldParamId, archivedAt },
+        'UnarchivePartNumberRecipeNodeSpecFieldParam');
+    },
+    // Los parámetros viajan EN LA MISMA llamada que la spec, con su recipeNodeId ya resuelto: el
+    // ERP no los arrastra solo. Por eso agregar la spec y colocar cada campo en su nodo es UN
+    // acto atómico y no dos pasos que puedan quedarse a medias.
+    async applySpecToWorkOrder(workOrderId, partNumberId, specId, parametersToAdd) {
+      return api().query('ApplySpecsToPartNumbersAndWorkOrder', {
+        workOrderId,
+        partNumberSpecsToApply: [{
+          partNumberId,
+          specsToApply: [{
+            specId, classificationSetId: null, classificationIds: [],
+            parametersToAdd: parametersToAdd || []
+          }]
+        }]
+      }, 'ApplySpecsToPartNumbersAndWorkOrder');
     }
   };
 
@@ -520,6 +558,71 @@
       }
     }
     return { ok: true, idInDomain, workOrderId: ids.id, results };
+  }
+
+
+  // ── Sincronizar las SPECS de la orden con las del NP ────────────────────────
+  // Distinto de reaplicar parámetros: aquí se corrige QUÉ SPEC tiene la orden. Cuando el NP migra
+  // (80065-DS-004 → RC Ag) la orden conserva la vieja, y mover parámetros de nodo no arregla eso:
+  // el operador en piso sigue viendo la spec retirada. 315 de 348 NP pendientes están así.
+  async function analyzeSpecSync(idInDomain, deps) {
+    const D = deps || realDeps;
+    const C = core();
+    let ids;
+    try { ids = await D.getWorkOrderIds(idInDomain); }
+    catch (e) { return { ok: false, idInDomain, error: 'No pude leer la orden: ' + ((e && e.message) || e) }; }
+    if (!ids || !ids.id) return { ok: false, idInDomain, error: 'No encontré la orden ' + idInDomain };
+
+    const results = [];
+    for (const partNumberId of (ids.partNumberIds || [])) {
+      try {
+        const workOrder = await D.getSpecsInfo(partNumberId, ids.id);
+        const partNumber = await D.getPartNumber(partNumberId);
+        const woSpecs = ((workOrder && workOrder.partNumberWorkOrderSpecsByWorkOrderId
+          && workOrder.partNumberWorkOrderSpecsByWorkOrderId.nodes) || []);
+        const npSpecs = ((partNumber && partNumber.partNumberSpecsByPartNumberId
+          && partNumber.partNumberSpecsByPartNumberId.nodes) || []);
+        // Solo las specs VIVAS del NP mandan. Una archivada en el NP es criterio retirado.
+        const vivosNP = npSpecs.filter(n => n && !n.archivedAt)
+          .map(n => (n.specBySpecId || {}).id).filter(x => x != null);
+        const nombreNP = new Map(npSpecs.map(n => [((n.specBySpecId || {}).id), ((n.specBySpecId || {}).name || '')]));
+
+        const plan = C.planSpecSync(woSpecs, vivosNP);
+        for (const a of plan.agregar) a.specName = nombreNP.get(a.specId) || ('spec ' + a.specId);
+        results.push({
+          idInDomain, partNumberId,
+          partNumberName: (partNumber && partNumber.name) || '',
+          workOrderId: ids.id, plan,
+          nCambios: plan.archivar.length + plan.desarchivar.length + plan.agregar.length
+        });
+      } catch (e) {
+        results.push({ idInDomain, partNumberId, error: ((e && e.message) || String(e)) });
+      }
+    }
+    return { ok: true, idInDomain, results };
+  }
+
+  // Aplica el plan. El orden lo da specSyncSteps (núcleo): archivar → desarchivar → agregar.
+  // Si un paso falla se DETIENE: seguir dejaría la orden en un estado intermedio —con la vieja ya
+  // archivada y la nueva sin aplicar— que es peor que no haber tocado nada.
+  async function applySpecSync(result, deps) {
+    const D = deps || realDeps;
+    const C = core();
+    const out = { archivadas: 0, desarchivadas: 0, agregadas: 0, errores: [] };
+    for (const paso of C.specSyncSteps(result.plan)) {
+      try {
+        if (paso.op === 'archivar') { await D.archiveWorkOrderSpec(paso.pnwosId); out.archivadas++; }
+        else if (paso.op === 'desarchivar') { await D.unarchiveWorkOrderSpec(paso.pnwosId, paso.archivedAt); out.desarchivadas++; }
+        else if (paso.op === 'agregar') {
+          await D.applySpecToWorkOrder(result.workOrderId, result.partNumberId, paso.specId, []);
+          out.agregadas++;
+        }
+      } catch (e) {
+        out.errores.push(paso.op + ' ' + (paso.specName || paso.specId || paso.pnwosId) + ': ' + ((e && e.message) || e));
+        break;   // no seguir: dejaría la orden a medias
+      }
+    }
+    return out;
   }
 
   function summarize(results) {
@@ -1378,6 +1481,27 @@
     return true;
   }
 
+  // Entrada desde el popup para la sincronización de specs. Mismo patrón que openFromPopup: si
+  // estamos en la ficha de una OT usa ésa, si no pide que peguen las órdenes.
+  function openSpecSyncFromPopup() {
+    setTimeout(async () => {
+      try {
+        if (typeof location === 'undefined' || typeof document === 'undefined') return;
+        const id = parseWorkOrderIdInDomain(location.pathname);
+        if (id) { await openSpecSync([id]); return; }
+        const txt = window.prompt('Pega los números de orden a sincronizar (uno por línea):', '');
+        if (!txt) return;
+        const { ids, ignored } = parsePastedWorkOrders(txt);
+        if (!ids.length) { window.alert('No reconocí ningún número de orden.'); return; }
+        if (ignored) console.warn('[wo-spec-params] ignoré ' + ignored + ' renglón(es)');
+        await openSpecSync(ids);
+      } catch (e) {
+        console.warn('[wo-spec-params] no pude abrir la sincronización de specs:', e);
+      }
+    }, 0);
+    return true;
+  }
+
   // Botón de entrada en la ficha de una OT. Se monta SIEMPRE que la ruta aplique — nunca detrás
   // de un gate de estado, y con observer porque el DOM puede no estar pintado al correr init().
   function ensureFab() {
@@ -1408,11 +1532,149 @@
     setInterval(tick, 1500);
   }
 
+
+  // ── UI: sincronizar specs de la orden ──────────────────────────────────────
+  // SOLO LECTURA obligatorio: escanea, pinta lo que HARÍA, y hasta que el operador confirma se
+  // escribe. Este modo archiva SPECS COMPLETAS de órdenes en piso — un error no deja una casilla
+  // hueca, deja una orden sin su criterio de calidad. Por eso el botón de aplicar nace deshabilitado
+  // hasta que hay algo que aplicar, y la confirmación nombra el número exacto de specs.
+  async function openSpecSync(idsInDomain) {
+    const ui = buildShell('🔄 Sincronizar especificaciones de la orden');
+    injectStyles();
+    setTitle(ui, 'Leyendo órdenes…');
+    const status = el('p', 'sa-mut', '0 de ' + idsInDomain.length);
+    ui.bd.appendChild(status);
+
+    const conCambios = [];
+    const fallidas = [];
+    let hechas = 0;
+    for (const idd of idsInDomain) {
+      const r = await analyzeSpecSync(idd).catch(e => ({ ok: false, idInDomain: idd, error: String(e) }));
+      hechas++;
+      status.textContent = hechas + ' de ' + idsInDomain.length;
+      if (!r.ok) { fallidas.push({ idInDomain: idd, error: r.error }); continue; }
+      for (const res of r.results) {
+        if (res.error) { fallidas.push({ idInDomain: idd, error: res.error }); continue; }
+        if (res.nCambios) conCambios.push(res);
+      }
+    }
+    renderSpecSyncPreview(ui, conCambios, fallidas, idsInDomain.length);
+  }
+
+  function renderSpecSyncPreview(ui, results, fallidas, revisadas) {
+    setTitle(ui, '🔄 Sincronizar especificaciones · revisa antes de aplicar');
+    clear(ui.bd); clear(ui.ft);
+
+    const nArch = results.reduce((a, r) => a + r.plan.archivar.length, 0);
+    const nDes = results.reduce((a, r) => a + r.plan.desarchivar.length, 0);
+    const nAdd = results.reduce((a, r) => a + r.plan.agregar.length, 0);
+    const total = nArch + nDes + nAdd;
+
+    const sum = el('div', 'sa-sum');
+    sum.append(document.createTextNode(
+      revisadas + ' orden(es) revisada(s) · ' + results.length + ' con cambios · '),
+      el('b', null, String(total)), document.createTextNode(' operación(es)'));
+    ui.bd.appendChild(sum);
+    ui.bd.appendChild(el('div', 'sa-mut',
+      nArch + ' spec(s) a archivar · ' + nDes + ' a desarchivar · ' + nAdd + ' a agregar. '
+      + 'Se ejecuta SIEMPRE en ese orden: si la vieja y la nueva declaran los mismos campos, '
+      + 'chocan y el parámetro no se aplica.'));
+
+    if (results.length) {
+      const t = el('table');
+      const thead = el('thead'); const trh = el('tr');
+      for (const h of ['Orden', 'Número de parte', 'Acción', 'Especificación']) trh.appendChild(el('th', null, h));
+      thead.appendChild(trh); t.appendChild(thead);
+      const tb = el('tbody');
+      for (const r of results) {
+        const filas = [
+          ...r.plan.archivar.map(x => ['Archivar', x.specName]),
+          ...r.plan.desarchivar.map(x => ['Desarchivar', x.specName]),
+          ...r.plan.agregar.map(x => ['Agregar', x.specName]),
+        ];
+        for (const [accion, nombre] of filas) {
+          const tr = el('tr');
+          tr.appendChild(el('td', null, String(r.idInDomain)));
+          tr.appendChild(el('td', null, r.partNumberName || ''));
+          tr.appendChild(el('td', null, accion));
+          tr.appendChild(el('td', null, nombre || ''));
+          tb.appendChild(tr);
+        }
+        // Lo que NO se toca también se muestra: un filtro invisible engaña sobre lo aplicado.
+        if (r.plan.intocables.length) {
+          const tr = el('tr');
+          const td = el('td', 'sa-mut', r.plan.intocables.length
+            + ' spec(s) de esta orden no se tocan (vienen del tratamiento o sin origen declarado)');
+          td.colSpan = 4; tr.appendChild(td); tb.appendChild(tr);
+        }
+      }
+      t.appendChild(tb); ui.bd.appendChild(t);
+    } else {
+      ui.bd.appendChild(el('p', null, 'No hay nada que sincronizar: las specs de estas órdenes ya coinciden con las de su número de parte.'));
+    }
+    if (fallidas.length) ui.bd.appendChild(el('p', 'sa-mut',
+      fallidas.length + ' orden(es) no se pudieron leer: ' + fallidas.slice(0, 3).map(f => f.idInDomain).join(', ')
+      + (fallidas.length > 3 ? '…' : '')));
+
+    const aplicar = el('button', null, 'Aplicar ' + total + ' operación(es)');
+    aplicar.disabled = !total;
+    aplicar.addEventListener('click', async () => {
+      // Confirmación EXPLÍCITA que nombra lo irreversible-sin-trabajo: archivar specs.
+      const msg = 'Vas a modificar las especificaciones de ' + results.length + ' orden(es):\n\n'
+        + '  · ' + nArch + ' spec(s) se ARCHIVARÁN\n'
+        + '  · ' + nDes + ' se desarchivarán\n'
+        + '  · ' + nAdd + ' se agregarán\n\n'
+        + 'Archivar una spec le quita a la orden ese criterio de calidad. ¿Continuar?';
+      if (!window.confirm(msg)) return;
+      aplicar.disabled = true;
+      await aplicarSpecSync(ui, results);
+    });
+    ui.ft.appendChild(aplicar);
+    const cerrar = el('button', null, 'Cerrar');
+    cerrar.addEventListener('click', closePanel);
+    ui.ft.appendChild(cerrar);
+  }
+
+  async function aplicarSpecSync(ui, results) {
+    setTitle(ui, 'Aplicando…');
+    clear(ui.bd);
+    const status = el('p', null, '0 de ' + results.length);
+    ui.bd.appendChild(status);
+    const tot = { archivadas: 0, desarchivadas: 0, agregadas: 0, errores: [] };
+    let i = 0;
+    for (const r of results) {
+      const out = await applySpecSync(r);
+      tot.archivadas += out.archivadas; tot.desarchivadas += out.desarchivadas;
+      tot.agregadas += out.agregadas;
+      for (const e of out.errores) tot.errores.push('OT ' + r.idInDomain + ' · ' + e);
+      status.textContent = (++i) + ' de ' + results.length;
+    }
+    clear(ui.bd); clear(ui.ft);
+    setTitle(ui, 'Listo');
+    ui.bd.appendChild(el('div', 'sa-sum',
+      tot.archivadas + ' archivadas · ' + tot.desarchivadas + ' desarchivadas · ' + tot.agregadas + ' agregadas'));
+    if (tot.errores.length) {
+      // Los errores se PINTAN, no se cuentan nada más: un fallo total se veía igual que un éxito
+      // silencioso en el incidente de los 52 params (spec-migrator, 2026-07-29).
+      ui.bd.appendChild(el('p', 'sa-mut', tot.errores.length + ' operación(es) fallaron; '
+        + 'la orden se detuvo en la primera para no dejarla a medias:'));
+      const ul = el('ul');
+      for (const e of tot.errores.slice(0, 20)) ul.appendChild(el('li', null, e));
+      ui.bd.appendChild(ul);
+    }
+    ui.bd.appendChild(el('p', 'sa-mut',
+      'Vuelve a escanear para confirmar: el ERP responde sin confirmar lo que escribió.'));
+    const c = el('button', null, 'Cerrar');
+    c.addEventListener('click', closePanel);
+    ui.ft.appendChild(c);
+  }
+
   window.WoSpecParams = {
     VERSION,
     isWorkOrderDetailPath, parseWorkOrderIdInDomain, parsePastedWorkOrders,
     parsePastedPartNumbers, resolvePartNumbers, findWorkOrdersForPartNumbers,
     runPool, planScanChunks, mergeCheckpoint, dedupHallazgos, slimResult, openScan,
+    analyzeSpecSync, applySpecSync, openSpecSync, renderSpecSyncPreview,
     setSoloNP: (v) => { _soloNP = !!v; },
     getSoloNP: () => _soloNP,
     setMigrarAInspeccion: (v) => { _migrarAInspeccion = !!v; },
@@ -1421,7 +1683,7 @@
     getRescateReceta: () => _rescateReceta,
     resetMasterCache,
     analyzeWorkOrder, summarize, applyPlan, buildCsv,
-    open, openFromPopup, closePanel, init,
+    open, openFromPopup, openSpecSyncFromPopup, closePanel, init,
     _realDeps: realDeps, _writeDeps: writeDeps
   };
 

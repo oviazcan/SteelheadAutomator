@@ -1156,6 +1156,15 @@
           "fn": "WoSpecParams.openFromPopup"
         },
         {
+          "id": "sync-wo-specs",
+          "label": "Sincronizar Specs de OTs",
+          "sublabel": "Archiva la spec vieja y aplica la del NP cuando el número de parte migró",
+          "icon": "🔄",
+          "handler": "message",
+          "message": "sync-wo-specs",
+          "fn": "WoSpecParams.openSpecSyncFromPopup"
+        },
+        {
           "id": "sweep-forced-node",
           "label": "Barrer nodo forzado (todos los clientes)",
           "sublabel": "Recorre los clientes solo, con checkpoint reanudable",
