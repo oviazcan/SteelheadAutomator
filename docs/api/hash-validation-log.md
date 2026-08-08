@@ -944,3 +944,19 @@ Dashboard #193): **trinquete 53 → 51 huérfanas, por RUTA REAL**.
 GitHub Pages, con `AllEquipments = fb7aa06d…` y `WorkOrderSchedule = 05283b21…`, y la **firma
 ECDSA verifica** contra la pública real embebida en la extensión — la comprobación que
 `deploy-status.sh` NO hace, porque compara versiones y no firmas.
+### 2026-08-07 — el vigía del formato publicado vuelve a marcar desfase
+
+`verifica_formato_publicado.py` detectó que el payload subido al ERP ya no coincide con el local:
+
+```
+firma publicada 4ce54fe42f89a754b65b64a0bc9b0485
+firma local     6e9d58735c80ef27e320365baaaf973f
+```
+
+**Pendiente del operador:** `/usr/bin/python3 scripts/publica_formato.py --domain tlc --commit`
+(no hace falta cambiar la liga: el cascarón toma el payload más reciente).
+
+> **La higiene sigue rota, y ya es la segunda vez.** El runner apendea a este markdown el `stderr`
+> crudo de Python —el `NotOpenSSLWarning` de urllib3— mezclado con el aviso. Se limpió a mano otra
+> vez; mientras el redirect no filtre stderr, cada corrida vuelve a ensuciar un archivo versionado
+> y a **bloquear el siguiente `deploy.sh`**, que se niega con cambios fuera de `remote/`.
