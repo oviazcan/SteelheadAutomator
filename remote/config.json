@@ -90,7 +90,8 @@
         "CreateTreatmentTimesWithExpectedStationCostsUI": "57c6367a05e6b225f96c0d3f4fab69155010dffc80f92ce6d063961b05ecb8bc",
         "ArchivePartNumberWorkOrderSpecAndParams": "003d319f4ddc856f3c88aa2d1a31b8540a4e24dd02d350cb78916819178bdef6",
         "UnarchivePartNumberWorkOrderSpecAndParams": "0b3a3e1f0d5eb68026329f497aadaf4c2f58b0e7ec5045b348d1688726e65a8d",
-        "ApplySpecsToPartNumbersAndWorkOrder": "b482d33a758a040268d17d594eb91187b9261a1aa42febcfc02066ac55ce2383"
+        "ApplySpecsToPartNumbersAndWorkOrder": "b482d33a758a040268d17d594eb91187b9261a1aa42febcfc02066ac55ce2383",
+        "UnarchivePartNumberRecipeNodeSpecFieldParam": "6d78669bcf0d0f54394ddddcd9a2b699eea2920d36634e5ccb3beec1012bcc33"
       },
       "queries": {
         "AllStations": "834516258e392dcd9c666c2349992e3f6744aaf536cb127cb8c9eb4347f883f7",

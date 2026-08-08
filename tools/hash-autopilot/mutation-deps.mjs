@@ -166,6 +166,7 @@ async function archiveCentinelaOVs(page, domain) {
 // Centinela. DOM medido en vivo 2026-08-07.
 const ICON_ARCHIVAR_SPEC = 'M12 17.5 6.5 12H10v-2h4v2h3.5z';        // flecha ABAJO dentro de la caja
 const ICON_DESARCHIVAR_SPEC = 'M12 9.5l5.5 5.5H14v2h-4v-2H6.5z';    // flecha ARRIBA
+const ICON_EXPANDIR_SPEC = 'M7.41 8.59 12 13.17l4.59-4.58L18 10l-6 6-6-6z';  // ExpandMore de la fila
 // OJO: «Archivar Especificación» (por fila) y «Mostrar Archivados» (de la barra) son los DOS un
 // ArchiveIcon y su `d` se parece muchísimo. Se distinguen por el tramo del medio, que es lo que
 // va arriba; anclar al prefijo común los confundiría y archivaríamos al abrir el modal.
@@ -211,7 +212,26 @@ async function ciclarArchivadoDeSpec(page, domain, sink) {
   const mostrar = dlg.locator('button').filter({ hasText: /Mostrar Archivados|Show Archived/i }).first();
   if (await mostrar.count().catch(() => 0)) { await mostrar.click({ timeout: 8000 }).catch(() => {}); await page.waitForTimeout(2500); }
 
-  const desarchivar = dlg.locator(`button:has(svg path[d*="${ICON_DESARCHIVAR_SPEC}"])`).first();
+  // Los parámetros se archivaron JUNTO con la spec, así que en el mismo viaje se puede desarchivar
+  // uno y capturar la 3ª mutation. Se despliegan con la flecha de la fila.
+  const expandir = dlg.locator(`button:has(svg path[d="${ICON_EXPANDIR_SPEC}"])`).first();
+  if (await expandir.count().catch(() => 0)) {
+    await expandir.click({ timeout: 8000 }).catch(() => {});
+    await page.waitForTimeout(2500);
+  }
+  // ⚠️ LA FORMA NO DISCRIMINA: «Desarchivar Parámetro» y «Desarchivar Especificación» usan el
+  // MISMO path de icono, carácter por carácter. Anclar por forma tomaría el que caiga primero en
+  // el DOM y desarchivaríamos la spec creyendo desarchivar el parámetro — capturando el hash
+  // equivocado y dejando el ciclo sin la 3ª op. Aquí el aria-label es la ÚNICA señal que separa,
+  // y por eso va bilingüe: el modal sale en inglés headless aunque el operador lo vea en español.
+  const desParam = dlg.locator('button[aria-label*="Desarchivar Par" i], button[aria-label*="Unarchive Param" i]').first();
+  if (await desParam.count().catch(() => 0)) {
+    await desParam.click({ timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(3000);
+    if (dbg) console.log('       [dbg] woSpec: parámetro desarchivado');
+  } else if (dbg) console.log('       [dbg] woSpec: no vi botón de desarchivar parámetro');
+
+  const desarchivar = dlg.locator('button[aria-label*="Desarchivar Espec" i], button[aria-label*="Unarchive Spec" i]').first();
   if (await desarchivar.count().catch(() => 0)) {
     await desarchivar.click({ timeout: 10000 }).catch(() => {});
     await page.waitForTimeout(3000);
