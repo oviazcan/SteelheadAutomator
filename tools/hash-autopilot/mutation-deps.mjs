@@ -155,6 +155,69 @@ async function archiveCentinelaOVs(page, domain) {
 // REGLA: antes de confiar en el abort de un flujo NUEVO, verifica con el sink QUÉ op viaja de
 // verdad. "Marqué la op" no es lo mismo que "la op que se dispara está marcada", y la diferencia
 // se paga en datos escritos en producción, no en un test rojo.
+// ── workOrderSpecArchive: archivar + DESARCHIVAR una spec de la OT Centinela ─
+// Ciclo REVERSIBLE, no captura-y-aborta: se archiva la spec y acto seguido se desarchiva, así que
+// el estado final es idéntico al inicial. Es más seguro que abortar en este caso concreto —
+// abortando el archive no habría nada que desarchivar y la segunda op nunca se dispararía, el
+// mismo error que costó una corrida con CreateManySensorMeasurements.
+//
+// Se opera sobre la spec del NÚMERO DE PARTE («De: Centinela»), no sobre las del tratamiento:
+// el modal las distingue con esa leyenda y el candado real es que la OT y el NP se llaman
+// Centinela. DOM medido en vivo 2026-08-07.
+const ICON_ARCHIVAR_SPEC = 'M12 17.5 6.5 12H10v-2h4v2h3.5z';        // flecha ABAJO dentro de la caja
+const ICON_DESARCHIVAR_SPEC = 'M12 9.5l5.5 5.5H14v2h-4v-2H6.5z';    // flecha ARRIBA
+// OJO: «Archivar Especificación» (por fila) y «Mostrar Archivados» (de la barra) son los DOS un
+// ArchiveIcon y su `d` se parece muchísimo. Se distinguen por el tramo del medio, que es lo que
+// va arriba; anclar al prefijo común los confundiría y archivaríamos al abrir el modal.
+async function ciclarArchivadoDeSpec(page, domain, sink) {
+  const dbg = process.env.SA_DBG;
+  await page.goto(`${BASE}/Domains/${domain}/WorkOrders/11677`, { waitUntil: 'domcontentloaded' });
+  const abrir = page.locator('button').filter({ hasText: /Editar Especificaciones|Edit Spec/i }).first();
+  await abrir.waitFor({ state: 'visible', timeout: 20000 });
+  await abrir.click({ timeout: 10000 });
+  const dlg = page.locator('[role="dialog"]').first();
+  await dlg.waitFor({ state: 'visible', timeout: 15000 });
+  // El modal abre en «Loading...» y RINDE las filas después: esperar a que exista no basta, hay
+  // que esperar a que haya tabla. Sin esto el candado falla por lentitud y se lee como identidad.
+  await dlg.locator('tbody').first().waitFor({ state: 'visible', timeout: 25000 }).catch(() => {});
+  await page.waitForTimeout(1200);
+  // Candado: el modal se titula «… Número de Parte Centinela en Orden de Trabajo Centinela».
+  // Se ancla al NOMBRE PROPIO «Centinela», que no se traduce — el resto del título sí:
+  // medido headless sale en INGLÉS («Specs For Part Number Centinela on Work Order Centinela»)
+  // aunque el operador lo vea en español.
+  const titulo = await dlg.innerText().catch(() => '');
+  if (!/centinela/i.test(titulo)) throw new Error('fail-closed: el modal de specs no es el de la OT Centinela');
+
+  // La fila de la spec del NP: la que dice «De: Centinela» (las demás vienen de tratamientos y
+  // NO se tocan — archivarlas se llevaría la configuración de la línea).
+  // BILINGÜE obligatorio: el DOM que aporta el operador viene en SU locale y el headless corre en
+  // otro. Con /De:/ a secas la fila daba 0 matches en inglés («From: Centinela») y el ciclo se iba
+  // en blanco sin decir por qué.
+  const fila = dlg.locator('tbody').filter({ hasText: /(De|From):\s*Centinela/i }).first();
+  if (!(await fila.count().catch(() => 0))) {
+    throw new Error('fail-closed: no hay spec del NP («De:/From: Centinela») en la OT Centinela');
+  }
+  const archivar = fila.locator(`button:has(svg path[d*="${ICON_ARCHIVAR_SPEC}"])`).first();
+  if (!(await archivar.count().catch(() => 0))) throw new Error('fail-closed: sin botón de archivar en la fila');
+  await archivar.click({ timeout: 10000 });
+  await page.waitForTimeout(3000);
+  if (dbg) console.log('       [dbg] woSpec: spec del NP archivada');
+
+  // Mostrar archivados para poder revertir. Sin esto la fila desaparece del modal.
+  const mostrar = dlg.locator('button').filter({ hasText: /Mostrar Archivados|Show Archived/i }).first();
+  if (await mostrar.count().catch(() => 0)) { await mostrar.click({ timeout: 8000 }).catch(() => {}); await page.waitForTimeout(2500); }
+
+  const desarchivar = dlg.locator(`button:has(svg path[d*="${ICON_DESARCHIVAR_SPEC}"])`).first();
+  if (await desarchivar.count().catch(() => 0)) {
+    await desarchivar.click({ timeout: 10000 }).catch(() => {});
+    await page.waitForTimeout(3000);
+    if (dbg) console.log('       [dbg] woSpec: spec desarchivada (estado restaurado)');
+  } else {
+    // Se archivó y no se pudo revertir: hay que decirlo FUERTE, no dejarlo en un debug.
+    console.warn('[hash-autopilot] ⚠️ la spec del NP de la OT Centinela quedó ARCHIVADA — desarchívala a mano');
+  }
+}
+
 // ── sensorDashboardCentinela: las dos ops de sensores, captura-y-aborta ─────
 // DOM medido en vivo el 2026-08-06 (el operador mandó el wrapper; no se adivinó nada).
 // Formas de icono, NO clases css-* (emotion las regenera cuando alguien mueve un padding) y
@@ -1227,6 +1290,17 @@ const HANDLERS = {
     },
   },
   // ── SENSORES (captura-y-aborta) — las DOS ops salen de la MISMA pantalla ──
+  workOrderSpecArchive: {
+    async load(page, { domain }) {
+      await page.goto(`${BASE}/Domains/${domain}/WorkOrders/11677`, { waitUntil: 'domcontentloaded' });
+      const ok = await page.locator('button').filter({ hasText: /Editar Especificaciones|Edit Spec/i })
+        .first().waitFor({ state: 'visible', timeout: 20000 }).then(() => 1).catch(() => 0);
+      if (process.env.SA_DBG) console.log(`       [dbg] woSpec: botón Editar Especificaciones=${ok}`);
+      return { name: ok ? 'Centinela (wo-spec archive/unarchive)' : '' };
+    },
+    async mutate(page, { domain, sink }) { await ciclarArchivadoDeSpec(page, domain, sink); },
+    async restore() { /* no-op: el propio mutate desarchiva — el ciclo se revierte solo */ },
+  },
   sensorDashboardCentinela: {
     async load(page, { domain, id }) {
       // LISTADO + CLIC, no `goto` directo al detalle. Dos intentos costó aprenderlo:

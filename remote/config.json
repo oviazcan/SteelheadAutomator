@@ -87,7 +87,9 @@
         "ArchivePartNumberRecipeNodeSpecFieldParams": "7d33b66bb244910a9065c631630bceb15f01ca282ac208b16fecf85df36937a4",
         "AddParamsToPartNumberRecipeNodeSpecFieldParam": "8e8b0ab50c0404a01985ec894d0c91d3eab4159c6360f923b9920b8e344aaef0",
         "CreatePartNumberPerPerRackType": "8d4440278e2d30c4e66a7ce647c7a4594967d6e490bb909b0f8903c76e6dbc63",
-        "CreateTreatmentTimesWithExpectedStationCostsUI": "57c6367a05e6b225f96c0d3f4fab69155010dffc80f92ce6d063961b05ecb8bc"
+        "CreateTreatmentTimesWithExpectedStationCostsUI": "57c6367a05e6b225f96c0d3f4fab69155010dffc80f92ce6d063961b05ecb8bc",
+        "ArchivePartNumberWorkOrderSpecAndParams": "003d319f4ddc856f3c88aa2d1a31b8540a4e24dd02d350cb78916819178bdef6",
+        "UnarchivePartNumberWorkOrderSpecAndParams": "0b3a3e1f0d5eb68026329f497aadaf4c2f58b0e7ec5045b348d1688726e65a8d"
       },
       "queries": {
         "AllStations": "834516258e392dcd9c666c2349992e3f6744aaf536cb127cb8c9eb4347f883f7",
