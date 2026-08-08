@@ -26,7 +26,12 @@
 # El JSON del hook llega por stdin (para register/heartbeat/release/check).
 set -u
 
-TTL="${SH_WT_TTL:-300}"                 # segundos sin heartbeat = lock muerto
+# 1800s (30 min), no 300. Con 5 minutos una sesión que está PENSANDO —o esperando a que el
+# operador conteste— se veía muerta, el worktree parecía libre, el wrapper no redirigía a la
+# siguiente, y al revivir quedaban DOS en main. Es como se coló el choque del 2026-08-08: la
+# sesión de vbas llevaba un rato quieta cuando arrancó la otra. El heartbeat late en cada prompt
+# y en cada tool, así que 30 min solo declara muerta a una sesión de verdad abandonada.
+TTL="${SH_WT_TTL:-1800}"                # segundos sin heartbeat = lock muerto
 LOCKROOT="${SH_WT_LOCKROOT:-$HOME/.claude/worktree-locks}"
 
 mode="${1:-}"

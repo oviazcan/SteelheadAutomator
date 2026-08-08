@@ -24,7 +24,25 @@ TOOL="$(parse '.tool_name // empty')"
 [ -n "$HCWD" ] || HCWD="$PWD"
 [ -n "$SID" ] || exit 0         # sin sid → fail-open
 
-root="$(git -C "$HCWD" rev-parse --show-toplevel 2>/dev/null)"
+# El worktree a evaluar es DONDE VA A ESCRIBIR el comando, no donde vive la sesión. Si el
+# comando se muda (`cd <path>` o `git -C <path>`), la escritura ocurre ALLÁ.
+# Sin esto el guard bloqueaba justo la acción que él mismo ordena —moverse a un worktree libre—
+# y la sesión invitada quedaba atrapada: «múevete» + «no puedes moverte» (medido 2026-08-08).
+DEST=""
+if [ "$TOOL" = "Bash" ]; then
+  c="$(parse '.tool_input.command // ""')"
+  DEST="$(printf '%s' "$c" | sed -nE 's/.*(^|[;&|[:space:]])cd[[:space:]]+"?([^"[:space:];&|]+)"?.*/\2/p' | head -1)"
+  [ -n "$DEST" ] || DEST="$(printf '%s' "$c" | sed -nE 's/.*git[[:space:]]+-C[[:space:]]+"?([^"[:space:];&|]+)"?.*/\1/p' | head -1)"
+fi
+BASEDIR="$HCWD"
+if [ -n "$DEST" ] && [ -d "$DEST" ]; then
+  otro="$(git -C "$DEST" rev-parse --show-toplevel 2>/dev/null)"
+  # Solo si es OTRO worktree del repo: mudarse dentro del mismo no cambia nada.
+  if [ -n "$otro" ] && [ "$otro" != "$(git -C "$HCWD" rev-parse --show-toplevel 2>/dev/null)" ]; then
+    BASEDIR="$DEST"
+  fi
+fi
+root="$(git -C "$BASEDIR" rev-parse --show-toplevel 2>/dev/null)"
 [ -n "$root" ] || exit 0        # fuera de repo → no aplica
 
 # ¿soy la DUEÑA? → trabajo libre (incluye deploys con bisturí). am-owner es fail-open.

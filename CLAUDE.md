@@ -158,12 +158,27 @@ cuando Steelhead lo rote. **Un hash sin ruta de regeneración es deuda.**
 
 **La regla se VERIFICA:** `tools/test/hash-regen-coverage.test.js` mide la cobertura real y funciona
 como **TRINQUETE** — falla si el número de huérfanas **sube**, y si baja obliga a actualizar la línea
-base en el mismo commit. Línea base al **2026-08-05**: **53 huérfanas** (queries **115/122**, mutations
+base en el mismo commit. Línea base al **2026-08-07**: **51 huérfanas** (queries **115/122**, mutations
 **29/75** — el hueco siguen siendo las mutations, cada una necesita su centinela). Bajó de 58 ese día por
 DOS vías distintas, y la diferencia entre ellas importa: la familia de parámetros de spec ganó **ruta
 real** (entidad `partNumberSpecParams`, 3 ops en un ciclo), y aparte se **retiraron del catálogo** 2
 hashes MUERTOS que no consumía nadie. Reducir deuda documentándola y reducirla borrando lo que sobra son
 cosas distintas; el trinquete cuenta igual las dos, así que el commit debe decir cuál fue.
+
+**El número viajó 53 → 51 → 52 → 51 en un solo día (2026-08-07), y solo el último está respaldado
+por una corrida real.** Bajó a 51 al darles centinela a las dos mutations de sensores; **subió a 52
+al MEDIR** que una de ellas no se capturaba de la pantalla declarada (el microscopio del dashboard
+dispara `CreateSensorMeasurement`, **singular**, que ni está en el config ni usa ningún applet — la
+plural sale del flujo de MANTENIMIENTO); y volvió a 51 cuando el ciclo correcto sí capturó.
+**Un número honesto que sube vale más que uno bonito que miente**: declarar una ruta que no captura
+es la deuda invisible que este trinquete NO puede ver.
+
+> **Una ruta ROTA no es lo mismo que una AUSENTE, y el trinquete solo ve la segunda.** El 2026-08-06
+> `AllEquipments` y `WorkOrderSchedule` rotaron con ruta declarada y el autopilot no pudo
+> recuperarlas: sus recetas llevaban tiempo capturando CERO (`maintenance-list` y
+> `workorders-detail`), y aun así contaban como cubiertas. **La línea base es un PISO, no la deuda
+> real.** Hoy la única señal de esa clase es el correo nuevo de `needs-attention` — y solo llega
+> cuando el hash ya rotó, es decir, cuando el applet ya está roto en piso.
 El caso que destapó la falta de verificación: `CreateUpdateDeleteRoutes`, LA mutation del auto-ruteador,
 vivió sin ruta desde su fase 1. **Cobertura de doc: 45/45 apps con bitácora e índice (2026-08-05).**
 
@@ -499,7 +514,7 @@ renglón. **Antes de tocar un applet, lee su bitácora.**
 | `bulk-upload` | 1.5.42 | Carga masiva de cotizaciones y NPs desde plantilla `.xlsm` (v13: 5 rack types + Instrucciones de Empaque). El applet más grande del repo | [`bulk-upload.md`](docs/applets/bulk-upload.md) · [`v13`](docs/applets/bulk-upload-v13.md) |
 | `auto-router` | 0.4.1 | Re-rutea OTs entre líneas; ruteo por grupos de piezas (pistas) y ✂️ partir/reagrupar desde el tablero | [`auto-router.md`](docs/applets/auto-router.md) |
 | `surtido-guard` | 0.4.1 | Candado: bloquea mover piezas NO programadas del step de surtido + filtro por línea destino en el board | [`surtido-guard.md`](docs/applets/surtido-guard.md) |
-| `wo-spec-params` | 0.6.0 | Alinea los parámetros de las specs de una OT con los del NP (5ª acción de Ajuste Masivo) | [`wo-spec-params.md`](docs/applets/wo-spec-params.md) |
+| `wo-spec-params` | 0.7.0 | **Alinear OTs con su NP**: corrige la spec de la orden y LUEGO sus parámetros, en una pasada (5ª acción de Ajuste Masivo). El flujo consolidado **no se ha ejercido en vivo** | [`wo-spec-params.md`](docs/applets/wo-spec-params.md) |
 | `pn-specs-column` | 0.3.3 | Columnas de specs/metal/racks/unidades al inicio del listado de NPs | [`pn-specs-column.md`](docs/applets/pn-specs-column.md) |
 | `wo-listing-columns` | 0.8.2 | Columnas PN/Programación/Lote + botones de etiquetas PDF en el listado de OTs | [`wo-listing-columns.md`](docs/applets/wo-listing-columns.md) · [`pdf`](docs/applets/wo-label-pdf-buttons.md) |
 | `wo-schedule-button` | 0.9.0 | Readout de programación en la ficha de OT + programar por tratamiento ancla | [`wo-schedule-button.md`](docs/applets/wo-schedule-button.md) |

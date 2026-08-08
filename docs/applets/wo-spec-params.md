@@ -1,4 +1,112 @@
-# `wo-spec-params` — Reaplicar Parámetros en Órdenes de Trabajo
+# `wo-spec-params` — Alinear OTs con su Número de Parte
+
+> **Renombrado 2026-08-08.** Antes «Reaplicar Parámetros en Órdenes de Trabajo». El applet ya no
+> solo reaplica parámetros: **corrige la spec de la orden y después sus parámetros, en una sola
+> pasada**. La acción `sync-wo-specs` que existió unas horas ese día **se retiró del menú**: su
+> trabajo vive dentro del flujo único.
+
+## 2026-08-08 — consolidación + el falso negativo que proponía DUPLICAR
+
+**Vivo en `config 1.11.113`.** Suite 111 archivos, 0 rojos.
+
+### Lo que cambió, en una línea
+Una sola acción — **🔧 Alinear OTs con su Número de Parte** — que hace dos fases por orden:
+**(1)** arregla las specs desalineadas, **(2)** RE-LEE y revisa los parámetros sobre el estado ya
+corregido. Al operador no le importa si el problema es una spec completa o un parámetro suelto;
+la separación en dos botones era una costura nuestra.
+
+### La re-lectura NO es opcional (es el hallazgo de la sesión)
+**Al aplicar la spec nueva, el ERP coloca SOLO sus parámetros en el nodo que declara cada campo.**
+Medido en la OT 13219: tras archivar `80065-DS-004` y aplicar `RC Ag`, las 5 casillas quedaron en
+`T202-IC00-001 Inspeccionando y Empacando` con el valor del NP —**sin que nadie las moviera**— y
+cero en el raíz (`ArchivePartNumberWorkOrderSpecAndParams` archiva también los parámetros).
+
+Consecuencia de diseño: analizar los parámetros ANTES de arreglar la spec produce un plan sobre un
+estado que va a dejar de existir, y propone escribir lo que el ERP ya puso.
+
+### El falso negativo que afectaba a producción
+`findExternalSpecs` exigía `partNumberSpecByPartNumberSpecId`. **El ERP NO pone ese vínculo** cuando
+la spec se aplica con `ApplySpecsToPartNumbersAndWorkOrder` (lo que dispara «Agregar
+Especificación»). Resultado: la spec quedaba bien aplicada pero el applet decía *«la orden no tiene
+especificación externa»* y **proponía agregar las casillas que ya existían, apuntando al nodo
+RAÍZ** — habría duplicado en toda orden ya sincronizada, justo las recién arregladas.
+
+Ahora la señal es la **pertenencia**: si el NP tiene esa spec viva, es del cliente. Con el matiz que
+el fixture real destapó — una spec puede llegar por el NP **y** por el tratamiento, y la del
+tratamiento no es criterio del cliente: sin excluirla, la OT 10837 pasaba de 3 specs externas a 6.
+Fail-safe: sin la lista de specs del NP, conducta idéntica a la anterior.
+
+### El dedup que evitaba BORRAR una casilla
+`allOpenWorkOrders` paginaba con `ID_DESC` **sin deduplicar**: en una corrida de ~40 min basta que
+una orden cambie de estado para que dos páginas la devuelvan. Con `migrarAInspeccion` encendido la
+segunda pasada **archiva lo que la primera creó**. Es el incidente de la OT 15928 — de 2,549
+casillas movidas, las 2 que quedaron huecas eran las 2 únicas repetidas.
+
+Tres capas de dedup por `(idInDomain, partNumberId)`: la cola, el checkpoint al escribirse y el
+render. **Con esto cae la instrucción «arrancar de cero, no reanudar»: reanudar es seguro.**
+
+### Las 4 operaciones de specs de OT — capturadas y con ruta
+Ninguna existía en el config ni en 131 scans previos. Las 4 verificadas vigentes contra el ERP:
+
+| Operación | Hash | Ruta de regeneración |
+|---|---|---|
+| `ArchivePartNumberWorkOrderSpecAndParams` | `003d319f…` | `workOrderSpecArchive` (ciclo reversible) |
+| `UnarchivePartNumberWorkOrderSpecAndParams` | `0b3a3e1f…` | idem |
+| `UnarchivePartNumberRecipeNodeSpecFieldParam` | `6d78669b…` | idem |
+| `ApplySpecsToPartNumbersAndWorkOrder` | `b482d33a…` | `workOrderSpecAdd` (capture-abort) |
+
+**Gotchas del shape, medidos:**
+- **Desarchivar NO manda `archivedAt: null`** — repite el INSTANTE con el que se archivó. Se pasa
+  tal cual viene de la lectura para no errarle por formato (`…Z` vs `…+00:00`, mismo instante).
+- **Los parámetros viajan EN LA MISMA llamada** que la spec, con `recipeNodeId` explícito: agregar
+  la spec y colocar cada campo es un acto atómico.
+- **ARCHIVAR antes de AGREGAR, siempre.** Si la vieja y la nueva declaran los mismos specFields
+  **chocan y el parámetro no se aplica** — y falla EN SILENCIO. El orden vive en el núcleo
+  (`specSyncSteps`), no en el glue.
+- **La spec que YA ESTUVO se DESARCHIVA; la que nunca estuvo se AGREGA.** Agregar una archivada la
+  rechaza el ERP.
+- **`drivenBy`** dice de dónde viene el parámetro (tratamiento o NP). Omitirlo lo deja como
+  «Creación manual» y se pierde la trazabilidad.
+
+### El candado que evita un desastre
+`planSpecSync` solo toca specs con `partNumberSpecByPartNumberSpecId`. Una orden trae ~8 specs y
+**solo UNA es del NP**; las otras vienen del TRATAMIENTO (Inspección Recibo, T202-LI, Preparación
+de Embarque). Archivar «lo que no está en el NP» se llevaría la configuración de la línea entera.
+
+### Alcance del frente (medido sobre el dominio, no muestreado)
+- **568 órdenes abiertas · 2,389 casillas** con criterio de cliente en el nodo raíz, en **345 NP**.
+- **315 de 348 NP cambiaron de spec** — el 90 % del universo pendiente.
+- **El frente NP está limpio**: de 348 NP consultados al ERP, **1 solo** tiene parámetros forzados
+  vivos (`80252-678-16`, 6 params). Las 1,825 filas forzadas del snapshot eran casi todas
+  archivadas — `part_number_spec_field_param` no trae `archived_at`, así que ese conteo es un TECHO.
+- La corrida del 4-ago tocó **725 órdenes** (rango real 12,369–17,557, **no** 13,819 como decía la
+  bitácora) y **ninguna de las que tocó quedó mal**. Lo que faltó fue alcance: la fase 2 **no
+  recuerda entre corridas** qué NP ya procesó.
+
+### Estado de validación
+| | |
+|---|---|
+| Núcleo (`planSpecSync`, `specSyncSteps`, `findExternalSpecs`) | ✅ 16 tests, incluido el fixture real de la OT 10837 |
+| Glue (`analyzeSpecSync`, `applySpecSync`) | ✅ 6 tests con mocks |
+| Dedup de hallazgos | ✅ 8 tests |
+| Deploy | ✅ `config 1.11.113`, firma verificada EN VIVO |
+| **Flujo consolidado contra el ERP** | ❌ **NUNCA se ha ejercido.** La 1ª corrida real está pendiente |
+
+### Pendientes REALES (verificados al 2026-08-08)
+1. **Ejercer el flujo consolidado en vivo.** Sugerido: **OT 5769** (su NP tiene 1 spec viva y 1
+   archivada, y la orden aún conserva la vieja).
+2. **Al agregar la spec se manda `parametersToAdd: []`.** Se apoya en que el ERP los coloca solo
+   —comprobado en la 13219—, pero no se ha verificado en una orden cuyo nodo NO declare el campo.
+3. **Los campos de sensor de tina no se llenan.** Su criterio vive en el TRATAMIENTO (eje 2b) y
+   `buildCatalogIndex` solo mira las specs del NP. El operador confirmó que **sí deberían llenarse**.
+4. **9 órdenes irresolubles por diseño**: más de un nodo de Inspección y Empaque (o ninguno). Requieren
+   que Calidad decida a cuál va el criterio.
+5. **42 casillas huecas en 26 órdenes abiertas** (criterio archivado y nunca repuesto); 5 órdenes
+   abiertas sin NINGÚN criterio de cliente. Solo 2-3 son de la corrida del 4-ago: el resto es
+   archivado manual.
+6. **Auditoría de specFields declarados por nodo** — debe vivir EN LA EXTENSIÓN, no en consultas
+   sueltas: los procesos siguen evolucionando y el hueco se reabre.
+
 
 ## 2026-08-07 — el caso que el applet NO cubre: **el NP cambió de spec**
 
