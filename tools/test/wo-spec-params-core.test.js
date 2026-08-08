@@ -883,3 +883,80 @@ test('OT 10837: con el NP real la vía es NP, y se escribe la RAÍZ de catálogo
     assert.equal(c.via, 'NP', `campo ${c.specFieldId}: el NP manda sobre el catálogo`);
   }
 });
+
+// ── planSpecSync: sincronizar las specs de la orden con las del NP ───────────
+// Caso real OT 13219 / NP LIV30919378001A: el NP migró de 80065-DS-004 a RC Ag y la orden se
+// quedó con la vieja. 315 de 348 NP pendientes están así.
+const WS = (id, specId, name, { np = false, trat = false, arch = null } = {}) => ({
+  id, archivedAt: arch,
+  specBySpecId: { id: specId, name },
+  partNumberSpecByPartNumberSpecId: np ? { id: 900 + specId } : null,
+  treatmentSpecByTreatmentSpecId: trat ? { id: 800 + specId } : null,
+});
+
+test('planSpecSync: la spec del NP que el NP ya archivó → ARCHIVAR en la orden', () => {
+  const p = Core.planSpecSync([WS(1, 104, '80065-DS-004', { np: true })], [209]);
+  assert.deepEqual(p.archivar.map(x => x.specName), ['80065-DS-004']);
+});
+test('planSpecSync: la spec viva en el NP que nunca estuvo en la orden → AGREGAR', () => {
+  const p = Core.planSpecSync([WS(1, 104, '80065-DS-004', { np: true })], [209]);
+  assert.deepEqual(p.agregar.map(x => x.specId), [209]);
+});
+test('planSpecSync: la spec que YA ESTUVO y quedó archivada → DESARCHIVAR, no agregar', () => {
+  // «Agregar una spec que ya estaba y se archivó no se puede» — el ERP la rechaza.
+  const p = Core.planSpecSync([WS(1, 209, 'RC Ag', { np: true, arch: '2026-08-07T00:00:00Z' })], [209]);
+  assert.equal(p.desarchivar.length, 1);
+  assert.deepEqual(p.agregar, [], 'agregarla chocaría contra el registro archivado');
+});
+test('planSpecSync: las specs del TRATAMIENTO son intocables', () => {
+  // Una orden trae ~8 specs y solo UNA es del NP. Archivar "lo que no está en el NP" se llevaría
+  // Inspección Recibo, T202-LI, Preparación de Embarque… la línea entera.
+  const p = Core.planSpecSync([
+    WS(1, 301, 'Inspección Recibo', { trat: true }),
+    WS(2, 302, 'T202-LI (16.2)', { trat: true }),
+  ], []);
+  assert.deepEqual(p.archivar, []);
+  assert.equal(p.intocables.length, 2);
+  assert.match(p.intocables[0].motivo, /tratamiento/);
+});
+test('planSpecSync: una spec SIN origen declarado tampoco se toca', () => {
+  const p = Core.planSpecSync([WS(1, 400, 'Agregada a mano')], []);
+  assert.deepEqual(p.archivar, []);
+  assert.match(p.intocables[0].motivo, /sin origen/);
+});
+test('planSpecSync: la spec del NP que sigue viva no se toca', () => {
+  const p = Core.planSpecSync([WS(1, 209, 'RC Ag', { np: true })], [209]);
+  assert.deepEqual(p.archivar, []);
+  assert.deepEqual(p.agregar, []);
+  assert.equal(p.sinCambio.length, 1);
+});
+test('planSpecSync: con filas viva y archivada del mismo specId, gana la VIVA', () => {
+  const p = Core.planSpecSync([
+    WS(1, 209, 'RC Ag', { np: true, arch: '2026-01-01T00:00:00Z' }),
+    WS(2, 209, 'RC Ag', { np: true }),
+  ], [209]);
+  assert.deepEqual(p.desarchivar, [], 'ya hay una viva: desarchivar la otra duplicaría');
+  assert.equal(p.sinCambio.length, 1);
+});
+test('planSpecSync: el caso completo de la OT 13219', () => {
+  const p = Core.planSpecSync([
+    WS(1, 104, '80065-DS-004 (Plata)', { np: true }),
+    WS(2, 301, 'Inspección Recibo', { trat: true }),
+    WS(3, 302, 'T202-LI (16.2)', { trat: true }),
+  ], [209]);
+  assert.deepEqual(p.archivar.map(x => x.specName), ['80065-DS-004 (Plata)']);
+  assert.deepEqual(p.agregar.map(x => x.specId), [209]);
+  assert.equal(p.intocables.length, 2);
+});
+
+test('specSyncSteps: ARCHIVAR va antes que agregar (si chocan, el parámetro no se aplica)', () => {
+  const pasos = Core.specSyncSteps({
+    agregar: [{ specId: 209 }], archivar: [{ pnwosId: 1 }], desarchivar: [{ pnwosId: 2 }],
+  });
+  assert.deepEqual(pasos.map(x => x.op), ['archivar', 'desarchivar', 'agregar'],
+    'al revés el ERP no revienta: simplemente el parámetro no queda, y hay que reponerlo a mano');
+});
+test('specSyncSteps: plan vacío → sin pasos', () => {
+  assert.deepEqual(Core.specSyncSteps({}), []);
+  assert.deepEqual(Core.specSyncSteps(null), []);
+});
