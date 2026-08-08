@@ -5,7 +5,7 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { classifyOp, hasShape, planDeploy, missingCoverage, isValidatedCapture, pruneNeedsAttention, escalableNotCaptured, newlyEscalated } = require('../hash-autopilot/hash-autopilot-core.mjs');
+const { classifyOp, hasShape, planDeploy, missingCoverage, isValidatedCapture, pruneNeedsAttention, resolvedForPrune, escalableNotCaptured, newlyEscalated } = require('../hash-autopilot/hash-autopilot-core.mjs');
 
 const R = (op, verdict) => ({ op, verdict, cfgHash: 'old', liveHash: verdict === 'vigente' ? 'old' : 'new' });
 
@@ -213,6 +213,84 @@ test('pruneNeedsAttention: knownOps vacío → NO poda por retiro (AUSENTE ≠ V
 test('pruneNeedsAttention: retiradas + resueltas hasta vaciar → null', () => {
   const payload = { date: 'd', ops: [{ op: 'Retirada' }, { op: 'Resuelta' }] };
   assert.equal(pruneNeedsAttention(payload, ['Resuelta'], ['Resuelta', 'Otra']), null);
+});
+
+// ── resolvedForPrune: TERCERA y CUARTA puerta del mismo cry-wolf (2026-08-08) ──
+// El needs-attention del 2026-08-06 quedó armado DOS DÍAS con dos ops ya resueltas,
+// y el cron del Nivel B gastó un `claude -p` diario sobre ellas. Cada una entró por
+// una puerta distinta que `resolvedOps` (verdict 'vigente') no cubría:
+//
+//  • CreateManySensorMeasurements — su receta se REPARÓ y el hash se deployó 1 h
+//    después de escalar (8e049f5). Al dejar de estar stale, el motor ya no la mete
+//    en `results`: nunca vuelve a tener verdict, así que nunca se poda.
+//  • SaveManyPartNumberPrices — la receta SÍ dispara (captura en cada corrida), pero
+//    lo que captura es OTRA variante viva del mismo operationName, así que el verdict
+//    es 'sospechoso' (fail-safe correcto: no se deploya). Con captura, la premisa de
+//    la escalación —"la receta no disparó la op (0 capturas)"— ya es falsa.
+//
+// El criterio no es nuevo: es el MISMO gate por probe que ya suprime las falsas
+// alarmas NUEVAS (gate.falseAlarms). Lo que faltaba era aplicárselo a las VIEJAS.
+test('resolvedForPrune: verdict vigente y ops deployadas cuentan como resueltas', () => {
+  const r = resolvedForPrune({
+    results: [{ op: 'A', verdict: 'vigente' }, { op: 'B', verdict: 'rotadoValidado', liveHash: 'x' }],
+    deployedOps: ['B'],
+  });
+  assert.deepEqual(r.map((x) => x.op).sort(), ['A', 'B']);
+  assert.equal(r.find((x) => x.op === 'A').motivo, 'vigente');
+});
+
+test('resolvedForPrune: probe vigente resuelve aunque la op ya no esté en results', () => {
+  const r = resolvedForPrune({ results: [], probeVerdicts: { CreateManySensorMeasurements: 'vigente' } });
+  assert.deepEqual(r, [{ op: 'CreateManySensorMeasurements', motivo: 'probe-vigente' }]);
+});
+
+test('resolvedForPrune: captura resuelve aunque el verdict sea sospechoso', () => {
+  const r = resolvedForPrune({
+    results: [{ op: 'SaveManyPartNumberPrices', verdict: 'sospechoso', liveHash: '3f757f31' }],
+  });
+  assert.deepEqual(r, [{ op: 'SaveManyPartNumberPrices', motivo: 'capturada' }]);
+});
+
+test('resolvedForPrune: sin captura y probe stale → NO resuelta', () => {
+  const r = resolvedForPrune({
+    results: [{ op: 'X', verdict: 'noCapturado', liveHash: null }],
+    probeVerdicts: { X: 'stale' },
+  });
+  assert.deepEqual(r, []);
+});
+
+// Fail-safe: un probe que no concluye (auth/unknown) NO es evidencia de nada. Podar
+// ahí sería perder la señal por una sesión degradada — el error que ya costó dos
+// corridas completas del Nivel B (07-28 y 07-31).
+test('resolvedForPrune: probe auth/unknown no resuelve', () => {
+  assert.deepEqual(resolvedForPrune({ probeVerdicts: { X: 'auth', Y: 'unknown' } }), []);
+});
+
+test('resolvedForPrune: entradas vacías o ausentes → [] (no poda nada)', () => {
+  assert.deepEqual(resolvedForPrune(), []);
+  assert.deepEqual(resolvedForPrune({}), []);
+  assert.deepEqual(resolvedForPrune({ results: [null], probeVerdicts: null, deployedOps: null }), []);
+});
+
+test('resolvedForPrune: una op resuelta por dos vías se reporta una sola vez', () => {
+  const r = resolvedForPrune({
+    results: [{ op: 'A', verdict: 'vigente', liveHash: 'h' }],
+    probeVerdicts: { A: 'vigente' },
+  });
+  assert.equal(r.length, 1);
+  assert.equal(r[0].motivo, 'vigente', 'gana el motivo más fuerte');
+});
+
+test('resolvedForPrune alimenta pruneNeedsAttention: el caso REAL del 2026-08-06', () => {
+  const payload = {
+    date: '2026-08-06',
+    ops: [{ op: 'CreateManySensorMeasurements' }, { op: 'SaveManyPartNumberPrices' }],
+  };
+  const resolved = resolvedForPrune({
+    results: [{ op: 'SaveManyPartNumberPrices', verdict: 'sospechoso', liveHash: '3f757f31' }],
+    probeVerdicts: { CreateManySensorMeasurements: 'vigente' },
+  });
+  assert.equal(pruneNeedsAttention(payload, resolved.map((x) => x.op), ['CreateManySensorMeasurements', 'SaveManyPartNumberPrices']), null);
 });
 
 // ── escalableNotCaptured: quién merece despertar al Nivel B ────────────────────

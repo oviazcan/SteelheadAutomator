@@ -140,6 +140,39 @@ export function pruneNeedsAttention(payload, resolvedOps, knownOps = null) {
   return { ...payload, ops: remaining };
 }
 
+// Qué cuenta como RESUELTO a efectos de podar el needs-attention, con el motivo.
+// Alimenta `resolvedOps` de pruneNeedsAttention y existe porque "resuelto" tenía dos
+// puertas más que el verdict 'vigente' no cubría (incidente 2026-08-08: el archivo del
+// 08-06 sobrevivió DOS DÍAS con dos ops ya resueltas, un `claude -p` diario cada una):
+//
+//  • probe-vigente — el hash del config VIVE. Es la misma señal con la que el motor ya
+//    suprime las falsas alarmas NUEVAS (gate.falseAlarms, "fin del cry wolf"); aquí solo
+//    se le aplica a las VIEJAS. Cubre la op cuya receta se reparó fuera de banda: al
+//    dejar de estar stale desaparece de `results` y nunca vuelve a tener verdict
+//    (CreateManySensorMeasurements, reparada 1 h después de escalar).
+//  • capturada — hubo liveHash, aunque el verdict sea 'sospechoso'. La escalación dice
+//    literalmente "la receta no disparó la op (0 capturas)"; si capturó, esa premisa es
+//    falsa. No oculta nada: el 'sospechoso' sigue saliendo en el reporte y en el correo
+//    (SaveManyPartNumberPrices captura una segunda variante VIVA del mismo
+//    operationName — medido 2026-08-08: ambos hashes piden SaveManyPartNumberPricesInput!).
+//
+// Lo que NO resuelve: un probe 'auth'/'unknown'. Una sesión degradada no es evidencia de
+// nada, y podar ahí perdería la señal — el error que ya costó dos corridas completas del
+// Nivel B (07-28 y 07-31). Sin datos ⇒ [] ⇒ no se poda nada (fail-safe).
+//
+// La deuda de "¿la receta sigue sirviendo?" no se pierde al podar: la próxima rotación
+// vuelve a ejercitarla y, si falla, re-escala como nueva (ver newlyEscalated). El
+// needs-attention es una COLA DE URGENCIA, no el registro de deuda.
+export function resolvedForPrune({ results = [], probeVerdicts = {}, deployedOps = [] } = {}) {
+  const byOp = new Map();
+  const add = (op, motivo) => { if (op && !byOp.has(op)) byOp.set(op, motivo); };
+  for (const r of results || []) if (r && r.verdict === 'vigente') add(r.op, 'vigente');
+  for (const op of deployedOps || []) add(op, 'deployada');
+  for (const [op, v] of Object.entries(probeVerdicts || {})) if (v === 'vigente') add(op, 'probe-vigente');
+  for (const r of results || []) if (r && r.liveHash) add(r.op, 'capturada');
+  return [...byOp].map(([op, motivo]) => ({ op, motivo }));
+}
+
 // Ops que ESTE run escala y que no venían escaladas del run anterior. Es el disparador de
 // la notificación: `needs-attention.json` se reescribe en CADA corrida que tenga algo que
 // escalar, así que avisar por su mera existencia mandaría un correo por hora sobre lo mismo

@@ -343,6 +343,41 @@ ausente o **vacío** ⇒ no se poda por retiro — un mapa vacío es *"no pude l
 `config.steelhead.hashes` **y** hay que dejar que el motor limpie la señal que esa op dejó abierta;
 si no, la deuda que creías borrar sigue despertando a un agente cada noche.
 
+#### Corolario 2026-08-08 — las otras DOS puertas: la op que deja de estar stale, y la que captura "sospechoso"
+
+El fix del 08-06 cerró el RETIRO, pero el archivo del **2026-08-06** volvió a sobrevivir **dos días**
+con dos ops ya resueltas —un `claude -p` diario cada una—, cada una por una puerta distinta:
+
+- **`CreateManySensorMeasurements`** — su ciclo se **reparó 1 h 05 min después de escalar** (`17584b6`)
+  y el hash se deployó (`8e049f5`). Al dejar de estar stale, el motor **ya no la mete en `results`**:
+  nunca vuelve a tener verdict, así que `resolvedOps` no la ve. Es la puerta simétrica al retiro —
+  ahí la op desaparece por muerta, aquí por **sana**.
+- **`SaveManyPartNumberPrices`** — la receta **sí dispara** (capturó en las 4 corridas posteriores a
+  la señal), pero captura una **segunda variante VIVA** del mismo `operationName`, así que el verdict
+  es `sospechoso` y tampoco cuenta como resuelta. Medido contra el ERP el 2026-08-08 con variables
+  vacías: **los dos hashes están registrados y piden el mismo `SaveManyPartNumberPricesInput!`** ⇒ no
+  hay rotación, el fail-safe de no deployar es correcto, y cuando el config muera deployar el
+  capturado es seguro para `bulk-upload`.
+
+**Cerrado por código:** `resolvedForPrune({results, probeVerdicts, deployedOps})` en el core — "resuelto"
+pasa de una puerta a **cuatro**: `vigente` · `deployada` · **`probe-vigente`** · **`capturada`**. Y las
+ops escaladas en corridas previas se **suman al probe directo** (1 request c/u), que es lo que permite
+cerrarlas cuando su hash volvió a estar vigente. **No es un criterio nuevo:** es el MISMO gate por probe
+con el que el motor ya suprime las falsas alarmas *nuevas* (`gate.falseAlarms`), aplicado ahora a las
+*viejas*. **Fail-safe:** un probe `auth`/`unknown` **no** resuelve (una sesión degradada no es evidencia
+de nada — el error que ya costó dos corridas del Nivel B, 07-28 y 07-31); sin datos ⇒ no se poda nada.
+
+**Y la poda ya no es silenciosa:** dice **qué** cerró y **con qué motivo**. Cerrar por *"el hash volvió a
+estar vigente"* no es lo mismo que *"alguien verificó la receta"*, y confundirlos sería el siguiente
+agujero. La deuda no se pierde: la próxima rotación re-ejercita la receta y, si falla, **re-escala como
+nueva** (`newlyEscalated`).
+
+**La lección de fondo:** `needs-attention.json` es una **cola de urgencia**, no el registro de deuda.
+Todo lo que le quite la urgencia a un renglón —resuelto, retirado, reparado por fuera, o simplemente
+una premisa que resultó falsa— tiene que poder cerrarlo, o el archivo se vuelve un despertador que
+suena por algo que ya nadie va a atender. Cuatro incidentes seguidos (07-25, 08-06, y las dos de
+08-08) son el mismo bug preguntando por puertas distintas: **"¿quién apaga esta alarma?"**
+
 **No quedan pendientes de código accionables del hash-autopilot** (los 2 hallazgos de arriba son
 mejoras de UX/higiene, no bugs que rompan la autonomía).
 

@@ -10,7 +10,7 @@ import { fileURLToPath } from 'url';
 import { randomUUID } from 'crypto';
 import { execFileSync } from 'child_process';
 import { installInterceptor, runRecipe } from './recipe-runner.mjs';
-import { classifyOp, planDeploy, isValidatedCapture, buildNeedsAttention, pruneNeedsAttention, escalableNotCaptured, newlyEscalated } from './hash-autopilot-core.mjs';
+import { classifyOp, planDeploy, isValidatedCapture, buildNeedsAttention, pruneNeedsAttention, resolvedForPrune, escalableNotCaptured, newlyEscalated } from './hash-autopilot-core.mjs';
 import { classifyCycleOutcomes, formatSentinelAlert } from './sentinel-health.mjs';
 import { readConfigHashes } from './config-io.mjs';
 import { syncExternalToSinks } from './external-sync.mjs';
@@ -210,6 +210,14 @@ async function main() {
   // Ops que sabemos que aún NO tienen ruta (session-sensitive sin cobertura en el
   // catálogo) → hueco conocido pendiente de Fase B. Se loguean pero NO generan
   // correo cada release (evita ruido que entrena a ignorar las alertas reales).
+  // Ops que quedaron ESCALADAS de una corrida anterior. Se suman al probe (1 request
+  // c/u) para poder cerrar su escalamiento cuando su hash volvió a estar vigente: sin
+  // esto, una op que deja de estar stale nunca vuelve a `results` y su renglón del
+  // needs-attention sobrevive para siempre, quemando un `claude -p` diario del Nivel B
+  // (incidente 2026-08-08 — sobrevivieron DOS DÍAS).
+  const escaladasPrevias = readEscalatedOps();
+  if (escaladasPrevias.length) console.log(`(escaladas de corridas previas — se re-prueban: ${escaladasPrevias.join(', ')})`);
+
   const catalogCaptures = new Set(Object.values(catalog.routes).flatMap((r) => r.captures || []));
   const knownNoRoute = new Set(SESSION_SENSITIVE.filter((op) => !catalogCaptures.has(op)));
   if (knownNoRoute.size) console.log(`(hueco conocido sin ruta, Fase B — no se alerta: ${[...knownNoRoute].join(', ')})`);
@@ -306,7 +314,7 @@ async function main() {
     await page.goto(`https://app.gosteelhead.com/Domains/${DOMAIN}`, { waitUntil: 'domcontentloaded' }).catch(() => {});
     await page.waitForTimeout(1500);
     const cfgForProbe = readConfigHashes(CONFIG_PATH);
-    const probeEntries = [...new Set([...wantOps, ...plan0.uncovered])]
+    const probeEntries = [...new Set([...wantOps, ...plan0.uncovered, ...escaladasPrevias])]
       .filter((op) => cfgForProbe[op]).map((op) => [op, cfgForProbe[op]]);
     if (probeEntries.length) {
       const rawProbe = await probeOnPage(page, probeEntries);
@@ -682,16 +690,22 @@ async function main() {
   // borrarlo si queda vacío) → el Nivel B no gasta una corrida confirmando algo ya arreglado
   // (hallazgo de la corrida real 2026-07-17). Idempotente: sin archivo o sin cambios, no hace nada.
   if (!DRY) {
-    const resolvedOps = [
-      ...results.filter((r) => r.verdict === 'vigente').map((r) => r.op),
-      ...(deployed ? plan.toDeploy.map((r) => r.op) : []),
-    ];
+    // "Resuelto" tiene cuatro puertas, no una (ver resolvedForPrune): verdict vigente,
+    // deployada, probe del config vigente (la op dejó de estar stale y ya no vuelve a
+    // `results`) y capturada aunque el verdict sea 'sospechoso' (la premisa "0 capturas"
+    // queda falsificada). Las dos últimas son el fix del 2026-08-08.
+    const resolved = resolvedForPrune({
+      results,
+      probeVerdicts,
+      deployedOps: deployed ? plan.toDeploy.map((r) => r.op) : [],
+    });
+    const resolvedOps = resolved.map((r) => r.op);
     // knownOps = las ops CON hash en el config de HOY. Poda también las RETIRADAS, que
     // por definición ya no aparecen en `results` y por eso nunca se limpiaban solas
     // (TempSpecFieldsAndOptions, 2026-08-06). Por eso la poda ya no está condicionada a
     // que este run haya resuelto algo: un run donde todo salió bien también debe limpiar.
     const knownOps = Object.keys(cfgHashes || {});
-    pruneNeedsAttentionFile(resolvedOps, knownOps);
+    pruneNeedsAttentionFile(resolvedOps, knownOps, resolved);
   }
   return { results, plan, deployed };
 }
@@ -758,16 +772,32 @@ function notifyNewlyEscalated(prev, payload) {
 // Poda del needs-attention.json de las ops que ESTE run ya resolvió. writeNeedsAttention
 // solo se llama cuando hay algo que escalar, así que un archivo VIEJO persistía aunque un
 // tick posterior recapturara bien; esto lo limpia (hallazgo corrida real 2026-07-17).
-function pruneNeedsAttentionFile(resolvedOps, knownOps = null) {
+function pruneNeedsAttentionFile(resolvedOps, knownOps = null, motivos = []) {
   const p = join(RESULTS_DIR, 'needs-attention.json');
   let payload;
   try { payload = JSON.parse(readFileSync(p, 'utf8')); } catch { return; } // no existe/corrupto → nada
   const before = Array.isArray(payload.ops) ? payload.ops.length : 0;
   const pruned = pruneNeedsAttention(payload, resolvedOps, knownOps);
+  // Podar en SILENCIO convertiría el fix del cry-wolf en su propio agujero: si una receta
+  // se está cerrando por "el hash volvió a estar vigente" —y no porque alguien la
+  // verificara— eso tiene que quedar dicho, con nombre y motivo.
+  const porQue = (op) => (motivos.find((m) => m && m.op === op) || {}).motivo || 'retirada del config';
+  const idas = (Array.isArray(payload.ops) ? payload.ops : [])
+    .map((o) => o && o.op).filter((op) => op && !(pruned && pruned.ops.some((x) => x.op === op)));
   try {
-    if (pruned === null) { rmSync(p); if (before) console.log('  needs-attention.json limpiado (ops escaladas ya resueltas o retiradas del config).'); }
-    else if (pruned.ops.length !== before) { writeFileSync(p, JSON.stringify(pruned, null, 2)); console.log(`  needs-attention.json podado: ${before}→${pruned.ops.length} ops pendientes.`); }
+    if (pruned === null) { rmSync(p); if (before) console.log(`  needs-attention.json limpiado (${idas.map((op) => `${op}: ${porQue(op)}`).join(' · ')}).`); }
+    else if (pruned.ops.length !== before) { writeFileSync(p, JSON.stringify(pruned, null, 2)); console.log(`  needs-attention.json podado: ${before}→${pruned.ops.length} pendientes (${idas.map((op) => `${op}: ${porQue(op)}`).join(' · ')}).`); }
   } catch (e) { console.log(`(no se pudo podar needs-attention: ${String(e).slice(0, 80)})`); }
+}
+
+// Ops que quedaron escaladas en el needs-attention de una corrida anterior. Se leen al
+// ARRANQUE (antes de que writeNeedsAttention lo sobrescriba) para sumarlas al probe y
+// poder cerrarles el escalamiento. Ilegible/ausente ⇒ [] (fail-safe: no altera el probe).
+function readEscalatedOps() {
+  try {
+    const payload = JSON.parse(readFileSync(join(RESULTS_DIR, 'needs-attention.json'), 'utf8'));
+    return (Array.isArray(payload.ops) ? payload.ops : []).map((o) => o && o.op).filter(Boolean);
+  } catch { return []; }
 }
 
 function persistResult(obj) {
