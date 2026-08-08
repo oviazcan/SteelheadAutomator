@@ -6,7 +6,7 @@
 (function () {
   'use strict';
 
-  const VERSION = '0.6.0';
+  const VERSION = '0.7.0';
   const PANEL_ID = 'sa-wo-spec-params-panel';
   const STYLE_ID = 'sa-wo-spec-params-style';
   const FAB_ID = 'sa-wo-spec-params-fab';
