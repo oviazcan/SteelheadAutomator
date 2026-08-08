@@ -1,0 +1,24 @@
+' Codigo de ThisWorkbook (v1 -- 2026-08-07)
+' Pegar en Alt+F11 -> "ThisWorkbook" (NO en un modulo estandar).
+'
+' Existe por una sola razon: la bandera UserInterfaceOnly de Worksheet.Protect NO SE GUARDA
+' con el archivo. Aunque la plantilla se entregue protegida con esa bandera puesta, al
+' reabrirla la proteccion vuelve a aplicar tambien a las macros -- y lo primero que truena es
+' Worksheet_SelectionChange, que escribe la fila activa en CAT_Procesos!I2 y CAT_Specs!D2
+' cada vez que el operador hace clic en Proceso o Spec 1-4. O sea: error 1004 al primer clic.
+'
+' SA_RehabilitarEscrituraVBA vuelve a poner el MISMO candado que traia cada hoja (mismas
+' banderas, mismas hojas) agregandole UserInterfaceOnly. No protege nada que no estuviera
+' protegido ni cambia ninguna opcion.
+'
+' Si el archivo se abre con las macros deshabilitadas esto no corre, y entonces si truenan
+' los feeders. No hay forma de evitarlo desde VBA (sin macros no hay VBA), pero tampoco
+' importa mucho: sin macros la plantilla no sirve de nada -- los botones tampoco corren.
+' De todos modos cada macro desprotege y reprotege por su cuenta, asi que funcionan aunque
+' este evento no se haya ejecutado.
+
+Private Sub Workbook_Open()
+    On Error Resume Next
+    SA_RehabilitarEscrituraVBA
+    On Error GoTo 0
+End Sub

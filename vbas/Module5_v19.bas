@@ -1,7 +1,18 @@
 Attribute VB_Name = "Module5"
-' === MACRO: LimpiarDatos (v19 — layout v13) ===
+' === MACRO: LimpiarDatos (v20 — layout v13, plantilla PROTEGIDA) ===
 ' Borra datos de zona de datos (filas 9+) y restaura defaults / placeholders.
 ' Preserva fórmulas (HasFormula skip → Planta Schneider, Proceso, Esp.Spec, Longitud, predictivos).
+'
+' V20 (2026-08-07): la plantilla se entrega PROTEGIDA (sólo se pueden editar los campos de
+'   captura), y esta macro es la que más escribe de todas: ClearContents, valores, defaults,
+'   placeholders y un Copy/PasteSpecial por columna calculada. Con la hoja protegida truena
+'   con error 1004 en la PRIMERA celda. Ahora desprotege al entrar y reprotege al salir vía
+'   ModProteccion (que repone el candado EXACTO que traía el archivo, no uno inventado).
+'   La reprotección va en una etiqueta `Cleanup` a la que se llega TAMBIÉN por error: si la
+'   macro revienta a media pasada, lo peor que puede pasar es que el archivo se quede sin
+'   candado y nadie se entere hasta que alguien borre una fórmula por accidente.
+'   El aviso de "Proceso sin fórmula" se movió DESPUÉS de reproteger — un MsgBox que espera
+'   respuesta humana con la plantilla abierta de par en par es una ventana de riesgo gratis.
 '
 ' V19 (2026-08-03): CORRIGE EL TOPE del v18. La plantilla v13 final trae una columna MÁS de
 '   la que el v18 supuso: "Instrucciones de Empaque" (60=BH), agregada después de los racks,
@@ -91,6 +102,10 @@ Sub LimpiarDatos()
     Application.ScreenUpdating = False
     Application.Calculation = xlCalculationManual
 
+    ' A partir de aquí se ESCRIBE: hoja desprotegida y salida garantizada por Cleanup.
+    On Error GoTo Cleanup
+    SA_Desproteger "Upload"
+
     Dim r As Long, c As Long
     Dim cell As Range
     Dim cleaned As Long
@@ -178,14 +193,32 @@ NextCell:
     Next c
     Application.CutCopyMode = False
     cleaned = cleaned + restoredCols * (lastRow - DATA_START_ROW + 1)
+
+Cleanup:
+    ' Se llega aquí por el camino normal Y por error. Reproteger es lo PRIMERO: el resto
+    ' (calculation, screenupdating, avisos) puede fallar sin dejar el archivo abierto.
+    Dim errNum As Long, errDesc As String
+    errNum = Err.Number: errDesc = Err.Description
+    On Error Resume Next
+    Application.CutCopyMode = False
+    SA_Proteger
+    Application.Calculation = xlCalculationAutomatic
+    Application.ScreenUpdating = True
+    On Error GoTo 0
+
+    If errNum <> 0 Then
+        MsgBox "LimpiarDatos se interrumpi" & ChrW(243) & ":" & vbCrLf & errDesc & vbCrLf & vbCrLf & _
+               "La protecci" & ChrW(243) & "n de la plantilla qued" & ChrW(243) & " repuesta, pero la " & _
+               "limpieza NO se complet" & ChrW(243) & ". Vuelve a correrla.", _
+               vbCritical, "LimpiarDatos interrumpido"
+        Exit Sub
+    End If
+
     If Not procHadFormula Then
         MsgBox "No se encontr" & ChrW(243) & " f" & ChrW(243) & "rmula de Proceso en U" & lastRow & _
                ". C" & ChrW(243) & "piala de otra fila a U" & lastRow & " y vuelve a correr LimpiarDatos.", _
                vbExclamation, "Proceso sin f" & ChrW(243) & "rmula"
     End If
-
-    Application.Calculation = xlCalculationAutomatic
-    Application.ScreenUpdating = True
 
     MsgBox cleaned & " celdas procesadas." & vbCrLf & _
         "Estatus=Activo con validaci" & ChrW(243) & "n, Forzar=Sin forzar duplicado." & vbCrLf & _
@@ -201,9 +234,13 @@ Private Sub SetIfEmpty(ByVal cell As Range, ByVal val As String)
     If IsEmpty(cell.Value) Or cell.Value = "" Then cell.Value = val
 End Sub
 
-' === MACRO: LimpiarEspacios (v15 — layout v13) ===
+' === MACRO: LimpiarEspacios (v16 — layout v13, plantilla PROTEGIDA) ===
 ' Limpia espacios iniciales, finales y dobles en celdas de texto. NO borra datos ni toca fórmulas.
 '
+' V16 (2026-08-07): desprotege al entrar y reprotege al salir (ModProteccion), igual que
+'   LimpiarDatos. Escribe poco —sólo las celdas cuyo texto cambia— pero basta UNA para que
+'   la hoja protegida la mate con error 1004, y el operador la corre justo cuando el CSV ya
+'   le falló por espacios de más.
 ' V15 (2026-08-03): tope 1..67 (el v14 decía 66 y dejaba fuera Tiempo de Entrega).
 ' V14 (2026-08-03): layout v13 → loop 1..66 (antes 1..60). Sin esto, las últimas columnas
 '   (Notas adicionales..Tiempo de Entrega) quedarían fuera de la limpieza de espacios.
@@ -229,6 +266,10 @@ Sub LimpiarEspacios()
     Dim cleaned As Long
     cleaned = 0
 
+    ' A partir de aquí se ESCRIBE: hoja desprotegida y salida garantizada por Cleanup2.
+    On Error GoTo Cleanup2
+    SA_Desproteger "Upload"
+
     For r = 9 To lastRow
         For c = 1 To 67                       ' V13: 67 cols (antes 60)
             Set cell = wsUp.Cells(r, c)
@@ -251,8 +292,21 @@ NextCell2:
         Next c
     Next r
 
+Cleanup2:
+    Dim errNum2 As Long, errDesc2 As String
+    errNum2 = Err.Number: errDesc2 = Err.Description
+    On Error Resume Next
+    SA_Proteger
     Application.Calculation = xlCalculationAutomatic
     Application.ScreenUpdating = True
+    On Error GoTo 0
+
+    If errNum2 <> 0 Then
+        MsgBox "LimpiarEspacios se interrumpi" & ChrW(243) & ":" & vbCrLf & errDesc2 & vbCrLf & vbCrLf & _
+               "La protecci" & ChrW(243) & "n qued" & ChrW(243) & " repuesta. Se alcanzaron a limpiar " & _
+               cleaned & " celdas.", vbCritical, "LimpiarEspacios interrumpido"
+        Exit Sub
+    End If
 
     MsgBox cleaned & " celdas limpiadas (espacios).", vbInformation, "LimpiarEspacios"
 End Sub

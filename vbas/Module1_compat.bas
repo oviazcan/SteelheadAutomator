@@ -1,5 +1,11 @@
 Attribute VB_Name = "Module1"
-' === MACRO 1: ExportarCSV (v15.5 compat Excel 2019 — layouts v12 y v13) ===
+' === MACRO 1: ExportarCSV (v15.6 compat Excel 2019 — layouts v12 y v13, plantilla PROTEGIDA) ===
+' V15.6 (2026-08-07): la plantilla se entrega PROTEGIDA. Esta macro no escribe en el libro
+'   (arma el CSV en memoria y lo guarda con ADODB.Stream), asi que la proteccion no deberia
+'   afectarla; se envuelve el guardado con SA_Desproteger/SA_Proteger por simetria con la
+'   plantilla moderna y para descartar la proteccion como causa. Ademas se le agrego el
+'   manejo de error del que carecia: antes, un fallo de WriteUtf8NoBom (ruta sin permiso,
+'   disco lleno) reventaba con el dialogo crudo de VBA en vez de un mensaje util.
 ' V15.5 (2026-08-05): mismos dos cambios que la plantilla normal — varios clientes en
 '   COTIZACIÓN+NP ya no bloquean el export (confirmación en vez de veto) y la versión del
 '   aviso final se lee del título de la hoja (TplVer) en vez de estar escrita a mano.
@@ -260,12 +266,30 @@ NextK:
     #End If
     If CStr(savePath) = "False" Or savePath = "" Then Exit Sub
     If LCase(Right(savePath, 4)) <> ".csv" Then savePath = savePath & ".csv"
+
+    ' ExportarCSV NO escribe en la plantilla: solo lee Upload y CAT_Productos, y esta version
+    ' compat escribe el archivo con ADODB.Stream (ni siquiera crea un libro temporal). El
+    ' desproteger/reproteger va aqui por simetria con la plantilla moderna y para descartar la
+    ' proteccion como causa; si el export siguiera fallando, el culpable NO esta en esta macro.
+    On Error GoTo SaveErr
+    SA_Desproteger "Upload"
     WriteUtf8NoBom CStr(savePath), sb
+    SA_Proteger
+    On Error GoTo 0
 
     MsgBox "CSV " & TplVer(ws) & "exportado:" & vbCrLf & savePath & vbCrLf & vbCrLf & _
            "Modo: " & IIf(esCotizacion, "COTIZACI" & ChrW(211) & "N+NP", "SOLO_PN") & vbCrLf & _
            outHdr.Count & " columnas " & ChrW(183) & " " & nOut & " filas " & ChrW(183) & " ordenado por (Cliente, PN).", _
            vbInformation, "Listo"
+    Exit Sub
+
+SaveErr:
+    Dim eDesc As String: eDesc = Err.Description
+    On Error Resume Next
+    SA_Proteger
+    On Error GoTo 0
+    MsgBox "No se pudo guardar el CSV:" & vbCrLf & savePath & vbCrLf & vbCrLf & eDesc, _
+           vbCritical, "Error al guardar"
 End Sub
 
 ' ===========================  Helpers  ===========================

@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plantillas de Carga Masiva — VBA con la hoja protegida</title>
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#fff; --ink:#1a1f27; --muted:#5b6675; --line:#e2e6ec;
+    --accent:#13a36f; --accent-soft:#e8f6f0; --warn:#b26a00; --warn-soft:#fff5e3;
+    --danger:#c0392b; --danger-soft:#fdeceb; --info:#2563a8; --info-soft:#eaf2fb;
+    --code-bg:#f0f2f5; --shadow:0 1px 3px rgba(16,24,40,.06),0 8px 24px rgba(16,24,40,.05);
+  }
+  @media (prefers-color-scheme:dark){
+    :root{
+      --bg:#12171e; --card:#1c2430; --ink:#e6e9ee; --muted:#98a3b3; --line:#2c3644;
+      --accent:#2fbe8a; --accent-soft:#132c25; --warn:#e6a93c; --warn-soft:#2e2413;
+      --danger:#f07a6d; --danger-soft:#311d1b;
+      --info:#6aaef0; --info-soft:#14243a; --code-bg:#141a23;
+      --shadow:0 1px 3px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#12171e; --card:#1c2430; --ink:#e6e9ee; --muted:#98a3b3; --line:#2c3644;
+    --accent:#2fbe8a; --accent-soft:#132c25; --warn:#e6a93c; --warn-soft:#2e2413;
+    --danger:#f07a6d; --danger-soft:#311d1b; --info:#6aaef0; --info-soft:#14243a;
+    --code-bg:#141a23; --shadow:0 1px 3px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
+  }
+  :root[data-theme="light"]{
+    --bg:#f6f7f9; --card:#fff; --ink:#1a1f27; --muted:#5b6675; --line:#e2e6ec;
+    --accent:#13a36f; --accent-soft:#e8f6f0; --warn:#b26a00; --warn-soft:#fff5e3;
+    --danger:#c0392b; --danger-soft:#fdeceb; --info:#2563a8; --info-soft:#eaf2fb;
+    --code-bg:#f0f2f5; --shadow:0 1px 3px rgba(16,24,40,.06),0 8px 24px rgba(16,24,40,.05);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:16px/1.65 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       -webkit-font-smoothing:antialiased;}
+  .wrap{max-width:920px;margin:0 auto;padding:40px 20px 80px}
+  header{margin-bottom:32px}
+  .eyebrow{font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);font-weight:700}
+  h1{font-size:31px;line-height:1.2;margin:.25em 0 .3em;letter-spacing:-.02em}
+  .sub{color:var(--muted);font-size:17px;margin:0}
+  h2{font-size:22px;margin:44px 0 14px;letter-spacing:-.01em;padding-bottom:8px;border-bottom:1px solid var(--line)}
+  h3{font-size:17px;margin:26px 0 8px}
+  p{margin:0 0 14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:20px 22px;box-shadow:var(--shadow);margin:18px 0}
+  .note{border-left:4px solid var(--info);background:var(--info-soft);border-radius:8px;padding:14px 16px;margin:16px 0}
+  .warn{border-left:4px solid var(--warn);background:var(--warn-soft);border-radius:8px;padding:14px 16px;margin:16px 0}
+  .danger{border-left:4px solid var(--danger);background:var(--danger-soft);border-radius:8px;padding:14px 16px;margin:16px 0}
+  .ok{border-left:4px solid var(--accent);background:var(--accent-soft);border-radius:8px;padding:14px 16px;margin:16px 0}
+  .note b,.warn b,.danger b,.ok b{display:block;margin-bottom:4px}
+  code,kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;font-size:.9em;
+       background:var(--code-bg);padding:.12em .4em;border-radius:4px;border:1px solid var(--line)}
+  kbd{box-shadow:0 1px 0 var(--line)}
+  pre{background:var(--code-bg);border:1px solid var(--line);border-radius:10px;padding:14px 16px;
+      overflow-x:auto;margin:14px 0}
+  pre code{background:none;border:none;padding:0}
+  .tablewrap{overflow-x:auto;margin:16px 0;border:1px solid var(--line);border-radius:10px}
+  table{border-collapse:collapse;width:100%;font-size:14.5px;background:var(--card)}
+  th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+  th{background:var(--code-bg);font-weight:650;white-space:nowrap}
+  tr:last-child td{border-bottom:none}
+  ol.steps{counter-reset:s;list-style:none;padding:0;margin:18px 0}
+  ol.steps>li{counter-increment:s;position:relative;padding:0 0 18px 46px;margin:0}
+  ol.steps>li::before{content:counter(s);position:absolute;left:0;top:-1px;width:30px;height:30px;
+       border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;
+       font-weight:700;font-size:14px}
+  ol.steps>li::after{content:"";position:absolute;left:15px;top:32px;bottom:0;width:2px;background:var(--line)}
+  ol.steps>li:last-child::after{display:none}
+  ol.steps>li>b{display:block;margin-bottom:2px}
+  ul.check{list-style:none;padding:0;margin:14px 0}
+  ul.check li{padding:7px 0 7px 30px;position:relative;border-bottom:1px dashed var(--line)}
+  ul.check li:last-child{border-bottom:none}
+  ul.check li::before{content:"☐";position:absolute;left:4px;top:7px;color:var(--muted);font-size:17px}
+  .tag{display:inline-block;font-size:11.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+       padding:2px 8px;border-radius:20px;border:1px solid currentColor}
+  .tag.new{color:var(--accent)} .tag.chg{color:var(--info)} .tag.same{color:var(--muted)}
+  footer{margin-top:56px;padding-top:18px;border-top:1px solid var(--line);color:var(--muted);font-size:13.5px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <div class="eyebrow">SteelheadAutomator · Carga Masiva</div>
+  <h1>Las macros ahora trabajan con el libro protegido</h1>
+  <p class="sub">Qué se cambió, cómo instalarlo en las dos plantillas y tres cosas que hay que revisar antes de repartirlas.</p>
+</header>
+
+<div class="ok">
+  <b>Resumen en una línea</b>
+  Cada macro que escribe ahora <strong>desprotege al entrar y vuelve a proteger al salir</strong>, reponiendo
+  <em>exactamente</em> el candado que traía el archivo. Tú sigues gobernando qué celdas quedan bloqueadas: el VBA no toca eso.
+</div>
+
+<h2>1 · Por qué no bastaba con “desproteger y proteger”</h2>
+
+<p>La forma obvia es que cada macro termine con <code>ws.Protect</code>. El problema es <em>con qué opciones</em>.
+Tu plantilla v13 está protegida con <code>sheet="1" objects="1" scenarios="1"</code> y <strong>ningún</strong>
+<code>Allow*</code>, y sólo 5 de sus 8 hojas están protegidas. Si las macros reprotegieran “todo” con banderas
+escritas a mano, cada corrida de <em>LimpiarDatos</em> te cambiaría la configuración en silencio y protegería de más
+tres hojas que están abiertas a propósito.</p>
+
+<p>Por eso <code>ModProteccion</code> <strong>toma una foto</strong> del estado antes de quitarlo y repone esa foto.
+Si mañana proteges una hoja más o habilitas “permitir filtrar”, lo respeta solo: no hay lista de hojas que mantener.</p>
+
+<div class="note">
+  <b>La reprotección va en una etiqueta <code>Cleanup</code> a la que se llega también por error.</b>
+  Sin eso, una macro que revienta a media pasada deja el archivo abierto de par en par y nadie se entera
+  hasta que alguien borra una fórmula.
+</div>
+
+<h2>2 · Qué toca cada macro</h2>
+
+<div class="tablewrap">
+<table>
+  <thead><tr><th>Macro</th><th>Módulo</th><th>Dónde escribe</th><th>Cambio</th></tr></thead>
+  <tbody>
+    <tr><td><code>LimpiarDatos</code></td><td>Module5</td><td>Upload — borrado, defaults, <em>placeholders</em> y <code>Copy/PasteSpecial</code></td><td><span class="tag chg">v20</span> desprotege/reprotege</td></tr>
+    <tr><td><code>LimpiarEspacios</code></td><td>Module5</td><td>Upload — celdas de texto</td><td><span class="tag chg">v16</span> desprotege/reprotege</td></tr>
+    <tr><td><code>RefrescarListas</code></td><td>Module2</td><td>Listas + CAT_Procesos</td><td><span class="tag chg">v15</span> + cierra el catálogo si falla</td></tr>
+    <tr><td><code>SombrearModoSoloPN</code></td><td>Module4</td><td>Upload — <strong>formato</strong> (<code>.Interior.Color</code>)</td><td><span class="tag chg">v14</span> + arregla F3→G3</td></tr>
+    <tr><td><code>ExportarCSV</code></td><td>Module1</td><td><strong>nada</strong> — sólo lee</td><td><span class="tag chg">v15.6</span> envuelto por si acaso</td></tr>
+    <tr><td><code>Worksheet_SelectionChange</code></td><td>hoja Upload</td><td>CAT_Procesos!I2 y CAT_Specs!D2, <strong>en cada clic</strong></td><td><span class="tag same">sin cambios</span> lo cubre ThisWorkbook</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="warn">
+  <b>El que más duele es el último, y no es una macro que el operador ejecute.</b>
+  Al hacer clic en <em>Proceso</em> o <em>Spec 1-4</em>, la hoja escribe la fila activa en CAT_Procesos y CAT_Specs para
+  alimentar los desplegables dependientes. <strong>CAT_Specs sí está protegida</strong> en tu plantilla, así que eso truena
+  con error 1004 en el primer clic — y en el siguiente, y en el siguiente. Es lo que hace parecer que “todo truena”:
+  no es la macro, es la hoja debajo del cursor.
+  <br><br>
+  Se resuelve sin tocar ese código: <code>ThisWorkbook.Workbook_Open</code> repone el mismo candado con
+  <code>UserInterfaceOnly:=True</code> (el VBA escribe, el usuario no). Esa bandera <strong>no se guarda</strong> en el
+  archivo, de ahí que haya que reponerla en cada apertura.
+</div>
+
+<h2>3 · Instalación</h2>
+
+<p>Los archivos ya están generados, en <strong>ASCII puro y CRLF</strong> para que se vean igual sin importar la
+codificación que suponga el editor de VBA:</p>
+
+<pre><code>vbas/entrega-proteccion/moderna/          → Plantilla_CargaMasiva_v13.xlsm
+vbas/entrega-proteccion/compatibilidad/  → Plantilla_CargaMasiva_v13_compatibilidad.xlsm</code></pre>
+
+<p>Cada carpeta trae <code>ModProteccion.bas</code> (nuevo), <code>Module1/2/4/5.bas</code> (reemplazan) y
+<code>ThisWorkbook.txt</code> (se pega). <strong>Son distintas entre sí</strong>: <code>Module1</code> de la moderna guarda con
+<code>SaveAs</code> y el de compatibilidad con <code>ADODB.Stream</code>. No los cruces.</p>
+
+<ol class="steps">
+  <li><b>Abre la plantilla y entra al editor de VBA</b>
+     En Mac: <kbd>Herramientas</kbd> → <kbd>Macro</kbd> → <kbd>Editor de Visual Basic</kbd> (o <kbd>Fn</kbd>+<kbd>Option</kbd>+<kbd>F11</kbd>).</li>
+
+  <li><b>Importa <code>ModProteccion.bas</code></b>
+     <kbd>Archivo</kbd> → <kbd>Importar archivo…</kbd>. Es un módulo nuevo, no reemplaza nada.</li>
+
+  <li><b>Reemplaza Module1, Module2, Module4 y Module5</b>
+     Para cada uno: abre el módulo, <kbd>Cmd</kbd>+<kbd>A</kbd>, <kbd>Supr</kbd>, y pega el contenido del <code>.bas</code>
+     correspondiente <strong>omitiendo la primera línea</strong> (<code>Attribute VB_Name = "…"</code>: sirve al importar,
+     no al pegar — si la pegas, VBA la marca como error).
+     <br>La otra vía es quitar el módulo e importarlo; ahí sí se conserva la línea y el nombre.</li>
+
+  <li><b>Pega <code>ThisWorkbook.txt</code> en <em>ThisWorkbook</em></b>
+     Doble clic en <code>ThisWorkbook</code> (no en un módulo) y pega. Hoy está vacío, así que no pisas nada.</li>
+
+  <li><b>Compila</b>
+     <kbd>Depuración</kbd> → <kbd>Compilar VBAProject</kbd>. Debe pasar sin una sola queja. Esto es lo único que prueba
+     de verdad que el código está bien: yo no puedo ejecutar Excel desde aquí.</li>
+
+  <li><b>Guarda y <em>cierra y vuelve a abrir</em> el archivo</b>
+     Reabrirlo no es opcional: <code>Workbook_Open</code> es lo que repone <code>UserInterfaceOnly</code>. Sin ese ciclo,
+     los desplegables dependientes siguen tronando.</li>
+
+  <li><b>Repite en la de compatibilidad</b> con la otra carpeta.</li>
+</ol>
+
+<h3>Prueba de aceptación</h3>
+
+<div class="ok">
+  <b>No hace falta creerme: <code>SA_Diagnostico</code> lo comprueba sobre tu archivo</b>
+  Está en <code>ModProteccion</code>. Córrelo una vez (captura el estado de las 8 hojas y del libro),
+  corre la macro que quieras probar, y córrelo otra vez: contesta <strong>IGUAL</strong> o te lista exactamente
+  qué bandera cambió y en qué hoja. Se puede repetir cuantas veces quieras.
+  <br><br>
+  Es la respuesta a “¿de verdad deja mi configuración tal cual?”: no es una promesa del diseño, es una medición
+  del archivo real.
+</div>
+
+<p>Además, la hoja debe quedar <strong>protegida otra vez</strong> después de cada macro. Se comprueba en
+<kbd>Revisar</kbd>: si el botón dice “Desproteger hoja”, sigue protegida.</p>
+<ul class="check">
+  <li>Clic en la columna <b>Proceso</b> y en <b>Spec 1</b> → sin error 1004, y el desplegable se filtra.</li>
+  <li><b>LimpiarEspacios</b> → corre; al terminar la hoja sigue protegida.</li>
+  <li><b>LimpiarDatos</b> → corre; restaura fórmulas y <em>placeholders</em>; sigue protegida.</li>
+  <li>Cambiar <b>H1</b> (Modo) a SOLO_PN → sombrea, y <b>G3</b> queda en verde (no gris).</li>
+  <li><b>RefrescarListas</b> → carga catálogos; sigue protegida.</li>
+  <li><b>ExportarCSV</b> → genera el CSV; sigue protegida.</li>
+  <li>Intentar escribir en una celda calculada (p. ej. <b>Plata</b>) → Excel lo impide.</li>
+  <li>Escribir en <b>Número de parte</b> de la fila 9 → <strong>debe dejar</strong>.</li>
+</ul>
+
+<h2>4 · Tres cosas que encontré y que decides tú</h2>
+
+<div class="note">
+  <b>a) Sobre las celdas bloqueadas — descartado, era un archivo sin guardar</b>
+  Una versión anterior de esta guía decía que la zona de datos estaba bloqueada casi completa. Eso describía
+  el <code>.xlsm</code> <strong>en disco</strong>, con fecha de las 19:30 y con el <em>lock</em> de Excel presente: el archivo
+  llevaba casi dos horas abierto sin guardarse, así que el trabajo real estaba en memoria y no en el archivo que
+  yo leí. <strong>No es un hallazgo</strong>; queda anotado sólo para que no reaparezca la duda.
+  <br><br>
+  Como referencia, si alguna vez hace falta revisarlo: las columnas que deben quedar <strong>bloqueadas</strong> según
+  la propia fila 8 de la hoja (las marcadas <code>Calc.</code>) son 10 — <b>20</b> (Etiqueta Planta Schneider) y
+  <b>51–59</b> (los predictivos, Plata…Epóx. MTR). Y hay dos que <em>parecen</em> calculadas y no deben bloquearse:
+  <b>21</b> Proceso (la fórmula genera el desplegable y el operador escribe encima al elegir) y <b>24/26/28/30</b>
+  Esp. Spec 1-4 (marcadas <code>Calc/#</code>: traen fórmula pero se pueden sobrescribir a mano).
+</div>
+
+<div class="warn">
+  <b>b) La hoja CAT_Procesos tiene un manejador viejo que corrompe una fórmula</b>
+  Su código (<code>Hoja2</code>) escribe la fila activa en <code>CAT_Procesos!K2</code> al hacer clic en la columna U
+  <em>de esa misma hoja</em> — y <b>K2 tiene una fórmula</b>. Es un residuo de una versión anterior: el manejador vivo y
+  correcto es el de la hoja Upload, que escribe en <code>I2</code>.
+  <br><br>
+  Hoy CAT_Procesos no está protegida, así que el problema es silencioso: si alguien pica ahí, se pierde la fórmula.
+  <strong>No lo toqué</strong> porque está fuera de lo que pediste. Se arregla borrando ese <code>Worksheet_SelectionChange</code>
+  de <code>Hoja2</code>. Dime y lo incluyo.
+</div>
+
+<div class="note">
+  <b>c) La plantilla de compatibilidad traía un desfase que la moderna ya no tiene</b>
+  El nombre de cotización/layout vive en <b>G3</b>, pero <code>Module4</code> restauraba a verde <b>F3</b> (vacía).
+  Efecto: en modo SOLO_PN el campo del layout se quedaba gris —leyéndose como deshabilitado cuando sí aplica— y
+  se despintaba una celda vacía. El <code>.xlsm</code> moderno ya tenía la corrección; <strong>la de compatibilidad y la
+  copia del repositorio no</strong>. Los archivos de entrega van con G3 en las dos.
+</div>
+
+<h2>5 · Qué está verificado y qué no</h2>
+
+<div class="tablewrap">
+<table>
+  <thead><tr><th>Afirmación</th><th>Cómo se comprobó</th></tr></thead>
+  <tbody>
+    <tr><td>Bloques balanceados, etiquetas de <code>GoTo</code> resueltas, cada <code>SA_Desproteger</code> con su <code>SA_Proteger</code>, ningún <code>Exit Sub</code> que escape sin reproteger</td><td><code>tools/test/vba-protection.test.js</code> — y se probó que <em>detecta</em>: 5 mutaciones introducidas a propósito, 5 detectadas</td></tr>
+    <tr><td>Los 12 archivos de entrega son ASCII puro con CRLF consistente</td><td>lectura byte a byte, con una segunda verificación independiente del generador</td></tr>
+    <tr><td>La carpeta de entrega no se desfasa de las fuentes</td><td>trinquete en el mismo test (regenera y compara byte a byte)</td></tr>
+    <tr><td>Nada más del repositorio se rompió</td><td><code>tools/run-tests.sh</code> — 111 archivos, 0 rojos</td></tr>
+    <tr><td>Estado real de protección, celdas bloqueadas, fórmulas y tipos de columna</td><td>medido sobre el XML de los <code>.xlsm</code>, no supuesto</td></tr>
+  </tbody>
+</table>
+</div>
+
+<div class="danger">
+  <b>Lo que NO puedo afirmar</b>
+  <strong>No he ejecutado este VBA.</strong> No hay forma de compilar VBA fuera de Excel, así que
+  <em>“compila y corre”</em> es justamente lo que el paso 5 te pide comprobar. Tampoco puedo afirmar cómo se comporta
+  <code>UserInterfaceOnly</code> en tu versión de Excel para Mac: es la parte del diseño que más depende del entorno.
+  Si algo falla ahí, el resto sigue funcionando — cada macro desprotege por su cuenta; lo único que se perdería es
+  la comodidad en los desplegables dependientes.
+</div>
+
+<h2>6 · Una nota sobre la contraseña</h2>
+<p>Todo queda <strong>sin contraseña</strong>, como pediste. Eso además es lo prudente aquí: si una macro fallara en un
+punto raro y dejara el archivo protegido, cualquiera lo destraba desde la cinta. Con contraseña, ese mismo fallo
+convierte la plantilla en un ladrillo. Si algún día se le pone una, se cambia en un solo lugar
+(<code>SA_PWD</code> en <code>ModProteccion</code>) — pero vale la pena saber qué se está comprando.</p>
+
+<footer>
+  SteelheadAutomator · Ecoplating — 7 de agosto de 2026<br>
+  Fuentes versionadas en <code>vbas/</code>; los archivos importables se regeneran con
+  <code>node tools/build-vba-entrega.js</code>.
+</footer>
+
+</div>
+</body>
+</html>

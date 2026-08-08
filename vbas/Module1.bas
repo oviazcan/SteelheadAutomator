@@ -1,5 +1,13 @@
 Attribute VB_Name = "Module1"
-' === MACRO 1: ExportarCSV (v15.5 — layouts v12 y v13) ===
+' === MACRO 1: ExportarCSV (v15.6 — layouts v12 y v13, plantilla PROTEGIDA) ===
+' V15.6 (2026-08-07): la plantilla se entrega PROTEGIDA. Esta macro es la ÚNICA de las cinco
+'   que NO escribe en el libro —sólo lee Upload y CAT_Productos y vuelca a un libro NUEVO—,
+'   así que en teoría no la afecta la protección. Aun así se envuelve el §8 con
+'   SA_Desproteger/SA_Proteger: el libro se entrega también con la ESTRUCTURA protegida y
+'   §8 es la única parte que crea y manipula un libro. Cuesta dos llamadas.
+'   Léase al revés: si ExportarCSV falla con la plantilla protegida, la causa NO está aquí.
+'   El sospechoso real es Worksheet_SelectionChange, que truena en CADA clic sobre Proceso
+'   o Spec 1-4 si CAT_Procesos/CAT_Specs están protegidas (lo cubre ThisWorkbook).
 ' V15.5 (2026-08-05): (a) varios clientes en COTIZACIÓN+NP dejan de BLOQUEAR el export —
 '   el applet crea una cotización por cliente desde hace versiones y la plantilla lo vetaba;
 '   ahora es confirmación, no veto. (b) la versión del aviso final se lee del título de la
@@ -309,6 +317,12 @@ NextK:
 
     Dim tmpWb As Workbook, tmpWs As Worksheet
     On Error GoTo SaveErr
+    ' ExportarCSV NO escribe en la plantilla: sólo lee Upload y CAT_Productos, y vuelca a un
+    ' libro NUEVO. Aun así se desprotege aquí porque el libro se entrega con la ESTRUCTURA
+    ' protegida (workbookProtection lockStructure="1"), y esta es la única parte de la macro
+    ' que crea y manipula un libro. Cuesta dos llamadas y quita la duda; si ExportarCSV
+    ' siguiera fallando con la plantilla protegida, el culpable NO está en esta macro.
+    SA_Desproteger "Upload"
     Set tmpWb = Workbooks.Add
     Set tmpWs = tmpWb.Sheets(1)
     tmpWs.Cells.NumberFormat = "@"              ' todo texto: preserva 1.18, ceros y fechas tal cual
@@ -317,6 +331,7 @@ NextK:
     tmpWb.Close SaveChanges:=False
     On Error GoTo 0
 
+    SA_Proteger
     Application.DisplayAlerts = prevDA: Application.ScreenUpdating = prevSU
 
     MsgBox "CSV " & TplVer(ws) & "exportado:" & vbCrLf & savePath & vbCrLf & vbCrLf & _
@@ -329,6 +344,7 @@ SaveErr:
     Dim eDesc As String: eDesc = Err.Description
     On Error Resume Next
     If Not tmpWb Is Nothing Then tmpWb.Close SaveChanges:=False
+    SA_Proteger
     Application.DisplayAlerts = prevDA: Application.ScreenUpdating = prevSU
     On Error GoTo 0
     MsgBox "No se pudo guardar el CSV:" & vbCrLf & savePath & vbCrLf & vbCrLf & eDesc, _

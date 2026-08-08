@@ -1,13 +1,38 @@
-' Código de la hoja Upload (v12)
-' Pegar en Alt+F11 → "Hoja(Upload)" (no en un módulo). Contiene DOS handlers de evento.
+' Código de la hoja Upload (v16 — 2026-08-08)
+' PEGAR en Alt+F11 → "Hoja1 (Upload)". NO es un módulo: es el código de la HOJA.
+' Reemplaza todo lo que haya ahí.
 '
-' V12 (2026-06-11): layout v12 (60 cols A..BH).
-'   - Worksheet_Change: Modo en H1 (igual que v11; A1 está vacío) → dispara SombrearModoSoloPN.
-'   - Worksheet_SelectionChange (feeder de catálogos): columnas re-mapeadas a v12:
-'       Proceso col 21 (U)        — antes 23 (W)  → alimenta CAT_Procesos!I2
-'       Spec 1-4 cols 23,25,27,29 — antes 36,38   → alimentan CAT_Specs!D2
-'     (v11 tenía 2 specs en 36/38; v12 tiene 4 en 23/25/27/29.)
-' V11: Modo H1; feeder Proceso=23, Specs=36/38.
+' V16 (2026-08-08): EL INDICADOR DE FILA APUNTA A LA CELDA CORRECTA Y LA LISTA YA ESTÁ LISTA.
+'   Reporte: "cambia pero no siempre es preciso". SA_ProbarFeeders daba todo OK, así que el
+'   cableado estaba bien: lo que fallaba era QUÉ fila se escribía y CUÁNDO estaba lista la
+'   lista. Tres causas, las tres en este archivo:
+'
+'   (a) Se usaba Target.Row. `Target` es la SELECCIÓN, no la celda donde está parado el
+'       operador. Al arrastrar de abajo hacia arriba (U15 -> U9) la celda activa es U15 pero
+'       Target.Row vale 9: el dropdown se filtraba con la fila equivocada. Ahora se lee
+'       ActiveCell, que es literalmente "dónde está el cursor".
+'
+'   (b) No se filtraban las filas de encabezado. Un clic en la CABECERA de la columna U
+'       selecciona la columna entera, ActiveCell queda en la fila 1 y el indicador se iba a
+'       1 — una fila que no tiene datos, así que la lista salía vacía o con lo que hubiera.
+'       Ahora sólo se alimenta desde la zona de datos (fila 9 en adelante).
+'
+'   (c) No se forzaba el recálculo. Escribir el indicador no basta: las fórmulas que arman la
+'       lista dependen de él y Excel las recalcula CUANDO le toca. Si el operador abre el
+'       desplegable antes de que eso ocurra, ve la lista de la fila ANTERIOR — que es
+'       exactamente "cambia pero no siempre es preciso": el número correcto, la lista vieja.
+'       Ahora se recalcula la hoja destino en el momento, que es barato (CAT_Procesos tiene
+'       6 fórmulas) y deja la lista lista antes de que se pueda abrir.
+'
+' V15 (2026-08-08): los feeders se auto-reparan en vez de callarse. Envolverlos en
+'   On Error Resume Next (v14) garantizó que EnableEvents volviera a True y de paso SE TRAGÓ
+'   el fallo de escritura: antes error 1004 visible, después silencio. Ahora se inspecciona
+'   Err, se repone UserInterfaceOnly y se reintenta una vez.
+' V14 (2026-08-08): el sombreado deja de depender de Worksheet_Change (en Excel para Mac,
+'   elegir de una lista de validación no lo dispara; se difiere hasta perder el foco).
+' V12 (2026-06-11): layout v12 — Modo en H1; feeder Proceso col 21, Specs 23/25/27/29.
+
+Private Const FILA_DATOS As Long = 9      ' primera fila de captura
 
 Private Sub Worksheet_Change(ByVal Target As Range)
     If Not Intersect(Target, Me.Range("H1")) Is Nothing Then
@@ -16,17 +41,76 @@ Private Sub Worksheet_Change(ByVal Target As Range)
 End Sub
 
 Private Sub Worksheet_SelectionChange(ByVal Target As Range)
-    ' Proceso (col 21 = U): alimenta la fila activa a CAT_Procesos!I2
-    If Target.Column = 21 Then
-        Application.EnableEvents = False
-        ThisWorkbook.Worksheets("CAT_Procesos").Range("I2").Value = Target.Row
-        Application.EnableEvents = True
+    Dim col As Long, fila As Long
+
+    ' ActiveCell, no Target: Target es la selección completa y su .Row es la de la ESQUINA
+    ' SUPERIOR, que no es donde está el cursor si se arrastró hacia arriba.
+    On Error Resume Next
+    col = ActiveCell.Column
+    fila = ActiveCell.Row
+    On Error GoTo 0
+
+    If fila >= FILA_DATOS Then
+        ' Proceso (col 21 = U) -> CAT_Procesos!I2
+        If col = 21 Then
+            EscribirFeeder "CAT_Procesos", "I2", fila
+        End If
+
+        ' Spec 1-4 (cols 23, 25, 27, 29 = W, Y, AA, AC) -> CAT_Specs!D2
+        If col = 23 Or col = 25 Or col = 27 Or col = 29 Then
+            EscribirFeeder "CAT_Specs", "D2", fila
+        End If
     End If
-    ' Spec 1-4 (cols 23, 25, 27, 29 = W, Y, AA, AC): alimentan la fila activa a CAT_Specs!D2
-    If Target.Column = 23 Or Target.Column = 25 _
-       Or Target.Column = 27 Or Target.Column = 29 Then
-        Application.EnableEvents = False
-        ThisWorkbook.Worksheets("CAT_Specs").Range("D2").Value = Target.Row
-        Application.EnableEvents = True
+
+    ' Red de seguridad del sombreado: repinta sólo si el modo y el color no coinciden.
+    On Error Resume Next
+    SincronizarSombreadoSiHaceFalta
+    On Error GoTo 0
+End Sub
+
+' Escribe la fila activa en la celda que alimenta un dropdown dependiente, y deja la lista
+' YA RECALCULADA.
+'
+' Los eventos se apagan porque escribir en otra hoja dispararía sus eventos y el recálculo
+' del dropdown volvería a entrar aquí. Se vuelven a encender por TODOS los caminos, incluido
+' el de error: si se quedaran apagados morirían el sombreado y los demás dropdowns para el
+' resto de la sesión, sin ninguna señal visible.
+'
+' El reintento no es paranoia: la única razón por la que esta escritura falla es que la hoja
+' destino esté protegida sin UserInterfaceOnly (esa bandera no se guarda con el archivo).
+' Reponerla y reintentar convierte un fallo permanente en un tropiezo de una vez.
+Private Sub EscribirFeeder(ByVal hoja As String, ByVal celda As String, ByVal fila As Long)
+    Dim ws As Worksheet
+
+    On Error Resume Next
+    Set ws = ThisWorkbook.Worksheets(hoja)
+    On Error GoTo 0
+    If ws Is Nothing Then Exit Sub
+
+    ' Si ya apunta a esa fila no hay nada que hacer: evita recalcular en cada movimiento
+    ' del cursor dentro de la MISMA fila.
+    On Error Resume Next
+    If CStr(ws.Range(celda).Value) = CStr(fila) Then Exit Sub
+    On Error GoTo 0
+
+    On Error Resume Next
+    Application.EnableEvents = False
+
+    Err.Clear
+    ws.Range(celda).Value = fila
+
+    If Err.Number <> 0 Then
+        ' No se pudo escribir: reponer UserInterfaceOnly y reintentar UNA vez.
+        Err.Clear
+        SA_RehabilitarEscrituraVBA
+        ws.Range(celda).Value = fila
     End If
+
+    ' Dejar la lista lista ANTES de que el operador pueda abrir el desplegable. Sin esto,
+    ' el indicador ya dice la fila nueva pero las fórmulas que arman la lista todavía no se
+    ' han recalculado, y se ve la lista de la fila anterior.
+    ws.Calculate
+
+    Application.EnableEvents = True
+    On Error GoTo 0
 End Sub

@@ -1,0 +1,724 @@
+Attribute VB_Name = "Module2"
+' === MACRO 2: RefrescarListas (v15) ===
+' Lee catalogos desde archivo externo "Catalogos_Steelhead_*.xlsx"
+' generado por la extension Chrome "Actualizar Catalogos"
+'
+' V15 (2026-08-07): la plantilla se entrega PROTEGIDA -> desprotege/reprotege via
+'   ModProteccion. Escribe en DOS hojas: Listas (ClearContents + catalogos + formato) y
+'   CAT_Procesos (CargarCatProcesosDesde). Hoy ninguna de las dos esta protegida en la
+'   plantilla v13, asi que sin este cambio la macro seguiria funcionando -- pero eso es
+'   una coincidencia de la configuracion actual, no una garantia: el dia que alguien
+'   proteja Listas, RefrescarListas moriria en el ClearContents.
+'   De paso se cerro un hueco viejo: el `On Error GoTo ErrorHandler` solo cubria el
+'   Workbooks.Open y despues se hacia `On Error GoTo 0`, asi que un fallo a media carga
+'   dejaba el libro de catalogos ABIERTO y el calculo en manual. Ahora hay un solo
+'   Cleanup que cierra, reprotege y restaura pase lo que pase.
+'
+' V14 (2026-07-02): FIX Mac -- dejar de pedir "conceder acceso" a CADA catalogo viejo.
+'   En el sandbox de Excel para Mac, FileDateTime() sobre un archivo que el sandbox no
+'   ha autorizado dispara el dialogo de "conceder acceso" POR CADA archivo. Como
+'   BuscarMasReciente recorria TODOS los "Catalogos_Steelhead_*.xlsx" de la carpeta
+'   llamando FileDateTime a cada uno, el usuario tenia que conceder acceso a cada
+'   catalogo acumulado en Descargas aunque no fuera el ultimo. Ahora el mas reciente se
+'   elige comparando SOLO el nombre -- la extension los nombra con la fecha ISO
+'   (Catalogos_Steelhead_YYYY-MM-DD.xlsx, + sufijo " (N)" de Chrome cuando hay varios el
+'   mismo dia), que es ordenable como texto. Dir() solo lista nombres (nunca abre
+'   archivos), asi el UNICO archivo que se toca --y para el que Mac pide acceso-- es el
+'   ganador, cuando RefrescarListas lo abre. GrantAccessToMultipleFiles NO se usa: no
+'   habilita Open en este Excel para Mac (ver nota en Module1).
+'
+' V13 (2026-06-15): la hoja CAT_Procesos deja de ser fuente de verdad local.
+'   Ahora se reconstruye desde Steelhead (articulo de inventario 900192, que mantiene
+'   la Calculadora de Procesos). El archivo de catalogos trae una hoja "CAT_Procesos"
+'   con cols Linea/MetalBase/Etiqueta1..6/Proceso; CargarCatProcesosDesde la vuelca al
+'   ListObject Tabla1 (cols A..G): D=Linea, E=MetalBase, F=Etiqueta1..6 unidas con
+'   " + ", G=Proceso. A/B/C (Grupo/Caracteristica/Linea corta) quedan vacias -- ninguna
+'   formula las usa. Las formulas auxiliares (I2:O2, fuera de la tabla) no se tocan.
+'
+' V12 (2026-05-26):
+'   1. Fix bug Insert->escritura directa. Items en row 4+, placeholders en 2,3.
+'      Antes: cada Insert Shift:=xlDown empujaba contenido +2 filas, heredaba
+'      formato del header (gris/bold/centrado) y rompia data validations y named
+'      ranges fijos. Ahora se escribe directamente desde row 4; placeholders se
+'      fijan en rows 2-3 sin mover nada.
+'   2. Agrega col N (14) = TiposGeometria (lista hibrida).
+' V11 (2026-05-20): nombres de hoja con acentos via ChrW() para que sobrevivan
+'   la re-codificacion que hace el editor VBA al pegar desde un .txt UTF-8.
+' V10 original.
+'
+' V12 LAYOUT DE LISTAS (cols A..N en hoja Listas):
+'   A=Clientes       B=Procesos      C=Productos      D=Etiquetas   E=Specs
+'   F=Racks Linea    G=Racks Todos
+'   H=CodigoSAT      I=MetalBase
+'   J=Lineas         K=Departamentos L=Usuarios       M=Grupos      N=TiposGeometria
+'
+' Target: spreadsheet v11 layout, 71 cols A..BS, datos fila 9+
+
+Sub RefrescarListas()
+    Dim catFile As String
+    catFile = BuscarArchivoCatalogos()
+    If catFile = "" Then Exit Sub
+
+    Application.ScreenUpdating = False
+    Application.Calculation = xlCalculationManual
+
+    Dim nCatProc As Long
+
+    ' Abrir archivo de catalogos
+    Dim wbCat As Workbook
+    Dim faseApertura As Boolean
+    On Error GoTo Cleanup
+    faseApertura = True
+    Set wbCat = Workbooks.Open(catFile, ReadOnly:=True)
+    faseApertura = False
+
+    ' Se desprotege DESPUES de abrir el catalogo: si la apertura falla no se toco nada, y
+    ' SA_Proteger sin foto previa no hace nada (no inventa un candado que no existia).
+    ' Escribe en DOS hojas: Listas y CAT_Procesos (via CargarCatProcesosDesde).
+    SA_Desproteger "Listas", "CAT_Procesos"
+
+    Dim wsL As Worksheet
+    Set wsL = ThisWorkbook.Sheets("Listas")
+
+    ' V12: Limpiar A-N (todos los catalogos refrescables, incluye nueva col N=14)
+    Dim lastR As Long
+    lastR = Application.Max(wsL.UsedRange.Rows.Count, 2)
+    wsL.Range("A2:N" & lastR).ClearContents
+
+    ' Cargar cada catalogo desde el archivo externo
+    CargarClientesDesde wbCat, wsL
+    CargarProcesosDesde wbCat, wsL
+    CargarProductosDesde wbCat, wsL
+    CargarEtiquetasDesde wbCat, wsL
+    CargarSpecsDesde wbCat, wsL
+    CargarRacksDesde wbCat, wsL
+    CargarCodigoSATDesde wbCat, wsL
+    CargarMetalBaseDesde wbCat, wsL
+    CargarLineasDesde wbCat, wsL
+    CargarDepartamentosDesde wbCat, wsL
+    CargarUsuariosDesde wbCat, wsL
+    CargarGruposDesde wbCat, wsL
+    CargarTiposGeometriaDesde wbCat, wsL  ' V12: nueva
+    nCatProc = CargarCatProcesosDesde(wbCat)  ' V13: CAT_Procesos desde SH (inventario 900192)
+
+    ' V12 FIX: Escribir placeholders directo en filas 2 y 3 (sin Insert para no empujar)
+    ' Listas estrictas -> "(seleccione)" + "-"
+    ' Listas hibridas -> "(seleccione o escriba)" + "-"
+    Dim strictCols As Variant, hybridCols As Variant
+    ' Estrictas: A=1 Clientes, B=2 Procesos, C=3 Productos, D=4 Etiquetas, E=5 Specs,
+    '            F=6 Racks Linea, G=7 Racks Todos, H=8 CodigoSAT,
+    '            J=10 Lineas, K=11 Departamentos, L=12 Usuarios
+    strictCols = Array(1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12)
+    ' Hibridas: I=9 MetalBase, M=13 Grupos, N=14 TiposGeometria (V12: +14)
+    hybridCols = Array(9, 13, 14)
+
+    ' Escribir placeholders directos en filas 2 y 3 (sin Insert para no empujar)
+    Dim hCol As Variant, cn As Long
+    For Each hCol In strictCols
+        cn = CLng(hCol)
+        wsL.Cells(2, cn).Value = "(seleccione)"
+        wsL.Cells(3, cn).Value = "-"
+    Next hCol
+    For Each hCol In hybridCols
+        cn = CLng(hCol)
+        wsL.Cells(2, cn).Value = "(seleccione o escriba)"
+        wsL.Cells(3, cn).Value = "-"
+    Next hCol
+    ' Limpiar formato heredado (filas 2-3 antes podian tener formato del header)
+    With wsL.Range(wsL.Cells(2, 1), wsL.Cells(3, 14))
+        .Interior.Pattern = xlNone
+        .Font.Bold = False
+        .Font.Color = vbBlack
+        .HorizontalAlignment = xlLeft
+    End With
+
+    ' Cerrar archivo de catalogos sin guardar
+    wbCat.Close SaveChanges:=False
+    Set wbCat = Nothing
+
+Cleanup:
+    ' Se llega por el camino normal Y por error. Antes de este cambio, un fallo a media
+    ' carga dejaba el libro de catalogos ABIERTO y el calculo en manual.
+    Dim errNum As Long, errDesc As String
+    errNum = Err.Number: errDesc = Err.Description
+    On Error Resume Next
+    If Not wbCat Is Nothing Then wbCat.Close SaveChanges:=False
+    SA_Proteger
+    Application.Calculation = xlCalculationAutomatic
+    Application.ScreenUpdating = True
+    On Error GoTo 0
+
+    If errNum <> 0 Then
+        If faseApertura Then
+            MsgBox "Error abriendo archivo de cat" & ChrW(225) & "logos: " & errDesc, vbCritical
+        Else
+            MsgBox "RefrescarListas se interrumpi" & ChrW(243) & ":" & vbCrLf & errDesc & vbCrLf & vbCrLf & _
+                   "La protecci" & ChrW(243) & "n qued" & ChrW(243) & " repuesta, pero las listas pueden " & _
+                   "haber quedado A MEDIAS. Vuelve a correrla antes de capturar.", _
+                   vbCritical, "RefrescarListas interrumpido"
+        End If
+        Exit Sub
+    End If
+
+    MsgBox "Listas actualizadas desde cat" & ChrW(225) & "logos:" & vbCrLf & vbCrLf & _
+        NContar(wsL, 1) & " clientes" & vbCrLf & _
+        NContar(wsL, 2) & " procesos" & vbCrLf & _
+        NContar(wsL, 3) & " productos" & vbCrLf & _
+        NContar(wsL, 4) & " etiquetas" & vbCrLf & _
+        NContar(wsL, 5) & " specs" & vbCrLf & _
+        NContar(wsL, 6) & " racks l" & ChrW(237) & "nea" & vbCrLf & _
+        NContar(wsL, 7) & " racks todos" & vbCrLf & _
+        NContar(wsL, 8) & " c" & ChrW(243) & "digos SAT" & vbCrLf & _
+        NContar(wsL, 9) & " metales base" & vbCrLf & _
+        NContar(wsL, 10) & " l" & ChrW(237) & "neas" & vbCrLf & _
+        NContar(wsL, 11) & " departamentos" & vbCrLf & _
+        NContar(wsL, 12) & " usuarios" & vbCrLf & _
+        NContar(wsL, 13) & " grupos PN" & vbCrLf & _
+        NContar(wsL, 14) & " tipos de geometr" & ChrW(237) & "a" & vbCrLf & _
+        nCatProc & " combinaciones CAT_Procesos (desde SH)", vbInformation, "RefrescarListas"
+End Sub
+
+' === BUSCAR ARCHIVO DE CATALOGOS ===
+Private Function BuscarArchivoCatalogos() As String
+    Dim found As String
+    found = ""
+
+    Dim plantillaDir As String
+    plantillaDir = ThisWorkbook.Path
+    If plantillaDir <> "" Then
+        found = BuscarMasReciente(plantillaDir)
+    End If
+
+    If found = "" Then
+        Dim downloadsDir As String
+        #If Mac Then
+            downloadsDir = Environ("HOME") & "/Downloads"
+        #Else
+            downloadsDir = Environ("USERPROFILE") & "\Downloads"
+        #End If
+        found = BuscarMasReciente(downloadsDir)
+    End If
+
+    If found <> "" Then
+        Dim resp As VbMsgBoxResult
+        resp = MsgBox("Archivo de cat" & ChrW(225) & "logos encontrado:" & vbCrLf & vbCrLf & _
+            NombreBase(found) & vbCrLf & _
+            "(" & found & ")" & vbCrLf & vbCrLf & _
+            ChrW(191) & "Usar este archivo?" & vbCrLf & vbCrLf & _
+            "S" & ChrW(237) & " = Usar este archivo" & vbCrLf & _
+            "No = Buscar otro manualmente" & vbCrLf & _
+            "Cancelar = No actualizar", _
+            vbYesNoCancel + vbQuestion, "RefrescarListas")
+
+        If resp = vbYes Then
+            BuscarArchivoCatalogos = found
+            Exit Function
+        ElseIf resp = vbCancel Then
+            BuscarArchivoCatalogos = ""
+            Exit Function
+        End If
+    End If
+
+    Dim result As Variant
+    #If Mac Then
+        result = Application.GetOpenFilename( _
+            Title:="Selecciona el archivo de Cat" & ChrW(225) & "logos Steelhead")
+    #Else
+        result = Application.GetOpenFilename( _
+            FileFilter:="Archivos Excel (*.xlsx),*.xlsx,Todos (*.*),*.*", _
+            Title:="Selecciona el archivo de Cat" & ChrW(225) & "logos Steelhead")
+    #End If
+    If VarType(result) = vbBoolean Then
+        BuscarArchivoCatalogos = ""
+    Else
+        BuscarArchivoCatalogos = CStr(result)
+    End If
+End Function
+
+' Elige el catalogo MAS RECIENTE de la carpeta SIN leer metadata de cada archivo.
+' Clave: comparar SOLO el nombre. FileDateTime() sobre cada archivo dispararia en
+' Mac el dialogo "conceder acceso" por cada uno (ver encabezado V14). Dir() solo
+' devuelve nombres --no abre archivos-- asi que aqui no se toca el disco; el ganador
+' se abre (y se pide acceso a el una sola vez) hasta RefrescarListas -> Workbooks.Open.
+Private Function BuscarMasReciente(folderPath As String) As String
+    Dim fileName As String
+    Dim bestFile As String
+    Dim bestKey As String
+
+    bestFile = ""
+    bestKey = ""
+
+    On Error Resume Next
+    fileName = Dir(folderPath & Application.PathSeparator & "Catalogos_Steelhead_*.xlsx")
+    On Error GoTo 0
+
+    Do While fileName <> ""
+        Dim k As String
+        k = ClaveOrdenCatalogo(fileName)
+        If k <> "" Then
+            If k > bestKey Then
+                bestKey = k
+                bestFile = folderPath & Application.PathSeparator & fileName
+            End If
+        End If
+        fileName = Dir()
+    Loop
+
+    BuscarMasReciente = bestFile
+End Function
+
+' Deriva una clave ordenable a partir del NOMBRE del archivo (sin tocar el disco):
+'   "Catalogos_Steelhead_2026-07-02.xlsx"     -> "2026-07-02|000"
+'   "Catalogos_Steelhead_2026-07-02 (3).xlsx" -> "2026-07-02|003"
+' Fecha ISO (comparable como texto) + contador de duplicados de Chrome (" (N)")
+' a 3 digitos, de modo que el mas nuevo del dia (mayor N) gane. Devuelve "" si el
+' nombre no calza el patron esperado (ese archivo se ignora en la comparacion).
+Private Function ClaveOrdenCatalogo(ByVal fileName As String) As String
+    Const PREFIX As String = "Catalogos_Steelhead_"
+    Const EXT As String = ".xlsx"
+
+    ClaveOrdenCatalogo = ""
+
+    If Left$(fileName, Len(PREFIX)) <> PREFIX Then Exit Function
+    If LCase$(Right$(fileName, Len(EXT))) <> EXT Then Exit Function
+
+    ' Nucleo entre el prefijo y la extension: "2026-07-02" o "2026-07-02 (3)"
+    Dim core As String
+    core = Mid$(fileName, Len(PREFIX) + 1, Len(fileName) - Len(PREFIX) - Len(EXT))
+    If Len(core) < 10 Then Exit Function
+
+    Dim datePart As String
+    datePart = Left$(core, 10)               ' YYYY-MM-DD
+
+    ' Contador de duplicados de Chrome: " (N)" tras la fecha (0 si no hay sufijo)
+    Dim counter As Long
+    counter = 0
+    Dim rest As String, op As Long, cp As Long
+    rest = Mid$(core, 11)
+    op = InStr(rest, "(")
+    cp = InStr(rest, ")")
+    If op > 0 And cp > op Then
+        Dim numStr As String
+        numStr = Mid$(rest, op + 1, cp - op - 1)
+        If IsNumeric(numStr) Then counter = CLng(numStr)
+    End If
+
+    ClaveOrdenCatalogo = datePart & "|" & Format$(counter, "000")
+End Function
+
+' Nombre base de una ruta, con puro string (sin Dir(), que en Mac tocaria el archivo).
+Private Function NombreBase(ByVal fullPath As String) As String
+    Dim p As Long
+    p = InStrRev(fullPath, Application.PathSeparator)
+    If p > 0 Then
+        NombreBase = Mid$(fullPath, p + 1)
+    Else
+        NombreBase = fullPath
+    End If
+End Function
+
+' === HELPER: obtiene una hoja del catalogo, devuelve Nothing si no existe ===
+Private Function GetCatSheet(wbCat As Workbook, sheetName As String) As Worksheet
+    Dim s As Worksheet
+    On Error Resume Next
+    Set s = wbCat.Sheets(sheetName)
+    On Error GoTo 0
+    If s Is Nothing Then
+        ' Construir lista de hojas disponibles para mejor diagnostico
+        Dim available As String, i As Long
+        available = ""
+        For i = 1 To wbCat.Sheets.Count
+            If available <> "" Then available = available & ", "
+            available = available & wbCat.Sheets(i).Name
+        Next i
+        MsgBox "ERROR: La hoja '" & sheetName & "' no existe en el archivo de cat" & ChrW(225) & "logos." & vbCrLf & vbCrLf & _
+               "Archivo abierto: " & wbCat.FullName & vbCrLf & vbCrLf & _
+               "Hojas disponibles: " & available & vbCrLf & vbCrLf & _
+               "Re-descarga el cat" & ChrW(225) & "logo desde la extensi" & ChrW(243) & "n Chrome (bot" & ChrW(243) & "n 'Actualizar Cat" & ChrW(225) & "logos').", _
+               vbCritical, "RefrescarListas " & ChrW(8212) & " Hoja faltante"
+    End If
+    Set GetCatSheet = s
+End Function
+
+' === CLIENTES (col A = 1) ===
+' V12: escribe desde row 4 (i+3) -- antes i+1 -- para no pisar placeholders de rows 2-3
+Private Sub CargarClientesDesde(wbCat As Workbook, wsL As Worksheet)
+    Dim ws As Worksheet, r As Long
+    Dim nombre As String, addr As String, combo As String
+    Dim combos As New Collection
+
+    Set ws = GetCatSheet(wbCat, "Clientes")
+    If ws Is Nothing Then Exit Sub
+    For r = 2 To ws.Cells(ws.Rows.Count, 2).End(xlUp).Row
+        If ws.Cells(r, 6).Value = True Then
+            nombre = CStr(ws.Cells(r, 2).Value)
+            addr = Replace(Replace(CStr(ws.Cells(r, 10).Value), vbLf, " "), vbCr, " ")
+            If Len(addr) > 40 Then addr = Left(addr, 40)
+            combo = nombre & " " & ChrW(8212) & " " & addr
+            On Error Resume Next
+            combos.Add combo, combo
+            Err.Clear
+            On Error GoTo 0
+        End If
+    Next r
+
+    Dim arr() As String
+    Dim n As Long
+    n = combos.Count
+    If n = 0 Then Exit Sub
+    ReDim arr(1 To n)
+    Dim i As Long
+    For i = 1 To n
+        arr(i) = combos(i)
+    Next i
+    ' Sort
+    Dim j As Long, tmp As String
+    For i = 1 To n - 1
+        For j = i + 1 To n
+            If StrComp(arr(i), arr(j), vbTextCompare) > 0 Then
+                tmp = arr(i): arr(i) = arr(j): arr(j) = tmp
+            End If
+        Next j
+    Next i
+    ' V12: escribir desde row 4 (i+3) -- antes i+1
+    For i = 1 To n
+        wsL.Cells(i + 3, 1).Value = arr(i)
+    Next i
+End Sub
+
+' === PROCESOS (col B = 2) ===
+Private Sub CargarProcesosDesde(wbCat As Workbook, wsL As Worksheet)
+    Dim ws As Worksheet, r As Long, v As String
+    Dim items As New Collection
+    Set ws = GetCatSheet(wbCat, "Procesos")
+    If ws Is Nothing Then Exit Sub
+    For r = 2 To ws.Cells(ws.Rows.Count, 2).End(xlUp).Row
+        If CStr(ws.Cells(r, 3).Value) = "process" And CStr(ws.Cells(r, 5).Value) = "No" Then
+            v = CStr(ws.Cells(r, 2).Value)
+            If v <> "" Then
+                On Error Resume Next: items.Add v, v: On Error GoTo 0
+            End If
+        End If
+    Next r
+    EscribirOrdenado wsL, 2, items
+End Sub
+
+' === PRODUCTOS (col C = 3) ===
+Private Sub CargarProductosDesde(wbCat As Workbook, wsL As Worksheet)
+    Dim ws As Worksheet, r As Long, v As String
+    Dim items As New Collection
+    Set ws = GetCatSheet(wbCat, "Productos")
+    If ws Is Nothing Then Exit Sub
+    For r = 2 To ws.Cells(ws.Rows.Count, 2).End(xlUp).Row
+        If CStr(ws.Cells(r, 4).Value) = "Activo" Then
+            v = CStr(ws.Cells(r, 2).Value)
+            If v <> "" Then
+                On Error Resume Next: items.Add v, v: On Error GoTo 0
+            End If
+        End If
+    Next r
+    EscribirOrdenado wsL, 3, items
+End Sub
+
+' === ETIQUETAS (col D = 4) ===
+Private Sub CargarEtiquetasDesde(wbCat As Workbook, wsL As Worksheet)
+    Dim ws As Worksheet, r As Long, v As String
+    Dim items As New Collection
+    Set ws = GetCatSheet(wbCat, "Etiquetas")
+    If ws Is Nothing Then Exit Sub
+    For r = 2 To ws.Cells(ws.Rows.Count, 6).End(xlUp).Row
+        If IsEmpty(ws.Cells(r, 4).Value) Or CStr(ws.Cells(r, 4).Value) = "" Then
+            v = CStr(ws.Cells(r, 6).Value)
+            If v <> "" Then
+                On Error Resume Next: items.Add v, v: On Error GoTo 0
+            End If
+        End If
+    Next r
+    EscribirOrdenado wsL, 4, items
+End Sub
+
+' === SPECS (col E = 5) ===
+Private Sub CargarSpecsDesde(wbCat As Workbook, wsL As Worksheet)
+    Dim ws As Worksheet, r As Long
+    Dim specName As String, fieldName As String, paramName As String
+    Dim specSeen As New Collection
+    Dim espesorEntries As New Collection
+    Dim specsWithEspesor As New Collection
+    Set ws = GetCatSheet(wbCat, "Especificaciones")
+    If ws Is Nothing Then Exit Sub
+    Dim lastR As Long
+    lastR = ws.Cells(ws.Rows.Count, 3).End(xlUp).Row
+    For r = 2 To lastR
+        specName = Trim(CStr(ws.Cells(r, 3).Value))
+        fieldName = CStr(ws.Cells(r, 17).Value)
+        paramName = Trim(CStr(ws.Cells(r, 22).Value))
+        If specName = "" Then GoTo NextRow
+        On Error Resume Next: specSeen.Add specName, specName: On Error GoTo 0
+        If InStr(1, fieldName, "espesor", vbTextCompare) > 0 And paramName <> "" Then
+            Dim entry As String
+            entry = specName & " | " & paramName
+            On Error Resume Next
+            espesorEntries.Add entry, entry
+            If Err.Number = 0 Then specsWithEspesor.Add specName, specName
+            Err.Clear
+            On Error GoTo 0
+        End If
+NextRow:
+    Next r
+    Dim finalItems As New Collection
+    Dim i As Long
+    For i = 1 To espesorEntries.Count
+        On Error Resume Next: finalItems.Add espesorEntries(i), espesorEntries(i): On Error GoTo 0
+    Next i
+    For i = 1 To specSeen.Count
+        Dim sn As String
+        sn = specSeen(i)
+        Dim hasEsp As Boolean
+        hasEsp = False
+        On Error Resume Next
+        Dim dummy As String
+        dummy = specsWithEspesor(sn)
+        If Err.Number = 0 Then hasEsp = True
+        Err.Clear
+        On Error GoTo 0
+        If Not hasEsp Then
+            On Error Resume Next: finalItems.Add sn, sn: On Error GoTo 0
+        End If
+    Next i
+    EscribirOrdenado wsL, 5, finalItems
+End Sub
+
+' === RACKS (col F=6 Linea, col G=7 Todos) ===
+Private Sub CargarRacksDesde(wbCat As Workbook, wsL As Worksheet)
+    Dim ws As Worksheet, r As Long, v As String
+    Dim linea As New Collection, todos As New Collection
+    Set ws = GetCatSheet(wbCat, "Racks")
+    If ws Is Nothing Then Exit Sub
+    For r = 2 To ws.Cells(ws.Rows.Count, 5).End(xlUp).Row
+        v = CStr(ws.Cells(r, 5).Value)
+        If v <> "" Then
+            On Error Resume Next: todos.Add v, v: On Error GoTo 0
+            If InStr(v, "-FL") > 0 Or InStr(v, "-BA") > 0 Or InStr(v, "Barril") > 0 Then
+                On Error Resume Next: linea.Add v, v: On Error GoTo 0
+            End If
+        End If
+    Next r
+    EscribirOrdenado wsL, 6, linea
+    EscribirOrdenado wsL, 7, todos
+End Sub
+
+' === CODIGO SAT (col H = 8) ===  V10: viene del input schema de PN
+' V12: escribe desde row 4 (i+3) -- antes i+1
+Private Sub CargarCodigoSATDesde(wbCat As Workbook, wsL As Worksheet)
+    Dim ws As Worksheet, r As Long, v As String, i As Long
+    Set ws = GetCatSheet(wbCat, "CodigoSAT")
+    If ws Is Nothing Then Exit Sub
+    i = 0
+    ' Mantener orden original del schema (no sortear) para que coincida con UI de Steelhead
+    For r = 2 To ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+        v = Trim(CStr(ws.Cells(r, 1).Value))
+        If v <> "" Then
+            i = i + 1
+            wsL.Cells(i + 3, 8).Value = v  ' V12: i+3 en vez de i+1
+        End If
+    Next r
+End Sub
+
+' === METAL BASE (col I = 9) ===  V10: viene del input schema de PN
+' V12: escribe desde row 4 (i+3) -- antes i+1
+Private Sub CargarMetalBaseDesde(wbCat As Workbook, wsL As Worksheet)
+    Dim ws As Worksheet, r As Long, v As String, i As Long
+    Set ws = GetCatSheet(wbCat, "MetalBase")
+    If ws Is Nothing Then Exit Sub
+    i = 0
+    ' Mantener orden original del schema
+    For r = 2 To ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+        v = Trim(CStr(ws.Cells(r, 1).Value))
+        If v <> "" Then
+            i = i + 1
+            wsL.Cells(i + 3, 9).Value = v  ' V12: i+3 en vez de i+1
+        End If
+    Next r
+End Sub
+
+' === LINEAS (col J = 10) ===  V10: era col 12 en v9, ahora col 10
+Private Sub CargarLineasDesde(wbCat As Workbook, wsL As Worksheet)
+    Dim ws As Worksheet, r As Long, v As String
+    Dim items As New Collection
+    ' V11: "Lineas" via ChrW(237) = i para sobrevivir paste-encoding del VBE
+    Set ws = GetCatSheet(wbCat, "L" & ChrW(237) & "neas")
+    If ws Is Nothing Then Exit Sub
+    For r = 2 To ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+        v = Trim(CStr(ws.Cells(r, 1).Value))
+        If v <> "" Then
+            On Error Resume Next: items.Add v, v: On Error GoTo 0
+        End If
+    Next r
+    EscribirOrdenado wsL, 10, items
+End Sub
+
+' === DEPARTAMENTOS (col K = 11) ===
+Private Sub CargarDepartamentosDesde(wbCat As Workbook, wsL As Worksheet)
+    Dim ws As Worksheet, r As Long, v As String
+    Dim items As New Collection
+    Set ws = GetCatSheet(wbCat, "Departamentos")
+    If ws Is Nothing Then Exit Sub
+    For r = 2 To ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+        v = Trim(CStr(ws.Cells(r, 1).Value))
+        If v <> "" Then
+            On Error Resume Next: items.Add v, v: On Error GoTo 0
+        End If
+    Next r
+    EscribirOrdenado wsL, 11, items
+End Sub
+
+' === USUARIOS (col L = 12) ===
+Private Sub CargarUsuariosDesde(wbCat As Workbook, wsL As Worksheet)
+    Dim ws As Worksheet, r As Long, v As String
+    Dim items As New Collection
+    Set ws = GetCatSheet(wbCat, "Usuarios")
+    If ws Is Nothing Then Exit Sub
+    For r = 2 To ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+        v = Trim(CStr(ws.Cells(r, 1).Value))
+        If v <> "" Then
+            On Error Resume Next: items.Add v, v: On Error GoTo 0
+        End If
+    Next r
+    EscribirOrdenado wsL, 12, items
+End Sub
+
+' === GRUPOS PN (col M = 13) ===
+Private Sub CargarGruposDesde(wbCat As Workbook, wsL As Worksheet)
+    Dim ws As Worksheet, r As Long, v As String
+    Dim items As New Collection
+    Set ws = GetCatSheet(wbCat, "Grupos")
+    If ws Is Nothing Then Exit Sub
+    For r = 2 To ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+        v = Trim(CStr(ws.Cells(r, 1).Value))
+        If v <> "" Then
+            On Error Resume Next: items.Add v, v: On Error GoTo 0
+        End If
+    Next r
+    EscribirOrdenado wsL, 13, items
+End Sub
+
+' === TIPOS DE GEOMETRIA (col N = 14) ===  V12: nueva sub
+Private Sub CargarTiposGeometriaDesde(wbCat As Workbook, wsL As Worksheet)
+    Dim ws As Worksheet, r As Long, v As String
+    Dim items As New Collection
+    ' "TiposGeometria" -- sin acento en nombre de hoja (confirmar con el catalogo generado)
+    Set ws = GetCatSheet(wbCat, "TiposGeometria")
+    If ws Is Nothing Then Exit Sub
+    For r = 2 To ws.Cells(ws.Rows.Count, 1).End(xlUp).Row
+        v = Trim(CStr(ws.Cells(r, 1).Value))
+        If v <> "" Then
+            On Error Resume Next: items.Add v, v: On Error GoTo 0
+        End If
+    Next r
+    EscribirOrdenado wsL, 14, items
+End Sub
+
+' === CAT_PROCESOS (hoja CAT_Procesos, ListObject Tabla1, cols A..G) ===  V13: nueva
+' Reconstruye la tabla del catalogo de procesos desde Steelhead (articulo de inventario
+' 900192). El archivo de catalogos trae la hoja "CAT_Procesos" con:
+'   col1=Linea  col2=MetalBase  col3..8=Etiqueta1..6  col9=Proceso
+' Mapeo a Tabla1: D(Linea2)=Linea, E(Metal Base)=MetalBase,
+'   F(Etiquetas)=Etiqueta1..6 unidas con " + ", G(Proceso)=Proceso.
+' A(Grupo)/B(Caracteristica)/C(Linea corta) quedan vacias (ninguna formula las usa).
+' NO toca las formulas auxiliares I2:O2 (viven fuera de la tabla). Devuelve el # de filas.
+Private Function CargarCatProcesosDesde(wbCat As Workbook) As Long
+    Dim wsSrc As Worksheet, wsCP As Worksheet, lo As ListObject
+    CargarCatProcesosDesde = 0
+
+    Set wsSrc = GetCatSheet(wbCat, "CAT_Procesos")
+    If wsSrc Is Nothing Then Exit Function
+
+    On Error Resume Next
+    Set wsCP = ThisWorkbook.Sheets("CAT_Procesos")
+    On Error GoTo 0
+    If wsCP Is Nothing Then Exit Function
+    On Error Resume Next
+    Set lo = wsCP.ListObjects("Tabla1")
+    On Error GoTo 0
+    If lo Is Nothing Then Exit Function
+
+    Dim srcLast As Long, r As Long, n As Long
+    Dim lin As String, met As String, proc As String, etqs As String, ev As String
+    Dim e As Long, k As Long
+
+    srcLast = wsSrc.Cells(wsSrc.Rows.Count, 1).End(xlUp).Row
+
+    ' Contar filas validas (Linea o Proceso no vacios)
+    n = 0
+    For r = 2 To srcLast
+        If Trim(CStr(wsSrc.Cells(r, 1).Value)) <> "" Or Trim(CStr(wsSrc.Cells(r, 9).Value)) <> "" Then n = n + 1
+    Next r
+    If n = 0 Then Exit Function  ' catalogo vacio: no tocar la tabla (defensivo)
+
+    ' Construir el bloque A..G (7 columnas). A/B/C se dejan Empty -> celdas vacias.
+    Dim data() As Variant
+    ReDim data(1 To n, 1 To 7)
+    k = 0
+    For r = 2 To srcLast
+        lin = Trim(CStr(wsSrc.Cells(r, 1).Value))
+        proc = Trim(CStr(wsSrc.Cells(r, 9).Value))
+        If lin <> "" Or proc <> "" Then
+            met = Trim(CStr(wsSrc.Cells(r, 2).Value))
+            etqs = ""
+            For e = 3 To 8  ' Etiqueta1..6
+                ev = Trim(CStr(wsSrc.Cells(r, e).Value))
+                If ev <> "" Then
+                    If etqs = "" Then etqs = ev Else etqs = etqs & " + " & ev
+                End If
+            Next e
+            k = k + 1
+            data(k, 4) = lin   ' D Linea2
+            data(k, 5) = met   ' E Metal Base
+            data(k, 6) = etqs  ' F Etiquetas
+            data(k, 7) = proc  ' G Proceso
+        End If
+    Next r
+
+    ' Redimensionar Tabla1 a k filas de datos y volcar el bloque A..G
+    Dim prevRows As Long
+    prevRows = lo.Range.Rows.Count  ' incluye header
+    lo.Resize wsCP.Cells(1, 1).Resize(k + 1, 7)
+    wsCP.Cells(2, 1).Resize(k, 7).Value = data
+
+    ' Limpiar residuo si la tabla encogio (filas debajo de la tabla nueva, cols A..G)
+    If (k + 1) < prevRows Then
+        wsCP.Range(wsCP.Cells(k + 2, 1), wsCP.Cells(prevRows, 7)).ClearContents
+    End If
+
+    CargarCatProcesosDesde = k
+End Function
+
+' === HELPERS ===
+' V12: EscribirOrdenado escribe desde row 4 (i+3) -- antes i+1
+' Razon: rows 2-3 son ahora placeholders fijos, items empiezan en row 4.
+Private Sub EscribirOrdenado(ws As Worksheet, col As Long, items As Collection)
+    If items.Count = 0 Then Exit Sub
+    Dim arr() As String, i As Long, j As Long, tmp As String
+    ReDim arr(1 To items.Count)
+    For i = 1 To items.Count: arr(i) = items(i): Next i
+    For i = 1 To UBound(arr) - 1
+        For j = i + 1 To UBound(arr)
+            If StrComp(arr(i), arr(j), vbTextCompare) > 0 Then
+                tmp = arr(i): arr(i) = arr(j): arr(j) = tmp
+            End If
+        Next j
+    Next i
+    ' V12: i+3 -> items desde row 4 (row 2 y 3 son placeholders)
+    For i = 1 To UBound(arr): ws.Cells(i + 3, col).Value = arr(i): Next i
+End Sub
+
+' NContar: cuenta entradas no vacias desde row 2 (incluye placeholders),
+' para el MsgBox se descuentan 2 (placeholder + separador "-").
+' Internamente se reporta el neto de items reales.
+Private Function NContar(ws As Worksheet, col As Long) As Long
+    Dim r As Long, n As Long
+    For r = 4 To Application.Max(ws.UsedRange.Rows.Count, 4)  ' V12: items desde row 4
+        If CStr(ws.Cells(r, col).Value) <> "" Then n = n + 1
+    Next r
+    NContar = n
+End Function

@@ -1,6 +1,17 @@
-' === MACRO 2: RefrescarListas (v14) ===
+' === MACRO 2: RefrescarListas (v15) ===
 ' Lee catálogos desde archivo externo "Catalogos_Steelhead_*.xlsx"
 ' generado por la extensión Chrome "Actualizar Catálogos"
+'
+' V15 (2026-08-07): la plantilla se entrega PROTEGIDA → desprotege/reprotege vía
+'   ModProteccion. Escribe en DOS hojas: Listas (ClearContents + catálogos + formato) y
+'   CAT_Procesos (CargarCatProcesosDesde). Hoy ninguna de las dos está protegida en la
+'   plantilla v13, así que sin este cambio la macro seguiría funcionando — pero eso es
+'   una coincidencia de la configuración actual, no una garantía: el día que alguien
+'   proteja Listas, RefrescarListas moriría en el ClearContents.
+'   De paso se cerró un hueco viejo: el `On Error GoTo ErrorHandler` sólo cubría el
+'   Workbooks.Open y después se hacía `On Error GoTo 0`, así que un fallo a media carga
+'   dejaba el libro de catálogos ABIERTO y el cálculo en manual. Ahora hay un solo
+'   Cleanup que cierra, reprotege y restaura pase lo que pase.
 '
 ' V14 (2026-07-02): FIX Mac — dejar de pedir "conceder acceso" a CADA catálogo viejo.
 '   En el sandbox de Excel para Mac, FileDateTime() sobre un archivo que el sandbox no
@@ -54,9 +65,16 @@ Sub RefrescarListas()
 
     ' Abrir archivo de catálogos
     Dim wbCat As Workbook
-    On Error GoTo ErrorHandler
+    Dim faseApertura As Boolean
+    On Error GoTo Cleanup
+    faseApertura = True
     Set wbCat = Workbooks.Open(catFile, ReadOnly:=True)
-    On Error GoTo 0
+    faseApertura = False
+
+    ' Se desprotege DESPUÉS de abrir el catálogo: si la apertura falla no se tocó nada, y
+    ' SA_Proteger sin foto previa no hace nada (no inventa un candado que no existía).
+    ' Escribe en DOS hojas: Listas y CAT_Procesos (vía CargarCatProcesosDesde).
+    SA_Desproteger "Listas", "CAT_Procesos"
 
     Dim wsL As Worksheet
     Set wsL = ThisWorkbook.Sheets("Listas")
@@ -115,9 +133,31 @@ Sub RefrescarListas()
 
     ' Cerrar archivo de catálogos sin guardar
     wbCat.Close SaveChanges:=False
+    Set wbCat = Nothing
 
+Cleanup:
+    ' Se llega por el camino normal Y por error. Antes de este cambio, un fallo a media
+    ' carga dejaba el libro de catálogos ABIERTO y el cálculo en manual.
+    Dim errNum As Long, errDesc As String
+    errNum = Err.Number: errDesc = Err.Description
+    On Error Resume Next
+    If Not wbCat Is Nothing Then wbCat.Close SaveChanges:=False
+    SA_Proteger
     Application.Calculation = xlCalculationAutomatic
     Application.ScreenUpdating = True
+    On Error GoTo 0
+
+    If errNum <> 0 Then
+        If faseApertura Then
+            MsgBox "Error abriendo archivo de cat" & ChrW(225) & "logos: " & errDesc, vbCritical
+        Else
+            MsgBox "RefrescarListas se interrumpi" & ChrW(243) & ":" & vbCrLf & errDesc & vbCrLf & vbCrLf & _
+                   "La protecci" & ChrW(243) & "n qued" & ChrW(243) & " repuesta, pero las listas pueden " & _
+                   "haber quedado A MEDIAS. Vuelve a correrla antes de capturar.", _
+                   vbCritical, "RefrescarListas interrumpido"
+        End If
+        Exit Sub
+    End If
 
     MsgBox "Listas actualizadas desde cat" & ChrW(225) & "logos:" & vbCrLf & vbCrLf & _
         NContar(wsL, 1) & " clientes" & vbCrLf & _
@@ -135,12 +175,6 @@ Sub RefrescarListas()
         NContar(wsL, 13) & " grupos PN" & vbCrLf & _
         NContar(wsL, 14) & " tipos de geometr" & ChrW(237) & "a" & vbCrLf & _
         nCatProc & " combinaciones CAT_Procesos (desde SH)", vbInformation, "RefrescarListas"
-    Exit Sub
-
-ErrorHandler:
-    Application.Calculation = xlCalculationAutomatic
-    Application.ScreenUpdating = True
-    MsgBox "Error abriendo archivo de cat" & ChrW(225) & "logos: " & Err.Description, vbCritical
 End Sub
 
 ' === BUSCAR ARCHIVO DE CATÁLOGOS ===
